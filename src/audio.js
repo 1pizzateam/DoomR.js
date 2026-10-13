@@ -189,7 +189,7 @@ export const RECIPES = {
   },
 
   // enemies. Each has its own throat: the imp rasps and screams, the brute and the warden are huge and wet,
-  // the skull wails, the crawler hisses and clicks, the swarmers squeal.
+  // the skull wails, the crawler hisses and clicks, the swarmers squeal, the wraith keens.
   dieImp(ctx, out, t) {
     growl(ctx, out, t, { from: 330, to: 70, duration: 0.7, gain: 0.26, drive: 4, rate: 24, depth: 50, cutoff: 1600, rattle: 900, wet: 0.3 });
     noise(ctx, out, t + 0.03, { duration: 0.5, gain: 0.45, from: 1400, to: 200 });
@@ -278,6 +278,30 @@ export const RECIPES = {
     noise(ctx, out, t, { duration: 0.06, gain: 0.35, filter: 'highpass', from: 2800 });
     tone(ctx, out, t, { type: 'square', from: 320, to: 140, duration: 0.07, gain: 0.1, filter: { freq: 1500 } });
     return { duration: 0.12, wet: 0.1 };
+  },
+
+  alertWraith(ctx, out, t) {
+    tone(ctx, out, t, { type: 'sine', from: 240, to: 520, duration: 0.7, gain: 0.2, vibrato: { rate: 5, depth: 28 } });
+    tone(ctx, out, t + 0.1, { type: 'triangle', from: 360, to: 780, duration: 0.6, gain: 0.08, vibrato: { rate: 6.5, depth: 24 } });
+    noise(ctx, out, t, { duration: 0.65, gain: 0.14, filter: 'bandpass', from: 700, to: 2400, q: 1.5, attack: 0.25 });
+    return { duration: 0.8, wet: 0.6 };
+  },
+  painWraith(ctx, out, t) {
+    tone(ctx, out, t, { type: 'sine', from: 700, to: 260, duration: 0.25, gain: 0.18, vibrato: { rate: 14, depth: 40 } });
+    noise(ctx, out, t, { duration: 0.18, gain: 0.16, filter: 'bandpass', from: 1800, to: 600, q: 2 });
+    return { duration: 0.3, wet: 0.4 };
+  },
+  dieWraith(ctx, out, t) {
+    tone(ctx, out, t, { type: 'sine', from: 520, to: 90, duration: 0.9, gain: 0.22, vibrato: { rate: 8, depth: 50 } });
+    noise(ctx, out, t, { duration: 0.8, gain: 0.25, filter: 'bandpass', from: 2600, to: 300, q: 1.2 });
+    noise(ctx, out, t + 0.05, { duration: 0.12, gain: 0.3, filter: 'highpass', from: 3000 });
+    return { duration: 1, wet: 0.65 };
+  },
+  rake(ctx, out, t) {
+    noise(ctx, out, t, { duration: 0.18, gain: 0.45, filter: 'bandpass', from: 5200, to: 1500, q: 1.5, attack: 0.02 });
+    noise(ctx, out, t + 0.04, { duration: 0.1, gain: 0.3, filter: 'highpass', from: 4000 });
+    tone(ctx, out, t, { type: 'sawtooth', from: 800, to: 300, duration: 0.15, gain: 0.07, filter: { freq: 2200 } });
+    return { duration: 0.25, wet: 0.2 };
   },
 
   alertBoss(ctx, out, t) {
@@ -444,6 +468,10 @@ const MIN_INTERVAL = {
   painSwarmer: 0.1,
   dieSwarmer: 0.06,
   bite: 0.08,
+  rake: 0.1,
+  alertWraith: 0.25,
+  painWraith: 0.12,
+  dieWraith: 0.1,
   fireball: 0.07,
   stomp: 0.12,
   gib: 0.08,
@@ -470,6 +498,7 @@ function route(event) {
     case 'slam': return [{ name: 'slam' }];
     case 'gib': return [{ name: 'gib' }];
     case 'leap': return [{ name: 'leap' }];
+    case 'rake': return [{ name: 'rake', pitch: true }];
     case 'bite': return [{ name: 'bite', pitch: true }];
     case 'fireball': return [{ name: 'fireball' }];
     case 'explode': return [{ name: 'explode' }];

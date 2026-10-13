@@ -1,4 +1,5 @@
 import { boxEdges, boxTriangles, ellipseEdges, loftEdges, merge, octahedronEdges, polyline, prismEdges, segment, teeth } from './lines.js';
+import { WRAITH_FRAMES, wraithAtlas } from './sprites.js';
 
 /**
  * The shapes and the movement of every monster, as RoostR line meshes.
@@ -7,6 +8,10 @@ import { boxEdges, boxTriangles, ellipseEdges, loftEdges, merge, octahedronEdges
  * on it: a part pivots where its mesh is positioned, so rotating it swings it from that joint. `animate` moves the
  * parts from what the monster is doing; the world turns the root to face the player and, when the monster dies,
  * throws the parts off as separate bodies (see World.startGore).
+ *
+ * The wraith is the exception: a flat 2D sprite (see sprites.js) that faces the camera, so it has no parts to throw
+ * off; `animate` only picks which frame to show, and `die` plays its death frames. A model that has a `die` plays that
+ * instead of falling over or sinking.
  *
  * Rotations: about z swings forward and back (positive tips the top backward, or raises an arm forward),
  * about y turns, about x spreads sideways (positive spreads the -z side).
@@ -354,6 +359,55 @@ function animateSwarmer(view, enemy, c) {
   glare(view, m, c);
 }
 
+// ---- the wraith: a flat sprite, not a mesh ----------------------------------------------------------------------
+
+// world units per pixel of the sprite: its 48 pixels of ghost plus its float stay under the ceiling, one wall high (64)
+const WRAITH_PIXEL = 1.0;
+let wraithSprites = null;
+
+function buildWraith(w, enemy) {
+  wraithSprites ??= wraithAtlas();
+  const view = newView(w, enemy, 1, 'drop');
+  view.pose.seed = enemy.phase * 7;
+  view.root = w.sprite(wraithSprites, view.material, wraithSprites.cell * WRAITH_PIXEL, wraithSprites.height * WRAITH_PIXEL);
+  return finish(w, view);
+}
+
+function animateWraith(view, enemy, c) {
+  const m = mood(view, enemy, c, 0.35);
+  // it floats, bobbing slowly, and rocks from side to side as it drifts
+  view.lift = 5 + Math.sin(m.t * 2.1) * 3 + Math.sin(m.t * 0.7) * 1.5;
+  view.sx = 1 + Math.sin(m.t * 2.1) * 0.015;
+  view.sy = 1 + Math.sin(m.t * 2.1 + 1) * 0.02 + m.roar * 0.08;
+  const rate = m.idle ? 0.8 : 2.8;
+  let frame = Math.floor(c.time * rate + view.pose.seed) % 2 ? WRAITH_FRAMES.idleB : WRAITH_FRAMES.idleA;
+  if (m.pain > 0.5)
+    frame = WRAITH_FRAMES.pain;
+  else if (m.attack > 0.25 || m.roar > 0.35)
+    frame = WRAITH_FRAMES.attack;
+  view.root.setFrame(frame);
+  view.root.setCustomUniform('glare', Math.min(1, 0.3 + 0.7 * m.anger * (1 + 0.18 * Math.sin(c.time * 31 + view.pose.seed))));
+}
+
+const WRAITH_DEATH_STEP = 0.14; // seconds each frame of the death is shown
+const WRAITH_BURST_STEP = 0.07; // and of being blown apart, which is much faster
+
+/**
+ * A dead wraith plays its death frames, sinking to the floor as it folds up. Killed from close range it bursts
+ * instead, in place; the last frame of either lingers and fades.
+ */
+function dieWraith(view, enemy) {
+  const burst = enemy.gibbed;
+  const frames = burst ? WRAITH_FRAMES.bursting : WRAITH_FRAMES.dying;
+  const interval = burst ? WRAITH_BURST_STEP : WRAITH_DEATH_STEP;
+  const step = Math.min(frames.length - 1, Math.floor(enemy.deadTime / interval));
+  const k = burst ? 0 : Math.min(1, enemy.deadTime / (interval * 3));
+  view.root.setFrame(frames[step]);
+  view.root.setCustomUniform('glare', step < (burst ? 3 : 2) ? 1 : 0.3);
+  view.root.setPosition(enemy.pos.x, 5 * (1 - k * k), enemy.pos.y);
+  view.root.setScale(view.scale);
+}
+
 export const MONSTERS = {
   imp: { build: buildImp, animate: animateImp },
   brute: { build: (w, e) => buildHulk(w, e, false), animate: (v, e, c) => animateHulk(v, e, c, false) },
@@ -361,5 +415,6 @@ export const MONSTERS = {
   skull: { build: buildSkull, animate: animateSkull },
   crawler: { build: buildCrawler, animate: animateCrawler },
   swarmer: { build: buildSwarmer, animate: animateSwarmer },
+  wraith: { build: buildWraith, animate: animateWraith, die: dieWraith },
 };
 

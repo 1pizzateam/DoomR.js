@@ -1,7 +1,9 @@
 import { Utils } from '@1pizzateam/spock';
 import { DOOR, EXIT, TILE } from './level.js';
 import { LEVELS } from './levels.js';
-import { mulberry32 } from './rng.js';
+import { screenSplatQuads } from './bloodsprites.js';
+import { FIRE_COOLDOWN } from './game.js';
+import { weaponCellUv, weaponFrame, weaponPlacement } from './weapon.js';
 
 const COLORS = ['#5b8cff', '#38c793', '#ff9f43', '#e8102c'];
 const BLUE = 0;
@@ -96,79 +98,25 @@ export class Hud {
     ctx.globalAlpha = 1;
   }
 
+  /** The shotgun: a pixel-art sprite on the finished picture, swaying as you walk, kicking when it fires and being pumped. */
   drawWeapon(game) {
-    const { width, height } = this;
     const player = game.player;
     if (game.state === 'dead' || game.state === 'title')
       return;
-    const scale = Utils.clamp(height / 760, 0.7, 1.3);
-    const cx = width / 2 + Math.sin(player.bob) * 14 * player.moving * scale;
-    const cy = height + 12 + Math.abs(Math.cos(player.bob)) * 8 * player.moving * scale;
-    const s = scale;
-    // the kick pitches the gun up about its grip: the base stays put, the muzzle rises
-    const kick = player.recoil * 64 * s;
-    const muzzle = cy - 210 * s - kick;
-
-    // the weapon is filled with the background so it hides the world behind it
-    const body = [cx - 70 * s, cy, cx - 16 * s, muzzle, cx + 16 * s, muzzle, cx + 70 * s, cy];
-    this.overlay.glow.fill(body, BACKGROUND_RGB);
-    this.line([...body], BLUE);
-    this.line([cx, cy, cx, muzzle], BLUE, 0.45);
-    this.line([cx - 16 * s, muzzle, cx - 8 * s, muzzle - 12 * s, cx + 8 * s, muzzle - 12 * s, cx + 16 * s, muzzle], BLUE);
-
-    // the pump rides on the barrel, so it follows the kick about halfway
-    const pumpY = cy - 80 * s - kick * 0.5;
-    const pump = [cx - 44 * s, pumpY, cx + 44 * s, pumpY, cx + 52 * s, pumpY + 52 * s, cx - 52 * s, pumpY + 52 * s];
-    this.overlay.glow.fill(pump, BACKGROUND_RGB);
-    this.line([...pump, pump[0], pump[1]], GREEN);
-    for (let g = 1; g < 5; g++) {
-      const gx = cx - 44 * s + g * 17.6 * s;
-      this.line([gx, pumpY + 6 * s, gx - 2 * s * (g - 2.5), pumpY + 46 * s], GREEN, 0.55);
-    }
-
-    if (player.flash > 0) {
-      const f = player.flash / 0.1;
-      const my = muzzle - 16 * s;
-      for (let i = 0; i < 12; i++) {
-        const a = (i / 12) * Math.PI * 2 + game.time * 20;
-        const r = (28 + (i % 2) * 26 + Math.random() * 14) * s * (0.6 + f * 0.6);
-        this.line([cx, my, cx + Math.cos(a) * r, my + Math.sin(a) * r * 1.3], ORANGE, f);
-      }
-    }
+    const { x0, y0, x1, y1 } = weaponPlacement({ width: this.width, height: this.height, bob: player.bob, moving: player.moving, recoil: player.recoil });
+    // a gun that is cooling down after a shot is animated by how long ago the shot was
+    const elapsed = player.cooldown > 0 ? FIRE_COOLDOWN - player.cooldown : -1;
+    this.overlay.crisp.weapon.quad(x0, y0, x1, y1, weaponCellUv(weaponFrame(elapsed, player.ammo > 0)), 1);
   }
 
-  /** Blood on the player's view: a starburst that bursts outward, then drips and fades. */
+  /** Blood on the player's view: the sprites of the blood in the world, a starburst that grows and a drip that slides down. */
   drawBlood(game) {
     const { width, height } = this;
+    const { sprites } = this.overlay.crisp;
     for (const splat of game.blood.splats) {
-      const rnd = mulberry32(splat.seed);
-      const grow = 1 - Math.pow(1 - Math.min(1, splat.age * 7), 3);
       const fade = Utils.clamp((splat.life - splat.age) / (splat.life * 0.4), 0, 1);
-      const cx = splat.x * width;
-      const cy = splat.y * height;
-      const size = splat.size * (0.35 + 0.65 * grow);
-      const at = (angle, radius) => [cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius];
-
-      const rays = 11;
-      for (let i = 0; i < rays; i++) {
-        const angle = rnd() * Math.PI * 2;
-        const tip = size * (0.55 + rnd() * 0.9);
-        this.line([...at(angle, size * 0.12), ...at(angle, tip)], RED, fade);
-        if (rnd() < 0.55)
-          this.line([...at(angle, tip + size * 0.14), ...at(angle, tip + size * (0.24 + rnd() * 0.14))], RED, fade * 0.9);
-      }
-      const ring = [];
-      for (let i = 0; i < 10; i++)
-        ring.push(...at((i / 10) * Math.PI * 2 + rnd() * 0.3, size * 0.3 * (0.75 + rnd() * 0.5)));
-      this.line([...ring, ring[0], ring[1]], RED, fade);
-
-      // a drip slides down from the middle
-      const drip = splat.drip * Math.min(1, splat.age * 0.9);
-      if (drip > 4) {
-        const dx = cx + (rnd() - 0.5) * size * 0.4;
-        this.line([dx, cy + size * 0.2, dx, cy + size * 0.2 + drip], RED, fade);
-        this.overlay.glow.circleLine(dx, cy + size * 0.2 + drip + 3, 2.6, RGB[RED], fade, 8);
-      }
+      for (const q of screenSplatQuads(splat, width, height, fade))
+        sprites.quad(q.x0, q.y0, q.x1, q.y1, q.uv, q.fade);
     }
   }
 

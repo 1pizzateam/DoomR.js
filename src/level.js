@@ -2,6 +2,8 @@ import { Vec2 } from '@1pizzateam/spock';
 
 export const TILE = 64;
 export const EYE = 32;
+/** The ceiling is one wall texture high. Blood thrown up this far lands on it. */
+export const CEILING = 64;
 
 export const FLOOR = 0;
 export const WALL = 1;
@@ -16,7 +18,7 @@ const SOLIDS = {
   D: { kind: DOOR, height: 64 },
   X: { kind: EXIT, height: 64 },
 };
-const ENEMIES = { i: 'imp', b: 'brute', s: 'skull', c: 'crawler', w: 'swarmer', B: 'boss' };
+const ENEMIES = { i: 'imp', b: 'brute', s: 'skull', c: 'crawler', w: 'swarmer', r: 'wraith', B: 'boss' };
 const PICKUPS = { h: 'health', a: 'ammo' };
 
 // Face directions: the side of a tile a ray enters through (0: -x, 1: +x, 2: -y, 3: +y).

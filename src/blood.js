@@ -1,9 +1,11 @@
-import { DOOR, TILE } from './level.js';
+import { dripTime } from './bloodsprites.js';
+import { CEILING, DOOR, FLOOR, TILE } from './level.js';
 
 export const BLOOD = {
   particles: 800,
   floor: 360,
   walls: 160,
+  ceiling: 140,
   holes: 320,
   doorHoles: 48,
   doorSplats: 24,
@@ -38,6 +40,9 @@ export class Blood {
     this.particles = [];
     this.floor = [];
     this.walls = [];
+    this.ceiling = [];
+    // true while some splat on a wall still has a drip running down it, so the renderer redraws them every frame
+    this.dripping = false;
     this.holes = [];
     this.prints = [];
     this.splats = [];
@@ -182,7 +187,8 @@ export class Blood {
   /** Splat on a wall face. (nx, ny) is the face's normal in the game plane, top the wall's height. */
   wallSplat(x, y, z, nx, ny, size, top, door = null) {
     const span = this.faceSpan(x, y, nx, ny, door);
-    this.walls.push({ x, y, z, nx, ny, size, top, door, ...span, seed: this.rand.integer(1, 2147483647) });
+    const seed = this.rand.integer(1, 2147483647);
+    this.walls.push({ x, y, z, nx, ny, size, top, door, ...span, seed, age: 0, dripTime: dripTime(seed, size) });
     // blood on a door rides with it, like a hole, and each door keeps only so many
     if (door) {
       const own = this.walls.filter((w) => w.door === door);
@@ -191,6 +197,21 @@ export class Blood {
     }
     if (this.walls.length > BLOOD.walls)
       this.walls.shift();
+    this.version++;
+  }
+
+  /**
+   * Splat on the ceiling, where blood thrown up lands. For a few seconds it lets go of a drop or two, which fall back
+   * down. The times come from its own seed, so nothing is taken from the game's random numbers.
+   */
+  ceilingSplat(x, y, size) {
+    const seed = this.rand.integer(1, 2147483647);
+    const drops = [];
+    for (let i = 0; i < 1 + (seed % 3); i++)
+      drops.push(0.8 + (((seed >>> (3 + i * 5)) % 100) / 100) * 4);
+    this.ceiling.push({ x, y, size, seed, height: CEILING - 1.6, age: 0, drops });
+    if (this.ceiling.length > BLOOD.ceiling)
+      this.ceiling.shift();
     this.version++;
   }
 
@@ -292,26 +313,46 @@ export class Blood {
   hitWall(p, nx, ny) {
     if (p.z < 1 || this.rand.float(0, 1) > 0.65)
       return;
+    const { level } = this;
     const ox = Math.floor(p.x / TILE);
     const oy = Math.floor(p.y / TILE);
     const tx = Math.floor(nx / TILE);
     const ty = Math.floor(ny / TILE);
-    if (!this.level.inBounds(tx, ty))
+    // a face only exists where the tile next to the one the drop was in is solid. A drop that clips a corner
+    // enters a tile diagonally, and the tiles beside it can be open floor: marking there would hang in the air.
+    const solid = (x, y) => level.inBounds(x, y) && level.heights[y * level.width + x] > p.z;
+    const across = tx !== ox && solid(tx, oy);
+    const along = ty !== oy && solid(ox, ty);
+    if (!across && !along)
       return;
+    // when the drop came through a corner of two walls, it struck the face it reached first
+    const vertical = across && along
+      ? Math.abs(((p.vy > 0 ? ty : ty + 1) * TILE - p.y) * p.vx) < Math.abs(((p.vx > 0 ? tx : tx + 1) * TILE - p.x) * p.vy)
+      : along;
     const size = p.gib ? this.float(8, 14) : this.float(3, 9);
-    const { level } = this;
-    const idx = ty * level.width + tx;
+    const idx = (vertical ? ty : oy) * level.width + (vertical ? ox : tx);
     // a door slides: blood on it is kept in the door's own height, so it travels with it
     const door = level.kind[idx] === DOOR ? level.doors.get(idx) : null;
     const top = door ? level.baseHeight[idx] : level.heights[idx];
     const z = door ? p.z / (1 - door.open) : p.z;
-    if (tx !== ox) {
-      const plane = (p.vx > 0 ? tx : tx + 1) * TILE;
-      this.wallSplat(plane, p.y, z, p.vx > 0 ? -1 : 1, 0, size, top, door);
-    } else if (ty !== oy) {
+    if (vertical) {
       const plane = (p.vy > 0 ? ty : ty + 1) * TILE;
       this.wallSplat(p.x, plane, z, 0, p.vy > 0 ? -1 : 1, size, top, door);
+    } else {
+      const plane = (p.vx > 0 ? tx : tx + 1) * TILE;
+      this.wallSplat(plane, p.y, z, p.vx > 0 ? -1 : 1, 0, size, top, door);
     }
+  }
+
+  /** True where there is a ceiling to stick to: over open floor and doorways, and not over the giant's room. */
+  hitsCeiling(x, y) {
+    const { level } = this;
+    const tx = Math.floor(x / TILE);
+    const ty = Math.floor(y / TILE);
+    if (!level.inBounds(tx, ty))
+      return false;
+    const idx = ty * level.width + tx;
+    return (level.kind[idx] === FLOOR || level.kind[idx] === DOOR) && !level.arena?.has(idx);
   }
 
   land(p) {
@@ -336,6 +377,12 @@ export class Blood {
         this.hitWall(p, nx, ny);
         continue;
       }
+      // thrown up as far as the ceiling, it sticks there (not over the warden's room, which has none)
+      if (nz >= CEILING && p.vz > 0 && this.hitsCeiling(nx, ny)) {
+        if (p.gib || this.rand.float(0, 1) < 0.55)
+          this.ceilingSplat(nx, ny, p.gib ? this.float(8, 14) : this.float(2.5, 6.5));
+        continue;
+      }
       p.x = nx;
       p.y = ny;
       p.z = nz;
@@ -343,6 +390,24 @@ export class Blood {
         this.particles[keep++] = p;
     }
     this.particles.length = keep;
+
+    // drips run down the walls for a few seconds after a splat lands, and blood on the ceiling lets go of drops
+    this.dripping = false;
+    for (const wall of this.walls) {
+      if (wall.age < wall.dripTime) {
+        wall.age += dt;
+        this.dripping = true;
+      }
+    }
+    for (const splat of this.ceiling) {
+      const before = splat.age;
+      splat.age += dt;
+      for (const at of splat.drops) {
+        if (before < at && splat.age >= at && this.particles.length < BLOOD.particles) {
+          this.particles.push({ x: splat.x + ((splat.seed % 7) - 3), y: splat.y + ((splat.seed % 5) - 2), z: CEILING - 1.8, vx: 0, vy: 0, vz: 0, age: 0, life: 2.5, gib: false });
+        }
+      }
+    }
 
     for (const splat of this.splats)
       splat.age += dt;

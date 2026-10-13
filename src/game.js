@@ -21,6 +21,7 @@ export const ENEMY_TYPES = {
   skull: { hp: 6, radius: 12, speed: 95, mass: 0.6, sight: 1000, gait: 0.04, gore: 0.8, flying: true },
   crawler: { hp: 5, radius: 11, speed: 170, mass: 0.8, sight: 800, gait: 0.2, gore: 0.7 },
   swarmer: { hp: 2, radius: 8, speed: 150, mass: 0.4, sight: 700, gait: 0.22, gore: 0.4 },
+  wraith: { hp: 7, radius: 12, speed: 115, mass: 0.5, sight: 900, gait: 0.05, gore: 0.5, flying: true, roar: 0.5 },
   boss: { hp: 90, radius: 32, speed: 55, mass: 12, sight: 1300, gait: 0.03, gore: 3.4, steps: true, stomp: 1, roar: 1.5 },
 };
 
@@ -39,7 +40,7 @@ const PELLETS = 6;
 const PELLET_DAMAGE = 3;
 const PELLET_SPREAD = 0.075;
 const PELLET_VERTICAL_SPREAD = 0.045;
-const FIRE_COOLDOWN = 0.65;
+export const FIRE_COOLDOWN = 0.65;
 const MAX_HEALTH = 100;
 const MAX_AMMO = 60;
 
@@ -333,7 +334,7 @@ export class Game {
     const reaches = (target) => !this.scene.raycast(barrel.pos, target, { mask: CAT.WALL });
     this.burst(x, y, 16, 'boom');
     for (let i = 0; i < 6; i++)
-      this.burst(x + this.rand.float(-30, 30), y + this.rand.float(-30, 30), this.rand.float(6, 44), 'blast');
+      this.burst(x + this.rand.float(-30, 30), y + this.rand.float(-30, 30), this.rand.float(6, 44), 'fireball');
     this.emit('boom', barrel.pos);
 
     const away = this.player.pos.getDistance(barrel.pos);
@@ -359,7 +360,7 @@ export class Game {
   }
 
   burst(x, y, z, type) {
-    this.effects.push({ type, x, y, z, age: 0, life: type === 'spark' ? 0.25 : type === 'boom' ? 0.7 : 0.45 });
+    this.effects.push({ type, x, y, z, age: 0, life: type === 'spark' ? 0.25 : type === 'boom' ? 0.8 : type === 'fireball' ? 0.55 : 0.45 });
   }
 
   /** Player body callback: pickups are sensors, so they report overlaps without pushing back. */
@@ -418,7 +419,6 @@ export class Game {
     enemy.diedAt = this.time;
     this.kills++;
     this.scene.removeBody(enemy.body);
-    this.burst(enemy.pos.x, enemy.pos.y, 28, 'blast');
     this.emit('die', enemy.pos, { kind: enemy.type });
     this.blood.gore(enemy.pos.x, enemy.pos.y, enemy.def.gore);
     // killing at point-blank range sprays the player too
@@ -702,6 +702,7 @@ export class Game {
       case 'skull': this.driveSkull(enemy, dt, move, toPlayer, distance); break;
       case 'crawler': this.driveCrawler(enemy, dt, move, toPlayer, distance); break;
       case 'swarmer': this.driveSwarmer(enemy, dt, move, distance); break;
+      case 'wraith': this.driveWraith(enemy, dt, move, distance); break;
       case 'boss': this.driveBoss(enemy, dt, move, toPlayer, distance, rage); break;
       default: this.driveBrute(enemy, dt, move, distance);
     }
@@ -822,6 +823,25 @@ export class Game {
     move.setScalar(move.x - move.y * weave, move.y + move.x * weave).normalize();
     if (distance < reach && enemy.cooldown <= 0)
       enemy.windup = 0.15;
+  }
+
+  /** A wraith drifts in on a wandering course and rakes whatever it reaches, hard but not often. */
+  driveWraith(enemy, dt, move, distance) {
+    const reach = enemy.def.radius + PLAYER_RADIUS + 12;
+    if (enemy.windup > 0) {
+      enemy.windup -= dt;
+      if (enemy.windup <= 0) {
+        this.emit('rake', enemy.pos, { kind: 'wraith' });
+        if (distance < reach + 10)
+          this.hurtPlayer(9);
+        enemy.cooldown = 0.9;
+      }
+      return;
+    }
+    const weave = Math.sin(this.time * 2.2 + enemy.phase) * 0.6;
+    move.setScalar(move.x - move.y * weave, move.y + move.x * weave).normalize();
+    if (distance < reach && enemy.cooldown <= 0)
+      enemy.windup = 0.35;
   }
 
   /** The warden: a slow giant that slams anything close and throws a fan of fireballs at anything else. */
