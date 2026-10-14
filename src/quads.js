@@ -1,4 +1,4 @@
-import { CustomMesh, Material, Mesh, Vec3 } from '@1pizzateam/roostr';
+import { CustomMesh, Material, Mesh, Vec2, Vec3, BoundingBox } from '@1pizzateam/roostr';
 
 // A textured quad batch is drawn with this: the texture is multiplied by the material colour, pixels with no alpha are
 // dropped, and the quads are pulled a little towards the camera so they win depth ties against the faces they lie on.
@@ -8,6 +8,37 @@ import { CustomMesh, Material, Mesh, Vec3 } from '@1pizzateam/roostr';
  */
 export const SOLID_ALPHA = 0.5;
 
+/**
+ * Dynamic scene lighting from RoostR's `AmbientLight` and `PointLight` uniforms (`uNbLights`, `uAmbientLight`,
+ * `uLightPosition`, `uLightDiffuse`, `uLightAttenuation`). Recessed ceiling fixtures cast pools of light onto the deck,
+ * bulkheads, doors and barrels below while emissive diffuser strips stay bright.
+ */
+export const LIGHT_GLSL = `
+uniform int uNbLights;
+uniform vec3 uAmbientLight;
+uniform vec3 uLightPosition[8];
+uniform vec3 uLightDiffuse[8];
+uniform vec3 uLightAttenuation[8];
+
+vec3 surfaceLight(vec3 worldPos, float emissive) {
+  if (uNbLights <= 0)
+    return vec3(1.0);
+  vec3 total = uAmbientLight;
+  for (int i = 0; i < 8; i++) {
+    if (i >= uNbLights)
+      break;
+    vec3 delta = uLightPosition[i] - worldPos;
+    float dist = length(delta);
+    vec3 att = uLightAttenuation[i];
+    float attenuation = 1.0 / max(att.x + att.y * dist + att.z * dist * dist, 0.0001);
+    float downward = worldPos.y > 58.0 ? 1.0 : clamp((uLightPosition[i].y - worldPos.y) / max(dist, 1.0), 0.0, 1.0);
+    float spread = 0.5 + 0.75 * downward * downward;
+    total += uLightDiffuse[i] * (attenuation * spread);
+  }
+  return mix(min(total, vec3(2.2)), max(total, vec3(1.35)), clamp(emissive, 0.0, 1.0));
+}
+`;
+
 export const TEXTURED_VERTEX = `
 attribute vec3 aVertexPosition;
 attribute vec2 aTextureCoord;
@@ -16,12 +47,15 @@ uniform mat4 uViewMatrix;
 uniform mat4 uProjectionMatrix;
 varying float vDepth;
 varying vec2 vTextureCoord;
+varying vec3 vWorldPos;
 
 void main(void) {
-  vec4 v = uViewMatrix * uModelMatrix * vec4(aVertexPosition, 1.0);
+  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
+  vec4 v = uViewMatrix * world;
   vDepth = -v.z;
   v.z += 1.2 + vDepth * 0.01;
   vTextureCoord = aTextureCoord;
+  vWorldPos = world.xyz;
   gl_Position = uProjectionMatrix * v;
 }
 `;
@@ -50,6 +84,33 @@ void main(void) {
 }
 `;
 
+/** Every textured surface in the world is dynamically lit and solid to the neon pass. */
+export const SOLID_TEXTURED_FRAGMENT = `
+precision mediump float;
+uniform sampler2D uSampler;
+uniform vec3 uMaterialDiffuse;
+uniform int uHasFog;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
+varying float vDepth;
+varying vec2 vTextureCoord;
+varying vec3 vWorldPos;
+
+${LIGHT_GLSL}
+void main(void) {
+  vec4 texel = texture2D(uSampler, vTextureCoord);
+  if (texel.a < 0.5)
+    discard;
+  vec3 color = texel.rgb * uMaterialDiffuse * surfaceLight(vWorldPos, 0.0);
+  if (uHasFog == 1) {
+    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+    color = mix(color, uFogColor, fade * 0.9);
+  }
+  gl_FragColor = vec4(color, ${SOLID_ALPHA.toFixed(1)});
+}
+`;
+
 /**
  * Many flat textured quads in one RoostR mesh, one draw call, refilled whenever they change. Decals on walls and floors
  * and particles that face the camera are all this: the caller works out the four corners of each in the world.
@@ -60,18 +121,19 @@ void main(void) {
  * which it owns) from them, with what was last filled.
  */
 export class QuadBatch extends Mesh {
-  constructor(gl, { capacity, atlas, material = new Material({ diffuse: [1, 1, 1] }), textureOptions = {}, vertex = TEXTURED_VERTEX, fragment = TEXTURED_FRAGMENT }) {
+  constructor(gl, { capacity, atlas, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, vertex = TEXTURED_VERTEX, fragment = SOLID_TEXTURED_FRAGMENT }) {
     const geometry = new CustomMesh();
-    geometry.setVertices(new Float32Array(capacity * 18));
-    geometry.setUvs(new Float32Array(capacity * 12));
+    geometry.vertices = new Float32Array(capacity * 18);
+    geometry.uvs = new Float32Array(capacity * 12);
     geometry.setPrimitive('TRIANGLES');
     super(gl, geometry);
     this.capacity = capacity;
     this.used = 0;
     this.low = new Vec3();
     this.high = new Vec3();
+    this.bounds = new BoundingBox();
     this.addProgram(vertex, fragment, material);
-    this.setTexture(atlas.data, { width: atlas.width, height: atlas.height, magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions });
+    this.setTexture(atlas.data, { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions });
     this.setInactive();
   }
 
@@ -126,7 +188,7 @@ export class QuadBatch extends Mesh {
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.uvs.subarray(0, this.used * 12));
     // frustum culling needs the size of what is in the buffer now, which RoostR cannot know
     if (typeof this.setLocalBounds === 'function')
-      this.setLocalBounds(this.low, this.high);
+      this.setLocalBounds(this.bounds.set(this.low, this.high));
     this.setActive();
     return this;
   }
@@ -144,12 +206,9 @@ export class QuadBatch extends Mesh {
  * A mesh of any geometry with a texture on it, drawn like the batches above: the picture times the material colour,
  * clear pixels dropped, fog applied. The geometry needs texture coordinates.
  */
-export function texturedMesh(gl, geometry, { atlas, material = new Material({ diffuse: [1, 1, 1] }), textureOptions = {}, fragment = TEXTURED_FRAGMENT }) {
+export function texturedMesh(gl, geometry, { atlas, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, fragment = SOLID_TEXTURED_FRAGMENT }) {
   const mesh = new Mesh(gl, geometry);
   mesh.addProgram(TEXTURED_VERTEX, fragment, material);
-  mesh.setTexture(atlas.data, { width: atlas.width, height: atlas.height, magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions });
+  mesh.setTexture(atlas.data, { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions });
   return mesh;
 }
-
-/** Every textured thing is solid to the neon pass, so none of it is thickened or blurred. */
-export const SOLID_TEXTURED_FRAGMENT = TEXTURED_FRAGMENT;

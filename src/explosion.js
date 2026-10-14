@@ -1,11 +1,13 @@
 /**
- * The explosion of a barrel as a 2D sprite animation: a flash and a shockwave, a boiling fireball that cools from
- * white through yellow and orange to red, sparks thrown out of it, and then smoke that thins away. Drawn here in
- * code, one 64 x 64 cell per frame, 16 frames side by side in a 1024 x 64 atlas (a power of two).
+ * The explosion of a barrel as a 2D sprite animation: a ground-deflected flash and horizontal shockwave, a boiling
+ * hemispherical fireball that flattens and spreads across the floor before mushrooming upward, sparks thrown up and
+ * skittering along the deck, and smoke that thins away. Drawn here in code, one 64 x 64 cell per frame, 16 frames
+ * side by side in a 1024 x 64 atlas (a power of two).
  */
 
 export const EXPLOSION_CELL = 64;
 export const EXPLOSION_FRAMES = 16;
+export const EXPLOSION_FLOOR_Y = 61;
 
 const WHITE = [255, 248, 214];
 const YELLOW = [255, 214, 96];
@@ -27,14 +29,16 @@ const smooth = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 
-/** The picture of the explosion at `t`, 0 at the flash and 1 when only a little smoke is left; RGBA, 64 x 64. */
+/** The picture of the ground explosion at `t`, 0 at the flash and 1 when only a little smoke is left; RGBA, 64 x 64. */
 function drawFrame(t) {
   const size = EXPLOSION_CELL;
+  const floorY = EXPLOSION_FLOOR_Y;
   const out = new Uint8Array(size * size * 4);
   const put = (x, y, color) => {
     x = Math.round(x);
     y = Math.round(y);
-    if (x < 0 || y < 0 || x >= size || y >= size)
+    // the ground at floorY blocks anything from going below it, and a 1px border keeps every cell self-contained
+    if (x < 1 || y < 1 || x >= size - 1 || y > floorY)
       return;
     const o = (y * size + x) * 4;
     out[o] = color[0];
@@ -43,29 +47,54 @@ function drawFrame(t) {
     out[o + 3] = 255;
   };
 
-  const grow = 1 - (1 - Math.min(1, t / 0.5)) ** 2;
-  const radius = 5 + 19 * grow;
-  const cool = smooth(0.3, 0.95, t);
+  const grow = 1 - (1 - Math.min(1, t / 0.45)) ** 2;
+  const rise = smooth(0.18, 0.95, t);
+  const cool = smooth(0.28, 0.95, t);
+  const dissolve = smooth(0.7, 1, t) * 0.97;
   const cx = 31.5;
-  // the fireball climbs as it burns, and flattens at the bottom where it meets the floor
-  const cy = 38 - 9 * smooth(0.1, 1, t);
-  const phase = t * 5;
-  const dissolve = smooth(0.72, 1, t) * 0.96;
+  const phase = t * 5.2;
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
+  // 1. Hemispherical ground-blast dome + horizontal floor-deflected Mach skirt + rising mushroom cap
+  const domeRx = 7 + 20.5 * grow;
+  const domeRy = 6 + 34 * grow + 8 * rise;
+  const capCy = floorY - (4 + 24 * rise);
+  const skirtRx = 9 + 21.5 * grow * (1 - 0.25 * smooth(0.6, 1, t));
+  const skirtRy = 4.5 + 7.5 * grow;
+
+  for (let y = 1; y <= floorY; y++) {
+    const h = floorY - y;
+    for (let x = 1; x < size - 1; x++) {
       const dx = x - cx;
-      const dy = (y - cy) * (dy0(y, cy) ? 1.25 : 1);
-      const d = Math.hypot(dx, dy);
-      const angle = Math.atan2(dy, dx);
-      const lumpy = 1 + 0.2 * Math.sin(angle * 3 + phase + 1.3) + 0.13 * Math.sin(angle * 5 - phase * 1.4) + 0.08 * Math.sin(angle * 9 + phase * 2);
-      const edge = Math.min(radius * lumpy, 29);
-      if (d > edge)
+      const adx = Math.abs(dx);
+      const angle = Math.atan2(-h, dx);
+      const lumpy =
+        1 +
+        0.16 * Math.sin(angle * 3 + phase + 1.1) +
+        0.11 * Math.sin(angle * 5 - phase * 1.4) +
+        0.07 * Math.sin(angle * 9 + phase * 2.1);
+
+      // Upper hemispherical / mushrooming cap lobe
+      const capDy = y - capCy;
+      const capScaleX = capDy > 0 ? domeRx * (0.72 + 0.28 * (1 - rise)) : domeRx;
+      const capScaleY = capDy > 0 ? Math.max(5, floorY - capCy) : Math.max(5, domeRy * 0.68);
+      const dCap = Math.hypot(dx / capScaleX, capDy / capScaleY) / lumpy;
+
+      // Wide horizontal ground-deflected blast skirt hugging the floor (h = 0..skirtRy)
+      const skirtLump = 1 + 0.12 * Math.sin(dx * 0.35 + phase * 1.6);
+      const dSkirt = Math.hypot(dx / (skirtRx * skirtLump), h / skirtRy);
+
+      // Combine the flat-bottomed floor skirt and the rising dome into a single non-spherical ground plume
+      const d = Math.min(dCap, dSkirt, (dCap + dSkirt) * 0.56);
+      if (d > 1 || adx > 29.5 || y < 2)
         continue;
-      const grain = (hash(x, y, 1) - 0.5) * 0.3;
-      const heat = (1 - d / edge) * (1.15 - cool * 0.55) + grain * (1 - cool * 0.5);
       if (hash(x, y, 2) < dissolve)
         continue;
+
+      const grain = (hash(x, y, 1) - 0.5) * 0.28;
+      // Hotter core near the ground detonation center and inside the rising cap
+      const floorBoost = h < 5 && t < 0.45 ? (1 - h / 5) * 0.18 * (1 - t / 0.45) : 0;
+      const heat = (1 - d) * (1.16 - cool * 0.58) + floorBoost + grain * (1 - cool * 0.5);
+
       let color;
       if (heat > 0.78)
         color = WHITE;
@@ -79,73 +108,87 @@ function drawFrame(t) {
         color = DARK_RED;
       else
         color = (x + y) % 2 ? SMOKE : SMOKE_DARK;
-      // as it cools the outside goes to smoke first, a little more of it every frame
-      if (heat < cool * 0.34)
+      if (heat < cool * 0.36)
         color = (x + y) % 2 ? SMOKE : SMOKE_DARK;
       put(x, y, color);
     }
   }
 
-  // the shockwave: a ring that runs out ahead of the fire and thins to nothing
+  // 2. Ground shockwave: an upper hemispherical pressure arch plus a bright horizontal blast wave skimming the floor
   if (t < 0.55) {
-    const ring = 8 + 21 * (t / 0.55);
-    const fade = 1 - t / 0.55;
-    for (let k = 0; k < 360; k += 2) {
+    const prog = t / 0.55;
+    const ringX = Math.min(29.5, 9 + 21 * prog);
+    const ringY = Math.min(floorY - 3, 7 + 34 * prog);
+    const fade = 1 - prog;
+    for (let k = 0; k <= 180; k += 2) {
       const a = (k * Math.PI) / 180;
       if (hash(k, 3, 7) > 0.35 + fade * 0.6)
         continue;
-      put(cx + Math.cos(a) * ring, cy + Math.sin(a) * ring * 0.8, fade > 0.5 ? WHITE : YELLOW);
+      put(cx + Math.cos(a) * ringX, floorY - Math.sin(a) * ringY, fade > 0.5 ? WHITE : YELLOW);
+    }
+    // Horizontal ground-hugging shock skirt racing outward along the floor
+    for (let dx = -Math.floor(ringX); dx <= Math.floor(ringX); dx++) {
+      if (hash(dx + 32, 4, 9) > 0.45 + fade * 0.5)
+        continue;
+      const edgeHot = Math.abs(dx) > ringX * 0.65;
+      put(cx + dx, floorY, edgeHot && fade > 0.4 ? WHITE : YELLOW);
+      if (edgeHot)
+        put(cx + dx, floorY - 1, fade > 0.5 ? YELLOW : ORANGE);
     }
   }
 
-  // sparks and embers, thrown out and falling
-  for (let k = 0; k < 22; k++) {
-    const angle = hash(k, 1, 11) * Math.PI * 2;
-    const speed = 12 + hash(k, 2, 11) * 30;
+  // 3. Sparks and embers: blasted upward and sideways from the floor, arcing and skittering along the deck
+  for (let k = 0; k < 24; k++) {
+    // Upper hemisphere angles only (0.04*PI .. 0.96*PI) — the floor blocks downward ejection
+    const angle = (0.04 + hash(k, 1, 11) * 0.92) * Math.PI;
+    const speed = 14 + hash(k, 2, 11) * 30;
     const life = 0.4 + hash(k, 3, 11) * 0.55;
     if (t < 0.05 || t > life)
       continue;
-    const travel = (t - 0.05) * speed * 1.1;
+    const dt = t - 0.05;
+    const travel = dt * speed * 1.12;
     const x = cx + Math.cos(angle) * travel;
-    const y = cy + Math.sin(angle) * travel * 0.8 + 38 * (t - 0.05) ** 2 - 4;
+    const rawY = floorY - 2 - Math.sin(angle) * travel * 0.95 + 42 * dt * dt;
+    // Embers that hit the floor bounce softly along the ground instead of falling through it
+    const y = rawY > floorY ? Math.max(floorY - 3, floorY - (rawY - floorY) * 0.35) : rawY;
     const hot = t < life * 0.6;
     put(x, y, hot ? YELLOW : ORANGE);
     if (hot && hash(k, 4, 11) < 0.5)
-      put(x - Math.cos(angle), y - Math.sin(angle) * 0.8, ORANGE);
+      put(x - Math.cos(angle), Math.min(floorY, y + Math.sin(angle) * 0.8), ORANGE);
   }
 
-  // a column of smoke, rising out of the top of it, in the second half
-  if (t > 0.45) {
-    const rise = smooth(0.45, 1, t);
-    for (let k = 0; k < 5; k++) {
-      const bx = cx + (hash(k, 5, 13) - 0.5) * 20 * (0.4 + rise);
-      const by = cy - 4 - rise * (14 + k * 4) - k * 1.5;
-      const r = 3 + hash(k, 6, 13) * 4 + rise * 3;
+  // 4. Billowing mushroom cap & ground-collar smoke in the second half
+  if (t > 0.42) {
+    const smokeRise = smooth(0.42, 1, t);
+    for (let k = 0; k < 6; k++) {
+      const groundCollar = k < 2;
+      const bx = groundCollar
+        ? cx + (k === 0 ? -1 : 1) * (10 + smokeRise * 12)
+        : cx + (hash(k, 5, 13) - 0.5) * 24 * (0.45 + smokeRise);
+      const by = groundCollar
+        ? floorY - 3 - smokeRise * 3
+        : capCy - 4 - smokeRise * (10 + (k - 2) * 3.5);
+      const r = (groundCollar ? 3.5 : 4) + hash(k, 6, 13) * 3.5 + smokeRise * 2.5;
       for (let y = Math.floor(by - r); y <= Math.ceil(by + r); y++) {
         for (let x = Math.floor(bx - r); x <= Math.ceil(bx + r); x++) {
-          if (Math.hypot(x - bx, y - by) <= r && hash(x, y, 17) > dissolve * 0.8 + 0.12 && (x + y) % 2 === (k & 1))
+          if (Math.hypot((x - bx) / (groundCollar ? 1.45 : 1.15), y - by) <= r && hash(x, y, 17) > dissolve * 0.8 + 0.12 && (x + y) % 2 === (k & 1))
             put(x, y, hash(x, y, 19) < 0.5 ? SMOKE : SMOKE_DARK);
         }
       }
     }
   }
 
-  // the first instant: a hard white flash with spikes
+  // 5. The first instant: a hard white hemispherical ground flash with upward and lateral floor spikes
   if (t < 0.12) {
     const flash = 1 - t / 0.12;
-    for (let k = 0; k < 10; k++) {
-      const angle = (k / 10) * Math.PI * 2 + 0.3;
-      const reach = (10 + 14 * hash(k, 1, 23)) * (0.5 + flash * 0.5);
+    for (let k = 0; k < 11; k++) {
+      const angle = (0.02 + (k / 10) * 0.96) * Math.PI;
+      const reach = (8 + 11 * hash(k, 1, 23)) * (0.45 + flash * 0.55);
       for (let d = 0; d < reach; d += 0.7)
-        put(cx + Math.cos(angle) * d, cy + Math.sin(angle) * d, d < reach * 0.5 ? WHITE : YELLOW);
+        put(cx + Math.cos(angle) * d * 1.15, floorY - 1 - Math.sin(angle) * d * 0.9, d < reach * 0.5 ? WHITE : YELLOW);
     }
   }
   return out;
-}
-
-// the fireball is squashed a little at its base, where it sits on the floor
-function dy0(y, cy) {
-  return y > cy;
 }
 
 /** The atlas as RGBA pixels, ready to be a texture. */

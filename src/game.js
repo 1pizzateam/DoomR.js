@@ -40,7 +40,7 @@ const PELLETS = 6;
 const PELLET_DAMAGE = 3;
 const PELLET_SPREAD = 0.075;
 const PELLET_VERTICAL_SPREAD = 0.045;
-export const FIRE_COOLDOWN = 0.65;
+export const FIRE_COOLDOWN = 1.05;
 const MAX_HEALTH = 100;
 const MAX_AMMO = 60;
 
@@ -332,9 +332,7 @@ export class Game {
     this.scene.removeBody(barrel.body);
     const { x, y } = barrel.pos;
     const reaches = (target) => !this.scene.raycast(barrel.pos, target, { mask: CAT.WALL });
-    this.burst(x, y, 16, 'boom');
-    for (let i = 0; i < 6; i++)
-      this.burst(x + this.rand.float(-30, 30), y + this.rand.float(-30, 30), this.rand.float(6, 44), 'fireball');
+    this.burst(x, y, 0, 'boom');
     this.emit('boom', barrel.pos);
 
     const away = this.player.pos.getDistance(barrel.pos);

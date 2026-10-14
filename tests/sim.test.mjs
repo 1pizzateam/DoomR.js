@@ -1,24 +1,27 @@
 import assert from 'node:assert/strict';
-import { Vec2 } from '@1pizzateam/spock';
+import { AmbientLight, MAX_LIGHTS, PointLight, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { CAT, ENEMY_TYPES, Game } from '../src/game.js';
 import { BLOOD } from '../src/blood.js';
 import { RECIPES, spatial } from '../src/audio.js';
 import { HOLE_VARIANTS, holeQuad, IMPACT_CELL_COUNT, IMPACT_CELLS, impactAtlas, impactCellUv, SPARK_FRAMES, SPARK_VARIANTS } from '../src/impacts.js';
 import { LEVELS } from '../src/levels.js';
+import { FACE_CELL_H, FACE_CELL_W, FACE_DEAD_FRAME, FACE_FRAME_COUNT, FACE_POSE_COUNT, FACE_POSES, faceAtlas, faceCellUv, faceFrame, facePlacement } from '../src/face.js';
 import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON_TIMES, weaponAtlas, weaponCellUv, weaponFrame, weaponPlacement } from '../src/weapon.js';
 import { FIRE_COOLDOWN } from '../src/game.js';
-import { CEILING_CELLS, ceilingAtlas, ceilingCellFor, ceilingCellUv } from '../src/ceiling.js';
+import { CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, updateCeilingLights } from '../src/ceiling.js';
 import { WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallFaceQuads } from '../src/wall.js';
-import { DOOR_CELLS, DOOR_FRAGMENT, doorAtlas, doorBox } from '../src/door.js';
+import { DOOR_CELLS, DOOR_FRAGMENT, WALL_FRAGMENT, doorAtlas, doorBox } from '../src/door.js';
 import { BARREL_ATLAS, barrelAtlas, skinBarrel } from '../src/barrel.js';
-import { EXPLOSION_CELL, EXPLOSION_FRAMES, explosionAtlas } from '../src/explosion.js';
+import { EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, explosionAtlas } from '../src/explosion.js';
 import { FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, floorAtlas, floorCellFor, floorCellUv, TILE_PIXELS } from '../src/floor.js';
+import { SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT } from '../src/quads.js';
 import { CELLS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads, screenSplatQuads, bloodAtlas, CELL, cellUv, floorSplatQuad, particleQuad, printQuad, wallSplatQuad } from '../src/bloodsprites.js';
 import { DOOR } from '../src/level.js';
 import { Quality } from '../src/quality.js';
 import { MONSTERS } from '../src/monsters.js';
 import { WRAITH_FRAMES, wraithAtlas } from '../src/sprites.js';
 import { SHOTS, TitleDirector } from '../src/title.js';
+import { explosionWidth } from '../src/world.js';
 
 const idle = { forward: 0, strafe: 0, turn: 0, mouseX: 0, run: false, fire: false, use: false };
 const input = (patch) => ({ ...idle, ...patch });
@@ -1391,6 +1394,40 @@ const tests = {
     assert.ok(Math.max(...frames.map((f) => f.bright)) > 300, 'it burns bright');
     assert.ok(frames[EXPLOSION_FRAMES - 1].solid < frames[5].solid / 4, 'and thins out to almost nothing');
     assert.ok(frames[EXPLOSION_FRAMES - 1].bright < frames[5].bright / 20, 'the last frame is smoke and a few embers, not fire');
+    // the ground blocks downward expansion: nothing appears below EXPLOSION_FLOOR_Y, and the blast spreads wide along the floor
+    for (let f = 0; f < EXPLOSION_FRAMES; f++)
+      for (let y = EXPLOSION_FLOOR_Y + 1; y < EXPLOSION_CELL; y++)
+        for (let x = 0; x < EXPLOSION_CELL; x++)
+          assert.equal(atlas.data[(y * atlas.width + f * EXPLOSION_CELL + x) * 4 + 3], 0, `frame ${f} leaks below the floor at y=${y}`);
+    const bounds = (frame) => {
+      let minX = EXPLOSION_CELL;
+      let maxX = -1;
+      let minY = EXPLOSION_CELL;
+      let maxY = -1;
+      let floorContacts = 0;
+      for (let y = 0; y < EXPLOSION_CELL; y++) {
+        for (let x = 0; x < EXPLOSION_CELL; x++) {
+          const a = atlas.data[(y * atlas.width + frame * EXPLOSION_CELL + x) * 4 + 3];
+          if (a < 40)
+            continue;
+          if (x < minX)
+            minX = x;
+          if (x > maxX)
+            maxX = x;
+          if (y < minY)
+            minY = y;
+          if (y > maxY)
+            maxY = y;
+          if (y >= EXPLOSION_FLOOR_Y - 1)
+            floorContacts++;
+        }
+      }
+      return { width: maxX - minX + 1, height: maxY - minY + 1, maxY, floorContacts };
+    };
+    const early = bounds(3);
+    assert.equal(early.maxY, EXPLOSION_FLOOR_Y, 'the blast sits flush against the floor line');
+    assert.ok(early.floorContacts >= 28, 'the bottom of the fireball flattens into a wide skirt along the floor');
+    assert.ok(early.width > early.height * 1.15, 'the ground-deflected blast is wider than it is tall (non-spherical)');
     // the picture stays inside its cell: nothing on the edge could be cut off
     for (const frame of [4, 6, 8]) {
       for (let k = 0; k < EXPLOSION_CELL; k++) {
@@ -1419,8 +1456,9 @@ const tests = {
     }
     const light = (y, x) => atlas.data[(y * atlas.width + CEILING_CELLS.light * 64 + x) * 4 + 2];
     assert.ok(light(32, 30) > 150, 'a light fixture is bright');
-    assert.equal(ceilingCellFor(0, 0), CEILING_CELLS.light);
-    assert.equal(ceilingCellFor(5, 0), CEILING_CELLS.light, 'fixtures repeat every five tiles');
+    assert.equal(ceilingCellFor(2, 3), CEILING_CELLS.light);
+    assert.equal(ceilingCellFor(7, 3), CEILING_CELLS.light, 'fixtures repeat every five by four tiles');
+    assert.notEqual(ceilingCellFor(2, 2), CEILING_CELLS.light, 'adjacent rows are not crowded with light fixtures');
     assert.equal(ceilingCellFor(3, 7), ceilingCellFor(3, 7), 'the same ceiling every time');
     const [u0, , u1] = ceilingCellUv(2);
     assert.ok(u0 > 2 / 8 && u1 < 3 / 8, 'a cell is sampled a hair inside its edges');
@@ -1542,7 +1580,7 @@ const tests = {
     assert.ok(seen.size >= 7 && !seen.has(FLOOR_CELLS.hazard), 'a room mixes the patterns, and keeps the stripes for doors');
   },
 
-  'the shotgun is a pixel-art sprite: a steel and wood gun in six frames, flashing and smoking when it fires and pumping after, sharp at whole screen pixels'() {
+  'the shotgun is a pixel-art sprite: a steel and wood gun in five frames, flashing when it fires and pumping after, sharp at whole screen pixels'() {
     const atlas = weaponAtlas();
     assert.equal(atlas.width, WEAPON_CELL_W * WEAPON_FRAME_COUNT);
     assert.equal(atlas.height, WEAPON_CELL_H);
@@ -1572,8 +1610,6 @@ const tests = {
     assert.equal(rest.lowest, WEAPON_CELL_H - 1, 'it stands on the bottom edge, so it can come up from under the screen');
     assert.ok(frame(WEAPON_FRAMES.flashA).bright > 60, 'the first frame of the shot is a bright flash');
     assert.ok(frame(WEAPON_FRAMES.flashA).solid > frame(WEAPON_FRAMES.flashB).solid, 'and the flash dies down');
-    assert.ok(frame(WEAPON_FRAMES.smoke).solid > rest.solid, 'then there is smoke');
-    assert.ok(frame(WEAPON_FRAMES.smoke).bright < 10, 'with no fire left in it');
     const pictures = new Set();
     for (let f = 0; f < WEAPON_FRAME_COUNT; f++) {
       let key = 0;
@@ -1585,11 +1621,10 @@ const tests = {
     }
     assert.equal(pictures.size, WEAPON_FRAME_COUNT, 'every frame is its own picture');
 
-    // the animation follows the time since the shot: flash, flash, smoke, rest, then the pump goes back and forth
+    // the animation follows the time since the shot: flash, flash, rest, then the pump goes back and forth
     assert.equal(weaponFrame(-1), WEAPON_FRAMES.idle);
     assert.equal(weaponFrame(0.01), WEAPON_FRAMES.flashA);
     assert.equal(weaponFrame(WEAPON_TIMES.flashB + 0.001), WEAPON_FRAMES.flashB);
-    assert.equal(weaponFrame(WEAPON_TIMES.smoke + 0.01), WEAPON_FRAMES.smoke);
     assert.equal(weaponFrame(WEAPON_TIMES.rest + 0.05), WEAPON_FRAMES.idle);
     assert.equal(weaponFrame(WEAPON_TIMES.pumpA + 0.01), WEAPON_FRAMES.pumpA);
     assert.equal(weaponFrame(WEAPON_TIMES.pumpB + 0.01), WEAPON_FRAMES.pumpB);
@@ -1862,6 +1897,131 @@ const tests = {
     assert.equal(q.scale, low);
     feed(1 / 60, 60);
     assert.equal(q.scale, low, 'must not try the failed level again');
+  },
+
+  'the HUD marine face is an animated sprite atlas that glances around, scowls when shooting, winces on damage and bleeds as health drops'() {
+    const atlas = faceAtlas();
+    assert.equal(atlas.width, FACE_CELL_W * FACE_FRAME_COUNT);
+    assert.equal(atlas.height, FACE_CELL_H);
+    const pictures = new Set();
+    let armorSteel = 0;
+    let cyanTelemetry = 0;
+    const crimsonCount = (f) => {
+      let red = 0;
+      let key = 0;
+      for (let y = 0; y < FACE_CELL_H; y++)
+        for (let x = 0; x < FACE_CELL_W; x++) {
+          const o = (y * atlas.width + f * FACE_CELL_W + x) * 4;
+          const r = atlas.data[o];
+          const g = atlas.data[o + 1];
+          const b = atlas.data[o + 2];
+          const a = atlas.data[o + 3];
+          key = (Math.imul(key, 31) + r + g + a) | 0;
+          if (a && r > g * 2.2 && r > b * 2.2)
+            red++;
+          if (f === 0 && a && b > r * 1.15 && g > r * 1.05 && (y <= 16 || y >= 34))
+            armorSteel++;
+          if (f === 0 && a && b >= 200 && g >= 160 && b > r * 2)
+            cyanTelemetry++;
+        }
+      pictures.add(key);
+      return red;
+    };
+    for (let f = 0; f < FACE_FRAME_COUNT; f++)
+      crimsonCount(f);
+    assert.equal(pictures.size, FACE_FRAME_COUNT, 'every face frame is distinct');
+    assert.ok(armorSteel > 450, 'marine wears futuristic steel/slate helmet and power-armor pauldrons/gorget');
+    assert.ok(cyanTelemetry >= 20, 'helmet brow-visor, holo-reticle, and chest armor vents have glowing cyan telemetry LEDs');
+    const tier80Frame = faceFrame({ health: 80, time: 0 });
+    assert.equal(tier80Frame, 1 * FACE_POSE_COUNT + FACE_POSES.center, '80% health uses damage tier 1');
+    assert.ok(crimsonCount(tier80Frame) >= crimsonCount(0) + 40, 'visible blood appears on the marine face even at 80% health');
+    for (let t = 1; t < 5; t++)
+      assert.ok(crimsonCount(t * FACE_POSE_COUNT) > crimsonCount((t - 1) * FACE_POSE_COUNT), `damage tier ${t} is bloodier than tier ${t - 1}`);
+
+    // reactions to health, hurt, shooting, and idle time
+    assert.equal(faceFrame({ health: 0 }), FACE_DEAD_FRAME, 'dead at 0 health');
+    assert.equal(faceFrame({ health: 100, hurt: 0.3 }), FACE_POSES.pain, 'winces immediately when hurt');
+    assert.equal(faceFrame({ health: 100, hurt: 0, shotElapsed: 0.1 }), FACE_POSES.shoot, 'scowls fiercely when firing');
+    assert.equal(faceFrame({ health: 30, hurt: 0.25 }), 3 * FACE_POSE_COUNT + FACE_POSES.pain, 'hurt in tier 3');
+    const idleFrames = new Set([0, 1, 2, 3, 4, 5].map((s) => faceFrame({ health: 100, time: s / 1.15 + 0.01 })));
+    assert.ok(idleFrames.has(FACE_POSES.center) && idleFrames.has(FACE_POSES.left) && idleFrames.has(FACE_POSES.right), 'glances left and right while idle');
+
+    const calm = facePlacement({ width: 1280, height: 760, hurt: 0 });
+    const jolted = facePlacement({ width: 1280, height: 760, hurt: 0.25 });
+    assert.equal(calm.x1 - calm.x0, FACE_CELL_W * calm.pixel);
+    assert.equal(calm.y1 - calm.y0, FACE_CELL_H * calm.pixel);
+    assert.ok(jolted.x0 !== calm.x0 || jolted.y0 !== calm.y0, 'taking damage jolts the portrait box');
+    const [u0, v0, u1, v1] = faceCellUv(3);
+    assert.ok(u0 > 3 / FACE_FRAME_COUNT && u1 < 4 / FACE_FRAME_COUNT && v0 === 0 && v1 === 1);
+
+    // barrel explosion spawns a single floor-grounded 'boom' right at the barrel's position with world-scale width
+    const game = fresh();
+    clearEnemies(game);
+    const barrel = game.barrels[0];
+    const bx = barrel.pos.x;
+    const by = barrel.pos.y;
+    game.effects.length = 0;
+    game.detonate(barrel);
+    assert.equal(game.effects.length, 1, 'barrel detonation spawns a single explosion effect at the barrel');
+    assert.equal(game.effects[0].type, 'boom');
+    assert.equal(game.effects[0].x, bx, 'explosion x is right where the barrel stood');
+    assert.equal(game.effects[0].y, by, 'explosion y is right where the barrel stood');
+    assert.equal(game.effects[0].z, 0, 'explosion is grounded on the floor');
+    assert.equal(explosionWidth(game.effects[0]), 120, 'barrel explosion spreads wide across the floor around the barrel');
+  },
+
+  'ceiling light fixture tiles position RoostR PointLight and AmbientLight sources and drive dynamic surface lighting'() {
+    const game = fresh(0);
+    const { level } = game;
+    const fixtures = ceilingLightFixtures(level);
+    assert.ok(fixtures.length >= 10 && fixtures.length <= 25, 'a level has sparse, well-spaced ceiling light fixtures');
+    for (const fixture of fixtures) {
+      assert.ok(fixture.tile instanceof Vec2 && fixture.position instanceof Vec3, 'fixtures use Vec2 tile coords and Vec3 positions');
+      assert.equal(ceilingCellFor(fixture.tile.x, fixture.tile.y), CEILING_CELLS.light, 'every fixture sits on a ceiling light cell');
+      assert.equal(fixture.position.x, (fixture.tile.x + 0.5) * 64);
+      assert.equal(fixture.position.y, 62);
+      assert.equal(fixture.position.z, (fixture.tile.y + 0.5) * 64);
+    }
+
+    const added = [];
+    let cleared = 0;
+    const mockScene = {
+      clearLights() {
+        cleared++;
+        added.length = 0;
+      },
+      addLight(light) {
+        added.push(light);
+      },
+    };
+    const { ambient, pointLights } = createCeilingLights(mockScene);
+    assert.equal(cleared, 1);
+    assert.ok(ambient instanceof AmbientLight, 'uses RoostR AmbientLight');
+    assert.ok(ambient.diffuse.x > 0.5 && ambient.diffuse.x < 0.8 && ambient.diffuse.y > 0.5 && ambient.diffuse.z < 0.8, 'ambient base light is moderately bright without going full-bright');
+    assert.equal(pointLights.length, MAX_LIGHTS);
+    assert.ok(pointLights.every((l) => l instanceof PointLight), 'uses RoostR PointLight instances');
+    assert.equal(added.length, 1 + MAX_LIGHTS);
+
+    const cones = ceilingLightCones(fixtures);
+    assert.equal(cones.count, fixtures.length * 4 * 6, 'each fixture gets 4 intersecting volumetric light-cone quads');
+    assert.equal(cones.vertices.length, cones.count * 3);
+    assert.equal(cones.uvs.length, cones.count * 2);
+    assert.ok(CEILING_CONE_VERTEX.includes('vFixtureCenter') && CEILING_CONE_FRAGMENT.includes('vFixtureCenter'), 'volumetric cone shaders evaluate smooth 3D cone falloff around each fixture center');
+
+    const camPos = new Vec3(game.player.pos.x, 32, game.player.pos.y);
+    updateCeilingLights(pointLights, fixtures, camPos, 1.25);
+    assert.ok(pointLights[0].diffuse.getMagnitude() > 0.5, 'nearest ceiling light is active and bright');
+    const d0 = camPos.getDistance(pointLights[0].position, true);
+    const d1 = camPos.getDistance(pointLights[1].position, true);
+    assert.ok(d0 <= d1, 'point lights are ordered from nearest ceiling fixture outward');
+
+    // when far outside the level, all pooled point lights turn off cleanly
+    updateCeilingLights(pointLights, fixtures, new Vec3(-99999, 32, -99999), 0);
+    assert.ok(pointLights.every((l) => l.diffuse.isOrigin()), 'lights out of range fade to zero');
+
+    for (const shader of [FLOOR_FRAGMENT, DOOR_FRAGMENT, WALL_FRAGMENT, SOLID_TEXTURED_FRAGMENT])
+      assert.ok(shader.includes('uNbLights') && shader.includes('uLightPosition') && shader.includes('uAmbientLight'), 'surface shaders consume RoostR light uniforms');
+    assert.ok(!TEXTURED_FRAGMENT.includes('vWorldPos'), 'effect sprite shader stays compatible with RoostR Sprite vertex shader');
   },
 };
 

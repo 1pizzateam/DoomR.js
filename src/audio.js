@@ -8,6 +8,7 @@
  * of it should go to the room reverb. They also run in an OfflineAudioContext, which is
  * how they are checked for silence, clipping and clicks.
  */
+import { Music } from './music.js';
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const rand = (min, max) => min + Math.random() * (max - min);
@@ -156,12 +157,12 @@ export const RECIPES = {
   },
   // the pump: a back stroke, then a forward stroke with a heavier clunk
   pump(ctx, out, t) {
-    noise(ctx, out, t, { duration: 0.05, gain: 0.3, filter: 'highpass', from: 2500, to: 1500 });
-    tone(ctx, out, t, { type: 'square', from: 1200, to: 600, duration: 0.04, gain: 0.1 });
-    noise(ctx, out, t + 0.17, { duration: 0.06, gain: 0.34, filter: 'highpass', from: 1800, to: 900 });
-    tone(ctx, out, t + 0.17, { from: 230, to: 110, duration: 0.09, gain: 0.28 });
-    tone(ctx, out, t + 0.17, { type: 'square', from: 800, to: 400, duration: 0.05, gain: 0.08 });
-    return { duration: 0.35, wet: 0.1 };
+    noise(ctx, out, t, { duration: 0.06, gain: 0.3, filter: 'highpass', from: 2500, to: 1500 });
+    tone(ctx, out, t, { type: 'square', from: 1200, to: 600, duration: 0.05, gain: 0.1 });
+    noise(ctx, out, t + 0.28, { duration: 0.07, gain: 0.34, filter: 'highpass', from: 1800, to: 900 });
+    tone(ctx, out, t + 0.28, { from: 230, to: 110, duration: 0.1, gain: 0.28 });
+    tone(ctx, out, t + 0.28, { type: 'square', from: 800, to: 400, duration: 0.06, gain: 0.08 });
+    return { duration: 0.48, wet: 0.1 };
   },
   dry(ctx, out, t) {
     tone(ctx, out, t, { type: 'square', from: 2800, to: 1800, duration: 0.035, gain: 0.2 });
@@ -487,7 +488,7 @@ function route(event) {
   // monsters speak with the voice of their kind: the recipes are named dieImp, painSkull, alertBoss...
   const voice = event.kind ? event.kind[0].toUpperCase() + event.kind.slice(1) : 'Imp';
   switch (event.type) {
-    case 'fire': return [{ name: 'fire', local: true }, ...(event.pump ? [{ name: 'pump', local: true, delay: 0.42 }] : [])];
+    case 'fire': return [{ name: 'fire', local: true }, ...(event.pump ? [{ name: 'pump', local: true, delay: 0.44 }] : [])];
     case 'dry': return [{ name: 'dry', local: true }];
     case 'impact': return [{ name: event.surface === 'door' ? 'impactDoor' : 'impactWall' }];
     case 'flesh': return [{ name: 'flesh' }];
@@ -531,6 +532,7 @@ export class Sound {
     this.master = null;
     this.reverb = null;
     this.ambient = null;
+    this.music = null;
     this.listener = { x: 0, y: 0, angle: 0 };
     this.muted = readMuted();
     this.volume = 0.8;
@@ -579,6 +581,7 @@ export class Sound {
     reverbLevel.connect(this.master);
 
     this.buildAmbient();
+    this.music = new Music(ctx, this.master, this.reverb);
     this.setScene(this.scene);
   }
 
@@ -616,7 +619,7 @@ export class Sound {
   }
 
   /** Follow the game state: the drone plays while the game does, and everything stops while paused. */
-  setScene(state) {
+  setScene(state, level = 0) {
     const changed = state !== this.scene;
     this.scene = state;
     const { ctx } = this;
@@ -631,6 +634,7 @@ export class Sound {
       ctx.resume();
     const playing = state === 'play' || state === 'dead' || state === 'cleared';
     this.ambient.gain.setTargetAtTime(playing ? 0.05 : 0, ctx.currentTime, 0.6);
+    this.music.setLevel(state === 'play' ? 0.3 : state === 'title' ? 0.3 : state === 'dead' ? 0.12 : 0, state === 'title' ? 'title' : level > 0 ? 'metal' : 'play');
   }
 
   setMuted(muted) {

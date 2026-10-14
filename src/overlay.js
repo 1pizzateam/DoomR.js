@@ -1,5 +1,6 @@
-import { CustomMesh, Material, Mesh, Scene, Vec2 } from '@1pizzateam/roostr';
+import { CustomMesh, Material, Mesh, Scene, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { bloodAtlas } from './bloodsprites.js';
+import { faceAtlas } from './face.js';
 import { weaponAtlas } from './weapon.js';
 
 const VERTEX = `
@@ -65,15 +66,15 @@ class SpriteBuffer {
     this.uvs = new Float32Array(this.capacity * 2);
     this.count = 0;
     const geometry = new CustomMesh();
-    geometry.setVertices(this.positions);
-    geometry.setNormals(this.brights);
-    geometry.setUvs(this.uvs);
+    geometry.vertices = this.positions;
+    geometry.normals = this.brights;
+    geometry.uvs = this.uvs;
     geometry.setItemSize(2);
     geometry.setPrimitive('TRIANGLES');
     this.mesh = new Mesh(gl, geometry);
     this.mesh.addProgram(TEXTURED_VERTEX, TEXTURED_FRAGMENT, new Material());
     this.mesh.addCustomUniform('size', 'uniform2f', new Vec2(1, 1));
-    this.mesh.setTexture(atlas.data, { width: atlas.width, height: atlas.height, magFilter: gl.NEAREST, minFilter: gl.NEAREST });
+    this.mesh.setTexture(atlas.data, { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST });
     this.mesh.setDepthWrite(false);
     this.mesh.setBlend('SRC_ALPHA', 'ONE_MINUS_SRC_ALPHA');
     this.mesh.setInactive();
@@ -126,8 +127,8 @@ class Buffer {
     this.count = 0;
 
     const geometry = new CustomMesh();
-    geometry.setVertices(this.positions);
-    geometry.setNormals(this.colors);
+    geometry.vertices = this.positions;
+    geometry.normals = this.colors;
     geometry.setItemSize(2);
     geometry.setPrimitive(primitive);
     this.mesh = new Mesh(gl, geometry);
@@ -176,7 +177,8 @@ const scratch = [0, 0, 0];
 class Layer {
   constructor(world, fillCapacity, lineCapacity, spriteCapacity = 0, withWeapon = false) {
     const { gl } = world;
-    this.scene = new Scene({ context: gl, clearColor: [0, 0, 0], depthTest: false, viewport: { x: 0, y: 0, width: 1, height: 1 } });
+    this.viewportSize = new Vec2(1, 1);
+    this.scene = new Scene({ context: gl, clearColor: new Vec3(0, 0, 0), depthTest: false, viewport: this.viewportSize });
     this.fills = new Buffer(gl, fillCapacity, 'TRIANGLES', false);
     this.lines = new Buffer(gl, lineCapacity, 'LINES', true);
     this.scene.addMesh(this.fills.mesh);
@@ -185,18 +187,23 @@ class Layer {
     this.weapon = withWeapon ? new SpriteBuffer(gl, 1, weaponAtlas()) : null;
     if (this.weapon)
       this.scene.addMesh(this.weapon.mesh);
+    this.face = withWeapon ? new SpriteBuffer(gl, 1, faceAtlas()) : null;
+    if (this.face)
+      this.scene.addMesh(this.face.mesh);
     this.sprites = spriteCapacity ? new SpriteBuffer(gl, spriteCapacity, bloodAtlas()) : null;
     if (this.sprites)
       this.scene.addMesh(this.sprites.mesh);
   }
 
   resize(cssWidth, cssHeight, width, height) {
-    this.scene.setViewport(0, 0, width, height);
+    this.viewportSize.setScalar(width, height);
+    this.scene.setViewport(this.viewportSize);
     const size = new Vec2(cssWidth, cssHeight);
     this.fills.mesh.setCustomUniform('size', size);
     this.lines.mesh.setCustomUniform('size', size);
     this.sprites?.mesh.setCustomUniform('size', size);
     this.weapon?.mesh.setCustomUniform('size', size);
+    this.face?.mesh.setCustomUniform('size', size);
   }
 
   clear() {
@@ -204,6 +211,7 @@ class Layer {
     this.lines.clear();
     this.sprites?.clear();
     this.weapon?.clear();
+    this.face?.clear();
   }
 
   /** Strokes a polyline given as x, y pairs. */
@@ -261,6 +269,7 @@ class Layer {
     this.fills.upload();
     this.lines.upload();
     this.weapon?.upload();
+    this.face?.upload();
     this.sprites?.upload();
     this.scene.render(camera, time);
   }

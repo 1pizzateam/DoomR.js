@@ -1,5 +1,30 @@
+import { Vec3 } from '@1pizzateam/roostr';
 import { boxEdges, boxTriangles, ellipseEdges, loftEdges, merge, octahedronEdges, polyline, prismEdges, segment, teeth } from './lines.js';
 import { WRAITH_FRAMES, wraithAtlas } from './sprites.js';
+
+const scratchPos = new Vec3();
+const scratchRot = new Vec3();
+const scratchScale = new Vec3();
+
+function setPos(node, x, y, z) {
+  scratchPos.setScalar(x, y, z);
+  node.setPosition(scratchPos);
+}
+
+function setRot(node, x, y, z) {
+  scratchRot.setScalar(x, y, z);
+  node.setRotation(scratchRot);
+}
+
+function setUniformScale(node, s) {
+  scratchScale.setScalar(s, s, s);
+  node.setScale(scratchScale);
+}
+
+function setScale(node, x, y, z) {
+  scratchScale.setScalar(x, y, z);
+  node.setScale(scratchScale);
+}
 
 /**
  * The shapes and the movement of every monster, as RoostR line meshes.
@@ -45,7 +70,7 @@ function newView(w, enemy, scale, death) {
 /** Hangs a mesh on the root (or another part) at its joint. Parts hung on the root can be thrown off when it dies. */
 function attach(w, view, name, geometry, position, { parent = view.root, solid = null, detach = true } = {}) {
   const mesh = w.lines(geometry, view.material, parent);
-  mesh.setPosition(position[0], position[1], position[2]);
+  setPos(mesh, position[0], position[1], position[2]);
   if (solid)
     w.solid(solid, mesh);
   view.p[name] = mesh;
@@ -84,7 +109,8 @@ function mood(view, enemy, c, windupTime) {
 
 function glare(view, m, c) {
   const flicker = 1 + 0.18 * Math.sin(c.time * 31 + view.pose.seed);
-  view.p.eyes?.setScale(0.55 + 1.25 * m.anger * flicker);
+  if (view.p.eyes)
+    setUniformScale(view.p.eyes, 0.55 + 1.25 * m.anger * flicker);
 }
 
 // ---- the imp: a hunched, long-armed demon -----------------------------------------------------------------------
@@ -145,15 +171,15 @@ function animateImp(view, enemy, c) {
   view.sy = 1 + 0.025 * breathe * (m.idle ? 1 : 0.5);
   view.sx = 1 + m.roar * 0.1;
   view.tilt = m.pain * 0.3 + m.roar * 0.22;
-  p.head.setRotation(0, m.idle ? Math.sin(m.t * 0.9) * 0.3 : 0, m.roar * 0.7 - m.attack * 0.15 + Math.sin(m.t * 0.7) * 0.05 * (m.idle ? 1 : 0));
-  p.jaw.setRotation(0, 0, -(0.12 + m.attack * 0.55 + m.roar * 0.95 + m.pain * 0.4 + (m.idle ? 0.06 * Math.sin(m.t * 3) : 0)));
+  setRot(p.head, 0, m.idle ? Math.sin(m.t * 0.9) * 0.3 : 0, m.roar * 0.7 - m.attack * 0.15 + Math.sin(m.t * 0.7) * 0.05 * (m.idle ? 1 : 0));
+  setRot(p.jaw, 0, 0, -(0.12 + m.attack * 0.55 + m.roar * 0.95 + m.pain * 0.4 + (m.idle ? 0.06 * Math.sin(m.t * 3) : 0)));
 
   const twitch = m.idle ? Math.sin(m.t * 1.7) * 0.07 + Math.sin(m.t * 6.1) * 0.03 : 0;
-  p.armL.setRotation(m.roar * 0.9 + m.pain * 0.7, 0, -m.swing * 0.55 + twitch + m.attack * 1.5 + m.roar * 0.5);
-  p.armR.setRotation(-m.roar * 0.9 - m.pain * 0.7, 0, m.swing * 0.55 - twitch + m.attack * 1.9 + m.roar * 0.5);
-  p.legL.setRotation(0, 0, m.swing * 0.7);
-  p.legR.setRotation(0, 0, -m.swing * 0.7);
-  p.tail.setRotation(0, Math.sin(m.t * 2.6) * (0.25 + 0.3 * m.moving), Math.sin(m.t * 1.3) * 0.12 + m.attack * 0.4);
+  setRot(p.armL, m.roar * 0.9 + m.pain * 0.7, 0, -m.swing * 0.55 + twitch + m.attack * 1.5 + m.roar * 0.5);
+  setRot(p.armR, -m.roar * 0.9 - m.pain * 0.7, 0, m.swing * 0.55 - twitch + m.attack * 1.9 + m.roar * 0.5);
+  setRot(p.legL, 0, 0, m.swing * 0.7);
+  setRot(p.legR, 0, 0, -m.swing * 0.7);
+  setRot(p.tail, 0, Math.sin(m.t * 2.6) * (0.25 + 0.3 * m.moving), Math.sin(m.t * 1.3) * 0.12 + m.attack * 0.4);
   glare(view, m, c);
 }
 
@@ -183,7 +209,7 @@ function buildHulk(w, enemy, boss) {
   if (boss) {
     // an exposed core in the chest: it pulses
     const core = attach(w, view, 'core', merge(octahedronEdges(4), ellipseEdges(6, 6, 'x', 10)), [12, 34, 0], { detach: false });
-    core.setRotation(0, 0, 0);
+    setRot(core, 0, 0, 0);
   }
 
   const tusk = (s) => polyline([6, -4, s * 4.5, 9, 0, s * 6, 9, 6, s * 5.5, 8, 10, s * 4.5]);
@@ -220,22 +246,22 @@ function animateHulk(view, enemy, c, boss) {
   view.lift = stomp * 1.4;
   view.sy = 1 + 0.02 * Math.sin(m.t * 1.6);
   view.tilt = Math.sin(enemy.walk) * 0.035 * m.moving + m.pain * 0.14 + m.roar * 0.2;
-  p.head.setRotation(0, m.idle ? Math.sin(m.t * 0.6) * 0.25 : 0, m.roar * 0.55 + Math.sin(m.t * 0.8) * 0.05 - m.attack * 0.2);
-  p.jaw.setRotation(0, 0, -(0.1 + m.roar * 0.85 + m.attack * 0.3 + m.pain * 0.3));
+  setRot(p.head, 0, m.idle ? Math.sin(m.t * 0.6) * 0.25 : 0, m.roar * 0.55 + Math.sin(m.t * 0.8) * 0.05 - m.attack * 0.2);
+  setRot(p.jaw, 0, 0, -(0.1 + m.roar * 0.85 + m.attack * 0.3 + m.pain * 0.3));
 
   const slam = !boss || enemy.mode === 'slam';
   // a slam lifts both fists overhead; the warden's fireball fan throws its arms wide instead
   const up = slam ? m.attack * 2.7 : m.attack * 1.1;
   const out = slam ? 0 : m.attack * 1.1;
   const drag = 0.12;
-  p.armL.setRotation(out + m.roar * 0.8, 0, drag - m.swing * 0.35 + up);
-  p.armR.setRotation(-out - m.roar * 0.8, 0, drag + m.swing * 0.35 + up);
-  p.legL.setRotation(0, 0, m.swing * 0.45);
-  p.legR.setRotation(0, 0, -m.swing * 0.45);
+  setRot(p.armL, out + m.roar * 0.8, 0, drag - m.swing * 0.35 + up);
+  setRot(p.armR, -out - m.roar * 0.8, 0, drag + m.swing * 0.35 + up);
+  setRot(p.legL, 0, 0, m.swing * 0.45);
+  setRot(p.legR, 0, 0, -m.swing * 0.45);
   if (p.core) {
     const beat = 1 + 0.25 * Math.sin(c.time * 5) + 0.5 * m.anger * Math.max(0, Math.sin(c.time * 9));
-    p.core.setScale(beat);
-    p.core.setRotation(c.time * 1.4, c.time * 2, 0);
+    setUniformScale(p.core, beat);
+    setRot(p.core, c.time * 1.4, c.time * 2, 0);
   }
   glare(view, m, c);
 }
@@ -263,7 +289,7 @@ function buildSkull(w, enemy) {
   ), [-9, -2, 0]);
   // the fire that gathers in its mouth before it spits
   const flame = attach(w, view, 'flame', octahedronEdges(3.5), [11, -5, 0], { detach: false });
-  flame.setScale(0.001);
+  setUniformScale(flame, 0.001);
   return finish(w, view);
 }
 
@@ -273,10 +299,10 @@ function animateSkull(view, enemy, c) {
   view.lift = 40 + Math.sin(m.t * 2.4) * 4 + Math.sin(m.t * 0.9) * 2;
   view.tilt = Math.sin(m.t * 2.4) * 0.08 + m.pain * 0.4 - m.attack * 0.2;
   const chatter = m.idle ? 0.06 * Math.sin(m.t * 9) : 0.12 * Math.sin(m.t * 14);
-  p.jaw.setRotation(0, 0, -(0.18 + chatter + m.attack * 0.75 + m.pain * 0.3));
-  p.tail.setRotation(0, Math.sin(m.t * 4) * 0.45, Math.sin(m.t * 3) * 0.15);
-  p.flame.setScale(Math.max(0.001, m.attack * (1 + 0.3 * Math.sin(c.time * 40))));
-  p.flame.setRotation(c.time * 5, c.time * 3, 0);
+  setRot(p.jaw, 0, 0, -(0.18 + chatter + m.attack * 0.75 + m.pain * 0.3));
+  setRot(p.tail, 0, Math.sin(m.t * 4) * 0.45, Math.sin(m.t * 3) * 0.15);
+  setUniformScale(p.flame, Math.max(0.001, m.attack * (1 + 0.3 * Math.sin(c.time * 40))));
+  setRot(p.flame, c.time * 5, c.time * 3, 0);
   glare(view, m, c);
 }
 
@@ -317,7 +343,7 @@ function animateCrawler(view, enemy, c) {
       const a = enemy.walk * 2 + phase;
       const lift = Math.max(0, Math.sin(a)) * 0.45 * m.moving;
       const fore = leaping ? -0.9 : Math.cos(a) * 0.55 * m.moving + (m.idle ? Math.sin(m.t * 3 + i) * 0.06 : 0);
-      p[name].setRotation(side * -lift - side * m.attack * 0.4, fore + (i - 1) * 0.12, m.attack * 0.3);
+      setRot(p[name], side * -lift - side * m.attack * 0.4, fore + (i - 1) * 0.12, m.attack * 0.3);
     }
   }
   glare(view, m, c);
@@ -350,10 +376,10 @@ function animateSwarmer(view, enemy, c) {
   const { p } = view;
   view.lift = Math.abs(Math.sin(enemy.walk * 2)) * 1.2 * m.moving;
   view.tilt = Math.sin(enemy.walk * 2) * 0.12 * m.moving + m.pain * 0.4;
-  p.jaw.setRotation(0, 0, -(0.2 + m.attack * 0.9 + (m.idle ? 0 : 0.15 * Math.sin(m.t * 20))));
+  setRot(p.jaw, 0, 0, -(0.2 + m.attack * 0.9 + (m.idle ? 0 : 0.15 * Math.sin(m.t * 20))));
   for (let i = 0; i < 2; i++) {
     for (const [name, phase] of [[`legL${i}`, i * Math.PI], [`legR${i}`, i * Math.PI + Math.PI]]) {
-      p[name].setRotation(0, 0, Math.sin(enemy.walk * 2 + phase) * 0.8 * m.moving);
+      setRot(p[name], 0, 0, Math.sin(enemy.walk * 2 + phase) * 0.8 * m.moving);
     }
   }
   glare(view, m, c);
@@ -404,8 +430,8 @@ function dieWraith(view, enemy) {
   const k = burst ? 0 : Math.min(1, enemy.deadTime / (interval * 3));
   view.root.setFrame(frames[step]);
   view.root.setCustomUniform('glare', step < (burst ? 3 : 2) ? 1 : 0.3);
-  view.root.setPosition(enemy.pos.x, 5 * (1 - k * k), enemy.pos.y);
-  view.root.setScale(view.scale);
+  setPos(view.root, enemy.pos.x, 5 * (1 - k * k), enemy.pos.y);
+  setUniformScale(view.root, view.scale);
 }
 
 export const MONSTERS = {

@@ -13,7 +13,7 @@ No global tools are needed.
 ```sh
 git clone https://github.com/1pizzateam/DoomR.js.git
 cd DoomR.js
-npm ci
+npm i
 ```
 
 ## Development
@@ -65,9 +65,9 @@ dev servers of the other projects' websites. Stop it with `docker compose down`.
 `node_modules` volume (which keeps the host `node_modules` out of the container)
 on the first start and again whenever `package.json` or `package-lock.json`
 change, then starts Vite. A restart without changes skips the install. The
-install runs `npm ci` in a temporary directory and copies the result over, because
-`npm ci` straight into a mounted volume fails with `EBUSY`, and `npm install`
-would rewrite `package-lock.json` on the host.
+install runs `npm i` in a temporary directory and copies the result over, because
+`npm ci` straight into a mounted volume fails with `EBUSY`, and installing in a
+temporary directory avoids modifying host files directly.
 
 Bind mounts do not forward file system events reliably, so the service sets
 `VITE_WATCH_POLLING=true` and `vite.config.js` turns on polling for the file

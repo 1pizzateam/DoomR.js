@@ -2,6 +2,7 @@ import { Utils } from '@1pizzateam/spock';
 import { DOOR, EXIT, TILE } from './level.js';
 import { LEVELS } from './levels.js';
 import { screenSplatQuads } from './bloodsprites.js';
+import { faceCellUv, faceFrame, facePlacement } from './face.js';
 import { FIRE_COOLDOWN } from './game.js';
 import { weaponCellUv, weaponFrame, weaponPlacement } from './weapon.js';
 
@@ -150,10 +151,20 @@ export class Hud {
       this.line([cx + m, cy + m, cx + m / 2, cy + m / 2], ORANGE);
     }
 
+    const faceRect = facePlacement({ width, height, hurt: player.hurt });
+    const shotElapsed = player.cooldown > 0 ? FIRE_COOLDOWN - player.cooldown : -1;
+    const frameIdx = faceFrame({ health: player.health, hurt: player.hurt, shotElapsed, time: game.time });
+    const crisp = this.overlay.crisp;
+    const borderCol = player.hurt > 0 || player.health < 30 ? RGB[ORANGE] : RGB[BLUE];
+    crisp.fillRect(faceRect.x0 - 4, faceRect.y0 - 4, faceRect.x1 - faceRect.x0 + 8, faceRect.y1 - faceRect.y0 + 8, BACKGROUND_RGB);
+    crisp.rectLine(faceRect.x0 - 4.5, faceRect.y0 - 4.5, faceRect.x1 - faceRect.x0 + 9, faceRect.y1 - faceRect.y0 + 9, borderCol, player.hurt > 0 ? 0.85 : 0.45);
+    crisp.face?.quad(faceRect.x0, faceRect.y0, faceRect.x1, faceRect.y1, faceCellUv(frameIdx), 1);
+
     const base = height - 28;
-    this.text('HEALTH', 28, base - 24, BLUE, { size: 11, alpha: 0.8 });
-    this.drawBar(28, base, 200, 25, player.health / 100, GREEN, ORANGE);
-    this.text(String(Math.ceil(player.health)), 240, base, player.health < 30 ? ORANGE : GREEN, { size: 20, weight: 700 });
+    const hx = faceRect.x1 + 18;
+    this.text('HEALTH', hx, base - 24, BLUE, { size: 11, alpha: 0.8 });
+    this.drawBar(hx, base, 200, 25, player.health / 100, GREEN, ORANGE);
+    this.text(String(Math.ceil(player.health)), hx + 212, base, player.health < 30 ? ORANGE : GREEN, { size: 20, weight: 700 });
     this.text('SHELLS', width - 28, base - 24, BLUE, { size: 11, alpha: 0.8, align: 'right' });
     this.text(String(player.ammo), width - 28, base, player.ammo < 5 ? ORANGE : GREEN, { size: 20, weight: 700, align: 'right' });
 

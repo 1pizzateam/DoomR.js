@@ -1,5 +1,7 @@
-import { SOLID_ALPHA } from './quads.js';
+import { LIGHT_GLSL, SOLID_ALPHA } from './quads.js';
 import { mulberry32 } from './rng.js';
+
+export { LIGHT_GLSL };
 
 /**
  * The floor of an old space base: worn deck plates, grating, hatches, cable runs, inlaid light strips and the odd
@@ -427,6 +429,7 @@ uniform mat4 uProjectionMatrix;
 varying float vDepth;
 varying vec2 vTextureCoord;
 varying vec2 vWorld;
+varying vec3 vWorldPos;
 
 void main(void) {
   vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
@@ -435,6 +438,7 @@ void main(void) {
   v.z += 1.2 + vDepth * 0.01;
   vTextureCoord = aTextureCoord;
   vWorld = world.xz;
+  vWorldPos = world.xyz;
   gl_Position = uProjectionMatrix * v;
 }
 `;
@@ -454,8 +458,10 @@ uniform float uFogFar;
 varying float vDepth;
 varying vec2 vTextureCoord;
 varying vec2 vWorld;
+varying vec3 vWorldPos;
 
 ${RUST_GLSL}
+${LIGHT_GLSL}
 void main(void) {
   vec3 steel = texture2D(uSampler, vTextureCoord).rgb;
   vec3 color = steel;
@@ -483,7 +489,7 @@ void main(void) {
     // the relief of the plate shows through the rust
     color = clamp(paint + (steel - STEEL) * 0.9, 0.0, 1.0);
   }
-  color *= uMaterialDiffuse;
+  color *= uMaterialDiffuse * surfaceLight(vWorldPos, lit);
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
     color = mix(color, uFogColor, fade * 0.9);
@@ -491,3 +497,4 @@ void main(void) {
   gl_FragColor = vec4(color, ${SOLID_ALPHA});
 }
 `;
+

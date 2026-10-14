@@ -27,8 +27,14 @@ const world = new World(worldCanvas);
 hud.overlay = world.overlay;
 
 // browsers only start audio after a gesture, so every key press or click tries to unlock it
+// the press that unlocks the sound must not also start the game, or the intro music would never be heard
+let unlockedThisFrame = false;
 for (const type of ['keydown', 'pointerdown'])
-  window.addEventListener(type, () => sound.unlock());
+  window.addEventListener(type, () => {
+    const locked = !sound.ctx;
+    sound.unlock();
+    unlockedThisFrame ||= locked && !!sound.ctx;
+  });
 
 function resize() {
   const ratio = window.devicePixelRatio || 1;
@@ -67,7 +73,7 @@ function control(dt) {
     case 'title':
       game.time += dt;
       title.update(dt);
-      if (confirmed()) {
+      if (confirmed() && !unlockedThisFrame) {
         title.end();
         start();
       }
@@ -107,7 +113,7 @@ function hearGame() {
     sound.setListener(cam.x, cam.y, Math.atan2(cam.lookY - cam.y, cam.lookX - cam.x));
   else
     sound.setListener(player.pos.x, player.pos.y, player.angle);
-  sound.setScene(game.state);
+  sound.setScene(game.state, game.levelIndex);
   for (const event of game.events) {
     if (cam)
       event.visible = true;
@@ -124,6 +130,7 @@ const loop = new Player((dt) => {
     hud.diagnostics = `${Math.round(1 / frameTime)} fps  ${(frameTime * 1000).toFixed(1)} ms  ${world.width}x${world.height} (${Math.round(quality.scale * 100)}%)  glow 1/${world.glowDivisor}`;
   }
   control(dt);
+  unlockedThisFrame = false;
   game.update(dt, input.poll());
   input.endFrame();
   hearGame();

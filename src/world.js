@@ -4,7 +4,7 @@ import { BLOOD } from './blood.js';
 import { barrelAtlas, skinBarrel } from './barrel.js';
 import { bloodAtlas, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
 import { DOOR_FRAGMENT, DOOR_VERTEX, WALL_FRAGMENT, doorAtlas, doorBox } from './door.js';
-import { ceilingAtlas, ceilingCellFor, ceilingCellUv } from './ceiling.js';
+import { CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, updateCeilingLights } from './ceiling.js';
 import { WALL_CELLS, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
 import { EXPLOSION_FRAMES, explosionAtlas } from './explosion.js';
 import { FLOOR_FRAGMENT, FLOOR_VERTEX, floorAtlas, floorCellFor, floorCellUv } from './floor.js';
@@ -159,7 +159,10 @@ class FallbackSprite extends Mesh {
     const x = width / 2;
     const y0 = anchor === 'bottom' ? 0 : -height / 2;
     const y1 = anchor === 'bottom' ? height : height / 2;
-    geometry.setVertices([-x, y0, 0, x, y0, 0, x, y1, 0, -x, y0, 0, x, y1, 0, -x, y1, 0]);
+    geometry.setVertices([
+      new Vec3(-x, y0, 0), new Vec3(x, y0, 0), new Vec3(x, y1, 0),
+      new Vec3(-x, y0, 0), new Vec3(x, y1, 0), new Vec3(-x, y1, 0),
+    ]);
     geometry.setUvs([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]);
     geometry.setPrimitive('TRIANGLES');
     super(gl, geometry);
@@ -274,16 +277,43 @@ void main(void) {
 }
 `;
 
-/** Fades a colour towards the background. Writes straight into the material, so a frame allocates nothing. */
-function tint(material, color, amount) {
-  material.setDiffuse(BG[0] + (color[0] - BG[0]) * amount, BG[1] + (color[1] - BG[1]) * amount, BG[2] + (color[2] - BG[2]) * amount);
+const BG_VEC = new Vec3(BG[0], BG[1], BG[2]);
+const scratchPos = new Vec3();
+const scratchRot = new Vec3();
+const scratchScale = new Vec3();
+const tintScratch = new Vec3();
+
+function setPos(node, x, y, z) {
+  scratchPos.setScalar(x, y, z);
+  node.setPosition(scratchPos);
 }
 
-/** How wide an explosion sprite is: the big one is as wide as its blast is far, a puff is small, the others depend on how high they are. */
-function explosionWidth(effect) {
+function setRot(node, x, y, z) {
+  scratchRot.setScalar(x, y, z);
+  node.setRotation(scratchRot);
+}
+
+function setUniformScale(node, s) {
+  scratchScale.setScalar(s, s, s);
+  node.setScale(scratchScale);
+}
+
+function setScale(node, x, y, z) {
+  scratchScale.setScalar(x, y, z);
+  node.setScale(scratchScale);
+}
+
+/** Fades a colour towards the background. Writes straight into the material, so a frame allocates nothing. */
+function tint(material, color, amount) {
+  tintScratch.setScalar(BG[0] + (color[0] - BG[0]) * amount, BG[1] + (color[1] - BG[1]) * amount, BG[2] + (color[2] - BG[2]) * amount);
+  material.setDiffuse(tintScratch);
+}
+
+/** How wide an explosion sprite is: a fireball impact is compact, and a barrel explosion spreads wide across the floor. */
+export function explosionWidth(effect) {
   if (effect.type === 'blast')
     return 24;
-  return effect.type === 'boom' ? 280 : 70 + effect.z * 1.2;
+  return 120;
 }
 
 /** RoostR scene for the 3D world: wall faces, doors, enemies, pickups and projectiles are all line meshes. */
@@ -292,8 +322,7 @@ export class World {
   constructor(canvas, events = {}) {
     this.lost = false;
     this.renderer = new Renderer(canvas, {
-      width: canvas.width,
-      height: canvas.height,
+      size: new Vec2(canvas.width, canvas.height),
       contextAttributes: { antialias: false, alpha: false, depth: true },
       onContextLost: () => {
         this.lost = true;
@@ -314,25 +343,27 @@ export class World {
     this.ratio = 1;
     this.width = 1;
     this.height = 1;
+    this.viewportSize = new Vec2(1, 1);
+    this.glowViewportSize = new Vec2(1, 1);
 
-    this.scene = new Scene({ context: gl, clearColor: BG, depthTest: true, enableFrustumCulling: HAS_BOUNDS, viewport: { x: 0, y: 0, width: 1, height: 1 } });
-    this.scene.setFog(new Vec3(BG[0], BG[1], BG[2]), FOG_NEAR, FOG_FAR);
-    this.camera = new PerspectiveCamera(60, NEAR, FAR, gl);
+    this.scene = new Scene({ context: gl, clearColor: BG_VEC, depthTest: true, enableFrustumCulling: HAS_BOUNDS, viewport: this.viewportSize });
+    this.scene.setFog(BG_VEC, FOG_NEAR, FOG_FAR);
+    this.camera = new PerspectiveCamera(60, new Vec2(NEAR, FAR), gl);
     this.camera.up.setScalar(0, 1, 0);
 
     // post-processing, all with RoostR render targets and full-screen quads
-    this.postCamera = new PerspectiveCamera(45, 0.1, 10, gl);
-    this.target = new RenderTarget(1, 1, gl);
-    this.glowTarget = new RenderTarget(1, 1, gl);
+    this.postCamera = new PerspectiveCamera(45, new Vec2(0.1, 10), gl);
+    this.target = new RenderTarget(this.viewportSize, gl);
+    this.glowTarget = new RenderTarget(this.glowViewportSize, gl);
     this.glowDivisor = 4;
 
-    this.down = new Scene({ context: gl, clearColor: BG, viewport: { x: 0, y: 0, width: 1, height: 1 } });
+    this.down = new Scene({ context: gl, clearColor: BG_VEC, viewport: this.glowViewportSize });
     this.downQuad = this.screenQuad(DOWN_FRAGMENT, this.target.texture);
     this.downQuad.addCustomUniform('sourceTexel', 'uniform2f', new Vec2(1, 1));
     this.downQuad.addCustomUniform('span', 'uniform1f', 4);
     this.down.addMesh(this.downQuad);
 
-    this.post = new Scene({ context: gl, clearColor: BG, viewport: { x: 0, y: 0, width: 1, height: 1 } });
+    this.post = new Scene({ context: gl, clearColor: BG_VEC, viewport: this.viewportSize });
     this.quad = this.screenQuad(CORE_FRAGMENT, this.target.texture);
     this.glowQuad = this.screenQuad(GLOW_FRAGMENT, this.glowTarget.texture);
     this.glowQuad.addCustomUniform('glowTexel', 'uniform2f', new Vec2(1, 1));
@@ -342,7 +373,7 @@ export class World {
 
     this.overlay = new Overlay(this);
 
-    this.hiding = new Material({ diffuse: new Vec3(BG[0], BG[1], BG[2]) });
+    this.hiding = new Material({ diffuse: BG_VEC });
     this.level = null;
     this.doorViews = new Map();
     this.enemyViews = new Map();
@@ -357,6 +388,9 @@ export class World {
     this.splatCache = new WeakMap();
     this.dripCache = new WeakMap();
     this.syncStamp = 0;
+    this.lightFixtures = [];
+    this.ceilingLights = [];
+    this.ambientLight = null;
   }
 
   /** Stops listening for context events. */
@@ -402,17 +436,19 @@ export class World {
     this.height = Math.max(1, Math.round(cssHeight * ratio));
     this.canvas.width = this.width;
     this.canvas.height = this.height;
-    this.scene.setViewport(0, 0, this.width, this.height);
-    this.post.setViewport(0, 0, this.width, this.height);
-    this.target.setSize(this.width, this.height);
+    this.viewportSize.setScalar(this.width, this.height);
+    this.scene.setViewport(this.viewportSize);
+    this.post.setViewport(this.viewportSize);
+    this.target.setSize(this.viewportSize);
 
     // the glow is blurred in a texture a fraction of the size, so its cost does not grow with the screen
     const scale = Math.max(this.height / 760, 1);
     this.glowDivisor = Math.max(3, Math.round(4 * scale));
     const glowWidth = Math.max(1, Math.ceil(this.width / this.glowDivisor));
     const glowHeight = Math.max(1, Math.ceil(this.height / this.glowDivisor));
-    this.glowTarget.setSize(glowWidth, glowHeight);
-    this.down.setViewport(0, 0, glowWidth, glowHeight);
+    this.glowViewportSize.setScalar(glowWidth, glowHeight);
+    this.glowTarget.setSize(this.glowViewportSize);
+    this.down.setViewport(this.glowViewportSize);
     this.downQuad.setCustomUniform('sourceTexel', new Vec2(1 / this.width, 1 / this.height));
     this.downQuad.setCustomUniform('span', this.glowDivisor);
     this.glowQuad.setCustomUniform('glowTexel', new Vec2(1 / glowWidth, 1 / glowHeight));
@@ -424,14 +460,14 @@ export class World {
     this.baseFov = Math.min(vertical, 78);
     this.camera.fov = this.baseFov;
     this.zoom = 1;
-    this.camera.setProjectionMatrix(new Vec2(this.width, this.height));
+    this.camera.setProjectionMatrix(this.viewportSize);
   }
 
   // ---- mesh helpers -------------------------------------------------------
 
   makeMesh(vertices, primitive, material) {
     const geometry = new CustomMesh();
-    geometry.setVertices(vertices);
+    geometry.vertices = vertices instanceof Float32Array ? vertices : new Float32Array(vertices);
     geometry.setPrimitive(primitive);
     const mesh = new Mesh(this.gl, geometry);
     mesh.addProgram(LINE_VERTEX, LINE_FRAGMENT, material);
@@ -466,10 +502,11 @@ export class World {
   sprite(atlas, material, width, height, { anchor = 'bottom', billboard = 'cylindrical', depthBias = 0, fragment = SPRITE_FRAGMENT } = {}) {
     const { gl } = this;
     const sprite = new (Sprite ?? FallbackSprite)(gl, {
+      size: new Vec2(width, height),
       width,
       height,
       texture: atlas.data,
-      textureOptions: { width: atlas.width, height: atlas.height, magFilter: gl.NEAREST, minFilter: gl.NEAREST },
+      textureOptions: { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST },
       frames: atlas.frames,
       anchor,
       billboard,
@@ -493,7 +530,7 @@ export class World {
 
   /** The tint of blood that has landed: a little darker than what is still in the air. */
   splatMaterial() {
-    return new Material({ diffuse: [0.85, 0.85, 0.85] });
+    return new Material({ diffuse: new Vec3(0.85, 0.85, 0.85) });
   }
 
   track(mesh, bucket) {
@@ -520,6 +557,10 @@ export class World {
     this.effectViews.clear();
     this.staticMeshes = [];
     this.level = level;
+    this.lightFixtures = ceilingLightFixtures(level);
+    const { ambient, pointLights } = createCeilingLights(this.scene);
+    this.ambientLight = ambient;
+    this.ceilingLights = pointLights;
     this.buildStatic(level);
     for (const door of level.doors.values())
       this.buildDoor(door);
@@ -825,6 +866,22 @@ export class World {
     this.track(this.ceilingBatch(level), this.staticMeshes);
     this.track(this.solid(hide), this.staticMeshes);
     this.track(this.wallBatch(faces), this.staticMeshes);
+    if (this.lightFixtures.length)
+      this.track(this.lightConesBatch(this.lightFixtures), this.staticMeshes);
+  }
+
+  /** Soft translucent volumetric light cones hanging under every ceiling light fixture, drawn with additive blending. */
+  lightConesBatch(fixtures) {
+    const { vertices, uvs } = ceilingLightCones(fixtures);
+    const geometry = new CustomMesh();
+    geometry.vertices = vertices;
+    geometry.uvs = uvs;
+    geometry.setPrimitive('TRIANGLES');
+    const mesh = new Mesh(this.gl, geometry);
+    mesh.addProgram(CEILING_CONE_VERTEX, CEILING_CONE_FRAGMENT, new Material({ diffuse: new Vec3(0.76, 0.88, 1.0) }));
+    mesh.setBlend('ONE', 'ONE');
+    mesh.setDepthWrite(false);
+    return mesh;
   }
 
   /** The ceiling: one quad over every tile you can stand on, except the giant's room, which is open to the sky. */
@@ -911,19 +968,18 @@ export class World {
     this.doorPixels ??= doorAtlas();
     const { vertices, uvs } = doorBox(TILE - 0.8, TILE);
     const geometry = new CustomMesh();
-    geometry.setVertices(vertices);
+    geometry.vertices = new Float32Array(vertices);
     geometry.setUvs(uvs);
     geometry.setPrimitive('TRIANGLES');
     const root = new Mesh(gl, geometry);
-    root.addProgram(DOOR_VERTEX, DOOR_FRAGMENT, new Material({ diffuse: [1, 1, 1] }));
+    root.addProgram(DOOR_VERTEX, DOOR_FRAGMENT, new Material({ diffuse: new Vec3(1, 1, 1) }));
     root.setTexture(this.doorPixels.data, {
-      width: this.doorPixels.width,
-      height: this.doorPixels.height,
+      size: new Vec2(this.doorPixels.width, this.doorPixels.height),
       magFilter: gl.NEAREST,
       minFilter: gl.NEAREST_MIPMAP_NEAREST,
       generateMipmaps: true,
     });
-    root.setPosition(door.center.x, 0, door.center.y);
+    setPos(root, door.center.x, 0, door.center.y);
     this.scene.addMesh(root);
     this.doorViews.set(door, root);
   }
@@ -952,9 +1008,9 @@ export class World {
     if (!dead) {
       view.yaw = Math.atan2(-(player.pos.y - enemy.pos.y), player.pos.x - enemy.pos.x);
       MONSTERS[enemy.type].animate(view, enemy, { time, dt });
-      root.setPosition(enemy.pos.x, view.lift * view.scale, enemy.pos.y);
-      root.setScale(view.scale * view.sx, view.scale * view.sy, view.scale * view.sz);
-      root.setRotation(0, view.yaw, view.tilt);
+      setPos(root, enemy.pos.x, view.lift * view.scale, enemy.pos.y);
+      setScale(root, view.scale * view.sx, view.scale * view.sy, view.scale * view.sz);
+      setRot(root, 0, view.yaw, view.tilt);
       return;
     }
 
@@ -992,9 +1048,9 @@ export class World {
       const y = root.position.y + ly;
       const rotation = mesh.rotation;
       root.removeChild(mesh);
-      mesh.setPosition(x, y, z);
-      mesh.setScale(view.scale);
-      mesh.setRotation(rotation.x, rotation.y + view.yaw, rotation.z);
+      setPos(mesh, x, y, z);
+      setUniformScale(mesh, view.scale);
+      setRot(mesh, rotation.x, rotation.y + view.yaw, rotation.z);
       this.scene.addMesh(mesh);
       const out = Math.atan2(z - enemy.pos.y, x - enemy.pos.x) + (Math.random() - 0.5) * 1.2;
       const power = (gibbed ? 150 : 70) * (0.5 + Math.random());
@@ -1033,8 +1089,8 @@ export class World {
         bit.angle = Math.round(bit.angle / (Math.PI / 2)) * (Math.PI / 2);
         bit.pitch = 0;
       }
-      bit.mesh.setPosition(bit.x, bit.y, bit.z);
-      bit.mesh.setRotation(bit.pitch, view.yaw, bit.angle);
+      setPos(bit.mesh, bit.x, bit.y, bit.z);
+      setRot(bit.mesh, bit.pitch, view.yaw, bit.angle);
     }
     if (enemy.gibbed)
       return;
@@ -1042,11 +1098,11 @@ export class World {
     const k = Math.min(1, enemy.deadTime / 0.4);
     const eased = 1 - (1 - k) * (1 - k);
     if (view.death === 'topple') {
-      root.setRotation(0, view.yaw, eased * 1.45);
-      root.setPosition(enemy.pos.x, view.lift * view.scale * (1 - eased), enemy.pos.y);
+      setRot(root, 0, view.yaw, eased * 1.45);
+      setPos(root, enemy.pos.x, view.lift * view.scale * (1 - eased), enemy.pos.y);
     } else {
-      root.setScale(view.scale, view.scale * Math.max(0.15, 1 - eased * 0.85), view.scale);
-      root.setPosition(enemy.pos.x, view.lift * view.scale * (1 - eased), enemy.pos.y);
+      setScale(root, view.scale, view.scale * Math.max(0.15, 1 - eased * 0.85), view.scale);
+      setPos(root, enemy.pos.x, view.lift * view.scale * (1 - eased), enemy.pos.y);
     }
   }
 
@@ -1074,10 +1130,10 @@ export class World {
     // behind it, and it is all there is of it: no lines over it
     const { gl } = this;
     this.barrelPixels ??= barrelAtlas();
-    const cylinder = skinBarrel(new Cylinder(R * 0.985, R * 0.985, H, 20, 1, false), 20, 1);
+    const cylinder = skinBarrel(new Cylinder(new Vec2(R * 0.985, R * 0.985), H, 20, 1, false), 20, 1);
     for (let i = 1; i < cylinder.vertices.length; i += 3)
       cylinder.vertices[i] += H / 2;
-    const skinMaterial = new Material({ diffuse: [1, 1, 1] });
+    const skinMaterial = new Material({ diffuse: new Vec3(1, 1, 1) });
     const root = texturedMesh(gl, cylinder, {
       fragment: SOLID_TEXTURED_FRAGMENT,
       atlas: this.barrelPixels,
@@ -1098,13 +1154,19 @@ export class World {
   buildEffect(effect) {
     // every effect is a sprite animation that faces the camera: fire for blasts, sparks for a pellet striking metal
     const spark = effect.type === 'spark';
+    const boom = effect.type === 'boom';
     const atlas = spark ? (this.impactPixels ??= impactAtlas()) : (this.explosionPixels ??= explosionAtlas());
-    const material = new Material({ diffuse: [1, 1, 1] });
-    // a depth bias, or the walls and floor round it would cut it off flat
-    const root = this.sprite(atlas, material, 1, 1, { anchor: 'center', billboard: 'spherical', depthBias: spark ? 10 : explosionWidth(effect) / 2, fragment: TEXTURED_FRAGMENT });
+    const material = new Material({ diffuse: new Vec3(1, 1, 1) });
+    // a small depth bias keeps the sprite from z-fighting at its origin without projecting in front of the barrel
+    const root = this.sprite(atlas, material, 1, 1, {
+      anchor: boom ? 'bottom' : 'center',
+      billboard: boom ? 'cylindrical' : 'spherical',
+      depthBias: boom ? 6 : 8,
+      fragment: TEXTURED_FRAGMENT,
+    });
     this.scene.addMesh(root);
     // each spark is one of several kinds, and it keeps it for its whole life
-    return { root, material, spark, kind: Math.floor(Math.random() * SPARK_VARIANTS) };
+    return { root, material, spark, boom, kind: Math.floor(Math.random() * SPARK_VARIANTS) };
   }
 
   /** Create views for new entities, update live ones, drop the ones that are gone. `keep` filters the list. */
@@ -1145,7 +1207,7 @@ export class World {
       const view = this.doorViews.get(door);
       const height = 1 - door.open;
       // the door slides down into the floor whole; the part below the floor is not drawn
-      view.setPosition(door.center.x, -door.open * game.level.baseHeight[door.idx], door.center.y);
+      setPos(view, door.center.x, -door.open * game.level.baseHeight[door.idx], door.center.y);
       if (height > 0.02)
         view.setActive();
       else
@@ -1161,38 +1223,45 @@ export class World {
       (enemy) => !(enemy.state === 'dead' && enemy.deadTime > 2.2)
     );
     this.syncViews(this.pickupViews, game.pickups, (pickup) => this.buildPickup(pickup), (pickup, view) => {
-      view.root.setPosition(pickup.pos.x, 8 + Math.sin(time * 3 + pickup.phase) * 2.5, pickup.pos.y);
-      view.root.setRotation(0, time * 1.6 + pickup.phase, 0);
+      setPos(view.root, pickup.pos.x, 8 + Math.sin(time * 3 + pickup.phase) * 2.5, pickup.pos.y);
+      setRot(view.root, 0, time * 1.6 + pickup.phase, 0);
     });
     this.syncViews(this.barrelViews, game.barrels, () => this.buildBarrel(), (barrel, view) => {
       // a barrel that has been set off flickers and shudders until it blows
       const burning = barrel.fuse >= 0;
       const skin = burning ? 0.8 + 0.6 * Math.abs(Math.sin(time * 70)) : 1;
-      view.skinMaterial.setDiffuse(skin, skin, skin);
-      view.root.setPosition(barrel.pos.x, 0, barrel.pos.y);
-      view.root.setScale(burning ? 1 + 0.05 * Math.sin(time * 90) : 1);
+      scratchPos.setScalar(skin, skin, skin);
+      view.skinMaterial.setDiffuse(scratchPos);
+      setPos(view.root, barrel.pos.x, 0, barrel.pos.y);
+      setUniformScale(view.root, burning ? 1 + 0.05 * Math.sin(time * 90) : 1);
     }, (barrel) => !barrel.gone);
     this.syncViews(this.shotViews, game.shots, () => this.buildShot(), (shot, view) => {
-      view.root.setPosition(shot.pos.x, EYE - 4, shot.pos.y);
-      view.root.setRotation(0, time * 6, 0);
+      setPos(view.root, shot.pos.x, EYE - 4, shot.pos.y);
+      setRot(view.root, 0, time * 6, 0);
     });
     this.syncViews(this.effectViews, game.effects, (effect) => this.buildEffect(effect), (effect, view) => {
       const progress = Math.min(0.999, effect.age / effect.life);
       if (view.spark) {
         const width = 15;
         view.root.setFrame(IMPACT_CELLS.spark + view.kind * SPARK_FRAMES + Math.floor(progress * SPARK_FRAMES));
-        view.root.setPosition(effect.x, effect.z, effect.y);
-        view.root.setScale(width, width, width);
+        setPos(view.root, effect.x, effect.z, effect.y);
+        setUniformScale(view.root, width);
         return;
       }
-      // the fireball sits on the floor it is thrown from, and the big one is as wide as its blast is far
+      // a barrel explosion sits flat on the floor and spreads wider horizontally than vertically; projectile blasts sit at impact height
       const width = explosionWidth(effect);
       view.root.setFrame(Math.min(EXPLOSION_FRAMES - 1, Math.floor(progress * EXPLOSION_FRAMES)));
-      view.root.setPosition(effect.x, effect.z + width * 0.12, effect.y);
-      view.root.setScale(width, width, width);
+      if (view.boom) {
+        setPos(view.root, effect.x, -2, effect.y);
+        setScale(view.root, width, width * 0.65, width);
+      } else {
+        setPos(view.root, effect.x, effect.z, effect.y);
+        setUniformScale(view.root, width);
+      }
     });
 
     this.updateCamera(game);
+    updateCeilingLights(this.ceilingLights, this.lightFixtures, this.camera.position, time);
     this.syncBlood(game.blood);
 
     const { gl } = this;
@@ -1200,12 +1269,12 @@ export class World {
     this.scene.clear();
     this.scene.render(this.camera, time);
     this.overlay.glow.render(this.postCamera, time);
-    this.target.unbind(this.width, this.height);
+    this.target.unbind(this.viewportSize);
 
     this.glowTarget.bind();
     this.down.clear(false, true);
     this.down.render(this.postCamera, time);
-    this.glowTarget.unbind(this.width, this.height);
+    this.glowTarget.unbind(this.viewportSize);
 
     gl.viewport(0, 0, this.width, this.height);
     this.post.clear();
@@ -1231,7 +1300,7 @@ export class World {
     if (Math.abs(cam.zoom - this.zoom) > 0.002) {
       this.zoom = cam.zoom;
       camera.fov = this.baseFov * cam.zoom;
-      camera.setProjectionMatrix(new Vec2(this.width, this.height));
+      camera.setProjectionMatrix(this.viewportSize);
     }
     camera.setViewMatrix();
     this.filmed = true;
@@ -1248,7 +1317,7 @@ export class World {
       this.camera.up.setScalar(0, 1, 0);
       this.camera.fov = this.baseFov;
       this.zoom = 1;
-      this.camera.setProjectionMatrix(new Vec2(this.width, this.height));
+      this.camera.setProjectionMatrix(this.viewportSize);
     }
     const player = game.player;
     const dead = game.state === 'dead';

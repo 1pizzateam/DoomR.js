@@ -28,7 +28,7 @@
   "dependencies": {
     "@1pizzateam/bumpr": "1.0.0",
     "@1pizzateam/loopr": "2.1.0",
-    "@1pizzateam/roostr": "0.7.0",
+    "@1pizzateam/roostr": "0.8.0",
     "@1pizzateam/spock": "4.3.0"
   },
   "overrides": {

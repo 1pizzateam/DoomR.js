@@ -1,6 +1,6 @@
 import { SOLID_ALPHA } from './quads.js';
 import { mulberry32 } from './rng.js';
-import { GLOW, LIGHT, METAL, mix, plate, rivet, RUST_GLSL, SHADOW, Tile } from './floor.js';
+import { GLOW, LIGHT, LIGHT_GLSL, METAL, mix, plate, rivet, RUST_GLSL, SHADOW, Tile } from './floor.js';
 
 /**
  * The doors of an old space base: heavy sliding blast doors in two leaves, with a hazard-striped frame, recessed
@@ -172,6 +172,7 @@ varying float vDepth;
 varying float vHeight;
 varying vec2 vTextureCoord;
 varying vec2 vSurface;
+varying vec3 vWorldPos;
 
 void main(void) {
   vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
@@ -182,6 +183,7 @@ void main(void) {
   vTextureCoord = aTextureCoord;
   // a point on the door: along it (whichever of x and z it runs on) and up it, apart from every other door
   vSurface = vec2(aVertexPosition.x + aVertexPosition.z, aVertexPosition.y) + uModelMatrix[3].xz * 0.37;
+  vWorldPos = world.xyz;
   gl_Position = uProjectionMatrix * v;
 }
 `;
@@ -207,7 +209,9 @@ varying float vDepth;
 varying float vHeight;
 varying vec2 vTextureCoord;
 varying vec2 vSurface;
+varying vec3 vWorldPos;
 ${RUST_GLSL}
+${LIGHT_GLSL}
 
 void main(void) {
   if (vHeight < -0.01)
@@ -232,7 +236,7 @@ void main(void) {
     vec3 paint = (amount > 0.9 ? RUST_BRIGHT : (amount > 0.6 ? RUST : RUST_DARK)) * 0.62;
     color = clamp(paint + (steel - STEEL) * 0.9, 0.0, 1.0);
   }
-  color *= uMaterialDiffuse;
+  color *= uMaterialDiffuse * surfaceLight(vWorldPos, lit);
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
     color = mix(color, uFogColor, fade * 0.9);
