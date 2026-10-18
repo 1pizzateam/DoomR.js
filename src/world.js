@@ -1,19 +1,25 @@
-import { CustomMesh, Cylinder, FullscreenQuad, Material, Mesh, PerspectiveCamera, Renderer, RenderTarget, Scene, Vec2, Vec3 } from '@1pizzateam/roostr';
-import * as roostr from '@1pizzateam/roostr';
+import { CustomMesh, Cylinder, FullscreenQuad, Material, Mesh, PerspectiveCamera, Quat, Rand, Renderer, RenderTarget, Scene, Sprite, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { BLOOD } from './blood.js';
 import { barrelAtlas, skinBarrel } from './barrel.js';
-import { bloodAtlas, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
-import { DOOR_FRAGMENT, DOOR_VERTEX, WALL_FRAGMENT, doorAtlas, doorBox } from './door.js';
-import { CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, updateCeilingLights } from './ceiling.js';
+import { bloodAtlas, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
+import { DOOR_FRAGMENT, DOOR_VERTEX, WALL_FRAGMENT, doorAtlas, doorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
+import { CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, updateCeilingLights } from './ceiling.js';
 import { WALL_CELLS, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
-import { EXPLOSION_FRAMES, explosionAtlas } from './explosion.js';
-import { FLOOR_FRAGMENT, FLOOR_VERTEX, floorAtlas, floorCellFor, floorCellUv } from './floor.js';
+import { EXPLOSION_FRAMES, explosionAtlas, teleportAtlas } from './explosion.js';
+import { FIREBALL_FRAMES, fireballAtlas } from './fireball.js';
+import { FLOOR_FRAGMENT, FLOOR_VERTEX, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, floorAtlas, floorCellFor, floorCellUv, slimeAtlas, teleporterAtlas } from './floor.js';
 import { CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
-import { boxEdges, faceCorners, merge, octahedronEdges, quadTriangles, segment } from './lines.js';
+import { faceCorners, quadTriangles } from './lines.js';
 import { MONSTERS } from './monsters.js';
 import { Overlay } from './overlay.js';
-import { QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, texturedMesh } from './quads.js';
+import { LIGHT_GLSL, PARTICLE_FRAGMENT, PARTICLE_VERTEX, QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, texturedMesh } from './quads.js';
 import { holeQuad, IMPACT_CELLS, impactAtlas, SPARK_FRAMES, SPARK_VARIANTS } from './impacts.js';
+import { medikitAtlas, medikitMesh } from './medikit.js';
+import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
+import { keycardAtlas, keycardMesh } from './keycard.js';
+import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, knifeAtlas, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from './arsenal.js';
+import { armorAtlas, armorMesh } from './armor.js';
+import { berserkAtlas, berserkMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from './powerups.js';
 
 // Blue is the world, green is what helps you, orange is what hurts, red is blood.
 const BG = [7 / 255, 9 / 255, 15 / 255];
@@ -23,14 +29,6 @@ const COLORS = {
   orange: [0xff / 255, 0x9f / 255, 0x43 / 255],
   red: [0xe8 / 255, 0x10 / 255, 0x2c / 255],
 };
-
-// RoostR newer than 0.7.0 can be told the size of a buffer that is filled after creation, can rebuild its
-// GPU objects after a lost context, and has a Sprite. With 0.7.0 the game still runs: without culling and recovery,
-// and with a sprite made here (see FallbackSprite). Sprite is read from the namespace, because a named import of
-// something 0.7.0 does not export would stop the whole page from loading.
-const Sprite = roostr.Sprite;
-const HAS_BOUNDS = typeof Mesh.prototype.setLocalBounds === 'function';
-const HAS_RESTORE = typeof Scene.prototype.restore === 'function';
 
 // Rooms are closed by a ceiling one wall high (a wall texture is one tile high): the walls go right up to it, so nothing
 // in another room shows above a wall. Tall walls are drawn no higher than it, and the stretch above a low wall is wall.
@@ -98,12 +96,23 @@ void main(void) {
   vec4 texel = texture2D(uSampler, vTextureCoord);
   if (texel.a < 0.5)
     discard;
-  // red is how bright the pixel is, green marks the eyes, which flare with the monster's temper, and blue marks
-  // flesh, which is red; both colours fade together as the monster does
-  float light = texel.g > 0.5 ? uGlare : texel.r;
   float strength = min(1.0, length(uMaterialDiffuse - BACKGROUND) / FULL);
-  vec3 base = texel.b > 0.5 ? mix(BACKGROUND, BLOOD, strength) : uMaterialDiffuse;
-  vec3 color = mix(BACKGROUND, base, light);
+  vec3 base;
+  if (texel.g > 0.99) {
+    // Glowing eyes: eerie spectral ectoplasm when lurking, flaring into blazing hellfire crimson when enraged
+    vec3 spectralEye = vec3(0.42, 0.96, 0.78);
+    vec3 rageEye = vec3(1.0, 0.22, 0.34);
+    float rage = clamp((uGlare - 0.3) / 0.7, 0.0, 1.0);
+    base = mix(spectralEye, rageEye, rage) * (0.65 + 0.55 * uGlare);
+  } else if (texel.b > 0.99) {
+    // Visceral gore when blown apart: dark clotted crimson to deep arterial red
+    vec3 clot = vec3(0.18, 0.01, 0.02);
+    vec3 arterial = mix(vec3(0.46, 0.02, 0.04), BLOOD, texel.r);
+    base = mix(clot, arterial, clamp((texel.r - 0.35) * 1.35, 0.0, 1.0));
+  } else {
+    base = texel.rgb;
+  }
+  vec3 color = mix(BACKGROUND, base, strength);
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
     color = mix(color, uFogColor, fade * 0.9);
@@ -112,73 +121,126 @@ void main(void) {
 }
 `;
 
-// What RoostR's Sprite does, for a RoostR that does not have one yet: the mesh position is where the sprite is, and its
-// corners are laid out in view space, facing the camera ('spherical') or upright ('cylindrical').
-const SPRITE_VERTEX = `
+const MONSTER_VERTEX = `
 attribute vec3 aVertexPosition;
+attribute vec3 aVertexNormal;
 attribute vec2 aTextureCoord;
 uniform mat4 uModelMatrix;
 uniform mat4 uViewMatrix;
 uniform mat4 uProjectionMatrix;
-uniform float uFrame;
-uniform float uFrames;
-uniform float uBillboard;
-uniform float uDepthBias;
+uniform mat3 uNormalMatrix;
 varying float vDepth;
 varying vec2 vTextureCoord;
+varying vec3 vWorldPos;
+varying vec3 vNormal;
 
 void main(void) {
-  vec3 origin = (uViewMatrix * uModelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-  vec3 up = vec3(0.0, 1.0, 0.0);
-  vec3 right = vec3(1.0, 0.0, 0.0);
-  if (uBillboard > 1.5) {
-    up = normalize((uViewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-    vec3 across = cross(origin, up);
-    if (length(across) > 0.0001)
-      right = normalize(across);
-  }
-  float scaleX = length(uModelMatrix[0].xyz);
-  float scaleY = length(uModelMatrix[1].xyz);
-  vec3 v = origin + right * aVertexPosition.x * scaleX + up * aVertexPosition.y * scaleY;
+  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
+  vec4 v = uViewMatrix * world;
   vDepth = -v.z;
-  vTextureCoord = vec2((uFrame + aTextureCoord.x) / uFrames, aTextureCoord.y);
-  vec4 clip = uProjectionMatrix * vec4(v, 1.0);
-  // only the depth moves: the picture stays where it is and as big as it is
-  float bias = min(uDepthBias, max(0.0, vDepth - 1.0));
-  if (bias > 0.0) {
-    vec4 nearer = uProjectionMatrix * vec4(v.xy, v.z + bias, 1.0);
-    clip.z = nearer.z / nearer.w * clip.w;
+  vTextureCoord = aTextureCoord;
+  vWorldPos = world.xyz;
+  vNormal = normalize(uNormalMatrix * aVertexNormal);
+  gl_Position = uProjectionMatrix * v;
+}
+`;
+
+const MONSTER_FRAGMENT = `
+precision mediump float;
+uniform sampler2D uSampler;
+uniform vec3 uMaterialDiffuse;
+uniform float uGlare;
+uniform int uHasFog;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
+varying float vDepth;
+varying vec2 vTextureCoord;
+varying vec3 vWorldPos;
+varying vec3 vNormal;
+
+const vec3 BACKGROUND = vec3(${BG.map((v) => v.toFixed(5)).join(', ')});
+const vec3 BLOOD = vec3(${COLORS.red.map((v) => v.toFixed(5)).join(', ')});
+const float FULL = ${Math.hypot(...COLORS.orange.map((v, i) => v - BG[i])).toFixed(5)};
+
+${LIGHT_GLSL}
+void main(void) {
+  vec4 texel = texture2D(uSampler, vTextureCoord);
+  if (texel.a < 0.5)
+    discard;
+  float strength = length(uMaterialDiffuse - BACKGROUND) / FULL;
+  vec3 base;
+  float emissive = 0.0;
+  if (texel.g > 0.99) {
+    vec3 spectralEye = vec3(0.42, 0.96, 0.78);
+    vec3 rageEye = vec3(1.0, 0.22, 0.34);
+    float rage = clamp((uGlare - 0.3) / 0.7, 0.0, 1.0);
+    base = mix(spectralEye, rageEye, rage) * (0.72 + 0.62 * uGlare);
+    emissive = 1.0;
+  } else if (texel.b > 0.99) {
+    vec3 clot = vec3(0.18, 0.01, 0.02);
+    vec3 arterial = mix(vec3(0.46, 0.02, 0.04), BLOOD, texel.r);
+    base = mix(clot, arterial, clamp((texel.r - 0.35) * 1.35, 0.0, 1.0));
+  } else {
+    base = texel.rgb;
   }
+  vec3 n = normalize(vNormal);
+  float relief = 0.74 + 0.22 * n.y + 0.14 * abs(n.x) + 0.08 * max(0.0, n.z);
+  vec3 sceneLit = mix(vec3(0.76), surfaceLight(vWorldPos, emissive), 0.52) * relief;
+  vec3 shaded = base * mix(sceneLit, vec3(1.15), emissive) * clamp(strength, 0.05, 1.6);
+  vec3 color = mix(BACKGROUND, shaded, min(1.0, strength));
+  if (uHasFog == 1) {
+    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+    color = mix(color, uFogColor, fade * 0.9);
+  }
+  gl_FragColor = vec4(color, emissive > 0.5 ? 1.0 : ${SOLID_ALPHA.toFixed(1)});
+}
+`;
+
+const VIEWMODEL_VERTEX = `
+attribute vec3 aVertexPosition;
+attribute vec3 aVertexNormal;
+attribute vec2 aTextureCoord;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+uniform mat4 uProjectionMatrix;
+uniform mat3 uNormalMatrix;
+varying vec2 vTextureCoord;
+varying vec3 vWorldPos;
+varying vec3 vNormal;
+
+void main(void) {
+  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
+  vec4 v = uViewMatrix * world;
+  vTextureCoord = aTextureCoord;
+  vWorldPos = world.xyz;
+  vNormal = normalize(uNormalMatrix * aVertexNormal);
+  vec4 clip = uProjectionMatrix * v;
+  clip.z = mix(-clip.w * 0.96, clip.z, 0.08);
   gl_Position = clip;
 }
 `;
 
-class FallbackSprite extends Mesh {
-  constructor(gl, { width, height, texture, textureOptions, frames, anchor, billboard, depthBias, material, fragment }) {
-    const geometry = new CustomMesh();
-    const x = width / 2;
-    const y0 = anchor === 'bottom' ? 0 : -height / 2;
-    const y1 = anchor === 'bottom' ? height : height / 2;
-    geometry.setVertices([
-      new Vec3(-x, y0, 0), new Vec3(x, y0, 0), new Vec3(x, y1, 0),
-      new Vec3(-x, y0, 0), new Vec3(x, y1, 0), new Vec3(-x, y1, 0),
-    ]);
-    geometry.setUvs([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]);
-    geometry.setPrimitive('TRIANGLES');
-    super(gl, geometry);
-    this.addProgram(SPRITE_VERTEX, fragment, material);
-    this.addCustomUniform('frame', 'uniform1f', 0);
-    this.addCustomUniform('frames', 'uniform1f', frames);
-    this.addCustomUniform('billboard', 'uniform1f', billboard === 'cylindrical' ? 2 : 1);
-    this.addCustomUniform('depthBias', 'uniform1f', depthBias ?? 0);
-    this.setTexture(texture, textureOptions);
-  }
+const VIEWMODEL_FRAGMENT = `
+precision mediump float;
+uniform sampler2D uSampler;
+uniform vec3 uMaterialDiffuse;
+varying vec2 vTextureCoord;
+varying vec3 vWorldPos;
+varying vec3 vNormal;
 
-  setFrame(frame) {
-    this.setCustomUniform('frame', frame);
-    return this;
-  }
+${LIGHT_GLSL}
+void main(void) {
+  vec4 texel = texture2D(uSampler, vTextureCoord);
+  if (texel.a < 0.5)
+    discard;
+  vec3 n = normalize(vNormal);
+  float relief = 0.72 + 0.24 * n.y + 0.14 * abs(n.x) + 0.1 * max(0.0, -n.z);
+  vec3 sceneLit = mix(vec3(0.84), surfaceLight(vWorldPos, 0.0), 0.48) * relief;
+  vec3 color = texel.rgb * uMaterialDiffuse * sceneLit;
+  gl_FragColor = vec4(color, ${SOLID_ALPHA.toFixed(1)});
 }
+`;
 
 const POST_VERTEX = `
 attribute vec2 aVertexPosition;
@@ -282,6 +344,11 @@ const scratchPos = new Vec3();
 const scratchRot = new Vec3();
 const scratchScale = new Vec3();
 const tintScratch = new Vec3();
+const scratchForward = new Vec3();
+const scratchRight = new Vec3();
+const scratchUp = new Vec3();
+const scratchQuat = new Quat();
+const scratchLocalQuat = new Quat();
 
 function setPos(node, x, y, z) {
   scratchPos.setScalar(x, y, z);
@@ -305,7 +372,11 @@ function setScale(node, x, y, z) {
 
 /** Fades a colour towards the background. Writes straight into the material, so a frame allocates nothing. */
 function tint(material, color, amount) {
-  tintScratch.setScalar(BG[0] + (color[0] - BG[0]) * amount, BG[1] + (color[1] - BG[1]) * amount, BG[2] + (color[2] - BG[2]) * amount);
+  tintScratch.setScalar(
+    Utils.lerp(BG[0], color[0], amount),
+    Utils.lerp(BG[1], color[1], amount),
+    Utils.lerp(BG[2], color[2], amount)
+  );
   material.setDiffuse(tintScratch);
 }
 
@@ -313,6 +384,8 @@ function tint(material, color, amount) {
 export function explosionWidth(effect) {
   if (effect.type === 'blast')
     return 24;
+  if (effect.type === 'teleport')
+    return 62;
   return 120;
 }
 
@@ -346,7 +419,7 @@ export class World {
     this.viewportSize = new Vec2(1, 1);
     this.glowViewportSize = new Vec2(1, 1);
 
-    this.scene = new Scene({ context: gl, clearColor: BG_VEC, depthTest: true, enableFrustumCulling: HAS_BOUNDS, viewport: this.viewportSize });
+    this.scene = new Scene({ context: gl, clearColor: BG_VEC, depthTest: true, enableFrustumCulling: true, viewport: this.viewportSize });
     this.scene.setFog(BG_VEC, FOG_NEAR, FOG_FAR);
     this.camera = new PerspectiveCamera(60, new Vec2(NEAR, FAR), gl);
     this.camera.up.setScalar(0, 1, 0);
@@ -376,12 +449,18 @@ export class World {
     this.hiding = new Material({ diffuse: BG_VEC });
     this.level = null;
     this.doorViews = new Map();
+    this.crusherViews = new Map();
     this.enemyViews = new Map();
     this.pickupViews = new Map();
     this.barrelViews = new Map();
     this.shotViews = new Map();
     this.effectViews = new Map();
     this.staticMeshes = [];
+    this.slimeMesh = null;
+    this.chainsawView = null;
+    this.chaingunView = null;
+    this.shotgunView = null;
+    this.rocketLauncherView = null;
     this.droplets = null;
     this.splatters = null;
     this.splatVersion = -1;
@@ -404,11 +483,6 @@ export class World {
    * new textures are handed back to the quads that sample them.
    */
   restoreGpu() {
-    if (!HAS_RESTORE) {
-      // nothing in this RoostR can rebuild the GPU objects, so start over
-      window.location.reload();
-      return;
-    }
     this.renderer.disable('CULL_FACE');
     for (const target of [this.target, this.glowTarget])
       target.restore();
@@ -456,7 +530,7 @@ export class World {
 
     // keep the horizontal field of view stable whatever the window shape
     const aspect = this.width / this.height;
-    const vertical = (2 * Math.atan(Math.tan((HORIZONTAL_FOV / 2) * (Math.PI / 180)) / aspect) * 180) / Math.PI;
+    const vertical = Trigo.radianToDegree(2 * Math.atan(Math.tan(Trigo.degreeToRadian(HORIZONTAL_FOV / 2)) / aspect));
     this.baseFov = Math.min(vertical, 78);
     this.camera.fov = this.baseFov;
     this.zoom = 1;
@@ -471,13 +545,6 @@ export class World {
     geometry.setPrimitive(primitive);
     const mesh = new Mesh(this.gl, geometry);
     mesh.addProgram(LINE_VERTEX, LINE_FRAGMENT, material);
-    return mesh;
-  }
-
-  lines(vertices, material, parent = null) {
-    const mesh = this.makeMesh(vertices, 'LINES', material);
-    if (parent)
-      parent.addChild(mesh);
     return mesh;
   }
 
@@ -501,10 +568,8 @@ export class World {
    */
   sprite(atlas, material, width, height, { anchor = 'bottom', billboard = 'cylindrical', depthBias = 0, fragment = SPRITE_FRAGMENT } = {}) {
     const { gl } = this;
-    const sprite = new (Sprite ?? FallbackSprite)(gl, {
+    const sprite = new Sprite(gl, {
       size: new Vec2(width, height),
-      width,
-      height,
       texture: atlas.data,
       textureOptions: { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST },
       frames: atlas.frames,
@@ -516,6 +581,160 @@ export class World {
     });
     sprite.addCustomUniform('glare', 'uniform1f', 0.3);
     return sprite;
+  }
+
+  /** A 3D body-part mesh for an articulated monster, lit by scene lights and 3D normals with glowing eyes. */
+  monsterPartMesh(geometry, atlas, material) {
+    const { gl } = this;
+    const mesh = new Mesh(gl, geometry);
+    mesh.addProgram(MONSTER_VERTEX, MONSTER_FRAGMENT, material);
+    mesh.setTexture(atlas.data, {
+      size: new Vec2(atlas.width, atlas.height),
+      magFilter: gl.NEAREST,
+      minFilter: gl.NEAREST,
+    });
+    mesh.addCustomUniform('glare', 'uniform1f', 0.3);
+    return mesh;
+  }
+
+  /** A 3D textured viewmodel sub-mesh lit by scene lights and 3D surface normals. */
+  chainsawPartMesh(part, atlas, material) {
+    const { gl } = this;
+    const geometry = new CustomMesh();
+    geometry.vertices = part.vertices;
+    geometry.normals = part.normals;
+    geometry.uvs = part.uvs;
+    geometry.setPrimitive('TRIANGLES');
+    const mesh = new Mesh(gl, geometry);
+    mesh.addProgram(VIEWMODEL_VERTEX, VIEWMODEL_FRAGMENT, material);
+    mesh.setTexture(atlas.data, {
+      size: new Vec2(atlas.width, atlas.height),
+      magFilter: gl.NEAREST,
+      minFilter: gl.NEAREST_MIPMAP_NEAREST,
+      generateMipmaps: true,
+    });
+    mesh.localBoundingSphere.radius = 64;
+    return mesh;
+  }
+
+  /** Builds the first-person 3D textured chainsaw viewmodel and its animated cutting chain hierarchy. */
+  buildChainsaw() {
+    this.chainsawTexture ??= chainsawAtlas();
+    const parts = chainsawParts();
+    const material = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const root = this.chainsawPartMesh(parts.body, this.chainsawTexture, material);
+    const topChain = this.chainsawPartMesh(parts.topChain, this.chainsawTexture, material);
+    const bottomChain = this.chainsawPartMesh(parts.bottomChain, this.chainsawTexture, material);
+    const noseChain = this.chainsawPartMesh(parts.noseChain, this.chainsawTexture, material);
+    const hands = this.chainsawPartMesh(parts.hands, this.chainsawTexture, material);
+    topChain.setPosition(parts.pivots.topChain);
+    bottomChain.setPosition(parts.pivots.bottomChain);
+    noseChain.setPosition(parts.pivots.noseChain);
+    hands.setPosition(parts.pivots.hands);
+    root.addChild(topChain);
+    root.addChild(bottomChain);
+    root.addChild(noseChain);
+    root.addChild(hands);
+    setScale(root, -0.68, 0.68, 0.68);
+    root.setInactive();
+    this.scene.addMesh(root);
+    this.chainsawView = {
+      root,
+      topChain,
+      bottomChain,
+      noseChain,
+      hands,
+      material,
+      pose: chainsawPose(),
+    };
+  }
+
+  /** Builds the first-person 3D textured chaingun viewmodel, its articulated 6-barrel rotary cluster, and gloved player hands/forearms. */
+  buildChaingun() {
+    this.chaingunPixels ??= chaingunAtlas();
+    const parts = chaingunParts();
+    const material = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const root = this.chainsawPartMesh(parts.body, this.chaingunPixels, material);
+    const rotor = this.chainsawPartMesh(parts.rotor, this.chaingunPixels, material);
+    const hands = this.chainsawPartMesh(parts.hands, this.chaingunPixels, material);
+    rotor.setPosition(parts.pivots.rotor);
+    hands.setPosition(parts.pivots.hands);
+    root.addChild(rotor);
+    root.addChild(hands);
+    setScale(root, -0.56, 0.56, 0.56);
+    root.setInactive();
+    this.scene.addMesh(root);
+    this.chaingunView = {
+      root,
+      rotor,
+      hands,
+      material,
+      pose: chaingunPose(),
+    };
+  }
+
+  /** Builds the first-person 3D textured pump-action shotgun viewmodel with sliding pump forend, gloved player arm, and ejecting shell. */
+  buildShotgun() {
+    this.shotgunPixels ??= shotgunAtlas();
+    const parts = shotgunParts();
+    const material = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const root = this.chainsawPartMesh(parts.body, this.shotgunPixels, material);
+    const pump = this.chainsawPartMesh(parts.pump, this.shotgunPixels, material);
+    const arm = this.chainsawPartMesh(parts.arm, this.shotgunPixels, material);
+    const shell = this.chainsawPartMesh(parts.shell, this.shotgunPixels, material);
+    pump.setPosition(parts.pivots.pump);
+    arm.setPosition(parts.pivots.arm);
+    shell.setPosition(parts.pivots.shell);
+    root.addChild(pump);
+    root.addChild(arm);
+    root.addChild(shell);
+    setScale(root, -0.68, 0.68, 0.68);
+    root.setInactive();
+    this.scene.addMesh(root);
+    this.shotgunView = {
+      root,
+      pump,
+      arm,
+      shell,
+      material,
+      pose: shotgunPose(),
+    };
+  }
+
+  /** Builds the first-person 3D textured rocket launcher viewmodel with articulated chambered warhead. */
+  buildRocketLauncher() {
+    this.rocketLauncherPixels ??= rocketLauncherAtlas();
+    const parts = rocketLauncherParts();
+    const material = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const root = this.chainsawPartMesh(parts.body, this.rocketLauncherPixels, material);
+    const warhead = this.chainsawPartMesh(parts.warhead, this.rocketLauncherPixels, material);
+    warhead.setPosition(parts.pivots.warhead);
+    root.addChild(warhead);
+    setScale(root, -0.58, 0.58, 0.58);
+    root.setInactive();
+    this.scene.addMesh(root);
+    this.rocketLauncherView = {
+      root,
+      warhead,
+      material,
+      pose: rocketLauncherPose(),
+    };
+  }
+
+  /** Builds the first-person 3D textured combat knife viewmodel held in the player's gloved right hand. */
+  buildKnife() {
+    this.knifePixels ??= knifeAtlas();
+    const parts = knifeParts();
+    const material = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const root = this.chainsawPartMesh(parts.body, this.knifePixels, material);
+    setScale(root, -0.58, 0.58, 0.58);
+    root.setInactive();
+    this.scene.addMesh(root);
+    this.knifeView = {
+      root,
+      material,
+      pose: knifePose(),
+    };
   }
 
   doorBatch(capacity, atlas, material) {
@@ -550,12 +769,19 @@ export class World {
     for (const mesh of [...this.scene.meshes])
       this.discard(mesh);
     this.doorViews.clear();
+    this.crusherViews.clear();
     this.enemyViews.clear();
     this.pickupViews.clear();
     this.barrelViews.clear();
     this.shotViews.clear();
     this.effectViews.clear();
     this.staticMeshes = [];
+    this.slimeMesh = null;
+    this.knifeView = null;
+    this.chainsawView = null;
+    this.chaingunView = null;
+    this.shotgunView = null;
+    this.rocketLauncherView = null;
     this.level = level;
     this.lightFixtures = ceilingLightFixtures(level);
     const { ambient, pointLights } = createCeilingLights(this.scene);
@@ -564,25 +790,37 @@ export class World {
     this.buildStatic(level);
     for (const door of level.doors.values())
       this.buildDoor(door);
+    for (const crusher of level.crushers)
+      this.buildCrusher(crusher);
 
     // blood: droplets move every frame, splats are rewritten only when the game adds or drops one
     this.bloodTexture ??= bloodAtlas();
-    this.droplets = new QuadBatch(this.gl, { capacity: BLOOD.particles, atlas: this.bloodTexture });
-    this.splatters = new QuadBatch(this.gl, { capacity: BLOOD.floor + BLOOD.walls + BLOOD.ceiling + BLOOD.prints, atlas: this.bloodTexture, material: this.splatMaterial() });
+    this.droplets = new QuadBatch(this.gl, {
+      capacity: BLOOD.particles,
+      atlas: this.bloodTexture,
+      vertex: PARTICLE_VERTEX,
+      fragment: PARTICLE_FRAGMENT,
+    });
+    this.splatters = new QuadBatch(this.gl, { capacity: BLOOD.floor + BLOOD.gibs + BLOOD.walls + BLOOD.ceiling + BLOOD.prints, atlas: this.bloodTexture, material: this.splatMaterial() });
     // the drips running down the walls: a stem and a drop each, redrawn while they move
     this.drips = new QuadBatch(this.gl, { capacity: BLOOD.walls * 6 * 6, atlas: this.bloodTexture, material: this.splatMaterial() });
     this.dripVersion = -1;
     this.dripsLive = false;
-    this.scene.addMesh(this.droplets);
-    this.scene.addMesh(this.splatters);
-    this.scene.addMesh(this.drips);
-    this.splatVersion = -1;
-    // bullet holes are flat quads on the wall, in front of the blood
+    // bullet holes and chainsaw marks sit on the wall behind any blood splats or drips
     this.impactPixels ??= impactAtlas();
     this.holes = new QuadBatch(this.gl, { capacity: BLOOD.holes, atlas: this.impactPixels });
     this.scene.addMesh(this.holes);
     this.holesVersion = -1;
+    this.scene.addMesh(this.droplets);
+    this.scene.addMesh(this.splatters);
+    this.scene.addMesh(this.drips);
+    this.splatVersion = -1;
     this.doorMarks = new Map();
+    this.buildKnife();
+    this.buildChainsaw();
+    this.buildChaingun();
+    this.buildShotgun();
+    this.buildRocketLauncher();
   }
 
   /** Bullet holes on walls go in one buffer; the ones on doors are handled by syncDoorMarks. */
@@ -656,8 +894,10 @@ export class World {
     batch.end();
   }
 
-  /** A sprite's four corners are worked out once per mark and kept; false is kept too, for a mark cut away entirely. */
+  /** A sprite's four corners are worked out once per mark and kept; dissolving marks on acid update dynamically. */
   cachedQuad(item, build) {
+    if (item.dissolving)
+      return build(item) ?? false;
     let quad = this.splatCache.get(item);
     if (quad === undefined) {
       quad = build(item) ?? false;
@@ -669,22 +909,19 @@ export class World {
   /** Droplets and gibs are squares that face the camera, so they need its right and up in the world. */
   syncParticleSprites(blood) {
     const { camera } = this;
-    const fx = camera.target.x - camera.position.x;
-    const fy = camera.target.y - camera.position.y;
-    const fz = camera.target.z - camera.position.z;
-    let rx = fy * camera.up.z - fz * camera.up.y;
-    let ry = fz * camera.up.x - fx * camera.up.z;
-    let rz = fx * camera.up.y - fy * camera.up.x;
-    const length = Math.hypot(rx, ry, rz) || 1;
-    rx /= length;
-    ry /= length;
-    rz /= length;
-    const right = [rx, ry, rz];
-    const up = [ry * fz - rz * fy, rz * fx - rx * fz, rx * fy - ry * fx];
-    const upLength = Math.hypot(...up) || 1;
-    up[0] /= upLength;
-    up[1] /= upLength;
-    up[2] /= upLength;
+    scratchForward.subVectors(camera.target, camera.position);
+    scratchRight.crossVectors(scratchForward, camera.up);
+    if (scratchRight.getMagnitude(true) > 0)
+      scratchRight.normalize();
+    else
+      scratchRight.setScalar(1, 0, 0);
+    scratchUp.crossVectors(scratchRight, scratchForward);
+    if (scratchUp.getMagnitude(true) > 0)
+      scratchUp.normalize();
+    else
+      scratchUp.setScalar(0, 1, 0);
+    const right = [scratchRight.x, scratchRight.y, scratchRight.z];
+    const up = [scratchUp.x, scratchUp.y, scratchUp.z];
 
     const drops = this.droplets.begin();
     for (const p of blood.particles) {
@@ -700,6 +937,8 @@ export class World {
     const add = (quad) => quad && batch.quad(quad.corners, quad.uv);
     for (const splat of blood.floor)
       add(this.cachedQuad(splat, floorSplatQuad));
+    for (const gib of blood.gibs)
+      add(this.cachedQuad(gib, floorGibQuad));
     for (const splat of blood.walls) {
       if (!splat.door)
         add(this.cachedQuad(splat, wallSplatQuad));
@@ -724,9 +963,8 @@ export class World {
           quads = wallDripQuads(splat);
           this.dripCache.set(splat, quads);
         }
-      } else {
+      } else
         quads = wallDripQuads(splat);
-      }
       for (const drip of quads)
         batch.quad(drip.corners, drip.uv);
     }
@@ -863,6 +1101,8 @@ export class World {
     }
 
     this.track(this.floorBatch(level), this.staticMeshes);
+    this.slimeMesh = this.track(this.slimeBatch(level), this.staticMeshes);
+    this.teleporterMesh = this.track(this.teleporterBatch(level), this.staticMeshes);
     this.track(this.ceilingBatch(level), this.staticMeshes);
     this.track(this.solid(hide), this.staticMeshes);
     this.track(this.wallBatch(faces), this.staticMeshes);
@@ -891,9 +1131,8 @@ export class World {
     const batch = new QuadBatch(gl, {
       capacity: level.width * level.rowCount,
       atlas: this.ceilingPixels,
-      // the floor's shader: it carries the same rust, and keeps the light fixtures clean
       vertex: FLOOR_VERTEX,
-      fragment: FLOOR_FRAGMENT,
+      fragment: CEILING_FRAGMENT,
       textureOptions: { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST },
     });
     // just under the invisible roof, so the roof never hides it
@@ -937,7 +1176,7 @@ export class World {
     const batch = new QuadBatch(gl, {
       capacity: level.width * level.rowCount,
       atlas: this.floorPixels,
-            // rust is worked out in the shader, from where each pixel is in the world, so it carries on across tiles
+      // rust is worked out in the shader, from where each pixel is in the world, so it carries on across tiles
       vertex: FLOOR_VERTEX,
       fragment: FLOOR_FRAGMENT,
       // mipmaps keep the far floor from shimmering; close up the texels stay crisp
@@ -948,8 +1187,9 @@ export class World {
     batch.begin();
     for (let ty = 0; ty < level.rowCount; ty++) {
       for (let tx = 0; tx < level.width; tx++) {
-        const kind = level.kind[ty * level.width + tx];
-        if (kind !== FLOOR && kind !== DOOR)
+        const idx = ty * level.width + tx;
+        const kind = level.kind[idx];
+        if ((kind !== FLOOR && kind !== DOOR) || level.slime[idx] || level.teleporter?.[idx])
           continue;
         const x0 = tx * TILE;
         const x1 = x0 + TILE;
@@ -961,20 +1201,84 @@ export class World {
     return batch.end();
   }
 
-  buildDoor(door) {
-    // a blast door: a box in the deck's steel and rust, standing on the floor and sinking into it as it opens. It is
-    // opaque, so it hides what is behind it, and it is all there is of it: no lines over it
+  /** Radioactive slime floor tiles: glowing, churning green nukage vats and channels. */
+  slimeBatch(level) {
     const { gl } = this;
-    this.doorPixels ??= doorAtlas();
-    const { vertices, uvs } = doorBox(TILE - 0.8, TILE);
+    this.slimePixels ??= slimeAtlas();
+    const batch = new QuadBatch(gl, {
+      capacity: Math.max(1, level.width * level.rowCount),
+      atlas: this.slimePixels,
+      vertex: FLOOR_VERTEX,
+      fragment: SLIME_FRAGMENT,
+      textureOptions: { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST, wrapS: gl.REPEAT, wrapT: gl.REPEAT },
+    });
+    batch.addCustomUniform('time', 'uniform1f', 0);
+    const y = -0.35;
+    batch.begin();
+    for (let ty = 0; ty < level.rowCount; ty++) {
+      for (let tx = 0; tx < level.width; tx++) {
+        const idx = ty * level.width + tx;
+        if (!level.slime[idx])
+          continue;
+        const x0 = tx * TILE;
+        const x1 = x0 + TILE;
+        const z0 = ty * TILE;
+        const z1 = z0 + TILE;
+        batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], [0, 0, 1, 1]);
+      }
+    }
+    return batch.end();
+  }
+
+  /** Glowing pentagram teleporter floor pads ('T'): crimson pentagram sigils over swirling green-cyan warp portals. */
+  teleporterBatch(level) {
+    const { gl } = this;
+    this.teleporterPixels ??= teleporterAtlas();
+    const batch = new QuadBatch(gl, {
+      capacity: Math.max(1, level.width * level.rowCount),
+      atlas: this.teleporterPixels,
+      vertex: FLOOR_VERTEX,
+      fragment: TELEPORTER_FRAGMENT,
+      textureOptions: { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST },
+    });
+    batch.addCustomUniform('time', 'uniform1f', 0);
+    const y = -0.18;
+    batch.begin();
+    for (let ty = 0; ty < level.rowCount; ty++) {
+      for (let tx = 0; tx < level.width; tx++) {
+        const idx = ty * level.width + tx;
+        if (!level.teleporter?.[idx])
+          continue;
+        const x0 = tx * TILE;
+        const x1 = x0 + TILE;
+        const z0 = ty * TILE;
+        const z1 = z0 + TILE;
+        batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], [0, 0, 1, 1]);
+      }
+    }
+    return batch.end();
+  }
+
+  buildDoor(door) {
+    // a blast door: a box in the deck's steel and rust, standing on the floor and sinking into it as it opens.
+    // A secret door ('S') is disguised with bulkhead wall panels so only keen eyes spot the recessed seam.
+    // A locked door ('R', 'Y', 'U') carries glowing color-coded security stripes and jamb lock bars.
+    const { gl } = this;
+    const isSecret = Boolean(door.secret);
+    const atlas = isSecret
+      ? (this.wallPixels ??= wallAtlas())
+      : door.lock
+        ? ((this.lockedDoorPixels ??= {})[door.lock] ??= lockedDoorAtlas(door.lock))
+        : (this.doorPixels ??= doorAtlas());
+    const { vertices, uvs } = isSecret ? secretDoorBox(TILE - 0.8, TILE) : doorBox(TILE - 0.8, TILE);
     const geometry = new CustomMesh();
     geometry.vertices = new Float32Array(vertices);
     geometry.setUvs(uvs);
     geometry.setPrimitive('TRIANGLES');
     const root = new Mesh(gl, geometry);
-    root.addProgram(DOOR_VERTEX, DOOR_FRAGMENT, new Material({ diffuse: new Vec3(1, 1, 1) }));
-    root.setTexture(this.doorPixels.data, {
-      size: new Vec2(this.doorPixels.width, this.doorPixels.height),
+    root.addProgram(DOOR_VERTEX, isSecret ? WALL_FRAGMENT : DOOR_FRAGMENT, new Material({ diffuse: new Vec3(1, 1, 1) }));
+    root.setTexture(atlas.data, {
+      size: new Vec2(atlas.width, atlas.height),
       magFilter: gl.NEAREST,
       minFilter: gl.NEAREST_MIPMAP_NEAREST,
       generateMipmaps: true,
@@ -984,20 +1288,55 @@ export class World {
     this.doorViews.set(door, root);
   }
 
+  buildCrusher(crusher) {
+    // a hydraulic ceiling crusher piston that slams down from the roof and retracts back into the ceiling
+    const { gl } = this;
+    this.doorPixels ??= doorAtlas();
+    const { vertices, uvs } = doorBox(TILE - 1.6, TILE);
+    const geometry = new CustomMesh();
+    geometry.vertices = new Float32Array(vertices);
+    geometry.setUvs(uvs);
+    geometry.setPrimitive('TRIANGLES');
+    const root = new Mesh(gl, geometry);
+    root.addProgram(DOOR_VERTEX, DOOR_FRAGMENT, new Material({ diffuse: new Vec3(0.92, 0.72, 0.68) }));
+    root.setTexture(this.doorPixels.data, {
+      size: new Vec2(this.doorPixels.width, this.doorPixels.height),
+      magFilter: gl.NEAREST,
+      minFilter: gl.NEAREST_MIPMAP_NEAREST,
+      generateMipmaps: true,
+    });
+    setPos(root, crusher.center.x, crusher.low, crusher.center.y);
+    this.scene.addMesh(root);
+    this.crusherViews.set(crusher, root);
+  }
+
   // ---- actors -------------------------------------------------------------
 
   buildEnemy(enemy) {
     return MONSTERS[enemy.type].build(this, enemy);
   }
 
-  /** Poses one monster for this frame; a dead one is taken apart instead (see startGore). */
-  updateEnemy(enemy, view, player, time, game) {
+  /** Poses one monster sprite for this frame, or advances its death / gibbing animation. */
+  updateEnemy(enemy, view, player, time, game = null) {
     const dead = enemy.state === 'dead';
     const dt = Math.min(0.1, Math.max(0, time - (view.lastTime ?? time)));
     view.lastTime = time;
-    const fade = dead ? Math.max(0, 1 - enemy.deadTime / 2) : 1;
-    const flash = enemy.hurt > 0 || enemy.pain > 0 ? 1 : 0;
-    const amount = fade * (flash ? 0.55 + 0.45 * Math.sin(time * 90) : 1);
+    const fade = dead ? Math.max(0.78, 1 - enemy.deadTime * 0.12) : 1;
+    const flash = !dead && (enemy.hurt > 0 || enemy.pain > 0) ? 1 : 0;
+    let dynBoost = 0;
+    if (player && (player.flash ?? 0) > 0 && (player.weapon ?? 'shotgun') !== 'fist') {
+      const distSq = enemy.pos.getDistance(player.pos, true);
+      if (distSq < 125 * 125)
+        dynBoost = Math.max(dynBoost, (1 - distSq / (125 * 125)) * Math.min(1, player.flash / 0.12) * 0.55);
+    }
+    if (game && Array.isArray(game.shots)) {
+      for (let i = 0; i < game.shots.length; i++) {
+        const distSq = enemy.pos.getDistance(game.shots[i].pos, true);
+        if (distSq < 180 * 180)
+          dynBoost = Math.max(dynBoost, (1 - distSq / (180 * 180)) * 0.3);
+      }
+    }
+    const amount = fade * (flash ? 0.55 + 0.45 * Math.sin(time * 90) : 1 + dynBoost);
     const brightness = Math.max(0.05, amount);
     if (brightness !== view.brightness) {
       view.brightness = brightness;
@@ -1006,120 +1345,92 @@ export class World {
 
     const { root } = view;
     if (!dead) {
-      view.yaw = Math.atan2(-(player.pos.y - enemy.pos.y), player.pos.x - enemy.pos.x);
-      MONSTERS[enemy.type].animate(view, enemy, { time, dt });
+      MONSTERS[enemy.type].animate(view, enemy, { time, dt, player });
       setPos(root, enemy.pos.x, view.lift * view.scale, enemy.pos.y);
-      setScale(root, view.scale * view.sx, view.scale * view.sy, view.scale * view.sz);
-      setRot(root, 0, view.yaw, view.tilt);
+      setRot(root, view.pitch ?? 0, view.yaw ?? 0, view.roll ?? 0);
+      setScale(root, view.scale * view.sx, view.scale * view.sy, view.scale * (view.sz ?? view.sx));
       return;
     }
 
-    if (!view.gore)
-      this.startGore(view, enemy);
-    const die = MONSTERS[enemy.type].die;
-    if (die)
-      die(view, enemy);
-    else
-      this.tickGore(view, enemy, dt);
-  }
-
-  /**
-   * A monster that dies comes apart. Its head, ribs and limbs leave the body (all of them, and the torso too,
-   * when it was blown apart) and fly off as bodies of their own under gravity, then lie where they land.
-   */
-  startGore(view, enemy) {
-    const { root } = view;
-    const sin = Math.sin(view.yaw);
-    const cos = Math.cos(view.yaw);
-    const gibbed = enemy.gibbed;
-    const flung = [];
-    for (const part of view.parts) {
-      // a clean kill takes the head and ribs and one arm; being blown apart takes everything
-      const arm = part.name.startsWith('arm') || part.name.startsWith('leg');
-      if (!gibbed && !(part.name === 'head' || part.name === 'ribs' || part.name === 'jaw' || (arm && Math.random() < 0.4)))
-        continue;
-      const { mesh } = part;
-      const lx = mesh.position.x * view.scale;
-      const ly = mesh.position.y * view.scale;
-      const lz = mesh.position.z * view.scale;
-      // the joint, turned to where the monster faces
-      const x = enemy.pos.x + lx * cos + lz * sin;
-      const z = enemy.pos.y - lx * sin + lz * cos;
-      const y = root.position.y + ly;
-      const rotation = mesh.rotation;
-      root.removeChild(mesh);
-      setPos(mesh, x, y, z);
-      setUniformScale(mesh, view.scale);
-      setRot(mesh, rotation.x, rotation.y + view.yaw, rotation.z);
-      this.scene.addMesh(mesh);
-      const out = Math.atan2(z - enemy.pos.y, x - enemy.pos.x) + (Math.random() - 0.5) * 1.2;
-      const power = (gibbed ? 150 : 70) * (0.5 + Math.random());
-      flung.push({
-        mesh,
-        x, y, z,
-        vx: Math.cos(out) * power,
-        vy: (gibbed ? 200 : 110) * (0.6 + Math.random() * 0.8),
-        vz: Math.sin(out) * power,
-        spin: (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 7),
-        angle: rotation.z,
-        pitch: rotation.x,
-        landed: false,
-      });
-    }
-    view.gore = { flung, fell: 0 };
-    // a model with a death of its own plays it, blown apart or not
-    if (gibbed && !MONSTERS[enemy.type].die)
-      root.setInactive();
-  }
-
-  tickGore(view, enemy, dt) {
-    const { gore, root } = view;
-    for (const bit of gore.flung) {
-      if (bit.landed)
-        continue;
-      bit.vy -= BLOOD.gravity * dt;
-      bit.x += bit.vx * dt;
-      bit.y += bit.vy * dt;
-      bit.z += bit.vz * dt;
-      bit.angle += bit.spin * dt;
-      if (bit.y <= 3) {
-        // it lies flat where it lands, a quarter turn from upright
-        bit.landed = true;
-        bit.y = 3;
-        bit.angle = Math.round(bit.angle / (Math.PI / 2)) * (Math.PI / 2);
-        bit.pitch = 0;
-      }
-      setPos(bit.mesh, bit.x, bit.y, bit.z);
-      setRot(bit.mesh, bit.pitch, view.yaw, bit.angle);
-    }
-    if (enemy.gibbed)
-      return;
-    // what is left of the body falls over, or slumps to the floor
-    const k = Math.min(1, enemy.deadTime / 0.4);
-    const eased = 1 - (1 - k) * (1 - k);
-    if (view.death === 'topple') {
-      setRot(root, 0, view.yaw, eased * 1.45);
-      setPos(root, enemy.pos.x, view.lift * view.scale * (1 - eased), enemy.pos.y);
-    } else {
-      setScale(root, view.scale, view.scale * Math.max(0.15, 1 - eased * 0.85), view.scale);
-      setPos(root, enemy.pos.x, view.lift * view.scale * (1 - eased), enemy.pos.y);
-    }
+    MONSTERS[enemy.type].die(view, enemy);
   }
 
   buildPickup(pickup) {
-    const material = this.material('green');
-    let root;
-    if (pickup.type === 'health') {
-      root = this.lines(merge(
-        boxEdges(11, 14, 11, 0, 0, 0),
-        segment(5.6, 4, 0, 5.6, 10, 0), segment(5.6, 7, -3, 5.6, 7, 3),
-        segment(-5.6, 4, 0, -5.6, 10, 0), segment(-5.6, 7, -3, -5.6, 7, 3)
-      ), material);
-    } else {
-      root = this.lines(merge(boxEdges(5, 12, 5, 0, 0, -7), boxEdges(5, 12, 5, 0, 0, 0), boxEdges(5, 12, 5, 0, 0, 7)), material);
-    }
+    const { gl } = this;
+    const keyColor = pickup.type === 'redKey' ? 'red' : pickup.type === 'yellowKey' ? 'yellow' : pickup.type === 'blueKey' ? 'blue' : null;
+    const armorColor = pickup.type === 'greenArmor' ? 'green' : pickup.type === 'blueArmor' ? 'blue' : null;
+    const isSoulsphere = pickup.type === 'soulsphere';
+    const isBerserk = pickup.type === 'berserk';
+    const isRadsuit = pickup.type === 'radsuit';
+    const isHealth = pickup.type === 'health';
+    const isChainsaw = pickup.type === 'chainsaw';
+    const isShotgun = pickup.type === 'shotgun';
+    const isChaingun = pickup.type === 'chaingun';
+    const isRocket = pickup.type === 'rocket';
+    const isBullets = pickup.type === 'bullets';
+    const isRockets = pickup.type === 'rockets';
+    const atlas = keyColor
+      ? ((this.keycardPixels ??= {})[keyColor] ??= keycardAtlas(keyColor))
+      : armorColor
+        ? ((this.armorPixels ??= {})[armorColor] ??= armorAtlas(armorColor))
+        : isSoulsphere
+          ? (this.soulspherePixels ??= soulsphereAtlas())
+          : isBerserk
+            ? (this.berserkPixels ??= berserkAtlas())
+            : isRadsuit
+              ? (this.radsuitPixels ??= radsuitAtlas())
+              : isChainsaw
+                ? (this.chainsawTexture ??= chainsawAtlas())
+                : isShotgun
+                  ? (this.shotgunPixels ??= shotgunAtlas())
+                  : isChaingun
+                    ? (this.chaingunPixels ??= chaingunAtlas())
+                    : isRocket
+                      ? (this.rocketLauncherPixels ??= rocketLauncherAtlas())
+                      : isHealth
+                        ? (this.medikitPixels ??= medikitAtlas())
+                        : isBullets
+                          ? (this.bulletPixels ??= bulletAtlas())
+                          : isRockets
+                            ? (this.rocketAmmoPixels ??= rocketAmmoAtlas())
+                            : (this.ammoPixels ??= ammoAtlas());
+    const { vertices, uvs } = keyColor
+      ? keycardMesh()
+      : armorColor
+        ? armorMesh()
+        : isSoulsphere
+          ? soulsphereMesh()
+          : isBerserk
+            ? berserkMesh()
+            : isRadsuit
+              ? radsuitMesh()
+              : isChainsaw
+                ? chainsawMesh()
+                : isShotgun
+                  ? shotgunMesh()
+                  : isChaingun
+                    ? chaingunMesh()
+                    : isRocket
+                      ? rocketLauncherMesh()
+                      : isHealth
+                        ? medikitMesh()
+                        : isBullets
+                          ? bulletMesh()
+                          : isRockets
+                            ? rocketAmmoMesh()
+                            : ammoMesh();
+    const geometry = new CustomMesh();
+    geometry.vertices = vertices;
+    geometry.uvs = uvs;
+    geometry.setPrimitive('TRIANGLES');
+    const root = texturedMesh(gl, geometry, {
+      fragment: SOLID_TEXTURED_FRAGMENT,
+      atlas,
+      material: new Material({ diffuse: new Vec3(1, 1, 1) }),
+      textureOptions: { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST },
+    });
     this.scene.addMesh(root);
-    return { root };
+    return { root, spinSpeed: isChainsaw || isShotgun || isChaingun || isRocket ? 0.6 : 1.8 };
   }
 
   /** An oil drum: ribbed sides, a zig-zag hazard band, and a lid. It is orange because it hurts. */
@@ -1145,18 +1456,31 @@ export class World {
   }
 
   buildShot() {
-    const material = this.material('orange');
-    const root = this.lines(merge(octahedronEdges(7), segment(-11, 0, 0, 11, 0, 0), segment(0, 0, -11, 0, 0, 11)), material);
+    const atlas = (this.fireballPixels ??= fireballAtlas());
+    const material = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const root = this.sprite(atlas, material, 18, 18, {
+      anchor: 'center',
+      billboard: 'spherical',
+      depthBias: 6,
+      fragment: TEXTURED_FRAGMENT,
+    });
     this.scene.addMesh(root);
     return { root };
   }
 
   buildEffect(effect) {
-    // every effect is a sprite animation that faces the camera: fire for blasts, sparks for a pellet striking metal
+    // every effect is a sprite animation that faces the camera: fire for blasts, plasma for teleports, sparks for metal hits
     const spark = effect.type === 'spark';
     const boom = effect.type === 'boom';
-    const atlas = spark ? (this.impactPixels ??= impactAtlas()) : (this.explosionPixels ??= explosionAtlas());
-    const material = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const teleport = effect.type === 'teleport';
+    const atlas = spark
+      ? (this.impactPixels ??= impactAtlas())
+      : teleport
+        ? (this.teleportPixels ??= teleportAtlas())
+        : (this.explosionPixels ??= explosionAtlas());
+    const material = new Material({
+      diffuse: new Vec3(1, 1, 1),
+    });
     // a small depth bias keeps the sprite from z-fighting at its origin without projecting in front of the barrel
     const root = this.sprite(atlas, material, 1, 1, {
       anchor: boom ? 'bottom' : 'center',
@@ -1166,7 +1490,7 @@ export class World {
     });
     this.scene.addMesh(root);
     // each spark is one of several kinds, and it keeps it for its whole life
-    return { root, material, spark, boom, kind: Math.floor(Math.random() * SPARK_VARIANTS) };
+    return { root, material, spark, boom, teleport, kind: Rand.integer(0, SPARK_VARIANTS - 1) };
   }
 
   /** Create views for new entities, update live ones, drop the ones that are gone. `keep` filters the list. */
@@ -1186,9 +1510,6 @@ export class World {
     for (const [entity, view] of map) {
       if (view.stamp !== stamp) {
         this.discard(view.root);
-        // the bits that were thrown off a monster are meshes of their own
-        for (const bit of view.gore?.flung ?? [])
-          this.discard(bit.mesh);
         map.delete(entity);
       }
     }
@@ -1203,6 +1524,11 @@ export class World {
     const player = game.player;
     const time = game.time;
 
+    if (this.slimeMesh)
+      this.slimeMesh.setCustomUniform('time', time);
+    if (this.teleporterMesh)
+      this.teleporterMesh.setCustomUniform('time', time);
+
     for (const door of game.level.doors.values()) {
       const view = this.doorViews.get(door);
       const height = 1 - door.open;
@@ -1215,16 +1541,22 @@ export class World {
       this.syncDoorMarks(door, game.blood);
     }
 
+    for (const crusher of game.level.crushers) {
+      const view = this.crusherViews.get(crusher);
+      if (view)
+        setPos(view, crusher.center.x, crusher.low, crusher.center.y);
+    }
+
     this.syncViews(
       this.enemyViews,
       game.enemies,
       (enemy) => this.buildEnemy(enemy),
-      (enemy, view) => this.updateEnemy(enemy, view, player, time, game),
-      (enemy) => !(enemy.state === 'dead' && enemy.deadTime > 2.2)
+      (enemy, view) => this.updateEnemy(enemy, view, player, time, game)
     );
     this.syncViews(this.pickupViews, game.pickups, (pickup) => this.buildPickup(pickup), (pickup, view) => {
-      setPos(view.root, pickup.pos.x, 8 + Math.sin(time * 3 + pickup.phase) * 2.5, pickup.pos.y);
-      setRot(view.root, 0, time * 1.6 + pickup.phase, 0);
+      const bob = 1.5 + Math.sin(time * 3 + pickup.phase) * 1.2;
+      setPos(view.root, pickup.pos.x, bob, pickup.pos.y);
+      setRot(view.root, 0, time * view.spinSpeed + pickup.phase, 0);
     });
     this.syncViews(this.barrelViews, game.barrels, () => this.buildBarrel(), (barrel, view) => {
       // a barrel that has been set off flickers and shudders until it blows
@@ -1236,13 +1568,15 @@ export class World {
       setUniformScale(view.root, burning ? 1 + 0.05 * Math.sin(time * 90) : 1);
     }, (barrel) => !barrel.gone);
     this.syncViews(this.shotViews, game.shots, () => this.buildShot(), (shot, view) => {
+      view.root.setFrame(Math.floor((time * 18) % FIREBALL_FRAMES));
       setPos(view.root, shot.pos.x, EYE - 4, shot.pos.y);
-      setRot(view.root, 0, time * 6, 0);
+      const baseScale = shot.kind === 'rocket' ? 1.35 : 1;
+      setUniformScale(view.root, baseScale * (1 + 0.08 * Math.sin(time * 24)));
     });
     this.syncViews(this.effectViews, game.effects, (effect) => this.buildEffect(effect), (effect, view) => {
       const progress = Math.min(0.999, effect.age / effect.life);
       if (view.spark) {
-        const width = 15;
+        const width = 19;
         view.root.setFrame(IMPACT_CELLS.spark + view.kind * SPARK_FRAMES + Math.floor(progress * SPARK_FRAMES));
         setPos(view.root, effect.x, effect.z, effect.y);
         setUniformScale(view.root, width);
@@ -1261,7 +1595,12 @@ export class World {
     });
 
     this.updateCamera(game);
-    updateCeilingLights(this.ceilingLights, this.lightFixtures, this.camera.position, time);
+    this.updateKnife(game);
+    this.updateChainsaw(game);
+    this.updateChaingun(game);
+    this.updateShotgun(game);
+    this.updateRocketLauncher(game);
+    updateCeilingLights(this.ceilingLights, this.lightFixtures, this.camera.position, time, game);
     this.syncBlood(game.blood);
 
     const { gl } = this;
@@ -1282,14 +1621,297 @@ export class World {
     this.overlay.crisp.render(this.postCamera, time);
   }
 
+  /** Positions and animates the 3D textured chainsaw viewmodel in front of the player camera. */
+  updateChainsaw(game) {
+    const view = this.chainsawView;
+    if (!view)
+      return;
+    const player = game.player;
+    const visible = Boolean(player && player.weapon === 'chainsaw' && !game.cam && game.state !== 'dead' && !game.automap);
+    if (!visible) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+    const switchOffset = player.switchOffset ?? Math.min(1, (player.switchTimer ?? 0) / 0.22);
+    const attacking = Boolean(
+      player.attacking || (!player.dryFire && (player.switchTimer ?? 0) <= 0 && ((player.cooldown ?? 0) > 0 || player.triggerHeld))
+    );
+    const pose = chainsawPose(
+      {
+        time: game.time ?? 0,
+        bob: player.bob ?? 0,
+        moving: player.moving ?? 0,
+        recoil: player.recoil ?? 0,
+        switchOffset,
+        attacking,
+      },
+      view.pose
+    );
+
+    const cosA = Math.cos(player.angle);
+    const sinA = Math.sin(player.angle);
+    scratchForward.setScalar(cosA, 0, sinA);
+    scratchRight.setScalar(-sinA, 0, cosA);
+    scratchUp.setScalar(0, 1, 0);
+
+    scratchPos
+      .copy(this.camera.position)
+      .addScaledVector(scratchRight, pose.offset.x)
+      .addScaledVector(scratchUp, pose.offset.y)
+      .addScaledVector(scratchForward, pose.offset.z);
+    view.root.setPosition(scratchPos);
+
+    scratchRot.setScalar(0, Math.PI * 0.5 - player.angle + pose.rotation.y, 0);
+    scratchQuat.setFromEuler(scratchRot);
+    scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
+    scratchLocalQuat.setFromEuler(scratchRot);
+    scratchQuat.multiply(scratchLocalQuat);
+    view.root.setQuaternion(scratchQuat);
+
+    view.topChain.setPosition(pose.topChainPos);
+    view.bottomChain.setPosition(pose.bottomChainPos);
+    view.noseChain.setRotation(pose.noseChainRot);
+  }
+
+  /** Positions and animates the 3D textured chaingun viewmodel and its rotary 6-barrel cluster in front of the player camera. */
+  updateChaingun(game) {
+    const view = this.chaingunView;
+    if (!view)
+      return;
+    const player = game.player;
+    const visible = Boolean(player && player.weapon === 'chaingun' && !game.cam && game.state !== 'dead' && !game.automap);
+    if (!visible) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+    const switchOffset = player.switchOffset ?? Math.min(1, (player.switchTimer ?? 0) / 0.22);
+    const canSpin = !player.dryFire && (player.switchTimer ?? 0) <= 0;
+    const attacking = Boolean(
+      player.attacking || (canSpin && (player.cooldown ?? 0) > 0 && player.triggerHeld !== false)
+    );
+    const spinDown = canSpin ? Math.max(player.spinDown ?? 0, (player.cooldown ?? 0) > 0 ? 0.1 : 0) : 0;
+    const pose = chaingunPose(
+      {
+        time: game.time ?? 0,
+        bob: player.bob ?? 0,
+        moving: player.moving ?? 0,
+        recoil: player.recoil ?? 0,
+        switchOffset,
+        attacking,
+        spinDown,
+      },
+      view.pose
+    );
+
+    const flashBoost = attacking && (player.flash ?? 0) > 0 ? Math.min(1, player.flash / 0.08) * 0.38 : 0;
+    tintScratch.setScalar(1 + flashBoost, 1 + flashBoost * 0.78, 1 + flashBoost * 0.42);
+    view.material.setDiffuse(tintScratch);
+
+    const cosA = Math.cos(player.angle);
+    const sinA = Math.sin(player.angle);
+    scratchForward.setScalar(cosA, 0, sinA);
+    scratchRight.setScalar(-sinA, 0, cosA);
+    scratchUp.setScalar(0, 1, 0);
+
+    scratchPos
+      .copy(this.camera.position)
+      .addScaledVector(scratchRight, pose.offset.x)
+      .addScaledVector(scratchUp, pose.offset.y)
+      .addScaledVector(scratchForward, pose.offset.z);
+    view.root.setPosition(scratchPos);
+
+    scratchRot.setScalar(0, Math.PI * 0.5 - player.angle + pose.rotation.y, 0);
+    scratchQuat.setFromEuler(scratchRot);
+    scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
+    scratchLocalQuat.setFromEuler(scratchRot);
+    scratchQuat.multiply(scratchLocalQuat);
+    view.root.setQuaternion(scratchQuat);
+
+    view.rotor.setRotation(pose.rotorRot);
+  }
+
+  /** Positions and animates the 3D textured pump-action shotgun viewmodel, sliding forend, and spent shell ejection. */
+  updateShotgun(game) {
+    const view = this.shotgunView;
+    if (!view)
+      return;
+    const player = game.player;
+    const weapon = player?.weapon ?? 'shotgun';
+    const visible = Boolean(player && weapon === 'shotgun' && !game.cam && game.state !== 'dead' && !game.automap);
+    if (!visible) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+    const switchOffset = player.switchOffset ?? Math.min(1, (player.switchTimer ?? 0) / 0.22);
+    const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
+    const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? 1.05 - player.cooldown : -1;
+    const hasAmmo = (player.shells ?? player.ammo ?? 1) >= 1;
+    const pose = shotgunPose(
+      {
+        time: game.time ?? 0,
+        bob: player.bob ?? 0,
+        moving: player.moving ?? 0,
+        recoil: player.recoil ?? 0,
+        switchOffset,
+        elapsed,
+        hasAmmo,
+      },
+      view.pose
+    );
+
+    const flashBoost =
+      isFiring && ((player.flash ?? 0) > 0 || (elapsed >= 0 && elapsed < 0.1))
+        ? Math.max(Math.min(1, (player.flash ?? 0) / 0.1), elapsed >= 0 && elapsed < 0.1 ? 1 - elapsed / 0.1 : 0) * 0.45
+        : 0;
+    tintScratch.setScalar(1 + flashBoost, 1 + flashBoost * 0.78, 1 + flashBoost * 0.42);
+    view.material.setDiffuse(tintScratch);
+
+    const cosA = Math.cos(player.angle);
+    const sinA = Math.sin(player.angle);
+    scratchForward.setScalar(cosA, 0, sinA);
+    scratchRight.setScalar(-sinA, 0, cosA);
+    scratchUp.setScalar(0, 1, 0);
+
+    scratchPos
+      .copy(this.camera.position)
+      .addScaledVector(scratchRight, pose.offset.x)
+      .addScaledVector(scratchUp, pose.offset.y)
+      .addScaledVector(scratchForward, pose.offset.z);
+    view.root.setPosition(scratchPos);
+
+    scratchRot.setScalar(0, Math.PI * 0.5 - player.angle + pose.rotation.y, 0);
+    scratchQuat.setFromEuler(scratchRot);
+    scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
+    scratchLocalQuat.setFromEuler(scratchRot);
+    scratchQuat.multiply(scratchLocalQuat);
+    view.root.setQuaternion(scratchQuat);
+
+    view.pump.setPosition(pose.pumpPos);
+    view.arm.setPosition(pose.armPos);
+    view.arm.setRotation(pose.armRot);
+    view.shell.setPosition(pose.shellPos);
+    view.shell.setRotation(pose.shellRot);
+  }
+
+  /** Positions and animates the 3D textured rocket launcher viewmodel and its auto-loader chambered warhead. */
+  updateRocketLauncher(game) {
+    const view = this.rocketLauncherView;
+    if (!view)
+      return;
+    const player = game.player;
+    const visible = Boolean(player && player.weapon === 'rocket' && !game.cam && game.state !== 'dead' && !game.automap);
+    if (!visible) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+    const switchOffset = player.switchOffset ?? Math.min(1, (player.switchTimer ?? 0) / 0.22);
+    const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
+    const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? 0.78 - player.cooldown : -1;
+    const hasAmmo = (player.rockets ?? player.ammo ?? 1) >= 1;
+    const pose = rocketLauncherPose(
+      {
+        time: game.time ?? 0,
+        bob: player.bob ?? 0,
+        moving: player.moving ?? 0,
+        recoil: player.recoil ?? 0,
+        switchOffset,
+        elapsed,
+        hasAmmo,
+      },
+      view.pose
+    );
+
+    const flashBoost =
+      isFiring && ((player.flash ?? 0) > 0 || (elapsed >= 0 && elapsed < 0.14))
+        ? Math.max(Math.min(1, (player.flash ?? 0) / 0.12), elapsed >= 0 && elapsed < 0.14 ? 1 - elapsed / 0.14 : 0) * 0.5
+        : 0;
+    tintScratch.setScalar(1 + flashBoost, 1 + flashBoost * 0.78, 1 + flashBoost * 0.42);
+    view.material.setDiffuse(tintScratch);
+
+    const cosA = Math.cos(player.angle);
+    const sinA = Math.sin(player.angle);
+    scratchForward.setScalar(cosA, 0, sinA);
+    scratchRight.setScalar(-sinA, 0, cosA);
+    scratchUp.setScalar(0, 1, 0);
+
+    scratchPos
+      .copy(this.camera.position)
+      .addScaledVector(scratchRight, pose.offset.x)
+      .addScaledVector(scratchUp, pose.offset.y)
+      .addScaledVector(scratchForward, pose.offset.z);
+    view.root.setPosition(scratchPos);
+
+    scratchRot.setScalar(0, Math.PI * 0.5 - player.angle + pose.rotation.y, 0);
+    scratchQuat.setFromEuler(scratchRot);
+    scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
+    scratchLocalQuat.setFromEuler(scratchRot);
+    scratchQuat.multiply(scratchLocalQuat);
+    view.root.setQuaternion(scratchQuat);
+
+    view.warhead.setPosition(pose.warheadPos);
+  }
+
+  /** Positions and animates the 3D textured combat knife viewmodel held in the player's gloved right hand. */
+  updateKnife(game) {
+    const view = this.knifeView;
+    if (!view)
+      return;
+    const player = game.player;
+    const visible = Boolean(player && player.weapon === 'knife' && !game.cam && game.state !== 'dead' && !game.automap);
+    if (!visible) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+    const switchOffset = player.switchOffset ?? Math.min(1, (player.switchTimer ?? 0) / 0.22);
+    const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
+    const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? 0.3 - player.cooldown : -1;
+    const pose = knifePose(
+      {
+        time: game.time ?? 0,
+        bob: player.bob ?? 0,
+        moving: player.moving ?? 0,
+        recoil: player.recoil ?? 0,
+        switchOffset,
+        elapsed,
+        attack: player.knifeAttack ?? 'vertical',
+      },
+      view.pose
+    );
+
+    const cosA = Math.cos(player.angle);
+    const sinA = Math.sin(player.angle);
+    scratchForward.setScalar(cosA, 0, sinA);
+    scratchRight.setScalar(-sinA, 0, cosA);
+    scratchUp.setScalar(0, 1, 0);
+
+    scratchPos
+      .copy(this.camera.position)
+      .addScaledVector(scratchRight, pose.offset.x)
+      .addScaledVector(scratchUp, pose.offset.y)
+      .addScaledVector(scratchForward, pose.offset.z);
+    view.root.setPosition(scratchPos);
+
+    scratchRot.setScalar(0, Math.PI * 0.5 - player.angle + pose.rotation.y, 0);
+    scratchQuat.setFromEuler(scratchRot);
+    scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
+    scratchLocalQuat.setFromEuler(scratchRot);
+    scratchQuat.multiply(scratchLocalQuat);
+    view.root.setQuaternion(scratchQuat);
+  }
+
   /** The title screen's camera: placed, aimed, tilted and zoomed by the film, shaking with explosions. */
   updateFilmCamera(cam, game) {
     const { camera } = this;
     const shake = game.shake * 6;
     camera.position.setScalar(
-      cam.x + (Math.random() - 0.5) * shake,
-      cam.eye + (Math.random() - 0.5) * shake,
-      cam.y + (Math.random() - 0.5) * shake
+      cam.x + Rand.float(-0.5, 0.5) * shake,
+      cam.eye + Rand.float(-0.5, 0.5) * shake,
+      cam.y + Rand.float(-0.5, 0.5) * shake
     );
     camera.target.setScalar(cam.lookX, cam.lookEye, cam.lookY);
     // a roll tips "up" towards the viewer's right
@@ -1322,14 +1944,27 @@ export class World {
     const player = game.player;
     const dead = game.state === 'dead';
     const drop = dead ? Math.min(player.deadTime * 36, 24) : 0;
-    const bob = Math.sin(player.bob * 2) * 1.6 * player.moving;
+    const crouch = player.crouch ?? 0;
+    const bob = Math.sin(player.bob * 2) * 1.6 * player.moving * (1 - 0.35 * crouch);
     const shake = Math.max(player.hurt > 0 ? player.hurt * 5 : 0, game.shake * 6);
     const { camera } = this;
-    const eyeY = EYE - drop + bob;
+    const teleFlash = player.teleFlash ?? 0;
+    if (teleFlash > 0) {
+      const warp = Math.min(1, teleFlash / 0.65);
+      camera.fov = this.baseFov * (1 + warp * warp * 0.2);
+      camera.setProjectionMatrix(this.viewportSize);
+      this.teleWarped = true;
+    } else if (this.teleWarped) {
+      this.teleWarped = false;
+      camera.fov = this.baseFov;
+      camera.setProjectionMatrix(this.viewportSize);
+    }
+    const baseEye = player.eye ?? EYE;
+    const eyeY = Math.max(8, baseEye - drop) + bob;
     camera.position.setScalar(
-      player.pos.x + (Math.random() - 0.5) * shake,
-      eyeY + (Math.random() - 0.5) * shake,
-      player.pos.y + (Math.random() - 0.5) * shake
+      player.pos.x + Rand.float(-0.5, 0.5) * shake,
+      eyeY + Rand.float(-0.5, 0.5) * shake,
+      player.pos.y + Rand.float(-0.5, 0.5) * shake
     );
     camera.target.setScalar(
       camera.position.x + Math.cos(player.angle) * 100,

@@ -1,7 +1,7 @@
 import { CustomMesh, Material, Mesh, Scene, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { bloodAtlas } from './bloodsprites.js';
 import { faceAtlas } from './face.js';
-import { weaponAtlas } from './weapon.js';
+import { arsenalAtlas } from './weapon.js';
 
 const VERTEX = `
 attribute vec2 aVertexPosition;
@@ -184,7 +184,7 @@ class Layer {
     this.scene.addMesh(this.fills.mesh);
     this.scene.addMesh(this.lines.mesh);
     // the gun goes in before the blood, so blood on the glass is drawn over it
-    this.weapon = withWeapon ? new SpriteBuffer(gl, 1, weaponAtlas()) : null;
+    this.weapon = withWeapon ? new SpriteBuffer(gl, 1, arsenalAtlas()) : null;
     if (this.weapon)
       this.scene.addMesh(this.weapon.mesh);
     this.face = withWeapon ? new SpriteBuffer(gl, 1, faceAtlas()) : null;

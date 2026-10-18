@@ -50,49 +50,21 @@ Open <http://localhost:4173>.
 
 ## Docker
 
-### Development container (the default)
-
 ```sh
 docker compose up
 ```
 
-Open <http://localhost:5177>. The `doomr` service mounts the repository into a
-`node:22-alpine` container and runs the Vite dev server, so the page reloads
-by itself whenever you change a file. This is the default service, like the
-dev servers of the other projects' websites. Stop it with `docker compose down`.
-
-`scripts/dev-container.sh` is its entrypoint. It installs the dependencies into the
-`node_modules` volume (which keeps the host `node_modules` out of the container)
-on the first start and again whenever `package.json` or `package-lock.json`
-change, then starts Vite. A restart without changes skips the install. The
-install runs `npm i` in a temporary directory and copies the result over, because
-`npm ci` straight into a mounted volume fails with `EBUSY`, and installing in a
-temporary directory avoids modifying host files directly.
+Open <http://localhost:5177>. The `doomr` service mounts the repository and
+binds `node_modules` into a `node:22-alpine` container running the Vite
+dev server (`npm run dev`), so the page reloads automatically whenever you
+change a file. Stop it with `docker compose down`.
 
 Bind mounts do not forward file system events reliably, so the service sets
 `VITE_WATCH_POLLING=true` and `vite.config.js` turns on polling for the file
-watcher. Polling stays off when you run `npm run dev` on the host. To also drop
-the `node_modules` volume, use `docker compose down -v`.
+watcher. Polling stays off when you run `npm run dev` on the host.
 
 The host port is 5177, so DoomR.js can run next to the other projects, which use
 5173 and 5176.
-
-### Production image
-
-```sh
-docker compose --profile prod up --build
-```
-
-Open <http://localhost:8081>. The Dockerfile uses two stages:
-
-1. Node.js installs locked dependencies and runs the Vite build.
-2. nginx receives only the generated `dist/` files and serves them on port 80.
-
-The image contains a static snapshot of the build, so the container never picks
-up source changes on its own. Rerun `docker compose --profile prod up --build`
-after editing; without `--build` it reuses the previous image. The service
-belongs to a Compose profile, so stop it with `docker compose --profile prod down`
-(a plain `docker compose down` ignores profile services).
 
 ## Dependencies
 

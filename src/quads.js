@@ -28,14 +28,19 @@ vec3 surfaceLight(vec3 worldPos, float emissive) {
     if (i >= uNbLights)
       break;
     vec3 delta = uLightPosition[i] - worldPos;
-    float dist = length(delta);
+    float isCeilingFixture = step(54.0, uLightPosition[i].y);
+    float onCeiling = step(58.0, worldPos.y) * isCeilingFixture;
+    float verticalSpan = mix(delta.y, 62.0, onCeiling);
+    float dist = length(vec3(delta.x, verticalSpan, delta.z));
     vec3 att = uLightAttenuation[i];
-    float attenuation = 1.0 / max(att.x + att.y * dist + att.z * dist * dist, 0.0001);
-    float downward = worldPos.y > 58.0 ? 1.0 : clamp((uLightPosition[i].y - worldPos.y) / max(dist, 1.0), 0.0, 1.0);
-    float spread = 0.5 + 0.75 * downward * downward;
+    float shortRange = step(0.001, att.z);
+    float rangeCutoff = mix(1.0, 1.0 - smoothstep(75.0, 135.0, dist), shortRange);
+    float attenuation = rangeCutoff / max(att.x + att.y * dist + att.z * dist * dist, 0.0001);
+    float downward = clamp((uLightPosition[i].y - worldPos.y) / max(dist, 1.0), 0.0, 1.0);
+    float spread = mix(1.05, 0.5 + 0.75 * downward * downward, isCeilingFixture);
     total += uLightDiffuse[i] * (attenuation * spread);
   }
-  return mix(min(total, vec3(2.2)), max(total, vec3(1.35)), clamp(emissive, 0.0, 1.0));
+  return mix(min(total, vec3(2.5)), max(total, vec3(1.35)), clamp(emissive, 0.0, 1.0));
 }
 `;
 
@@ -111,6 +116,54 @@ void main(void) {
 }
 `;
 
+export const PARTICLE_VERTEX = `
+attribute vec3 aVertexPosition;
+attribute vec2 aTextureCoord;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+uniform mat4 uProjectionMatrix;
+varying float vDepth;
+varying vec2 vTextureCoord;
+varying vec3 vWorldPos;
+
+void main(void) {
+  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
+  vec4 v = uViewMatrix * world;
+  vDepth = -v.z;
+  v.z += min(vDepth * 0.45, 16.0 + vDepth * 0.02);
+  vTextureCoord = aTextureCoord;
+  vWorldPos = world.xyz;
+  gl_Position = uProjectionMatrix * v;
+}
+`;
+
+export const PARTICLE_FRAGMENT = `
+precision mediump float;
+uniform sampler2D uSampler;
+uniform vec3 uMaterialDiffuse;
+uniform int uHasFog;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
+varying float vDepth;
+varying vec2 vTextureCoord;
+varying vec3 vWorldPos;
+
+${LIGHT_GLSL}
+void main(void) {
+  vec4 texel = texture2D(uSampler, vTextureCoord);
+  if (texel.a < 0.5)
+    discard;
+  vec3 lit = mix(vec3(1.12), surfaceLight(vWorldPos, 0.85), 0.35);
+  vec3 color = texel.rgb * uMaterialDiffuse * lit;
+  if (uHasFog == 1) {
+    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+    color = mix(color, uFogColor, fade * 0.9);
+  }
+  gl_FragColor = vec4(color, ${SOLID_ALPHA.toFixed(1)});
+}
+`;
+
 /**
  * Many flat textured quads in one RoostR mesh, one draw call, refilled whenever they change. Decals on walls and floors
  * and particles that face the camera are all this: the caller works out the four corners of each in the world.
@@ -129,9 +182,8 @@ export class QuadBatch extends Mesh {
     super(gl, geometry);
     this.capacity = capacity;
     this.used = 0;
-    this.low = new Vec3();
-    this.high = new Vec3();
     this.bounds = new BoundingBox();
+    this.scratchPoint = new Vec3();
     this.addProgram(vertex, fragment, material);
     this.setTexture(atlas.data, { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions });
     this.setInactive();
@@ -139,8 +191,7 @@ export class QuadBatch extends Mesh {
 
   begin() {
     this.used = 0;
-    this.low.setScalar(Infinity, Infinity, Infinity);
-    this.high.setScalar(-Infinity, -Infinity, -Infinity);
+    this.bounds.makeEmpty();
     return this;
   }
 
@@ -165,13 +216,7 @@ export class QuadBatch extends Mesh {
   }
 
   measure(x, y, z) {
-    const { low, high } = this;
-    if (x < low.x) low.x = x;
-    if (y < low.y) low.y = y;
-    if (z < low.z) low.z = z;
-    if (x > high.x) high.x = x;
-    if (y > high.y) high.y = y;
-    if (z > high.z) high.z = z;
+    this.bounds.expandByPoint(this.scratchPoint.setScalar(x, y, z));
   }
 
   /** Sends what was filled to the GPU. An empty batch is not drawn. */
@@ -187,8 +232,7 @@ export class QuadBatch extends Mesh {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.uvs.subarray(0, this.used * 12));
     // frustum culling needs the size of what is in the buffer now, which RoostR cannot know
-    if (typeof this.setLocalBounds === 'function')
-      this.setLocalBounds(this.bounds.set(this.low, this.high));
+    this.setLocalBounds(this.bounds);
     this.setActive();
     return this;
   }

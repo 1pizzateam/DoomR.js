@@ -1,28 +1,20 @@
 services:
-  # The default service is the dev server: the sources are mounted and Vite reloads
-  # the page whenever one of them changes. Open http://localhost:5177
+
   doomr:
-    image: node:22-alpine
-    working_dir: /app
-    command: sh scripts/dev-container.sh
+    build: ./
+    container_name: doomr
     environment:
-      # Bind mounts do not forward file system events reliably, so Vite polls.
       VITE_WATCH_POLLING: "true"
     ports:
       - "5177:5173"
     volumes:
-      - .:/app
-      - node_modules:/app/node_modules
-
-  # The production image (Vite build served by nginx): `docker compose --profile prod up --build`
-  prod:
-    profiles:
-      - prod
-    build:
-      context: .
-    ports:
-      - "8081:80"
-    restart: unless-stopped
+      - ./:/usr/src/app
+      - doomr_node_modules:/usr/src/app/node_modules
 
 volumes:
-  node_modules:
+  doomr_node_modules:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/node_modules

@@ -205,3 +205,153 @@ export function explosionAtlas() {
   }
   return { name: 'explosion', data, width, height, cell: EXPLOSION_CELL, frames: EXPLOSION_FRAMES };
 }
+
+const TELE_WHITE = [236, 255, 248];
+const TELE_CYAN = [104, 255, 228];
+const TELE_GREEN = [56, 232, 148];
+const TELE_EMERALD = [24, 168, 98];
+const TELE_DEEP = [12, 88, 62];
+
+/**
+ * Classic Doom TFOG teleporter materialization frame at `t` (0..1): an 8-point star-flash tearing open into a
+ * swirling emerald-cyan plasma vortex with crackling lightning arcs and dissipating dimensional sparks.
+ */
+function drawTeleportFrame(t) {
+  const size = EXPLOSION_CELL;
+  const out = new Uint8Array(size * size * 4);
+  const put = (x, y, color) => {
+    x = Math.round(x);
+    y = Math.round(y);
+    if (x < 1 || y < 1 || x >= size - 1 || y >= size - 1)
+      return;
+    const o = (y * size + x) * 4;
+    out[o] = color[0];
+    out[o + 1] = color[1];
+    out[o + 2] = color[2];
+    out[o + 3] = 255;
+  };
+
+  const cx = 31.5;
+  const cy = 31.5;
+  const open = smooth(0, 0.28, t);
+  const fade = smooth(0.58, 1, t);
+  const dissolve = smooth(0.72, 1, t) * 0.94;
+  const spin = t * Math.PI * 3.4;
+
+  // 1. Swirling vertical plasma vortex body + concentric dimensional rings
+  const rx = (8 + 20 * open) * (1 - 0.22 * fade);
+  const ry = (11 + 22 * open) * (1 - 0.15 * fade);
+  for (let y = 2; y < size - 2; y++) {
+    for (let x = 2; x < size - 2; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const angle = Math.atan2(dy, dx);
+      const rNorm = Math.hypot(dx / rx, dy / ry);
+      const spiral =
+        1 +
+        0.18 * Math.sin(angle * 4 - spin + rNorm * 5.5) +
+        0.12 * Math.cos(angle * 6 + spin * 1.4 - rNorm * 4);
+      const d = rNorm / spiral;
+      if (d > 1)
+        continue;
+      if (hash(x, y, 31) < dissolve)
+        continue;
+
+      // Concentric plasma wave bands inside the vortex
+      const ringWave = 0.5 + 0.5 * Math.cos((d * 3.2 - t * 2.6) * Math.PI * 2);
+      const grain = (hash(x, y, 37) - 0.5) * 0.24;
+      const energy = (1 - d) * (1.15 - fade * 0.55) + ringWave * 0.28 * (1 - d * 0.6) + grain;
+
+      // Hollow out the outer band slightly as it fades so rings stand out clearly
+      if (t > 0.45 && energy < 0.24 + fade * 0.22 && hash(x, y, 41) < 0.65)
+        continue;
+
+      let color;
+      if (energy > 0.86)
+        color = TELE_WHITE;
+      else if (energy > 0.64)
+        color = TELE_CYAN;
+      else if (energy > 0.42)
+        color = TELE_GREEN;
+      else if (energy > 0.22)
+        color = TELE_EMERALD;
+      else
+        color = TELE_DEEP;
+      put(x, y, color);
+    }
+  }
+
+  // 2. Crackling radial plasma lightning tendrils whipping around the vortex
+  const boltCount = 12;
+  for (let b = 0; b < boltCount; b++) {
+    const baseAngle = (b / boltCount) * Math.PI * 2 + spin * (b % 2 === 0 ? 0.65 : -0.55);
+    const maxReach = (10 + 19 * open) * (0.7 + 0.3 * hash(b, 1, 53)) * (1 - 0.3 * fade);
+    const steps = Math.ceil(maxReach * 1.4);
+    for (let s = 2; s <= steps; s++) {
+      const frac = s / steps;
+      if (frac < fade * 0.45)
+        continue;
+      const jitter = (hash(b * 17 + s, Math.floor(t * 15), 59) - 0.5) * 0.42;
+      const a = baseAngle + Math.sin(frac * 6 + spin) * 0.22 + jitter;
+      const r = frac * maxReach;
+      const lx = cx + Math.cos(a) * r * 0.96;
+      const ly = cy + Math.sin(a) * r * 1.08;
+      put(lx, ly, frac < 0.45 ? TELE_WHITE : frac < 0.78 ? TELE_CYAN : TELE_GREEN);
+    }
+  }
+
+  // 3. Classic 8-point TFOG star-flash spikes (strongest on opening and on the final snap)
+  const starPulse = t < 0.32 ? 1 - t / 0.32 : t > 0.68 ? Math.sin(((t - 0.68) / 0.32) * Math.PI) * 0.75 : 0.25;
+  if (starPulse > 0.05) {
+    for (let k = 0; k < 8; k++) {
+      const cardinal = k % 2 === 0;
+      const a = (k * Math.PI) / 4;
+      const reach = (cardinal ? 27 : 19) * (0.45 + 0.55 * starPulse);
+      for (let r = 0; r <= reach; r += 0.65) {
+        const px = cx + Math.cos(a) * r;
+        const py = cy + Math.sin(a) * r;
+        const hot = r < reach * 0.48;
+        put(px, py, hot ? TELE_WHITE : TELE_CYAN);
+        if (cardinal && r < reach * 0.65) {
+          put(px - Math.sin(a), py + Math.cos(a), hot ? TELE_CYAN : TELE_GREEN);
+          put(px + Math.sin(a), py - Math.cos(a), hot ? TELE_CYAN : TELE_GREEN);
+        }
+      }
+    }
+  }
+
+  // 4. Orbiting plasma sparks & dimensional motes
+  for (let k = 0; k < 22; k++) {
+    const a = hash(k, 2, 71) * Math.PI * 2 + spin * (0.4 + hash(k, 3, 71) * 0.6);
+    const dist = (6 + hash(k, 4, 71) * 22) * (0.35 + 0.75 * Math.min(1, t * 1.6));
+    if (dist > 29)
+      continue;
+    const sx = cx + Math.cos(a) * dist;
+    const sy = cy + Math.sin(a) * dist * 1.05;
+    const bright = hash(k, Math.floor(t * 15), 73) > 0.45;
+    put(sx, sy, bright ? TELE_WHITE : TELE_GREEN);
+    if (bright) {
+      put(sx + 1, sy, TELE_CYAN);
+      put(sx - 1, sy, TELE_CYAN);
+      put(sx, sy + 1, TELE_CYAN);
+      put(sx, sy - 1, TELE_CYAN);
+    }
+  }
+
+  return out;
+}
+
+/** The 16-frame 1024x64 Doom TFOG teleporter plasma atlas as RGBA pixels. */
+export function teleportAtlas() {
+  const width = EXPLOSION_CELL * EXPLOSION_FRAMES;
+  const height = EXPLOSION_CELL;
+  const data = new Uint8Array(width * height * 4);
+  for (let frame = 0; frame < EXPLOSION_FRAMES; frame++) {
+    const picture = drawTeleportFrame(frame / (EXPLOSION_FRAMES - 1));
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < EXPLOSION_CELL; x++)
+        data.set(picture.subarray((y * EXPLOSION_CELL + x) * 4, (y * EXPLOSION_CELL + x) * 4 + 4), (y * width + frame * EXPLOSION_CELL + x) * 4);
+    }
+  }
+  return { name: 'teleport', data, width, height, cell: EXPLOSION_CELL, frames: EXPLOSION_FRAMES };
+}

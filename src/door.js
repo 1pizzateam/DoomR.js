@@ -18,6 +18,12 @@ const HAZARD = [150, 86, 30];
 const HAZARD_DARK = [22, 20, 26];
 const FRAME = [14, 18, 27];
 
+const LOCK_THEMES = {
+  red: { signal: [248, 36, 54], glow: [255, 118, 126], stripe: [196, 24, 38] },
+  yellow: { signal: [252, 198, 38], glow: [255, 236, 118], stripe: [196, 142, 22] },
+  blue: { signal: [58, 146, 255], glow: [138, 204, 255], stripe: [32, 96, 204] },
+};
+
 function bevel(t, x0, y0, w, h, rise = true) {
   const [a, b] = rise ? [LIGHT, SHADOW] : [SHADOW, LIGHT];
   for (let i = 0; i < w; i++) {
@@ -30,10 +36,10 @@ function bevel(t, x0, y0, w, h, rise = true) {
   }
 }
 
-function hazardStrip(t, x0, y0, w, h) {
+function hazardStrip(t, x0, y0, w, h, color = HAZARD) {
   for (let y = y0; y < y0 + h; y++) {
     for (let x = x0; x < x0 + w; x++)
-      t.set(x, y, Math.floor((x + y) / 4) % 2 ? HAZARD : HAZARD_DARK);
+      t.set(x, y, Math.floor((x + y) / 4) % 2 ? color : HAZARD_DARK);
   }
   for (let x = x0; x < x0 + w; x++) {
     t.set(x, y0, SHADOW, 0.7);
@@ -41,13 +47,17 @@ function hazardStrip(t, x0, y0, w, h) {
   }
 }
 
-function drawFace(rnd) {
+function drawFace(rnd, lockColor = null) {
+  const theme = lockColor ? LOCK_THEMES[lockColor] : null;
+  const sig = theme ? theme.signal : SIGNAL;
+  const slitGlow = theme ? theme.glow : GLOW;
+  const stripeColor = theme ? theme.stripe : HAZARD;
   const t = new Tile(SIZE, SIZE);
   plate(t, 0, 0, SIZE, SIZE, rnd, mix(METAL, FRAME, 0.4));
 
   // the frame: dark, with hazard striping across the top and the bottom
-  hazardStrip(t, 4, 3, 56, 7);
-  hazardStrip(t, 4, 54, 56, 7);
+  hazardStrip(t, 4, 3, 56, 7, stripeColor);
+  hazardStrip(t, 4, 54, 56, 7, stripeColor);
 
   // two leaves, each with a recessed panel, ribs and a viewing slit
   for (const x0 of [5, 33]) {
@@ -62,11 +72,11 @@ function drawFace(rnd) {
     // the viewing slit
     for (let y = 16; y < 24; y++) {
       for (let x = x0 + 5; x < x0 + 21; x++)
-        t.set(x, y, mix(SHADOW, GLOW, 0.14 + (y - 16) * 0.012));
+        t.set(x, y, mix(SHADOW, slitGlow, (theme ? 0.34 : 0.14) + (y - 16) * 0.018));
     }
     bevel(t, x0 + 4, 15, 18, 10, false);
     for (let x = x0 + 5; x < x0 + 21; x++)
-      t.set(x, 17, GLOW, 0.5);
+      t.set(x, 17, slitGlow, theme ? 0.85 : 0.5);
     rivet(t, x0 + 1, 13);
     rivet(t, x0 + 22, 13);
     rivet(t, x0 + 1, 47);
@@ -81,17 +91,31 @@ function drawFace(rnd) {
     t.set(33, y, LIGHT, 0.35);
   }
 
-  // status lights either side of the seam: the doors are the green of the things that help you
+  // status lights either side of the seam: green when unlocked, or blazing keycard color when locked
   for (const x of [28, 35]) {
-    for (let y = 26; y < 38; y++) {
-      t.set(x, y, SIGNAL, 0.95);
-      t.set(x + 1, y, SIGNAL, 0.5);
+    const y0 = theme ? 14 : 26;
+    const y1 = theme ? 50 : 38;
+    for (let y = y0; y < y1; y++) {
+      t.set(x, y, sig, 0.95);
+      t.set(x + 1, y, theme ? slitGlow : sig, theme ? 0.8 : 0.65);
       t.set(x - 1, y, SHADOW, 0.6);
     }
   }
-  for (const x of [8, 53]) {
-    t.rect(x, 54, 3, 2, SIGNAL, 0.9);
+  if (theme) {
+    // vertical keycard lock rails along the outer door jambs & central keycard reader escutcheon
+    for (const x of [2, 60]) {
+      for (let y = 12; y < 52; y++) {
+        t.set(x, y, sig, 0.92);
+        t.set(x + 1, y, slitGlow, 0.75);
+      }
+    }
+    t.rect(26, 27, 12, 10, SHADOW, 0.85);
+    bevel(t, 26, 27, 12, 10, false);
+    t.rect(28, 29, 8, 6, sig, 0.95);
+    t.rect(29, 30, 6, 2, slitGlow, 0.9);
   }
+  for (const x of [8, 53])
+    t.rect(x, 54, 3, 2, sig, 0.9);
   return t;
 }
 
@@ -109,11 +133,10 @@ function drawTop(rnd) {
   return t;
 }
 
-/** The atlas as RGBA pixels, ready to be a texture; its size is a power of two, so it can have mipmaps. */
-export function doorAtlas() {
+function buildDoorAtlas(name, lockColor = null) {
   const width = SIZE * DOOR_CELLS;
   const data = new Uint8Array(width * SIZE * 4);
-  [drawFace(mulberry32(555)), drawTop(mulberry32(777))].forEach((tile, cell) => {
+  [drawFace(mulberry32(555), lockColor), drawTop(mulberry32(777))].forEach((tile, cell) => {
     for (let y = 0; y < SIZE; y++) {
       for (let x = 0; x < SIZE; x++) {
         const i = (y * SIZE + x) * 3;
@@ -124,7 +147,17 @@ export function doorAtlas() {
       }
     }
   });
-  return { name: 'door', data, width, height: SIZE, cell: SIZE, frames: DOOR_CELLS };
+  return { name, data, width, height: SIZE, cell: SIZE, frames: DOOR_CELLS };
+}
+
+/** The atlas as RGBA pixels, ready to be a texture; its size is a power of two, so it can have mipmaps. */
+export function doorAtlas() {
+  return buildDoorAtlas('door', null);
+}
+
+/** Color-coded security door atlas ('red', 'yellow', or 'blue') with blazing keycard lock rails and status bars. */
+export function lockedDoorAtlas(color = 'red') {
+  return buildDoorAtlas(`${color}Door`, color);
 }
 
 /**
@@ -156,6 +189,36 @@ export function doorBox(size, height) {
   push([[-h, height, h], [h, height, h], [h, height, -h], [-h, height, -h]], DOOR_TOP);
   return { vertices, uvs };
 }
+
+/**
+ * A secret push-wall door disguised as a bulkhead wall panel (cell 0 of the 8-cell wall atlas).
+ */
+export function secretDoorBox(size, height, wallCells = 8) {
+  const h = size / 2;
+  const sides = [
+    [[-h, 0, h], [h, 0, h], [h, height, h], [-h, height, h]],
+    [[h, 0, -h], [-h, 0, -h], [-h, height, -h], [h, height, -h]],
+    [[h, 0, h], [h, 0, -h], [h, height, -h], [h, height, h]],
+    [[-h, 0, -h], [-h, 0, h], [-h, height, h], [-h, height, -h]],
+  ];
+  const vertices = [];
+  const uvs = [];
+  const push = (corners, cell) => {
+    const u0 = cell / wallCells;
+    const u1 = (cell + 1) / wallCells;
+    const inset = 0.25 / (SIZE * wallCells);
+    const uv = [[u0 + inset, 0], [u1 - inset, 0], [u1 - inset, 1], [u0 + inset, 1]];
+    for (const k of [0, 1, 2, 0, 2, 3]) {
+      vertices.push(...corners[k]);
+      uvs.push(...uv[k]);
+    }
+  };
+  for (const corners of sides)
+    push(corners, 0);
+  push([[-h, height, h], [h, height, h], [h, height, -h], [-h, height, -h]], 0);
+  return { vertices, uvs };
+}
+
 
 // ---- the shaders ---------------------------------------------------------------------------------------------------
 // The same rust as the floor, in many small patches, but worked out on the door itself (from where a point is on its
@@ -228,7 +291,8 @@ void main(void) {
   float grain = noise(texel / 3.0) * 0.6 + noise(texel / 1.3 + 40.0) * 0.4;
   float amount = area * mix(0.8, 0.3 + grain * 0.9, near);
   // the lights and the hazard stripes stay as they are
-  float lit = max(smoothstep(0.06, 0.2, steel.b - steel.r), smoothstep(0.06, 0.2, steel.g - steel.r));
+  float peak = max(steel.r, max(steel.g, steel.b));
+  float lit = max(max(smoothstep(0.06, 0.2, steel.b - steel.r), smoothstep(0.06, 0.2, steel.g - steel.r)), smoothstep(0.68, 0.85, peak));
   float hazard = smoothstep(0.1, 0.2, steel.r - steel.b);
   amount *= (1.0 - lit) * (1.0 - hazard * 0.6);
 

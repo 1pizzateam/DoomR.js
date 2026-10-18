@@ -1,3 +1,4 @@
+import { Utils } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 
 /**
@@ -8,11 +9,16 @@ import { mulberry32 } from './rng.js';
  */
 
 export const IMPACT_CELL = 32;
-export const IMPACT_CELL_COUNT = 32;
+export const IMPACT_CELL_COUNT = 64;
 export const HOLE_VARIANTS = 12;
+export const SLASH_VARIANTS = 6;
 export const SPARK_FRAMES = 5;
 export const SPARK_VARIANTS = 4;
-export const IMPACT_CELLS = { hole: 0, spark: HOLE_VARIANTS };
+export const IMPACT_CELLS = {
+  hole: 0,
+  spark: HOLE_VARIANTS,
+  slash: HOLE_VARIANTS + SPARK_FRAMES * SPARK_VARIANTS,
+};
 
 // marks stop this far short of the edge of a face, so none sits right on a corner
 const EDGE = 0.3;
@@ -54,7 +60,7 @@ class Cell {
   line(x0, y0, x1, y1, color, over = true) {
     const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 1.5) || 1;
     for (let i = 0; i <= steps; i++)
-      this.put(x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps, color, over);
+      this.put(Utils.lerp(x0, x1, i / steps), Utils.lerp(y0, y1, i / steps), color, over);
   }
 }
 
@@ -99,7 +105,7 @@ function crater(c, cx, cy, rx, ry, turn, { depth = 1, bare = true, rnd } = {}) {
 }
 
 function mix3(a, b, t) {
-  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  return [Utils.lerp(a[0], b[0], t), Utils.lerp(a[1], b[1], t), Utils.lerp(a[2], b[2], t)];
 }
 
 /** A crack that wanders, with side branches; `light` puts a thin lit edge beside it. */
@@ -248,19 +254,27 @@ function drawSpark(c, variant, frame) {
   const t = frame / (SPARK_FRAMES - 1);
   const rnd = mulberry32(900 + variant * 131);
   const fade = (life) => (t < life * 0.35 ? YELLOW : t < life * 0.7 ? ORANGE : EMBER);
-  // a spark is a point, with a tail of one pixel behind it while it is fast
+  // a spark has a small 2-pixel head and a short glowing tail behind it while it is fast
   const spark = (angle, speed, life, drop) => {
     if (t > life)
       return;
     const travel = t * speed;
     const x = mid + Math.cos(angle) * travel;
     const y = mid + Math.sin(angle) * travel + drop * t * t;
-    c.put(x, y, fade(life));
-    if (t < life * 0.5)
-      c.put(x - Math.cos(angle), y - Math.sin(angle) + drop * 0.1 * t, EMBER, false);
+    const col = fade(life);
+    c.put(x, y, col);
+    if (t < life * 0.75)
+      c.put(x + (Math.abs(Math.cos(angle)) > 0.5 ? 0 : 1), y + (Math.abs(Math.cos(angle)) > 0.5 ? 1 : 0), t < life * 0.35 ? ORANGE : EMBER, false);
+    if (t < life * 0.65) {
+      c.put(x - Math.cos(angle), y - Math.sin(angle) + drop * 0.1 * t, t < life * 0.35 ? ORANGE : EMBER, false);
+      if (t < life * 0.4)
+        c.put(x - Math.cos(angle) * 2, y - Math.sin(angle) * 2 + drop * 0.18 * t, EMBER, false);
+    }
   };
   const flash = (size, color) => {
     c.put(mid, mid, color);
+    for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]])
+      c.put(mid + dx, mid + dy, size > 1 ? YELLOW : ORANGE, false);
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       for (let d = 1; d <= size; d++)
         c.put(mid + dx * d, mid + dy * d, d === 1 ? FLASH : YELLOW);
@@ -268,37 +282,102 @@ function drawSpark(c, variant, frame) {
   };
   if (variant === 0) {
     if (frame === 0)
-      flash(2, FLASH);
+      flash(3, FLASH);
     else if (frame === 1)
-      flash(1, YELLOW);
+      flash(2, YELLOW);
     for (let k = 0; k < 6; k++)
       spark(rnd() * Math.PI * 2, 7 + rnd() * 7, 0.55 + rnd() * 0.4, 6);
   } else if (variant === 1) {
     if (frame === 0)
-      c.put(mid, mid, FLASH);
+      flash(2, FLASH);
+    else if (frame === 1)
+      flash(1, YELLOW);
     for (let k = 0; k < 7; k++)
       spark(Math.PI / 2 + (rnd() - 0.5) * 1.8, 4 + rnd() * 6, 0.5 + rnd() * 0.5, 12);
   } else if (variant === 2) {
-    if (frame < 2) {
-      // a glint: a bright point with a cross, smaller on the second frame
-      c.put(mid, mid, FLASH);
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
-        c.put(mid + dx, mid + dy, frame === 0 ? FLASH : YELLOW);
-      if (frame === 0) {
-        for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2]])
-          c.put(mid + dx, mid + dy, YELLOW);
-      }
-    }
-    for (let k = 0; k < 3; k++)
-      spark(rnd() * Math.PI * 2, 3 + rnd() * 4, 0.7 + rnd() * 0.3, 10);
+    // a glint: a bright point with a cross, smaller on the second frame
+    if (frame < 2)
+      flash(frame === 0 ? 3 : 2, frame === 0 ? FLASH : YELLOW);
+    for (let k = 0; k < 4; k++)
+      spark(rnd() * Math.PI * 2, 3.5 + rnd() * 4.5, 0.7 + rnd() * 0.3, 10);
   } else {
     // a ricochet: the sparks leave in a narrow cone to one side
     const heading = -0.5 + rnd() * 0.4 + (rnd() < 0.5 ? 0 : Math.PI - 0.4);
     if (frame === 0)
-      flash(1, FLASH);
+      flash(2, FLASH);
+    else if (frame === 1)
+      flash(1, YELLOW);
     for (let k = 0; k < 5; k++)
       spark(heading + (rnd() - 0.5) * 0.7, 9 + rnd() * 6, 0.5 + rnd() * 0.45, 5);
   }
+}
+
+/**
+ * A vertical chainsaw gash in steel: a deep, serrated vertical kerf chewed by the cutting chain teeth,
+ * with jagged bare-metal burrs along both lips, friction scorch, and optional parallel chain-skip scratches.
+ */
+function drawSlash(c, variant, rnd) {
+  const y0 = 3 + (variant % 2);
+  const y1 = IMPACT_CELL - 4 - ((variant + 1) % 2);
+  const tilt = (variant % 2 === 0 ? 1 : -1) * (0.05 + (variant % 3) * 0.045);
+  const curve = (variant % 3 === 1 ? 1 : -1) * 0.8;
+
+  for (let y = y0; y <= y1; y++) {
+    const t = (y - y0) / (y1 - y0);
+    const env = Math.sin(t * Math.PI);
+    const cx = mid + (y - mid) * tilt + Math.sin(t * Math.PI) * curve + (rnd() - 0.5) * 0.35;
+    const tooth = (y + variant) % 3 === 0;
+    const halfW = (0.75 + 0.85 * env) + (tooth ? 0.55 : 0);
+
+    // Friction scorch halo around the cut
+    if (y % 2 === 0) {
+      c.put(cx - halfW - 1.6, y, SCORCH, false);
+      c.put(cx + halfW + 1.6, y, SHADE, false);
+    }
+
+    // Lit left burr lip and shadowed right burr lip with serrated chain-tooth notches
+    c.put(cx - halfW - 0.7, y, tooth ? BARE : RIM);
+    if (tooth)
+      c.put(cx - halfW - 1.5, y, CHIP, false);
+    c.put(cx + halfW + 0.7, y, tooth ? RIM : SHADE);
+    if (tooth && (y + variant) % 2 === 0)
+      c.put(cx + halfW + 1.5, y, SCORCH, false);
+
+    // Deep vertical kerf trench in the steel
+    for (let dx = -halfW; dx <= halfW; dx += 0.45)
+      c.put(cx + dx, y, Math.abs(dx) < halfW * 0.55 ? CHAR : CRACK);
+  }
+
+  // Secondary parallel chain-skip scratch on variants 1 and 3
+  if (variant === 1 || variant === 3) {
+    const side = variant === 1 ? 3.4 : -3.4;
+    const sy0 = y0 + 4;
+    const sy1 = y1 - 3;
+    for (let y = sy0; y <= sy1; y++) {
+      const sx = mid + side + (y - mid) * tilt;
+      c.put(sx, y, CRACK);
+      if (y % 2 === 0)
+        c.put(sx - 1, y, RIM, false);
+    }
+  }
+
+  // Double-bite overlapping vertical chatter notch on variant 3
+  if (variant === 3) {
+    for (let y = y0 + 2; y <= y1 - 5; y++) {
+      const sx = mid + 1.6 - (y - mid) * tilt * 0.7;
+      c.put(sx, y, CHAR);
+      c.put(sx + 1, y, BARE, false);
+    }
+  }
+
+  // Stress cracks branching sideways from the vertical gash on variants 4 and 5
+  if (variant >= 4) {
+    crack(c, rnd, mid - 1, mid - 3, Math.PI + (rnd() - 0.5) * 0.5, 4, true, 0);
+    crack(c, rnd, mid + 1, mid + 3, (rnd() - 0.5) * 0.5, 4, true, 0);
+  }
+
+  // Shaved metal flecks thrown out at the bottom of the vertical cut
+  flecks(c, rnd, mid + (y1 - mid) * tilt, y1 - 1, 3, 1.5, 4.5);
 }
 
 /** The atlas as RGBA pixels, ready to be a texture. */
@@ -309,8 +388,12 @@ export function impactAtlas() {
     const c = new Cell();
     if (cell < HOLE_VARIANTS)
       drawHole(c, cell, mulberry32(2024 + cell * 7919));
-    else if (cell < HOLE_VARIANTS + SPARK_FRAMES * SPARK_VARIANTS)
+    else if (cell < IMPACT_CELLS.slash)
       drawSpark(c, Math.floor((cell - HOLE_VARIANTS) / SPARK_FRAMES), (cell - HOLE_VARIANTS) % SPARK_FRAMES);
+    else if (cell < IMPACT_CELLS.slash + SLASH_VARIANTS) {
+      const slashIdx = cell - IMPACT_CELLS.slash;
+      drawSlash(c, slashIdx, mulberry32(4096 + slashIdx * 6151));
+    }
     for (let y = 0; y < IMPACT_CELL; y++) {
       for (let x = 0; x < IMPACT_CELL; x++)
         data.set(c.pixels.subarray((y * IMPACT_CELL + x) * 4, (y * IMPACT_CELL + x) * 4 + 4), (y * width + cell * IMPACT_CELL + x) * 4);
@@ -325,14 +408,16 @@ export function impactCellUv(cell) {
 }
 
 /**
- * A bullet hole on a wall face, as a flat quad just in front of it. The quad is cut where it would leave the face (the
+ * A bullet hole or chainsaw slash on a wall face, as a flat quad just in front of it. The quad is cut where it would leave the face (the
  * face runs `lo` and `hi` along its tangent, and from the floor to `top`), and the picture is cut with it, so no hole
  * hangs in the air past a corner or above a low wall. Null when nothing of it is left on the face.
  * (nx, ny) is the face normal in the game plane, z the height of the hit.
  */
-export function holeQuad({ x, y, z, nx, ny, top, seed, lo = -Infinity, hi = Infinity }) {
+export function holeQuad({ x, y, z, nx, ny, top, seed, kind = 'hole', lo = -Infinity, hi = Infinity }) {
   const rnd = mulberry32(seed);
-  const variant = Math.floor(rnd() * HOLE_VARIANTS);
+  const cell = kind === 'slash'
+    ? IMPACT_CELLS.slash + Math.floor(rnd() * SLASH_VARIANTS)
+    : IMPACT_CELLS.hole + Math.floor(rnd() * HOLE_VARIANTS);
   const half = HOLE_SIZE / 2;
   const cu0 = Math.max(-half, lo + EDGE);
   const cu1 = Math.min(half, hi - EDGE);
@@ -342,8 +427,8 @@ export function holeQuad({ x, y, z, nx, ny, top, seed, lo = -Infinity, hi = Infi
     return null;
   const tx = -ny;
   const ty = nx;
-  const at = (u, v) => [x + tx * u + nx * 0.5, z + v, y + ty * u + ny * 0.5];
-  const [a0, b0, a1, b1] = impactCellUv(IMPACT_CELLS.hole + variant);
+  const at = (u, v) => [x + tx * u + nx * 0.25, z + v, y + ty * u + ny * 0.25];
+  const [a0, b0, a1, b1] = impactCellUv(cell);
   const share = (v, from, to) => (v - from) / (to - from);
   return {
     corners: [...at(cu0, cv0), ...at(cu1, cv0), ...at(cu1, cv1), ...at(cu0, cv1)],

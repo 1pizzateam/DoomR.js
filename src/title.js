@@ -1,4 +1,4 @@
-import { Vec2 } from '@1pizzateam/spock';
+import { Utils, Vec2 } from '@1pizzateam/spock';
 
 /**
  * The title screen's film: a loop of slow camera shots through the real first level, with its monsters breathing
@@ -8,22 +8,22 @@ import { Vec2 } from '@1pizzateam/spock';
  * Positions are in the game plane (x, y), heights are eye heights. `look` is the point the camera watches.
  */
 export const SHOTS = [
-  // two imps, then the barrel next to them goes up
-  { duration: 10, from: [150, 560, 30], to: [410, 575, 26], look: [[544, 608, 30], [544, 608, 34]], zoom: [1, 0.9], roll: 0.02, boom: 5.2 },
-  // the brute, filmed from below so it towers
-  { duration: 8, from: [1000, 520, 15], to: [1150, 540, 11], look: [[1376, 608, 38], [1376, 608, 44]], zoom: [1, 0.82], roll: -0.05 },
-  // two barrels on the far side of the hall
-  { duration: 7, from: [1100, 470, 34], to: [1200, 470, 30], look: [[1376, 416, 12], [1376, 416, 14]], zoom: [1, 0.9], roll: 0.03 },
-  // a skull floating in the south room
-  { duration: 8, from: [640, 990, 30], to: [760, 975, 34], look: [[928, 928, 44], [928, 928, 40]], zoom: [0.95, 0.85], roll: -0.03 },
-  // low to the floor, a crawler ahead
-  { duration: 8, from: [760, 1120, 13], to: [640, 1132, 11], look: [[416, 1184, 12], [416, 1184, 12]], zoom: [1, 0.85], roll: 0.06 },
+  // two imps in the West Command Hall, then the barrel next to them goes up
+  { duration: 10, from: [150, 544, 30], to: [410, 544, 26], look: [[576, 672, 30], [576, 672, 34]], zoom: [1, 0.9], roll: 0.02, boom: 5.2 },
+  // the brute in the Central Courtyard, filmed from below so it towers
+  { duration: 8, from: [1440, 1184, 15], to: [1620, 1184, 11], look: [[1504, 1376, 38], [1504, 1376, 44]], zoom: [1, 0.82], roll: -0.05 },
+  // barrels and imps in the North Hub gallery
+  { duration: 7, from: [1820, 416, 34], to: [1980, 416, 30], look: [[2144, 544, 18], [2144, 544, 22]], zoom: [1, 0.9], roll: 0.03 },
+  // a skull floating in the South-West Ambush Hall
+  { duration: 8, from: [480, 1568, 30], to: [640, 1568, 34], look: [[672, 1632, 44], [672, 1632, 40]], zoom: [0.95, 0.85], roll: -0.03 },
+  // low to the floor, a crawler ahead in the South Pillar Gallery
+  { duration: 8, from: [760, 1824, 13], to: [600, 1824, 11], look: [[160, 1696, 12], [160, 1696, 12]], zoom: [1, 0.85], roll: 0.06 },
 ];
 
 const FADE = 0.7;
 // where the extra barrel stands: a few steps from the imps
 const BARREL_AT = [610, 640];
-const mix = (a, b, t) => a + (b - a) * t;
+const mix = Utils.lerp;
 
 export class TitleDirector {
   constructor(game) {
@@ -88,7 +88,7 @@ export class TitleDirector {
         game.updateEnemy(enemy, dt);
     }
 
-    const u = Math.min(1, this.t / shot.duration);
+    const u = Utils.clamp(this.t / shot.duration, 0, 1);
     const e = u * 0.6 + u * u * (3 - 2 * u) * 0.4; // mostly steady, easing slightly at both ends
     const sway = Math.sin(game.time * 0.8 + this.shot) * 1.4;
     game.cam = {
@@ -101,6 +101,6 @@ export class TitleDirector {
       roll: shot.roll + Math.sin(game.time * 0.5) * 0.015,
       zoom: mix(shot.zoom[0], shot.zoom[1], e),
     };
-    game.fade = 1 - Math.min(1, Math.min(this.t, shot.duration - this.t) / FADE);
+    game.fade = 1 - Utils.clamp(Math.min(this.t, shot.duration - this.t) / FADE, 0, 1);
   }
 }

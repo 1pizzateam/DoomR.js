@@ -1,3 +1,5 @@
+import { RollingAverage } from '@1pizzateam/spock';
+
 /**
  * Adaptive resolution: renders the 3D view at a fraction of the screen when the GPU cannot keep up.
  * Dropping is quick, rising is slow, and a level that failed right after a rise is never tried again,
@@ -17,8 +19,7 @@ export class Quality {
     this.scales = scales;
     this.level = 0;
     this.ceiling = 0; // sharpest level still allowed
-    this.sum = 0;
-    this.count = 0;
+    this.window = new RollingAverage(WINDOW);
     this.fastTime = 0;
     this.clock = 0;
     this.lastRise = -Infinity;
@@ -30,14 +31,15 @@ export class Quality {
 
   /** Feed one frame time. Returns the new scale when it changed, otherwise null. */
   update(dt) {
-    if (dt <= 0 || dt > IGNORE_ABOVE) return null;
+    if (dt <= 0 || dt > IGNORE_ABOVE)
+      return null;
     this.clock += dt;
-    this.sum += dt;
-    if (++this.count < WINDOW) return null;
+    this.window.push(dt);
+    if (this.window.count < WINDOW)
+      return null;
 
-    const average = this.sum / this.count;
-    this.sum = 0;
-    this.count = 0;
+    const average = this.window.average;
+    this.window.reset();
 
     if (average > SLOW && this.level < this.scales.length - 1) {
       if (this.clock - this.lastRise < FAILED_WITHIN)

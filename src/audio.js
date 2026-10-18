@@ -8,10 +8,13 @@
  * of it should go to the room reverb. They also run in an OfflineAudioContext, which is
  * how they are checked for silence, clipping and clicks.
  */
+import { Rand, Utils, Vec2 } from '@1pizzateam/spock';
 import { Music } from './music.js';
 
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-const rand = (min, max) => min + Math.random() * (max - min);
+const clamp = Utils.clamp;
+const rand = Rand.float;
+const scratchDelta = new Vec2();
+const scratchRight = new Vec2();
 
 /**
  * Where a sound at (x, y) is heard from a listener at (x, y) looking along `angle`.
@@ -19,10 +22,10 @@ const rand = (min, max) => min + Math.random() * (max - min);
  * direction. In the game's plane, "right" of a viewer looking along `angle` is (-sin, cos).
  */
 export function spatial(listener, x, y, { reference = 220, range = 1000 } = {}) {
-  const dx = x - listener.x;
-  const dy = y - listener.y;
-  const distance = Math.hypot(dx, dy);
-  const side = distance < 1 ? 0 : (dx * -Math.sin(listener.angle) + dy * Math.cos(listener.angle)) / distance;
+  scratchDelta.setScalar(x - listener.x, y - listener.y);
+  const distance = scratchDelta.getMagnitude();
+  scratchRight.setScalar(-Math.sin(listener.angle), Math.cos(listener.angle));
+  const side = distance < 1 ? 0 : scratchDelta.dotProduct(scratchRight) / distance;
   // a source right on top of the listener has no direction, so ease the pan in
   const pan = clamp(side * Math.min(1, distance / 70), -1, 1) * 0.9;
   const gain = distance > range ? 0 : 1 / (1 + (distance / reference) ** 2);
@@ -39,7 +42,7 @@ function noiseBuffer(ctx) {
     buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i++)
-      data[i] = Math.random() * 2 - 1;
+      data[i] = Rand.float(-1, 1);
     noiseBuffers.set(ctx, buffer);
   }
   return buffer;
@@ -52,15 +55,15 @@ function envelope(param, t, attack, peak, duration) {
   param.exponentialRampToValueAtTime(0.0001, t + duration);
 }
 
-const shapers = new WeakMap();
+const shaperCurves = new Map();
 
 function shaper(ctx, drive) {
-  let curve = shapers.get(ctx);
+  let curve = shaperCurves.get(drive);
   if (!curve) {
     curve = new Float32Array(1024);
     for (let i = 0; i < curve.length; i++)
       curve[i] = Math.tanh(((i / (curve.length - 1)) * 2 - 1) * drive);
-    shapers.set(ctx, curve);
+    shaperCurves.set(drive, curve);
   }
   const node = ctx.createWaveShaper();
   node.curve = curve;
@@ -125,7 +128,7 @@ function noise(ctx, out, t, { duration, gain, filter = 'lowpass', from, to = fro
   source.connect(biquad);
   biquad.connect(level);
   level.connect(out);
-  source.start(t, Math.random() * 0.8);
+  source.start(t, Rand.float(0, 0.8));
   source.stop(t + duration + 0.05);
 }
 
@@ -438,6 +441,252 @@ export const RECIPES = {
     tone(ctx, out, t + 0.33, { from: 2093, duration: 0.5, gain: 0.06 });
     return { duration: 1, wet: 0.5 };
   },
+  secret(ctx, out, t) {
+    arpeggio(ctx, out, t, [440, 554, 659, 880], { spacing: 0.08, length: 0.22, gain: 0.2 });
+    tone(ctx, out, t + 0.24, { from: 1760, duration: 0.35, gain: 0.07 });
+    return { duration: 0.7, wet: 0.45 };
+  },
+  tallyTick(ctx, out, t) {
+    noise(ctx, out, t, { duration: 0.035, gain: 0.22, filter: 'highpass', from: 2600 });
+    tone(ctx, out, t, { type: 'square', from: 980, to: 420, duration: 0.04, gain: 0.15 });
+    tone(ctx, out, t, { type: 'triangle', from: 220, to: 95, duration: 0.045, gain: 0.2 });
+    return { duration: 0.08, wet: 0.1 };
+  },
+  tallyBoom(ctx, out, t) {
+    noise(ctx, out, t, { duration: 0.28, gain: 0.38, from: 5200, to: 320 });
+    tone(ctx, out, t, { from: 140, to: 36, duration: 0.28, gain: 0.42 });
+    tone(ctx, out, t, { type: 'triangle', from: 76, to: 28, duration: 0.32, gain: 0.28 });
+    return { duration: 0.4, wet: 0.4 };
+  },
+  acid(ctx, out, t) {
+    noise(ctx, out, t, { duration: 0.28, gain: 0.32, filter: 'bandpass', from: 3200, to: 1100, q: 2.2, attack: 0.015 });
+    tone(ctx, out, t, { type: 'sawtooth', from: 260, to: 115, duration: 0.22, gain: 0.14, filter: { freq: 950 } });
+    return { duration: 0.32, wet: 0.2 };
+  },
+  crush(ctx, out, t) {
+    tone(ctx, out, t, { from: 95, to: 26, duration: 0.42, gain: 0.52 });
+    tone(ctx, out, t, { type: 'sawtooth', from: 68, to: 32, duration: 0.35, gain: 0.18, filter: { freq: 240 } });
+    noise(ctx, out, t, { duration: 0.26, gain: 0.38, from: 1800, to: 140 });
+    return { duration: 0.48, wet: 0.45 };
+  },
+  keycard(ctx, out, t) {
+    arpeggio(ctx, out, t, [587, 880, 1175, 1760], { spacing: 0.055, length: 0.16, gain: 0.2, type: 'triangle' });
+    tone(ctx, out, t + 0.16, { type: 'sine', from: 1760, to: 2349, duration: 0.22, gain: 0.14 });
+    return { duration: 0.46, wet: 0.35 };
+  },
+  locked(ctx, out, t) {
+    tone(ctx, out, t, { type: 'sawtooth', from: 130, to: 118, duration: 0.11, gain: 0.28, filter: { freq: 420 } });
+    tone(ctx, out, t + 0.14, { type: 'sawtooth', from: 112, to: 96, duration: 0.14, gain: 0.3, filter: { freq: 380 } });
+    noise(ctx, out, t, { duration: 0.06, gain: 0.16, from: 700, to: 240 });
+    return { duration: 0.34, wet: 0.2 };
+  },
+  chainsaw(ctx, out, t, { pitch = 1, hit = false } = {}) {
+    const load = hit ? 0.84 : 1;
+    const base = 184 * pitch * load;
+    // Continuous waveshaped 2-stroke engine roar with rapid piston-firing FM flutter
+    tone(ctx, out, t, {
+      type: 'sawtooth',
+      from: base,
+      to: base * (hit ? 0.93 : 1.06),
+      duration: 0.19,
+      gain: 0.2,
+      attack: 0.003,
+      drive: 6,
+      filter: { freq: 1950 },
+      vibrato: { rate: 42, depth: 34 },
+    });
+    // Resonant tin-can muffler upper harmonic bark (classic Doom chainsaw scream)
+    tone(ctx, out, t, {
+      type: 'sawtooth',
+      from: base * 2,
+      to: base * (hit ? 1.85 : 2.12),
+      duration: 0.18,
+      gain: 0.18,
+      attack: 0.003,
+      drive: 5,
+      filter: { type: 'bandpass', from: 1120, to: hit ? 980 : 1420, q: 2.4 },
+      vibrato: { rate: 46, depth: 54 },
+    });
+    // Sub-octave crankcase rumble
+    tone(ctx, out, t, {
+      type: 'square',
+      from: base * 0.5,
+      to: base * 0.52,
+      duration: 0.18,
+      gain: 0.14,
+      attack: 0.003,
+      drive: 4,
+      filter: { freq: 680 },
+    });
+    // Rapid 2-stroke cylinder combustion pops + steel chain-teeth clatter across the 140ms cycle
+    for (let i = 0; i < 6; i++) {
+      const dt = t + i * 0.025;
+      const jitter = (i & 1) ? 1.06 : 0.95;
+      tone(ctx, out, dt, {
+        type: 'sawtooth',
+        from: base * 1.12 * jitter,
+        to: base * 0.74,
+        duration: 0.028,
+        gain: 0.16,
+        attack: 0.002,
+        drive: 6,
+        filter: { freq: 2200 },
+      });
+      noise(ctx, out, dt, {
+        duration: 0.024,
+        gain: hit ? 0.2 : 0.14,
+        filter: 'bandpass',
+        from: hit ? 2200 : 2850,
+        to: 1650,
+        q: 3.2,
+      });
+    }
+    noise(ctx, out, t, { duration: 0.17, gain: 0.14, filter: 'bandpass', from: 2400, to: 3100, q: 2.6 });
+    return { duration: 0.22, wet: 0.18 };
+  },
+  chainsawIdle(ctx, out, t, { pitch = 1 } = {}) {
+    // Uneven 2-stroke "four-stroking" idle putter: 4 distinct cylinder pops per 140ms cycle
+    const lope = [1, 0.92, 1.05, 0.89];
+    for (let i = 0; i < 4; i++) {
+      const dt = t + i * 0.035;
+      const p = pitch * lope[i];
+      tone(ctx, out, dt, {
+        type: 'sawtooth',
+        from: 96 * p,
+        to: 62 * p,
+        duration: 0.034,
+        gain: 0.11,
+        attack: 0.002,
+        drive: 5,
+        filter: { freq: 1250 },
+      });
+      tone(ctx, out, dt, {
+        type: 'square',
+        from: 48 * p,
+        to: 33 * p,
+        duration: 0.032,
+        gain: 0.07,
+        attack: 0.002,
+        filter: { freq: 440 },
+      });
+      noise(ctx, out, dt, {
+        duration: 0.024,
+        gain: 0.07,
+        filter: 'bandpass',
+        from: 1400 * p,
+        to: 850,
+        q: 2.6,
+      });
+    }
+    return { duration: 0.16, wet: 0.1 };
+  },
+  chainsawUp(ctx, out, t, { pitch = 1 } = {}) {
+    // Pull-cord starter coughs followed by a vicious 2-stroke throttle rev
+    for (let i = 0; i < 3; i++) {
+      const dt = t + i * 0.028;
+      const step = (74 + i * 26) * pitch;
+      tone(ctx, out, dt, {
+        type: 'sawtooth',
+        from: step * 1.15,
+        to: step * 0.8,
+        duration: 0.03,
+        gain: 0.16,
+        attack: 0.002,
+        drive: 5,
+        filter: { freq: 1500 },
+      });
+    }
+    tone(ctx, out, t + 0.075, {
+      type: 'sawtooth',
+      from: 118 * pitch,
+      to: 228 * pitch,
+      duration: 0.22,
+      gain: 0.22,
+      attack: 0.008,
+      drive: 6,
+      filter: { freq: 2100 },
+      vibrato: { rate: 38, depth: 30 },
+    });
+    tone(ctx, out, t + 0.075, {
+      type: 'sawtooth',
+      from: 236 * pitch,
+      to: 456 * pitch,
+      duration: 0.2,
+      gain: 0.15,
+      attack: 0.008,
+      drive: 5,
+      filter: { type: 'bandpass', from: 820, to: 1480, q: 2.4 },
+      vibrato: { rate: 42, depth: 46 },
+    });
+    tone(ctx, out, t + 0.24, {
+      type: 'sawtooth',
+      from: 210 * pitch,
+      to: 98 * pitch,
+      duration: 0.14,
+      gain: 0.16,
+      attack: 0.004,
+      drive: 5,
+      filter: { freq: 1400 },
+      vibrato: { rate: 30, depth: 22 },
+    });
+    noise(ctx, out, t + 0.06, { duration: 0.28, gain: 0.14, filter: 'bandpass', from: 1900, to: 2700, q: 2.5 });
+    return { duration: 0.42, wet: 0.2 };
+  },
+  knife(ctx, out, t, { pitch = 1 } = {}) {
+    // Fast air-slicing combat blade whoosh: low-mid air displacement + high-edge whistle
+    noise(ctx, out, t, { duration: 0.15, gain: 0.44, filter: 'bandpass', from: 520 * pitch, to: 1750 * pitch, q: 1.3, attack: 0.02 });
+    noise(ctx, out, t + 0.03, { duration: 0.14, gain: 0.38, filter: 'bandpass', from: 2100 * pitch, to: 440 * pitch, q: 1.6, attack: 0.015 });
+    noise(ctx, out, t + 0.015, { duration: 0.1, gain: 0.22, filter: 'highpass', from: 2800 * pitch, to: 1200 * pitch, attack: 0.012 });
+    tone(ctx, out, t + 0.012, { type: 'sine', from: 320 * pitch, to: 130 * pitch, duration: 0.13, gain: 0.14, attack: 0.018 });
+    return { duration: 0.22, wet: 0.12 };
+  },
+  chaingun(ctx, out, t, { pitch = 1 } = {}) {
+    noise(ctx, out, t, { duration: 0.08, gain: 0.38, from: 5200, to: 420 });
+    tone(ctx, out, t, { from: 140 * pitch, to: 46 * pitch, duration: 0.11, gain: 0.42 });
+    noise(ctx, out, t + 0.02, { duration: 0.06, gain: 0.18, filter: 'bandpass', from: 2600, to: 1400, q: 3 });
+    return { duration: 0.18, wet: 0.3 };
+  },
+  rocketFire(ctx, out, t) {
+    tone(ctx, out, t, { from: 120, to: 32, duration: 0.34, gain: 0.46 });
+    noise(ctx, out, t, { duration: 0.38, gain: 0.38, from: 2800, to: 220, attack: 0.01 });
+    noise(ctx, out, t + 0.04, { duration: 0.32, gain: 0.22, filter: 'bandpass', from: 1600, to: 480, q: 1.8 });
+    return { duration: 0.46, wet: 0.45 };
+  },
+  weaponPickup(ctx, out, t) {
+    noise(ctx, out, t, { duration: 0.06, gain: 0.26, filter: 'bandpass', from: 1800, to: 900, q: 3 });
+    noise(ctx, out, t + 0.09, { duration: 0.08, gain: 0.3, filter: 'bandpass', from: 2400, to: 1200, q: 3 });
+    arpeggio(ctx, out, t + 0.04, [330, 440, 659], { spacing: 0.055, length: 0.16, gain: 0.22, type: 'triangle' });
+    return { duration: 0.36, wet: 0.25 };
+  },
+  weaponSwitch(ctx, out, t) {
+    noise(ctx, out, t, { duration: 0.05, gain: 0.22, filter: 'bandpass', from: 2100, to: 900, q: 3.5 });
+    tone(ctx, out, t + 0.03, { type: 'triangle', from: 240, to: 360, duration: 0.08, gain: 0.18 });
+    return { duration: 0.16, wet: 0.1 };
+  },
+  armor(ctx, out, t) {
+    noise(ctx, out, t, { duration: 0.09, gain: 0.34, filter: 'bandpass', from: 1900, to: 850, q: 2.2 });
+    tone(ctx, out, t, { type: 'triangle', from: 165, to: 110, duration: 0.14, gain: 0.32 });
+    arpeggio(ctx, out, t + 0.05, [392, 523, 784], { spacing: 0.055, length: 0.18, gain: 0.22, type: 'triangle' });
+    return { duration: 0.38, wet: 0.25 };
+  },
+  powerup(ctx, out, t) {
+    arpeggio(ctx, out, t, [330, 494, 659, 988, 1319], { spacing: 0.065, length: 0.24, gain: 0.22, type: 'triangle' });
+    tone(ctx, out, t, { type: 'sine', from: 165, to: 660, duration: 0.48, gain: 0.2, vibrato: { rate: 9, depth: 18 } });
+    noise(ctx, out, t + 0.04, { duration: 0.36, gain: 0.16, filter: 'bandpass', from: 900, to: 3200, q: 2.2, attack: 0.04 });
+    return { duration: 0.62, wet: 0.5 };
+  },
+  automap(ctx, out, t) {
+    tone(ctx, out, t, { type: 'triangle', from: 640, to: 960, duration: 0.07, gain: 0.2 });
+    tone(ctx, out, t + 0.045, { type: 'sine', from: 960, to: 1280, duration: 0.08, gain: 0.16 });
+    return { duration: 0.16, wet: 0.12 };
+  },
+  teleport(ctx, out, t) {
+    tone(ctx, out, t, { type: 'sawtooth', from: 110, to: 880, duration: 0.42, gain: 0.2, filter: { freq: 2200 }, vibrato: { rate: 18, depth: 36 } });
+    tone(ctx, out, t + 0.03, { type: 'sine', from: 92, to: 38, duration: 0.34, gain: 0.32 });
+    noise(ctx, out, t, { duration: 0.38, gain: 0.22, filter: 'bandpass', from: 480, to: 3400, q: 2.6, attack: 0.015 });
+    arpeggio(ctx, out, t + 0.05, [294, 440, 587, 880], { spacing: 0.055, length: 0.18, gain: 0.16, type: 'triangle' });
+    return { duration: 0.52, wet: 0.55 };
+  },
 };
 
 /** Render one recipe offline: used to check that it is audible, does not clip and ends cleanly. */
@@ -481,6 +730,24 @@ const MIN_INTERVAL = {
   clang: 0.04,
   doorOpen: 0.2,
   doorClose: 0.2,
+  tallyTick: 0.04,
+  tallyBoom: 0.08,
+  acid: 0.18,
+  crush: 0.15,
+  keycard: 0.08,
+  locked: 0.2,
+  knife: 0.06,
+  chainsaw: 0.08,
+  chainsawIdle: 0.09,
+  chainsawUp: 0.12,
+  chaingun: 0.07,
+  rocketFire: 0.12,
+  weaponPickup: 0.08,
+  weaponSwitch: 0.06,
+  armor: 0.08,
+  powerup: 0.08,
+  automap: 0.05,
+  teleport: 0.08,
 };
 
 /** Which recipes an event plays, and whether it is a sound in the world or one in the player's head. */
@@ -489,6 +756,21 @@ function route(event) {
   const voice = event.kind ? event.kind[0].toUpperCase() + event.kind.slice(1) : 'Imp';
   switch (event.type) {
     case 'fire': return [{ name: 'fire', local: true }, ...(event.pump ? [{ name: 'pump', local: true, delay: 0.44 }] : [])];
+    case 'knife': return [{ name: 'knife', local: true, pitch: true }];
+    case 'chainsaw': return [{ name: 'chainsaw', local: true, pitch: true, params: { hit: Boolean(event.hit) } }];
+    case 'chainsawIdle': return [{ name: 'chainsawIdle', local: true, pitch: true }];
+    case 'chainsawUp': return [{ name: 'chainsawUp', local: true, pitch: true }];
+    case 'chaingun': return [{ name: 'chaingun', local: true, pitch: true }];
+    case 'rocketFire': return [{ name: 'rocketFire', local: true }];
+    case 'weaponPickup': return [{ name: 'weaponPickup', local: true }];
+    case 'weaponSwitch':
+      return event.weapon === 'chainsaw'
+        ? [{ name: 'weaponSwitch', local: true }, { name: 'chainsawUp', local: true, pitch: true }]
+        : [{ name: 'weaponSwitch', local: true }];
+    case 'armor': return [{ name: 'armor', local: true }];
+    case 'powerup': return [{ name: 'powerup', local: true }];
+    case 'automap': return [{ name: 'automap', local: true }];
+    case 'teleport': return [{ name: 'teleport' }];
     case 'dry': return [{ name: 'dry', local: true }];
     case 'impact': return [{ name: event.surface === 'door' ? 'impactDoor' : 'impactWall' }];
     case 'flesh': return [{ name: 'flesh' }];
@@ -514,6 +796,13 @@ function route(event) {
     case 'doorClose': return [{ name: 'doorClose' }];
     case 'step': return [{ name: event.wet ? 'stepWet' : 'step', pitch: true }];
     case 'clear': return [{ name: 'clear', local: true }];
+    case 'secret': return [{ name: 'secret', local: true }];
+    case 'tallyTick': return [{ name: 'tallyTick', local: true, pitch: true }];
+    case 'tallyBoom': return [{ name: 'tallyBoom', local: true }];
+    case 'acid': return [{ name: 'acid', local: true }];
+    case 'crush': return [{ name: 'crush' }];
+    case 'keycard': return [{ name: 'keycard', local: true }];
+    case 'locked': return [{ name: 'locked' }];
     default: return [];
   }
 }
@@ -525,6 +814,17 @@ function readMuted() {
     return false;
   }
 }
+
+export const LEVEL_MUSIC = ['play', 'metal', 'horror', 'boss'];
+
+export const MUSIC_TRACKS = [
+  { mode: 'play', label: 'Music: E1M1 Ambient' },
+  { mode: 'metal', label: 'Music: E1M2 Industrial Metal' },
+  { mode: 'horror', label: 'Music: E1M3 Horror Metal' },
+  { mode: 'boss', label: 'Music: E1M4 Boss Finale' },
+  { mode: 'title', label: 'Music: Intro Theme' },
+  { mode: 'off', label: 'Music: Off' },
+];
 
 export class Sound {
   constructor() {
@@ -538,14 +838,16 @@ export class Sound {
     this.volume = 0.8;
     this.lastPlayed = new Map();
     this.scene = 'title';
+    this.currentLevel = 0;
+    this.musicPreference = 'auto';
   }
 
-  /** Browsers only allow audio after a user gesture: call this from key and pointer handlers. */
+  /** Try to start or resume Web Audio immediately on load and on any user interaction. */
   unlock() {
     if (!this.ctx)
       this.build();
     if (this.ctx?.state === 'suspended' && this.scene !== 'paused')
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
   }
 
   build() {
@@ -571,7 +873,7 @@ export class Sound {
     for (let channel = 0; channel < 2; channel++) {
       const data = impulse.getChannelData(channel);
       for (let i = 0; i < length; i++)
-        data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** 2.5;
+        data[i] = Rand.float(-1, 1) * (1 - i / length) ** 2.5;
     }
     this.reverb = ctx.createConvolver();
     this.reverb.buffer = impulse;
@@ -581,8 +883,8 @@ export class Sound {
     reverbLevel.connect(this.master);
 
     this.buildAmbient();
-    this.music = new Music(ctx, this.master, this.reverb);
-    this.setScene(this.scene);
+    this.music = new Music(ctx, this.master);
+    this.setScene(this.scene, this.currentLevel);
   }
 
   /** A low, slowly breathing drone under everything while you play. */
@@ -618,10 +920,31 @@ export class Sound {
     this.listener.angle = angle;
   }
 
+  /**
+   * Resolve which soundtrack mode should play for the given scene and level:
+   * - By default ('auto'):
+   *   - Title & Intermission play 'title' (Intro Theme)
+   *   - Level 1 (E1M1) plays 'play' (Ambient)
+   *   - Level 2 (E1M2) plays 'metal' (Industrial Metal)
+   *   - Level 3 (E1M3) plays 'horror' (Horror Metal)
+   *   - Level 4 (E1M4) plays 'boss' (Boss Finale)
+   * - Pressing M cycles through all tracks + Off anytime.
+   */
+  effectiveMusicMode(state = this.scene, level = this.currentLevel) {
+    if (this.musicPreference !== 'auto')
+      return this.musicPreference;
+    if (state === 'title' || state === 'cleared')
+      return 'title';
+    return LEVEL_MUSIC[level] ?? 'metal';
+  }
+
   /** Follow the game state: the drone plays while the game does, and everything stops while paused. */
-  setScene(state, level = 0) {
+  setScene(state, level = this.currentLevel) {
     const changed = state !== this.scene;
+    if (level !== this.currentLevel && this.musicPreference !== 'off')
+      this.musicPreference = 'auto';
     this.scene = state;
+    this.currentLevel = level;
     const { ctx } = this;
     if (!ctx)
       return;
@@ -631,10 +954,27 @@ export class Sound {
       return;
     }
     if (changed && ctx.state === 'suspended')
-      ctx.resume();
+      this.ctx.resume();
     const playing = state === 'play' || state === 'dead' || state === 'cleared';
     this.ambient.gain.setTargetAtTime(playing ? 0.05 : 0, ctx.currentTime, 0.6);
-    this.music.setLevel(state === 'play' ? 0.3 : state === 'title' ? 0.3 : state === 'dead' ? 0.12 : 0, state === 'title' ? 'title' : level > 0 ? 'metal' : 'play');
+    const musicMode = this.effectiveMusicMode(state, level);
+    if (musicMode === 'off') {
+      this.music.setLevel(0, 'play');
+      return;
+    }
+    const musicLevel = state === 'play' || state === 'title' ? 0.3 : state === 'cleared' ? 0.25 : state === 'dead' ? 0.12 : 0;
+    this.music.setLevel(musicLevel, musicMode);
+  }
+
+  /** Cycle through all soundtracks + Off (M key): E1M1 Ambient -> E1M2 Industrial Metal -> E1M3 Horror Metal -> E1M4 Boss Finale -> Intro Theme -> Off. */
+  toggleMusic(level = this.currentLevel) {
+    this.currentLevel = level;
+    const active = this.effectiveMusicMode('play', level);
+    const idx = MUSIC_TRACKS.findIndex((t) => t.mode === active);
+    const next = MUSIC_TRACKS[(idx + 1) % MUSIC_TRACKS.length];
+    this.musicPreference = next.mode;
+    this.setScene(this.scene, this.currentLevel);
+    return next.label;
   }
 
   setMuted(muted) {

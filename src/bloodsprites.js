@@ -12,7 +12,16 @@ import { mulberry32 } from './rng.js';
 export const CELL = 32;
 export const FLOOR_VARIANTS = 6;
 export const WALL_VARIANTS = 4;
-export const CELLS = { floor: 0, wall: FLOOR_VARIANTS, printFilled: FLOOR_VARIANTS + WALL_VARIANTS, printOutline: FLOOR_VARIANTS + WALL_VARIANTS + 1, drop: FLOOR_VARIANTS + WALL_VARIANTS + 2, gib: FLOOR_VARIANTS + WALL_VARIANTS + 3, dripStem: FLOOR_VARIANTS + WALL_VARIANTS + 4 };
+export const GIB_VARIANTS = 5;
+export const CELLS = {
+  floor: 0,
+  wall: FLOOR_VARIANTS,
+  printFilled: FLOOR_VARIANTS + WALL_VARIANTS,
+  printOutline: FLOOR_VARIANTS + WALL_VARIANTS + 1,
+  drop: FLOOR_VARIANTS + WALL_VARIANTS + 2,
+  gib: FLOOR_VARIANTS + WALL_VARIANTS + 3,
+  dripStem: FLOOR_VARIANTS + WALL_VARIANTS + 3 + GIB_VARIANTS,
+};
 // the kinds of drip: how its stem looks and how it ends. The stems come first, then the tips.
 export const STEM_KINDS = 6;
 export const TIP_KINDS = 4;
@@ -23,42 +32,48 @@ const CELL_COUNT = CELLS.tips + TIP_KINDS;
 // marks stop this far short of the edge of a face, so none sits right on a corner
 const EDGE = 0.3;
 const RED = [232, 16, 44];
+const BONE = [238, 172, 138];
 
 class Canvas {
   constructor() {
     this.light = new Float32Array(CELL * CELL);
+    this.bone = new Uint8Array(CELL * CELL);
   }
 
-  put(x, y, light) {
+  put(x, y, light, isBone = 0) {
     x = Math.round(x);
     y = Math.round(y);
-    if (x >= 0 && y >= 0 && x < CELL && y < CELL && light > this.light[y * CELL + x])
+    if (x >= 0 && y >= 0 && x < CELL && y < CELL && light > this.light[y * CELL + x]) {
       this.light[y * CELL + x] = light;
+      this.bone[y * CELL + x] = isBone;
+    }
   }
 
   /** Overwrites, for where an outline must stay dark inside a bright shape. */
-  set(x, y, light) {
+  set(x, y, light, isBone = 0) {
     x = Math.round(x);
     y = Math.round(y);
-    if (x >= 0 && y >= 0 && x < CELL && y < CELL)
+    if (x >= 0 && y >= 0 && x < CELL && y < CELL) {
       this.light[y * CELL + x] = light;
+      this.bone[y * CELL + x] = isBone;
+    }
   }
 
-  line(x0, y0, x1, y1, light) {
+  line(x0, y0, x1, y1, light, isBone = 0) {
     const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 1.5) || 1;
     for (let i = 0; i <= steps; i++)
-      this.put(x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps, light);
+      this.put(x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps, light, isBone);
   }
 
   /** A blob: dim inside, bright rim, optionally a bright highlight. */
-  blob(cx, cy, radius, light = 0.9) {
+  blob(cx, cy, radius, light = 0.9, isBone = 0) {
     for (let y = Math.floor(cy - radius - 1); y <= Math.ceil(cy + radius + 1); y++) {
       for (let x = Math.floor(cx - radius - 1); x <= Math.ceil(cx + radius + 1); x++) {
         const d = Math.hypot(x - cx, y - cy);
         if (d <= radius - 0.9)
-          this.put(x, y, (x + y) % 2 ? light * 0.36 : light * 0.24);
+          this.put(x, y, (x + y) % 2 ? light * 0.36 : light * 0.24, isBone);
         else if (d <= radius + 0.2)
-          this.put(x, y, light);
+          this.put(x, y, light, isBone);
       }
     }
   }
@@ -171,9 +186,32 @@ function drawPrint(c, filled) {
 }
 
 function drawDrop(c) {
-  c.blob(mid, mid, 6, 0.95);
-  c.put(mid - 2, mid - 2, 1);
-  c.put(mid - 1, mid - 3, 1);
+  c.polygon(
+    [
+      [mid - 9, mid - 3],
+      [mid - 4, mid - 10],
+      [mid + 3, mid - 9],
+      [mid + 10, mid - 4],
+      [mid + 9, mid + 4],
+      [mid + 3, mid + 10],
+      [mid - 5, mid + 9],
+      [mid - 10, mid + 3],
+    ],
+    0.98,
+    0.72
+  );
+  c.blob(mid, mid, 6.2, 0.96, 0);
+  c.blob(mid - 1.5, mid - 1.5, 3.8, 1.0, 0);
+  c.line(mid - 12, mid - 5, mid + 12, mid + 5, 0.92, 0);
+  c.line(mid - 6, mid + 12, mid + 7, mid - 12, 0.9, 0);
+  c.blob(mid + 9, mid - 8, 2.8, 0.95, 0);
+  c.blob(mid - 9, mid + 7, 2.6, 0.92, 0);
+  c.blob(mid + 7, mid + 9, 2.4, 0.9, 0);
+  c.blob(mid - 8, mid - 9, 2.2, 0.9, 0);
+  c.put(mid - 2, mid - 2, 1, 0);
+  c.put(mid - 1, mid - 2, 1, 0);
+  c.put(mid - 2, mid - 1, 1, 0);
+  c.put(mid - 1, mid - 1, 1, 0);
 }
 
 // A drip is a stem running down and a small tip at its end. The stems are drawn to repeat every 32 pixels top to bottom,
@@ -196,19 +234,19 @@ const STEMS = [
       c.put(16, y, y % 5 === 0 ? 0.3 : 0.55);
     }
   },
-  // a ribbon: six wide, thick and wet
+  // a ribbon: four wide, sleek and wet
   (c) => {
     for (let y = 0; y < CELL; y++)
-      edged(c, 13, 18, y);
+      edged(c, 14, 17, y);
   },
-  // wavy: three wide, swaying from side to side as it runs
+  // wavy: two wide, swaying from side to side as it runs
   (c) => {
     for (let y = 0; y < CELL; y++) {
-      const x = Math.round(15.5 + 2 * Math.sin((y / 32) * Math.PI * 2));
-      edged(c, x - 1, x + 1, y);
+      const x = Math.round(15 + 1.5 * Math.sin((y / 32) * Math.PI * 2));
+      edged(c, x, x + 1, y);
     }
   },
-  // beaded: a thread with a bead of blood every ten pixels or so
+  // beaded: a thread with a small bead of blood every ten pixels or so
   (c) => {
     for (let y = 0; y < CELL; y++) {
       c.put(15, y, 0.9);
@@ -216,30 +254,28 @@ const STEMS = [
     }
     for (const by of [5, 16, 27]) {
       for (let dy = -2; dy <= 2; dy++) {
-        const half = dy === 0 ? 3 : Math.abs(dy) === 1 ? 2 : 1;
+        const half = dy === 0 ? 2 : 1;
         edged(c, 15 - half + 1, 16 + half - 1, by + dy);
       }
     }
   },
-  // dry-brush: five wide and broken, where the blood did not quite cover the steel
+  // dry-brush: four wide and broken, where the blood did not quite cover the steel
   (c) => {
     for (let y = 0; y < CELL; y++) {
-      for (let x = 13; x <= 17; x++) {
-        const gap = ((y * 5 + x * 3) % 9) < 3 && x > 13 && x < 17;
+      for (let x = 14; x <= 17; x++) {
+        const gap = ((y * 5 + x * 3) % 9) < 3 && x > 14 && x < 17;
         if (!gap)
-          c.put(x, y, x === 13 || x === 17 ? 0.9 : (x + y) % 2 ? 0.5 : 0.32);
+          c.put(x, y, x === 14 || x === 17 ? 0.9 : (x + y) % 2 ? 0.5 : 0.32);
       }
     }
   },
-  // a double: two threads side by side, joined here and there
+  // a double: two thin threads side by side, joined here and there
   (c) => {
     for (let y = 0; y < CELL; y++) {
-      c.put(13, y, 0.9);
-      c.put(14, y, 0.4);
-      c.put(18, y, 0.9);
-      c.put(17, y, 0.4);
+      c.put(14, y, 0.9);
+      c.put(17, y, 0.9);
       if (y % 16 === 7 || y % 16 === 8) {
-        for (let x = 14; x <= 17; x++)
+        for (let x = 15; x <= 16; x++)
           c.put(x, y, 0.55);
       }
     }
@@ -249,9 +285,9 @@ const STEMS = [
 // The ends of a drip, each a list of rows as [first column, width] from column 14, with the stem ending at the top.
 const TIP_SHAPES = [
   // a sliver: a narrow teardrop with a point
-  [[1, 2], [1, 2], [0, 4], [0, 4], [0, 4], [1, 2], [1, 2], [1, 1]],
+  [[1, 2], [1, 2], [1, 3], [1, 3], [1, 2], [1, 2], [1, 1], [1, 1]],
   // a slant: leaning to one side as it dries
-  [[0, 3], [0, 3], [1, 3], [1, 3], [2, 2], [2, 1]],
+  [[1, 2], [1, 2], [1, 2], [2, 2], [2, 2], [2, 1]],
   // a needle: the stem simply thins to a point
   [[1, 2], [1, 2], [1, 2], [1, 2], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1]],
   // frayed: handled apart, it splits into threads of different lengths
@@ -278,18 +314,81 @@ function drawTip(c, kind) {
   }
 }
 
-/** A chunk of meat: ragged, with a bright rim and a darker middle. */
-function drawGib(c, rnd) {
-  const points = [];
-  const sides = 8;
-  for (let i = 0; i < sides; i++) {
-    const angle = (i / sides) * Math.PI * 2;
-    const radius = 6 + rnd() * 6;
-    points.push([mid + Math.cos(angle) * radius, mid + Math.sin(angle) * radius]);
+/**
+ * Five gruesome gib variants for XDeath carnage:
+ * 0: Jagged torn chunk of striated muscle & protruding bone
+ * 1: Shattered ribcage arc with 3 curved white ribs & bloody spine column
+ * 2: Cracked demon skull / jawbone fragment with jagged teeth
+ * 3: Ruptured organ / eyeball with trailing optic nerve & blood clots
+ * 4: Severed clawed limb / mangled meat slab with bone stump
+ */
+function drawGib(c, variant, rnd) {
+  if (variant === 0) {
+    const points = [];
+    const sides = 8;
+    for (let i = 0; i < sides; i++) {
+      const angle = (i / sides) * Math.PI * 2;
+      const radius = 6.5 + rnd() * 6;
+      points.push([mid + Math.cos(angle) * radius, mid + Math.sin(angle) * radius]);
+    }
+    c.polygon(points, 1, 0.45, true);
+    c.line(mid - 5, mid - 2, mid + 6, mid + 3, 0.95, 1);
+    c.line(mid - 5, mid - 1, mid + 6, mid + 4, 0.85, 1);
+    c.line(mid - 2, mid + 4, mid + 4, mid - 4, 0.8);
+  } else if (variant === 1) {
+    // shattered ribcage with spine and 3 curved white ribs soaked in gore
+    c.blob(mid, mid, 8.5, 0.88);
+    for (let dy = -8; dy <= 8; dy++) {
+      c.put(mid - 6, mid + dy, 0.96, 1);
+      c.put(mid - 5, mid + dy, 0.88, 1);
+    }
+    for (const ry of [-6, 0, 6]) {
+      for (let t = 0; t <= 14; t++) {
+        const rx = mid - 5 + t;
+        const y = mid + ry + Math.sin((t / 14) * Math.PI) * 2.4;
+        c.put(rx, y, 0.96, 1);
+        c.put(rx, y + 1, 0.82, 1);
+      }
+    }
+  } else if (variant === 2) {
+    // cracked demon jawbone / skull shard with jagged teeth
+    c.blob(mid, mid + 1, 8.2, 0.86);
+    c.polygon([[7, 10], [24, 9], [22, 16], [11, 22], [6, 17]], 0.96, 0.55);
+    for (let x = 8; x <= 23; x++) {
+      c.put(x, 10, 0.96, 1);
+      c.put(x, 11, 0.9, 1);
+      c.put(x, 12, 0.82, 1);
+    }
+    for (const tx of [9, 13, 17, 21]) {
+      for (let ty = 13; ty <= 18; ty++) {
+        c.put(tx, ty, 0.98, 1);
+        if (ty < 17)
+          c.put(tx + 1, ty, 0.85, 1);
+      }
+    }
+  } else if (variant === 3) {
+    // ruptured eyeball / organ with trailing arterial nerve cord
+    c.blob(mid - 2, mid - 2, 7.2, 0.92);
+    c.blob(mid - 2.5, mid - 2.5, 4.2, 0.96, 1);
+    c.blob(mid - 3, mid - 3, 1.8, 0.45, 0);
+    for (let i = 0; i <= 12; i++) {
+      const tx = mid + 2 + i * 0.85;
+      const ty = mid + 2 + i * 0.75 + Math.sin(i * 0.7) * 1.5;
+      c.blob(tx, ty, Math.max(0.8, 2.4 - i * 0.14), 0.9);
+    }
+  } else {
+    // severed clawed hand / mangled flesh chunk with protruding arm bone
+    c.blob(mid - 1, mid + 2, 7.4, 0.88);
+    for (let i = 0; i <= 8; i++) {
+      c.put(6 + i, 23 - i, 0.96, 1);
+      c.put(7 + i, 23 - i, 0.9, 1);
+    }
+    for (const [tx, ty] of [[25, 8], [27, 15], [24, 22]]) {
+      c.line(mid, mid + 1, tx, ty, 0.96, 1);
+      c.line(mid, mid + 2, tx - 1, ty, 0.86, 1);
+      c.blob(tx, ty, 1.3, 0.95, 0);
+    }
   }
-  c.polygon(points, 1, 0.45);
-  c.line(mid - 3, mid - 1, mid + 4, mid + 2, 0.9);
-  c.line(mid - 1, mid + 3, mid + 3, mid - 3, 0.7);
 }
 
 let atlas = null;
@@ -317,14 +416,16 @@ export function bloodAtlas() {
     else if (cell >= CELLS.tips)
       drawTip(c, cell - CELLS.tips);
     else
-      drawGib(c, rnd);
+      drawGib(c, cell - CELLS.gib, rnd);
     for (let y = 0; y < CELL; y++) {
       for (let x = 0; x < CELL; x++) {
-        const light = Math.min(1, c.light[y * CELL + x]);
+        const idx = y * CELL + x;
+        const light = Math.min(1, c.light[idx]);
+        const pal = c.bone[idx] ? BONE : RED;
         const o = (y * width + cell * CELL + x) * 4;
-        data[o] = Math.round(RED[0] * light);
-        data[o + 1] = Math.round(RED[1] * light);
-        data[o + 2] = Math.round(RED[2] * light);
+        data[o] = Math.round(pal[0] * light);
+        data[o + 1] = Math.round(pal[1] * light);
+        data[o + 2] = Math.round(pal[2] * light);
         data[o + 3] = light > 0 ? 255 : 0;
       }
     }
@@ -351,6 +452,18 @@ export function floorSplatQuad({ x, y, size, seed, height = 0.3 }) {
   const sin = Math.sin(angle);
   const at = (lx, ly) => [x + cos * lx - sin * ly, height, y + sin * lx + cos * ly];
   return { corners: [...at(-half, -half), ...at(half, -half), ...at(half, half), ...at(-half, half)], uv: cellUv(CELLS.floor + variant) };
+}
+
+/** A persistent chunk of meat, bone, skull, or organ resting on the floor after an XDeath gibbing. */
+export function floorGibQuad({ x, y, size, variant = 0, angle = 0, height = 0.36 }) {
+  const half = size;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const at = (lx, ly) => [x + cos * lx - sin * ly, height, y + sin * lx + cos * ly];
+  return {
+    corners: [...at(-half, -half), ...at(half, -half), ...at(half, half), ...at(-half, half)],
+    uv: cellUv(CELLS.gib + ((variant >>> 0) % GIB_VARIANTS)),
+  };
 }
 
 /**
@@ -424,8 +537,8 @@ export function wallDrips(seed, size) {
       length: stub ? 4 + rnd() * 6 : 9 + rnd() * (14 + size * 3),
       delay: rnd() * 1.1,
       duration: 1.8 + rnd() * 4.2,
-      // units of the wall per pixel of the drip's picture: bigger splats drip thicker
-      pixel: (0.5 + size * 0.03) * (0.75 + rnd() * 0.55),
+      // units of the wall per pixel of the drip's picture: slender and proportional to the scaled-down splats
+      pixel: (0.26 + size * 0.018) * (0.75 + rnd() * 0.55),
       stem: Math.floor(rnd() * STEM_KINDS),
       tip: Math.floor(rnd() * TIP_KINDS),
       profile: Math.floor(rnd() * 4),
@@ -510,8 +623,8 @@ export function wallDripQuads({ x, y, z, nx, ny, size, top, seed, age = 0, lo = 
  * A droplet or a gib in the air: a square facing the camera, turned by `spin` in the view plane.
  * `right` and `up` are the camera's axes in the world.
  */
-export function particleQuad({ x, y, z, gib }, right, up, spin = 0) {
-  const half = gib ? 3.4 : 1.4;
+export function particleQuad({ x, y, z, gib, variant = 0, scale = 1, visualScale }, right, up, spin = 0) {
+  const half = (gib ? 1.75 : 0.65) * (visualScale ?? scale);
   const cos = Math.cos(spin) * half;
   const sin = Math.sin(spin) * half;
   // the corner offsets, turned: (-1,-1), (1,-1), (1,1), (-1,1) in (right, up)
@@ -520,7 +633,8 @@ export function particleQuad({ x, y, z, gib }, right, up, spin = 0) {
     const u = a * sin + b * cos;
     return [x + right[0] * r + up[0] * u, z + right[1] * r + up[1] * u, y + right[2] * r + up[2] * u];
   };
-  return { corners: [...corner(-1, -1), ...corner(1, -1), ...corner(1, 1), ...corner(-1, 1)], uv: cellUv(gib ? CELLS.gib : CELLS.drop) };
+  const cell = gib ? CELLS.gib + ((variant >>> 0) % GIB_VARIANTS) : CELLS.drop;
+  return { corners: [...corner(-1, -1), ...corner(1, -1), ...corner(1, 1), ...corner(-1, 1)], uv: cellUv(cell) };
 }
 
 /**
@@ -537,9 +651,9 @@ export function screenSplatQuads({ x, y, size, age, drip, seed }, width, height,
   const quads = [{ x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half, uv: cellUv(CELLS.floor + Math.floor(rnd() * FLOOR_VARIANTS)), fade }];
   const run = drip * Math.min(1, age * 0.9);
   if (run > 4) {
-    // the drip on the glass is the ribbon kind, with a slanted or pointed tip; the pixel is 28 / 32 of a screen pixel
+    // the drip on the glass is the ribbon kind, with a slanted or pointed tip; slender screen-pixel scale
     const dx = cx + (rnd() - 0.5) * size * 0.4;
-    const px = 0.875;
+    const px = 0.55;
     const top = cy + size * 0.2;
     const half = ((STEM_TO - STEM_FROM) / 2) * px * 2;
     const [s0, s1] = columns(CELLS.stems + 1);

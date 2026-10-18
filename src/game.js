@@ -2,8 +2,13 @@ import { Grid, Rand, Utils, Vec2 } from '@1pizzateam/spock';
 import { Physics, Scene } from '@1pizzateam/bumpr';
 import { Blood, makeFeet } from './blood.js';
 import { Fog } from './fog.js';
-import { DOOR, EYE, Level, TILE } from './level.js';
+import { CEILING, CROUCH_EYE, DOOR, EYE, Level, TILE } from './level.js';
 import { LEVELS } from './levels.js';
+import { WEAPON_SLOTS, WEAPONS } from './weapon.js';
+import { AMMO_TYPES } from './ammo.js';
+import { ARMOR_TYPES } from './armor.js';
+import { KNIFE_ATTACKS } from './arsenal.js';
+import { POWERUP_TYPES } from './powerups.js';
 
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
@@ -17,32 +22,72 @@ export const BARREL = { hp: 6, radius: 10, blast: 175, fuse: 0.08 };
  */
 export const ENEMY_TYPES = {
   imp: { hp: 8, radius: 14, speed: 80, mass: 1, sight: 900, gait: 0.06, gore: 1, steps: true, roar: 0.4 },
-  brute: { hp: 22, radius: 18, speed: 130, mass: 3, sight: 900, gait: 0.05, gore: 1.6, steps: true, stomp: 0.3, roar: 0.7 },
-  skull: { hp: 6, radius: 12, speed: 95, mass: 0.6, sight: 1000, gait: 0.04, gore: 0.8, flying: true },
-  crawler: { hp: 5, radius: 11, speed: 170, mass: 0.8, sight: 800, gait: 0.2, gore: 0.7 },
-  swarmer: { hp: 2, radius: 8, speed: 150, mass: 0.4, sight: 700, gait: 0.22, gore: 0.4 },
-  wraith: { hp: 7, radius: 12, speed: 115, mass: 0.5, sight: 900, gait: 0.05, gore: 0.5, flying: true, roar: 0.5 },
+  brute: { hp: 22, radius: 18, speed: 130, mass: 3, sight: 900, gait: 0.05, gore: 1.65, steps: true, stomp: 0.3, roar: 0.7 },
+  skull: { hp: 6, radius: 12, speed: 95, mass: 0.6, sight: 1000, gait: 0.04, gore: 0.7, flying: true },
+  crawler: { hp: 5, radius: 11, speed: 170, mass: 0.8, sight: 800, gait: 0.2, gore: 0.6 },
+  swarmer: { hp: 2, radius: 8, speed: 150, mass: 0.4, sight: 700, gait: 0.22, gore: 0.35 },
+  wraith: { hp: 7, radius: 12, speed: 115, mass: 0.5, sight: 900, gait: 0.05, gore: 0.45, flying: true, roar: 0.5 },
   boss: { hp: 90, radius: 32, speed: 55, mass: 12, sight: 1300, gait: 0.03, gore: 3.4, steps: true, stomp: 1, roar: 1.5 },
 };
 
-/** Monsters that come in packs: one spawn point in a level makes this many. */
+/** Monsters that come in packs: one spawn point in a level makes this many on normal difficulty. */
 const PACK = { swarmer: 4 };
+
+/** Classic Doom-style startup skill levels: higher difficulty spawns more foes across every level. */
+export const DIFFICULTY_ORDER = ['easy', 'normal', 'hard', 'nightmare'];
+export const DIFFICULTIES = {
+  easy: {
+    id: 'easy',
+    label: 'HEY, NOT TOO ROUGH',
+    desc: 'FEWER FOES · Half the monsters patrol each facility',
+    swarmerPack: 2,
+    extra: 0,
+  },
+  normal: {
+    id: 'normal',
+    label: 'HURT ME PLENTY',
+    desc: 'STANDARD · Full garrison across the Phobos complex',
+    swarmerPack: 4,
+    extra: 0,
+  },
+  hard: {
+    id: 'hard',
+    label: 'ULTRA-VIOLENCE',
+    desc: 'HEAVY RESISTANCE · +50% more foes & larger packs',
+    swarmerPack: 6,
+    extra: 0.5,
+  },
+  nightmare: {
+    id: 'nightmare',
+    label: 'NIGHTMARE!',
+    desc: 'MAXIMUM HORDE · Double foes & swarmer packs in every sector',
+    swarmerPack: 8,
+    extra: 1,
+  },
+};
 const LEAP_SPEED = 470;
 
 const PLAYER_RADIUS = 14;
 const GRID_CELL = TILE * 2;
+const PLAYER_CROUCH = 95;
 const PLAYER_WALK = 160;
 const PLAYER_RUN = 235;
+const CROUCH_SPEED = 10;
 // the head bob advances 9 rad/s at walking pace and the camera dips twice per 2π of it, so one stride is π of bob
 const PLAYER_STRIDE = (PLAYER_WALK * Math.PI) / 9;
 const FOOTFALL = (3 * Math.PI) / 4; // bob phase where sin(2 * bob), the camera height, is at its lowest
-const PELLETS = 6;
-const PELLET_DAMAGE = 3;
-const PELLET_SPREAD = 0.075;
+const PELLETS = WEAPONS.shotgun.pellets;
+const PELLET_DAMAGE = WEAPONS.shotgun.damage;
+const PELLET_MIN_DAMAGE = WEAPONS.shotgun.minDamage;
+const PELLET_SPREAD = WEAPONS.shotgun.spread;
+const PELLET_FALLOFF_START = WEAPONS.shotgun.falloffStart;
+const PELLET_FALLOFF_END = WEAPONS.shotgun.falloffEnd;
 const PELLET_VERTICAL_SPREAD = 0.045;
-export const FIRE_COOLDOWN = 1.05;
+export const FIRE_COOLDOWN = WEAPONS.shotgun.cooldown;
+export const AMMO_FLASH_DURATION = 0.65;
+// the ammo crates and the pool each one fills, whatever weapon is in hand
+const AMMO_CRATES = { ammo: 'shells', bullets: 'bullets', rockets: 'rockets' };
 const MAX_HEALTH = 100;
-const MAX_AMMO = 60;
 
 function makeBody(pos, radius, { type = 'dynamic', mass = 1, sensor = false, category, mask, velocity }) {
   const size = new Vec2(radius * 2, radius * 2);
@@ -56,11 +101,13 @@ function makeBody(pos, radius, { type = 'dynamic', mass = 1, sensor = false, cat
  * BumpR owns collisions and hitscan raycasts, Spock owns the vector maths.
  */
 export class Game {
-  constructor() {
+  constructor({ difficulty = 'normal' } = {}) {
     this.time = 0;
     this.state = 'title';
+    this.selectingDifficulty = false;
+    this.difficulty = DIFFICULTIES[difficulty] ? difficulty : 'normal';
     this.levelIndex = 0;
-    this.carry = { health: MAX_HEALTH, ammo: 24 };
+    this.carry = { health: MAX_HEALTH, shells: 0, bullets: 0, rockets: 0 };
     this.message = { text: '', age: 99 };
     this.zero = new Vec2();
     this.scratch = new Vec2();
@@ -77,7 +124,85 @@ export class Game {
     this.load(0);
   }
 
-  load(index, carry = { health: MAX_HEALTH, ammo: 24 }) {
+  get difficultyDef() {
+    return DIFFICULTIES[this.difficulty] ?? DIFFICULTIES.normal;
+  }
+
+  setDifficulty(difficulty) {
+    const next = typeof difficulty === 'number'
+      ? DIFFICULTY_ORDER[Utils.clamp(difficulty, 0, DIFFICULTY_ORDER.length - 1)]
+      : difficulty;
+    if (!DIFFICULTIES[next])
+      return this.difficulty;
+    const changed = this.difficulty !== next;
+    this.difficulty = next;
+    if (changed && !this.cam)
+      this.load(this.levelIndex, this.carry);
+    return this.difficulty;
+  }
+
+  cycleDifficulty(delta = 1) {
+    const idx = DIFFICULTY_ORDER.indexOf(this.difficulty);
+    const nextIdx = ((idx < 0 ? 1 : idx) + delta + DIFFICULTY_ORDER.length) % DIFFICULTY_ORDER.length;
+    return this.setDifficulty(DIFFICULTY_ORDER[nextIdx]);
+  }
+
+  reinforcementPos(spawnPos, slot = 0, target = new Vec2()) {
+    const tx = Math.floor(spawnPos.x / TILE);
+    const ty = Math.floor(spawnPos.y / TILE);
+    const dirs = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [-1, 1],
+      [1, -1],
+      [-1, -1],
+    ];
+    const open = [];
+    for (const [dx, dy] of dirs) {
+      const nx = tx + dx;
+      const ny = ty + dy;
+      if (nx <= 0 || ny <= 0 || nx >= this.level.width - 1 || ny >= this.level.rowCount - 1)
+        continue;
+      const nidx = ny * this.level.width + nx;
+      if (this.level.kind[nidx] !== 0)
+        continue;
+      if (dx !== 0 && dy !== 0) {
+        const idxA = ty * this.level.width + (tx + dx);
+        const idxB = (ty + dy) * this.level.width + tx;
+        if (this.level.kind[idxA] !== 0 || this.level.kind[idxB] !== 0)
+          continue;
+      }
+      const cx = (nx + 0.5) * TILE;
+      const cy = (ny + 0.5) * TILE;
+      if (Math.hypot(cx - this.level.playerStart.x, cy - this.level.playerStart.y) < TILE * 2.5)
+        continue;
+      let blockedByBarrel = false;
+      for (const b of this.level.barrels) {
+        if (Math.hypot(b.pos.x - cx, b.pos.y - cy) < TILE * 0.45) {
+          blockedByBarrel = true;
+          break;
+        }
+      }
+      if (!blockedByBarrel)
+        open.push([cx, cy]);
+    }
+    if (open.length > 0) {
+      const pick = open[(tx * 7 + ty * 13 + slot) % open.length];
+      target.x = pick[0];
+      target.y = pick[1];
+      return target;
+    }
+    const ox = slot % 2 === 0 ? 10 : -10;
+    const oy = slot < 2 ? 10 : -10;
+    target.x = spawnPos.x + ox;
+    target.y = spawnPos.y + oy;
+    return target;
+  }
+
+  load(index, carry = { health: MAX_HEALTH, shells: 0, bullets: 0, rockets: 0 }) {
     this.levelIndex = index;
     this.level = new Level(LEVELS[index]);
     // the grid lets BumpR test only bodies that share a cell instead of every pair; two tiles per cell
@@ -85,6 +210,7 @@ export class Game {
     this.scene = new Scene(new Grid(this.level.width * TILE, this.level.rowCount * TILE, GRID_CELL));
     this.scene.setGravity(new Vec2(0, 0));
     this.rand = Rand.create(7 + index * 101);
+    this.limbRand = Rand.create(77 + index * 101);
     this.blood.reset(this.level, this.rand);
     this.events.length = 0;
     this.heartbeat = 0;
@@ -94,6 +220,10 @@ export class Game {
     this.shots = [];
     this.effects = [];
     this.kills = 0;
+    this.itemsPicked = 0;
+    this.secretsFound = 0;
+    this.discoveredSecrets = new Set();
+    this.intermission = null;
     this.flowTile = -1;
     this.flow = new Int16Array(this.level.width * this.level.rowCount);
     this.stats = { time: 0 };
@@ -102,25 +232,38 @@ export class Game {
     this.addPlayer(carry);
     this.fog = new Fog(this.level);
     this.fog.update(this.player.pos.x, this.player.pos.y, this.player.angle);
+    const diff = this.difficultyDef;
+    let nonBossIndex = 0;
     for (const spawn of this.level.enemies) {
-      const count = PACK[spawn.type] ?? 1;
+      const isBoss = spawn.type === 'boss';
+      const idx = isBoss ? 0 : nonBossIndex++;
+      if (this.difficulty === 'easy' && !isBoss && spawn.type !== 'swarmer' && idx % 2 === 1)
+        continue;
+      const count = spawn.type === 'swarmer' ? diff.swarmerPack : (PACK[spawn.type] ?? 1);
       for (let i = 0; i < count; i++) {
         // a pack starts in a ring around its spawn point
         const angle = (i / count) * Math.PI * 2 + this.rand.float(0, 1);
         const spread = count > 1 ? ENEMY_TYPES[spawn.type].radius * 1.6 : 0;
         this.addEnemy(spawn.type, new Vec2(spawn.pos.x + Math.cos(angle) * spread, spawn.pos.y + Math.sin(angle) * spread));
       }
+      if (!isBoss && spawn.type !== 'swarmer') {
+        const extraCount = diff.extra >= 1 ? 1 : diff.extra >= 0.5 && idx % 2 === 0 ? 1 : 0;
+        for (let e = 0; e < extraCount; e++)
+          this.addEnemy(spawn.type, this.reinforcementPos(spawn.pos, idx + e));
+      }
     }
     for (const spawn of this.level.barrels)
       this.addBarrel(spawn.pos);
     for (const spawn of this.level.pickups)
-      this.addPickup(spawn.type, spawn.pos);
+      this.addPickup(spawn.type, spawn.pos, true);
     this.totalEnemies = this.enemies.length;
+    this.totalItems = this.level.pickups.length;
+    this.totalSecrets = this.level.secrets.length;
     this.say(this.level.name, 3);
   }
 
   restart() {
-    this.load(this.levelIndex, { health: MAX_HEALTH, ammo: 24 });
+    this.load(this.levelIndex, { health: MAX_HEALTH, shells: 0, bullets: 0, rockets: 0 });
     this.state = 'play';
   }
 
@@ -128,10 +271,99 @@ export class Game {
     if (this.levelIndex + 1 >= LEVELS.length) {
       this.load(0);
       this.state = 'title';
+      this.selectingDifficulty = false;
       return;
     }
-    this.load(this.levelIndex + 1, { health: this.player.health, ammo: Math.max(this.player.ammo, 16) });
+    this.load(this.levelIndex + 1, {
+      health: this.player.health,
+      armor: this.player.armor,
+      armorType: this.player.armorType,
+      shells: Math.max(this.player.shells, 16),
+      bullets: Math.max(this.player.bullets, 50),
+      rockets: this.player.rockets,
+      weapons: { ...this.player.weapons },
+      weapon: this.player.weapon,
+    });
     this.state = 'play';
+  }
+
+  startIntermission() {
+    const killsPct = this.totalEnemies > 0 ? Math.min(100, Math.round((this.kills / this.totalEnemies) * 100)) : 100;
+    const itemsPct = this.totalItems > 0 ? Math.min(100, Math.round((this.itemsPicked / this.totalItems) * 100)) : 100;
+    const secretsPct = this.totalSecrets > 0 ? Math.min(100, Math.round((this.secretsFound / this.totalSecrets) * 100)) : 100;
+    const timeSec = Math.floor(this.stats.time);
+    const parSec = this.level.par ?? 120;
+    this.intermission = {
+      age: 0,
+      phase: 0,
+      pause: 0.45,
+      tickTimer: 0,
+      killsPct,
+      itemsPct,
+      secretsPct,
+      timeSec,
+      parSec,
+      shownKills: 0,
+      shownItems: 0,
+      shownSecrets: 0,
+      shownTime: 0,
+      done: false,
+    };
+    this.state = 'cleared';
+    this.player.body.setVelocity(this.zero);
+    this.emit('clear');
+  }
+
+  skipIntermission() {
+    const inter = this.intermission;
+    if (!inter || inter.done)
+      return false;
+    inter.shownKills = inter.killsPct;
+    inter.shownItems = inter.itemsPct;
+    inter.shownSecrets = inter.secretsPct;
+    inter.shownTime = inter.timeSec;
+    inter.phase = 4;
+    inter.pause = 0;
+    inter.done = true;
+    this.emit('tallyBoom');
+    return true;
+  }
+
+  updateIntermission(dt) {
+    const inter = this.intermission;
+    if (!inter || inter.done)
+      return;
+    inter.age += dt;
+    if (inter.pause > 0) {
+      inter.pause -= dt;
+      return;
+    }
+    const keys = [
+      ['shownKills', 'killsPct', 95],
+      ['shownItems', 'itemsPct', 95],
+      ['shownSecrets', 'secretsPct', 95],
+      ['shownTime', 'timeSec', Math.max(60, inter.timeSec * 0.9)],
+    ];
+    const [shownKey, targetKey, rate] = keys[inter.phase];
+    const target = inter[targetKey];
+    const next = inter[shownKey] + dt * rate;
+    if (next < target) {
+      inter[shownKey] = next;
+      inter.tickTimer -= dt;
+      if (inter.tickTimer <= 0) {
+        inter.tickTimer = 0.065;
+        this.emit('tallyTick');
+      }
+      return;
+    }
+    inter[shownKey] = target;
+    this.emit('tallyBoom');
+    inter.phase++;
+    inter.tickTimer = 0;
+    if (inter.phase >= 4)
+      inter.done = true;
+    else
+      inter.pause = 0.35;
   }
 
   /** Queue a sound event at a position (the player's, when none is given). */
@@ -203,20 +435,66 @@ export class Game {
       mask: CAT.WALL | CAT.ENEMY | CAT.PICKUP | CAT.SHOT | CAT.BARREL,
     });
     this.scene.addBody(body);
+    const weapons = {
+      knife: carry.weapons?.knife ?? true,
+      chainsaw: Boolean(carry.weapons?.chainsaw),
+      shotgun: Boolean(carry.weapons?.shotgun),
+      chaingun: Boolean(carry.weapons?.chaingun),
+      rocket: Boolean(carry.weapons?.rocket),
+    };
+    const weapon = carry.weapon && weapons[carry.weapon] ? carry.weapon : weapons.shotgun ? 'shotgun' : 'knife';
+    const armor = carry.armor ?? 0;
+    const armorType = armor > 0 ? (carry.armorType ?? (armor > 100 ? 'blue' : 'green')) : null;
     this.player = {
       body,
       pos: body.position,
       angle: this.level.playerAngle,
       health: carry.health,
-      ammo: carry.ammo,
+      armor,
+      armorType,
+      shells: carry.shells ?? carry.ammo ?? 0,
+      bullets: carry.bullets ?? 0,
+      rockets: carry.rockets ?? 0,
+      get ammo() {
+        const pool = WEAPONS[this.weapon]?.ammoType ?? 'shells';
+        return this[pool];
+      },
+      set ammo(value) {
+        const pool = WEAPONS[this.weapon]?.ammoType ?? 'shells';
+        this[pool] = value;
+      },
+      keys: { red: false, yellow: false, blue: false },
+      weapons,
+      weapon,
+      knifeAttack: 'vertical',
+      knifeCombo: 0,
+      switchTimer: 0,
       cooldown: 0,
+      dryFire: false,
+      triggerHeld: false,
+      spinDown: 0,
+      shootFace: 0,
       flash: 0,
       recoil: 0,
       hurt: 0,
       bob: 0,
       moving: 0,
+      crouch: 0,
+      eye: EYE,
       hitMarker: 0,
       deadTime: 0,
+      slimeTimer: 0,
+      radFlash: 0,
+      berserk: false,
+      berserkTimer: 0,
+      radSuit: 0,
+      soulFlash: 0,
+      teleFlash: 0,
+      ammoFlash: { shells: 0, bullets: 0, rockets: 0 },
+      ammoFrom: { shells: carry.shells ?? carry.ammo ?? 0, bullets: carry.bullets ?? 0, rockets: carry.rockets ?? 0 },
+      ammoDelta: { shells: 0, bullets: 0, rockets: 0 },
+      teleportCooldown: 0,
+      teleportPad: -1,
       feet: makeFeet(),
     };
     body.ref = { kind: 'player' };
@@ -228,7 +506,7 @@ export class Game {
     const body = makeBody(pos, def.radius, {
       mass: def.mass,
       category: CAT.ENEMY,
-      mask: CAT.WALL | CAT.PLAYER | CAT.ENEMY | CAT.BARREL,
+      mask: CAT.WALL | CAT.PLAYER | CAT.ENEMY | CAT.BARREL | CAT.SHOT,
     });
     const enemy = {
       kind: 'enemy',
@@ -259,18 +537,30 @@ export class Game {
       diedAt: -1,
       volley: 0,
       gibbed: false,
+      teleportCooldown: 0,
+      limbs: {
+        leftArm: true,
+        rightArm: true,
+        leftLeg: true,
+        rightLeg: true,
+        damage: { leftArm: 0, rightArm: 0, leftLeg: 0, rightLeg: 0 },
+        severedAt: { leftArm: -1, rightArm: -1, leftLeg: -1, rightLeg: -1 },
+      },
+      crawling: false,
     };
     body.ref = enemy;
     this.scene.addBody(body);
     this.enemies.push(enemy);
+    return enemy;
   }
 
-  addPickup(type, pos) {
+  addPickup(type, pos, initial = false) {
     const body = makeBody(pos, 11, { type: 'static', sensor: true, category: CAT.PICKUP, mask: CAT.PLAYER });
-    const pickup = { kind: 'pickup', type, body, pos: body.position, taken: false, phase: this.rand.float(0, 6) };
+    const pickup = { kind: 'pickup', type, body, pos: body.position, taken: false, initial, phase: this.rand.float(0, 6) };
     body.ref = pickup;
     this.scene.addBody(body);
     this.pickups.push(pickup);
+    return pickup;
   }
 
   addShot(from, direction, speed, damage) {
@@ -281,7 +571,7 @@ export class Game {
       mask: CAT.WALL | CAT.PLAYER | CAT.BARREL,
       velocity,
     });
-    const shot = { kind: 'shot', body, pos: body.position, damage, life: 5, age: 0, dead: false };
+    const shot = { kind: 'shot', team: 'enemy', body, pos: body.position, damage, life: 5, age: 0, dead: false };
     body.ref = shot;
     this.emit('fireball', from);
     body.onCollision = (other) => {
@@ -297,6 +587,90 @@ export class Game {
     };
     this.scene.addBody(body);
     this.shots.push(shot);
+  }
+
+  addRocket(from, direction) {
+    const def = WEAPONS.rocket;
+    const velocity = new Vec2().scaleVector(direction, def.speed);
+    const body = makeBody(from, 7, {
+      sensor: true,
+      category: CAT.SHOT,
+      mask: CAT.WALL | CAT.ENEMY | CAT.BARREL,
+      velocity,
+    });
+    const shot = {
+      kind: 'rocket',
+      team: 'player',
+      body,
+      pos: body.position,
+      dir: direction.clone(),
+      damage: def.damage,
+      splash: def.splashDamage,
+      radius: def.splashRadius,
+      life: 4,
+      age: 0,
+      dead: false,
+    };
+    body.ref = shot;
+    body.onCollision = (other) => {
+      if (shot.dead)
+        return;
+      shot.dead = true;
+      this.detonateRocket(shot, other.ref);
+    };
+    this.scene.addBody(body);
+    this.shots.push(shot);
+    return shot;
+  }
+
+  detonateRocket(shot, directRef = null) {
+    const pos = shot.pos;
+    this.burst(pos.x, pos.y, 0, 'boom');
+    this.emit('boom', pos);
+    for (const enemy of this.enemies)
+      enemy.volley = 0;
+
+    if (directRef?.kind === 'enemy' && directRef.state !== 'dead') {
+      directRef.volley = 1e6;
+      this.damageEnemy(directRef, shot.damage);
+    } else if (directRef?.kind === 'barrel')
+      this.hitBarrel(directRef, BARREL.hp, 0.02);
+    else if (!directRef && shot.dir) {
+      const from = pos.clone().addScaledVector(shot.dir, -16);
+      const to = pos.clone().addScaledVector(shot.dir, 16);
+      const wallHit = this.scene.raycast(from, to, { mask: CAT.WALL });
+      if (wallHit)
+        this.blood.impact(wallHit.point.x, wallHit.point.y, Math.round(wallHit.normal.x), Math.round(wallHit.normal.y), this.player.eye - 2);
+    }
+
+    const reaches = (target) => !this.scene.raycast(pos, target, { mask: CAT.WALL });
+    const away = this.player.pos.getDistance(pos);
+    this.shake = Math.max(this.shake, Utils.clamp(1 - away / 520, 0, 1) * 1.15);
+    if (away < shot.radius && reaches(this.player.pos))
+      this.hurtPlayer(Math.round(6 + 26 * (1 - away / shot.radius)));
+
+    for (const enemy of this.enemies) {
+      const d = enemy.pos.getDistance(pos);
+      if (d >= shot.radius + enemy.def.radius || !reaches(enemy.pos))
+        continue;
+      if (enemy.state === 'dead') {
+        const dir = this.scratch.subVectors(enemy.pos, pos);
+        if (dir.getMagnitude(true) > 0)
+          dir.normalize();
+        else
+          dir.setScalar(1, 0);
+        this.mutilateCorpse(enemy, dir.x, dir.y, true);
+        continue;
+      }
+      enemy.volley = 1e6;
+      this.damageEnemy(enemy, Math.round(8 + shot.splash * Math.max(0, 1 - d / shot.radius)));
+    }
+    for (const barrel of this.barrels) {
+      const d = barrel.pos.getDistance(pos);
+      if (!barrel.gone && d < shot.radius && reaches(barrel.pos))
+        this.hitBarrel(barrel, BARREL.hp, 0.08 + 0.2 * (d / shot.radius));
+    }
+    this.resolveGibs();
   }
 
   addBarrel(pos) {
@@ -341,13 +715,20 @@ export class Game {
       this.hurtPlayer(Math.round(8 + 42 * (1 - away / BARREL.blast)));
 
     for (const enemy of this.enemies) {
-      if (enemy.state === 'dead')
-        continue;
       const d = enemy.pos.getDistance(barrel.pos);
-      if (d < BARREL.blast + enemy.def.radius && reaches(enemy.pos)) {
-        enemy.volley = 1e6; // anything a blast kills is blown apart
-        this.damageEnemy(enemy, 6 + 30 * Math.max(0, 1 - d / BARREL.blast));
+      if (d >= BARREL.blast + enemy.def.radius || !reaches(enemy.pos))
+        continue;
+      if (enemy.state === 'dead') {
+        const dir = this.scratch.subVectors(enemy.pos, barrel.pos);
+        if (dir.getMagnitude(true) > 0)
+          dir.normalize();
+        else
+          dir.setScalar(1, 0);
+        this.mutilateCorpse(enemy, dir.x, dir.y, true);
+        continue;
       }
+      enemy.volley = 1e6; // anything a blast kills is blown apart
+      this.damageEnemy(enemy, 6 + 30 * Math.max(0, 1 - d / BARREL.blast));
     }
     for (const other of this.barrels) {
       const d = other.pos.getDistance(barrel.pos);
@@ -358,7 +739,34 @@ export class Game {
   }
 
   burst(x, y, z, type) {
-    this.effects.push({ type, x, y, z, age: 0, life: type === 'spark' ? 0.25 : type === 'boom' ? 0.8 : type === 'fireball' ? 0.55 : 0.45 });
+    this.effects.push({
+      type,
+      x,
+      y,
+      z,
+      age: 0,
+      life: type === 'spark' ? 0.25 : type === 'boom' ? 0.8 : type === 'fireball' ? 0.55 : type === 'teleport' ? 0.55 : 0.45,
+    });
+  }
+
+  flashAmmo(poolId, before, after) {
+    const gained = after - before;
+    if (gained <= 0)
+      return;
+    const player = this.player;
+    player.ammoFlash ??= { shells: 0, bullets: 0, rockets: 0 };
+    player.ammoFrom ??= { shells: 0, bullets: 0, rockets: 0 };
+    player.ammoDelta ??= { shells: 0, bullets: 0, rockets: 0 };
+    const currentFlash = player.ammoFlash[poolId] ?? 0;
+    if (currentFlash > 0) {
+      const rollProgress = Utils.clamp(1 - Math.max(0, currentFlash - 0.25) / (AMMO_FLASH_DURATION - 0.25), 0, 1);
+      player.ammoFrom[poolId] = Math.round(Utils.lerp(player.ammoFrom[poolId] ?? before, before, rollProgress));
+      player.ammoDelta[poolId] = (player.ammoDelta[poolId] ?? 0) + gained;
+    } else {
+      player.ammoFrom[poolId] = before;
+      player.ammoDelta[poolId] = gained;
+    }
+    player.ammoFlash[poolId] = AMMO_FLASH_DURATION;
   }
 
   /** Player body callback: pickups are sensors, so they report overlaps without pushing back. */
@@ -367,15 +775,132 @@ export class Game {
     if (!ref || ref.kind !== 'pickup' || ref.taken)
       return;
     const player = this.player;
+    if (ref.type === 'redKey' || ref.type === 'yellowKey' || ref.type === 'blueKey') {
+      const color = ref.type === 'redKey' ? 'red' : ref.type === 'yellowKey' ? 'yellow' : 'blue';
+      const label = color === 'red' ? 'Red' : color === 'yellow' ? 'Yellow' : 'Blue';
+      player.keys[color] = true;
+      ref.taken = true;
+      if (ref.initial)
+        this.itemsPicked = Math.min(this.totalItems, this.itemsPicked + 1);
+      this.say(`Picked up a ${label} keycard.`);
+      this.emit('keycard');
+      return;
+    }
+    if (ref.type === 'chainsaw') {
+      if (player.weapons.chainsaw)
+        return;
+      player.weapons.chainsaw = true;
+      ref.taken = true;
+      if (ref.initial)
+        this.itemsPicked = Math.min(this.totalItems, this.itemsPicked + 1);
+      this.selectWeapon('chainsaw');
+      this.say('You got the Chainsaw! Find some meat!', 2.5);
+      this.emit('weaponPickup');
+      return;
+    }
+    if (ref.type === 'shotgun' || ref.type === 'chaingun' || ref.type === 'rocket') {
+      const isNew = !player.weapons[ref.type];
+      const pool = AMMO_TYPES[WEAPONS[ref.type].ammoType];
+      if (!isNew && player[pool.id] >= pool.max) {
+        this.say(`${pool.label} full`);
+        return;
+      }
+      player.weapons[ref.type] = true;
+      const bonus = isNew && ref.type === 'shotgun' ? 0 : pool.weaponBonus;
+      const before = player[pool.id];
+      player[pool.id] = Math.min(pool.max, before + bonus);
+      this.flashAmmo(pool.id, before, player[pool.id]);
+      ref.taken = true;
+      if (ref.initial)
+        this.itemsPicked = Math.min(this.totalItems, this.itemsPicked + 1);
+      if (isNew) {
+        this.selectWeapon(ref.type);
+        this.say(
+          ref.type === 'shotgun'
+            ? 'You got the Shotgun!'
+            : ref.type === 'chaingun'
+              ? 'You got the Chaingun!'
+              : 'You got the Rocket Launcher!',
+          2.5
+        );
+      } else
+        this.say(`${pool.label} +${bonus}`);
+      this.emit('weaponPickup');
+      return;
+    }
+    if (ref.type === 'greenArmor' || ref.type === 'blueArmor') {
+      const isBlue = ref.type === 'blueArmor';
+      const cap = isBlue ? ARMOR_TYPES.blue.points : ARMOR_TYPES.green.points;
+      if (player.armor >= cap)
+        return;
+      player.armor = cap;
+      player.armorType = isBlue ? 'blue' : 'green';
+      ref.taken = true;
+      if (ref.initial)
+        this.itemsPicked = Math.min(this.totalItems, this.itemsPicked + 1);
+      this.say(isBlue ? 'Picked up the MegaArmor!' : 'Picked up the Security Armor.');
+      this.emit('armor');
+      return;
+    }
+    if (ref.type === 'soulsphere') {
+      const { bonus, maxHealth } = POWERUP_TYPES.soulsphere;
+      if (player.health >= maxHealth)
+        return;
+      player.health = Math.min(maxHealth, player.health + bonus);
+      player.soulFlash = 0.75;
+      ref.taken = true;
+      if (ref.initial)
+        this.itemsPicked = Math.min(this.totalItems, this.itemsPicked + 1);
+      this.say('Supercharge! +100% Health', 2.5);
+      this.emit('powerup', null, { kind: 'soulsphere' });
+      return;
+    }
+    if (ref.type === 'berserk') {
+      const { healTo, tintDuration } = POWERUP_TYPES.berserk;
+      if (player.berserk && player.health >= healTo)
+        return;
+      player.health = Math.max(player.health, healTo);
+      player.berserk = true;
+      player.berserkTimer = tintDuration;
+      ref.taken = true;
+      if (ref.initial)
+        this.itemsPicked = Math.min(this.totalItems, this.itemsPicked + 1);
+      this.selectWeapon(player.weapons.chainsaw ? 'chainsaw' : 'knife');
+      this.say('Berserk! Rip and tear!', 2.5);
+      this.emit('powerup', null, { kind: 'berserk' });
+      return;
+    }
+    if (ref.type === 'radsuit') {
+      const { duration } = POWERUP_TYPES.radsuit;
+      if ((player.radSuit ?? 0) >= duration - 2)
+        return;
+      player.radSuit = duration;
+      player.slimeTimer = 0;
+      ref.taken = true;
+      if (ref.initial)
+        this.itemsPicked = Math.min(this.totalItems, this.itemsPicked + 1);
+      this.say('Radiation Shielding Suit!', 2.5);
+      this.emit('powerup', null, { kind: 'radsuit' });
+      return;
+    }
     if (ref.type === 'health' && player.health < MAX_HEALTH) {
       player.health = Math.min(MAX_HEALTH, player.health + 25);
       this.say('Health +25');
-    } else if (ref.type === 'ammo' && player.ammo < MAX_AMMO) {
-      player.ammo = Math.min(MAX_AMMO, player.ammo + 8);
-      this.say('Shells +8');
+    } else if (AMMO_CRATES[ref.type]) {
+      const pool = AMMO_TYPES[AMMO_CRATES[ref.type]];
+      if (player[pool.id] >= pool.max) {
+        this.say(`${pool.label} full`);
+        return;
+      }
+      const before = player[pool.id];
+      player[pool.id] = Math.min(pool.max, before + pool.bonus);
+      this.flashAmmo(pool.id, before, player[pool.id]);
+      this.say(`${pool.label} +${pool.bonus}`);
     } else
       return;
     ref.taken = true;
+    if (ref.initial)
+      this.itemsPicked = Math.min(this.totalItems, this.itemsPicked + 1);
     this.emit('pickup', null, { kind: ref.type });
   }
 
@@ -383,7 +908,16 @@ export class Game {
     const player = this.player;
     if (this.state !== 'play')
       return;
-    player.health = Math.max(0, player.health - amount);
+    let healthLoss = amount;
+    if (player.armor > 0) {
+      const save = player.armorType === 'blue' ? ARMOR_TYPES.blue.save : ARMOR_TYPES.green.save;
+      const absorbed = Math.min(player.armor, Math.max(1, Math.round(amount * save)));
+      player.armor -= absorbed;
+      healthLoss = Math.max(0, amount - absorbed);
+      if (player.armor <= 0)
+        player.armorType = null;
+    }
+    player.health = Math.max(0, player.health - healthLoss);
     player.hurt = 0.4;
     this.emit('hurt');
     this.blood.splat(Math.ceil(amount / 5) + 1);
@@ -391,6 +925,14 @@ export class Game {
     if (!player.health) {
       this.state = 'dead';
       player.body.setVelocity(this.zero);
+      for (const enemy of this.enemies) {
+        if (enemy.state === 'dead')
+          continue;
+        enemy.windup = 0;
+        enemy.leap = 0;
+        enemy.roar = 0;
+        enemy.body.setVelocity(this.zero);
+      }
       this.blood.splat(12, 1.5);
       this.emit('death');
     }
@@ -414,21 +956,147 @@ export class Game {
     enemy.state = 'dead';
     enemy.windup = 0;
     enemy.leap = 0;
+    enemy.pain = 0;
+    enemy.hurt = 0;
     enemy.diedAt = this.time;
     this.kills++;
     this.scene.removeBody(enemy.body);
     this.emit('die', enemy.pos, { kind: enemy.type });
-    this.blood.gore(enemy.pos.x, enemy.pos.y, enemy.def.gore);
+    const away = Math.atan2(enemy.pos.y - this.player.pos.y, enemy.pos.x - this.player.pos.x);
+    const dirX = Math.cos(away);
+    const dirY = Math.sin(away);
+    enemy.deathDirX = dirX;
+    enemy.deathDirY = dirY;
+    enemy.deathFountain = 0.08;
+    this.blood.gore(enemy.pos.x, enemy.pos.y, enemy.def.gore, dirX, dirY);
     // killing at point-blank range sprays the player too
     if (enemy.pos.getDistance(this.player.pos) < 130)
-      this.blood.splat(enemy.type === 'boss' ? 10 : 4, 1.3);
+      this.blood.splat(Math.max(1, Math.round(4 * enemy.def.gore)), 0.8 + 0.5 * Math.min(enemy.def.gore, 2));
     if (enemy.type === 'boss') {
-      this.shake = 1;
-      this.say('THE WARDEN IS DEAD', 3);
+      const remainingBosses = this.enemies.some((other) => other.type === 'boss' && other.state !== 'dead');
+      this.shake = Math.max(this.shake, remainingBosses ? 1 : 1.35);
+      this.say(remainingBosses ? 'A WARDEN FALLS' : 'THE WARDEN IS DEAD', 3);
     }
     const drop = enemy.type === 'boss' ? 1 : enemy.type === 'swarmer' ? 0.06 : 0.35;
-    if (this.rand.float(0, 1) < drop)
-      this.addPickup(enemy.type === 'boss' || this.rand.float(0, 1) < 0.5 ? 'health' : 'ammo', enemy.pos);
+    if (this.rand.float(0, 1) < drop) {
+      const weapon = this.player.weapon ?? 'shotgun';
+      const ammoKind = weapon === 'chaingun' ? 'bullets' : weapon === 'rocket' ? 'rockets' : 'ammo';
+      this.addPickup(enemy.type === 'boss' || this.rand.float(0, 1) < 0.5 ? 'health' : ammoKind, enemy.pos);
+    }
+  }
+
+  /** Blows an enemy or corpse apart ("XDeath"), launching directional fountains of arterial blood and bouncing gibs. */
+  gibEnemy(enemy, dirX = 0, dirY = 0) {
+    enemy.gibbed = true;
+    enemy.gibbedAt = this.time;
+    enemy.postGibHits = 0;
+    enemy.postGibTime1 = 0;
+    enemy.postGibTime2 = 0;
+    enemy.deadTime = 0;
+    enemy.pain = 0;
+    enemy.hurt = 0;
+    const gore = enemy.def.gore;
+    const sizeScale = Math.sqrt(gore);
+    const freshKill = enemy.diedAt === this.time;
+    this.blood.gore(enemy.pos.x, enemy.pos.y, gore * (freshKill ? 0.55 : 1.15), dirX, dirY);
+    this.blood.spray(enemy.pos.x, enemy.pos.y, 26, dirX, dirY, Math.max(2, Math.round(36 * gore)), { speed: 290, spread: 165 * sizeScale, up: 320, scale: sizeScale });
+    this.blood.spray(enemy.pos.x, enemy.pos.y, 30, dirX, dirY, Math.max(1, Math.round(2 * gore)), { speed: 170, spread: 230 * sizeScale, up: 380, gib: true, scale: sizeScale });
+    if (enemy.pos.getDistance(this.player.pos) < 170) {
+      this.blood.splat(Math.max(1, Math.round(6 * gore)), 0.9 + 0.5 * Math.min(gore, 2));
+      this.shake = Math.max(this.shake, 0.35 * gore);
+    }
+    this.emit('gib', enemy.pos, { kind: enemy.type });
+  }
+
+  /** Mutilates a dead corpse when struck by shotgun pellets or a nearby explosion, shredding it into gibs and allowing 2 post-gib hits before exhausting. */
+  mutilateCorpse(enemy, dirX, dirY, forceGib = false) {
+    if (enemy.type === 'wraith')
+      return;
+    const gore = enemy.def.gore;
+    const sizeScale = Math.sqrt(gore);
+    if (enemy.gibbed) {
+      if ((enemy.gibbedAt ?? -1) >= this.time || (enemy.lastPostGibShot ?? -1) >= this.time || (enemy.postGibHits ?? 0) >= 2)
+        return;
+      enemy.postGibHits = (enemy.postGibHits ?? 0) + 1;
+      enemy.lastPostGibShot = this.time;
+      if (enemy.postGibHits === 1)
+        enemy.postGibTime1 = enemy.deadTime;
+      else
+        enemy.postGibTime2 = enemy.deadTime;
+      this.blood.hit(enemy.pos.x + this.rand.float(-8, 8) * sizeScale, enemy.pos.y + this.rand.float(-8, 8) * sizeScale, this.rand.float(6, 20), dirX, dirY, gore * 1.35);
+      this.blood.spray(enemy.pos.x, enemy.pos.y, 12, dirX, dirY, Math.max(3, Math.round(3 * gore)), { speed: 165, spread: 160 * sizeScale, up: 240, gib: true, scale: sizeScale });
+      this.emit('flesh', enemy.pos);
+      if (enemy.pos.getDistance(this.player.pos) < 120)
+        this.blood.splat(1, 0.55 + 0.25 * Math.min(gore, 2));
+      return;
+    }
+    enemy.corpseDamage = (enemy.corpseDamage ?? 0) + (forceGib ? 999 : PELLET_DAMAGE);
+    this.blood.hit(enemy.pos.x + this.rand.float(-8, 8) * sizeScale, enemy.pos.y + this.rand.float(-8, 8) * sizeScale, this.rand.float(6, 20), dirX, dirY, gore);
+    this.emit('flesh', enemy.pos);
+    if (enemy.pos.getDistance(this.player.pos) < 120)
+      this.blood.splat(1, 0.55 + 0.25 * Math.min(gore, 2));
+    if (forceGib || enemy.corpseDamage >= Math.max(9, Math.round(18 * gore)))
+      this.gibEnemy(enemy, dirX, dirY);
+  }
+
+  /** Severs an arm (making it fall to the deck) or blows apart a leg (forcing the monster to crawl while still attacking). */
+  severLimb(enemy, limb, dirX = 0, dirY = 0) {
+    if (!enemy?.limbs || !enemy.limbs[limb] || enemy.state === 'dead' || enemy.type === 'wraith' || (this.inShot && enemy.limbs.severedThisShot))
+      return false;
+    enemy.limbs[limb] = false;
+    enemy.limbs.severedAt[limb] = this.time;
+    if (this.inShot)
+      enemy.limbs.severedThisShot = true;
+    enemy.pain = Math.max(enemy.pain, 0.28);
+    const isLeg = limb === 'leftLeg' || limb === 'rightLeg';
+    if (isLeg && !enemy.def.flying) {
+      enemy.crawling = true;
+      enemy.leap = 0;
+    }
+    this.blood.severBurst(enemy.pos.x, enemy.pos.y, isLeg ? 12 : 28, dirX, dirY, enemy.def.gore, isLeg);
+    return true;
+  }
+
+  damageLimb(enemy, limb, amount, dirX = 0, dirY = 0) {
+    if (!enemy?.limbs || !enemy.limbs[limb] || enemy.state === 'dead' || enemy.type === 'wraith' || (this.inShot && enemy.limbs.severedThisShot))
+      return false;
+    enemy.limbs.damage[limb] += amount;
+    const threshold = Math.max(2, Math.round(enemy.def.hp * 0.25));
+    if (enemy.limbs.damage[limb] >= threshold && enemy.hp > amount)
+      return this.severLimb(enemy, limb, dirX, dirY);
+    return false;
+  }
+
+  /** Localizes a close-range impact to the struck left/right side, randomly targeting the arm or leg on that side. */
+  hitEnemyLimb(enemy, hitPoint, _hitZ, dirX, dirY, amount) {
+    if (!enemy?.limbs || enemy.state === 'dead' || enemy.type === 'wraith' || enemy.hp <= amount || (this.inShot && enemy.limbs.severedThisShot))
+      return false;
+    const dist = this.player ? enemy.pos.getDistance(this.player.pos) : 0;
+    if (dist >= 240)
+      return false;
+    const falloff = dist <= 140 ? 1 : Utils.clamp((240 - dist) / 100, 0, 1);
+    const limbAmount = amount * falloff * falloff;
+    const hx = hitPoint.x - enemy.pos.x;
+    const hy = hitPoint.y - enemy.pos.y;
+    const lateral = (hx * -dirY + hy * dirX) / Math.max(1, enemy.def.radius);
+    if (Math.abs(lateral) < 0.12)
+      return false;
+    const side = lateral < 0 ? 'left' : 'right';
+    const arm = `${side}Arm`;
+    const leg = `${side}Leg`;
+    const hasArm = enemy.limbs[arm];
+    const hasLeg = enemy.limbs[leg];
+    if (!hasArm && !hasLeg)
+      return false;
+    let limb;
+    if (hasArm && hasLeg) {
+      enemy.limbs.sideTarget ??= {};
+      if (!enemy.limbs.sideTarget[side] || !enemy.limbs[enemy.limbs.sideTarget[side]])
+        enemy.limbs.sideTarget[side] = this.limbRand.pick(arm, leg);
+      limb = enemy.limbs.sideTarget[side];
+    } else
+      limb = hasArm ? arm : leg;
+    return this.damageLimb(enemy, limb, limbAmount, dirX, dirY);
   }
 
   /**
@@ -440,57 +1108,334 @@ export class Game {
     for (const enemy of this.enemies) {
       if (enemy.state !== 'dead' || enemy.diedAt !== this.time || enemy.gibbed)
         continue;
-      const close = enemy.pos.getDistance(this.player.pos) < 110;
-      if (enemy.type !== 'boss' && !close && enemy.volley < enemy.def.hp * 1.5)
+      const close = enemy.pos.getDistance(this.player.pos) < 120;
+      const overkill = enemy.hp <= -Math.max(4, enemy.def.hp * 0.45) || enemy.volley >= Math.max(9, enemy.def.hp * 1.35);
+      if (enemy.type !== 'boss' && !close && !overkill)
         continue;
-      enemy.gibbed = true;
       const away = Math.atan2(enemy.pos.y - this.player.pos.y, enemy.pos.x - this.player.pos.x);
-      this.blood.spray(enemy.pos.x, enemy.pos.y, 26, Math.cos(away), Math.sin(away), Math.round(30 * enemy.def.gore), { speed: 280, spread: 150, up: 300 });
-      this.blood.spray(enemy.pos.x, enemy.pos.y, 30, 0, 0, Math.round(6 * enemy.def.gore), { spread: 210, up: 360, gib: true });
-      this.emit('gib', enemy.pos, { kind: enemy.type });
+      this.gibEnemy(enemy, Math.cos(away), Math.sin(away));
     }
   }
 
-  fire() {
+  selectWeapon(slotOrName) {
     const player = this.player;
-    player.ammo--;
-    this.emit('fire', null, { pump: player.ammo > 0 });
-    player.cooldown = FIRE_COOLDOWN;
-    player.flash = 0.1;
-    player.recoil = 1;
+    let target = WEAPON_SLOTS[slotOrName] ?? slotOrName;
+    if (slotOrName === 1) {
+      if (player.weapons.chainsaw && player.weapons.knife)
+        target = player.weapon === 'chainsaw' ? 'knife' : 'chainsaw';
+      else
+        target = player.weapons.chainsaw ? 'chainsaw' : 'knife';
+    }
+    if (!WEAPONS[target] || !player.weapons[target] || player.weapon === target)
+      return false;
+    player.weapon = target;
+    player.switchTimer = 0.22;
+    player.cooldown = Math.max(player.cooldown, 0.16);
+    player.dryFire = true;
+    player.triggerHeld = false;
+    player.spinDown = 0;
+    player.chainsawIdle = 0.24;
+    this.emit('weaponSwitch', null, { weapon: target });
+    return true;
+  }
+
+  fire() {
+    const weapon = this.player.weapon ?? 'shotgun';
+    if (weapon === 'knife')
+      this.fireKnife();
+    else if (weapon === 'chainsaw')
+      this.fireChainsaw();
+    else if (weapon === 'chaingun')
+      this.fireChaingun();
+    else if (weapon === 'rocket')
+      this.fireRocket();
+    else
+      this.fireShotgun();
+  }
+
+  fireKnife() {
+    const player = this.player;
+    const def = WEAPONS.knife;
+    const attack = KNIFE_ATTACKS[(player.knifeCombo ?? 0) % KNIFE_ATTACKS.length];
+    player.knifeAttack = attack;
+    player.knifeCombo = ((player.knifeCombo ?? 0) + 1) % KNIFE_ATTACKS.length;
+    player.cooldown = def.cooldown;
+    player.dryFire = false;
+    player.shootFace = 0.32;
+    player.recoil = 0.25;
+    this.shake = Math.max(this.shake, 0.08);
+    this.emit('knife', player.pos, { attack });
 
     for (const enemy of this.enemies)
       enemy.volley = 0;
+
+    const cos = Math.cos(player.angle);
+    const sin = Math.sin(player.angle);
+    const end = this.scratch.setScalar(player.pos.x + cos * def.reach, player.pos.y + sin * def.reach);
+    const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
+    const maxDist = hit ? hit.point.getDistance(player.pos) : def.reach;
+
+    for (const corpse of this.enemies) {
+      if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
+        continue;
+      const dx = corpse.pos.x - player.pos.x;
+      const dy = corpse.pos.y - player.pos.y;
+      const along = dx * cos + dy * sin;
+      if (along <= 0 || along >= maxDist)
+        continue;
+      if (Math.abs(dx * sin - dy * cos) <= corpse.def.radius + 10) {
+        this.mutilateCorpse(corpse, cos, sin, Boolean(player.berserk));
+        break;
+      }
+    }
+
+    const dmg = def.damage * (player.berserk ? POWERUP_TYPES.berserk.multiplier : 1);
+    if (!hit)
+      return;
+    if (hit.body.ref?.kind === 'barrel') {
+      this.burst(hit.point.x, hit.point.y, 14, 'spark');
+      this.emit('clang', hit.point);
+      this.hitBarrel(hit.body.ref, dmg);
+      return;
+    }
+    const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
+    if (!enemy) {
+      const height = Utils.clamp(player.eye - 2 + this.rand.float(-5, 5), 4, 62);
+      this.burst(hit.point.x, hit.point.y, height, 'spark');
+      this.emit('clang', hit.point);
+      this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
+      return;
+    }
+    const gore = enemy.def.gore;
+    const sizeScale = Math.sqrt(gore);
+    if (player.berserk)
+      enemy.volley = 1e6;
+    enemy.pain = Math.max(enemy.pain, 0.22);
+    const hitZ = this.rand.float(16, 44) - (player.crouch ?? 0) * 12;
+    this.blood.hit(hit.point.x, hit.point.y, hitZ, cos, sin, gore);
+    this.blood.spray(hit.point.x, hit.point.y, 20, -cos, -sin, Math.max(2, Math.round((player.berserk ? 14 : 5) * gore)), { speed: 170, spread: 130 * sizeScale, up: 200, gib: Boolean(player.berserk), scale: sizeScale });
+    this.blood.splat(Math.max(1, Math.round((player.berserk ? 4 : 1) * Math.min(gore, 1.8))), 0.65 + 0.25 * Math.min(gore, 2));
+    this.shake = Math.max(this.shake, player.berserk ? 0.42 : 0.2);
+    this.emit('flesh', hit.point);
+    this.hitEnemyLimb(enemy, hit.point, hitZ, cos, sin, dmg);
+    this.damageEnemy(enemy, dmg);
+    this.resolveGibs();
+  }
+
+  fireChainsaw() {
+    const player = this.player;
+    const def = WEAPONS.chainsaw;
+    player.cooldown = def.cooldown;
+    player.dryFire = false;
+    player.shootFace = 0.42;
+    player.recoil = 0.35;
+    this.shake = Math.max(this.shake, 0.14);
+
+    for (const enemy of this.enemies)
+      enemy.volley = 0;
+
+    const cos = Math.cos(player.angle);
+    const sin = Math.sin(player.angle);
+    const end = this.scratch.setScalar(player.pos.x + cos * def.reach, player.pos.y + sin * def.reach);
+    const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
+    const maxDist = hit ? hit.point.getDistance(player.pos) : def.reach;
+    this.emit('chainsaw', null, { hit: Boolean(hit) });
+
+    for (const corpse of this.enemies) {
+      if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
+        continue;
+      const dx = corpse.pos.x - player.pos.x;
+      const dy = corpse.pos.y - player.pos.y;
+      const along = dx * cos + dy * sin;
+      if (along <= 0 || along >= maxDist)
+        continue;
+      if (Math.abs(dx * sin - dy * cos) <= corpse.def.radius + 10) {
+        this.mutilateCorpse(corpse, cos, sin, true);
+        break;
+      }
+    }
+
+    const dmg = def.damage * (player.berserk ? POWERUP_TYPES.berserk.multiplier : 1);
+    if (!hit)
+      return;
+    if (hit.body.ref?.kind === 'barrel') {
+      this.burst(hit.point.x, hit.point.y, 14, 'spark');
+      this.emit('clang', hit.point);
+      this.hitBarrel(hit.body.ref, dmg);
+      return;
+    }
+    const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
+    if (!enemy) {
+      const height = player.eye - 2 + this.rand.float(-5, 5);
+      const marked = this.blood.impact(hit.point.x, hit.point.y, Math.round(hit.normal.x), Math.round(hit.normal.y), height, 'slash');
+      this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
+      this.emit('clang', hit.point);
+      this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
+      return;
+    }
+    const gore = enemy.def.gore;
+    const sizeScale = Math.sqrt(gore);
+    enemy.volley = 1e6;
+    enemy.pain = Math.max(enemy.pain, 0.22);
+    const hitZ = this.rand.float(16, 44) - (player.crouch ?? 0) * 12;
+    this.blood.hit(hit.point.x, hit.point.y, hitZ, cos, sin, gore);
+    this.blood.spray(hit.point.x, hit.point.y, 20, -cos, -sin, Math.max(2, Math.round((player.berserk ? 16 : 8) * gore)), { speed: 190, spread: 140 * sizeScale, up: 220, gib: player.berserk || this.rand.float(0, 1) < 0.35, scale: sizeScale });
+    this.blood.splat(Math.max(1, Math.round((player.berserk ? 4 : 2) * Math.min(gore, 1.8))), 0.75 + 0.25 * Math.min(gore, 2));
+    this.shake = Math.max(this.shake, player.berserk ? 0.48 : 0.28);
+    this.emit('flesh', hit.point);
+    this.hitEnemyLimb(enemy, hit.point, hitZ, cos, sin, dmg);
+    this.damageEnemy(enemy, dmg);
+    this.resolveGibs();
+  }
+
+  fireShotgun() {
+    const player = this.player;
+    player.shells = Math.max(0, player.shells - 1);
+    this.emit('fire', null, { pump: player.shells > 0 });
+    player.cooldown = FIRE_COOLDOWN;
+    player.dryFire = false;
+    player.shootFace = 0.42;
+    player.flash = 0.1;
+    player.recoil = 1;
+
+    for (const enemy of this.enemies) {
+      enemy.volley = 0;
+      if (enemy.limbs)
+        enemy.limbs.severedThisShot = false;
+    }
+    this.inShot = true;
     const end = this.scratch;
     for (let i = 0; i < PELLETS; i++) {
       const angle = player.angle + this.rand.float(-PELLET_SPREAD, PELLET_SPREAD);
-      end.setScalar(player.pos.x + Math.cos(angle) * 1600, player.pos.y + Math.sin(angle) * 1600);
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      end.setScalar(player.pos.x + cos * 1600, player.pos.y + sin * 1600);
       const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
+      const maxDist = hit ? hit.point.getDistance(player.pos) : 1600;
+      for (const corpse of this.enemies) {
+        if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
+          continue;
+        const dx = corpse.pos.x - player.pos.x;
+        const dy = corpse.pos.y - player.pos.y;
+        const along = dx * cos + dy * sin;
+        if (along <= 0 || along >= maxDist)
+          continue;
+        if (Math.abs(dx * sin - dy * cos) <= corpse.def.radius + 6) {
+          this.mutilateCorpse(corpse, cos, sin);
+          break;
+        }
+      }
       if (!hit)
         continue;
+      const falloff = Utils.clamp((maxDist - PELLET_FALLOFF_START) / (PELLET_FALLOFF_END - PELLET_FALLOFF_START), 0, 1);
+      const pelletDmg = PELLET_DAMAGE - falloff * (PELLET_DAMAGE - PELLET_MIN_DAMAGE);
       if (hit.body.ref?.kind === 'barrel') {
         this.burst(hit.point.x, hit.point.y, 14, 'spark');
         this.emit('clang', hit.point);
-        this.hitBarrel(hit.body.ref, PELLET_DAMAGE);
+        this.hitBarrel(hit.body.ref, pelletDmg);
         continue;
       }
       const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
       if (!enemy) {
         // the pellets spread vertically like they do sideways: tight up close, wide at range
-        const height = EYE + this.rand.float(-PELLET_VERTICAL_SPREAD, PELLET_VERTICAL_SPREAD) * hit.point.getDistance(player.pos);
+        const height = player.eye + this.rand.float(-PELLET_VERTICAL_SPREAD, PELLET_VERTICAL_SPREAD) * maxDist;
         const marked = this.blood.impact(hit.point.x, hit.point.y, Math.round(hit.normal.x), Math.round(hit.normal.y), height);
         this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
         this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
         continue;
       }
-      this.blood.hit(hit.point.x, hit.point.y, this.rand.float(14, 50), Math.cos(angle), Math.sin(angle));
+      const hitZ = this.rand.float(14, 50) - (player.crouch ?? 0) * 12;
+      this.blood.hit(hit.point.x, hit.point.y, hitZ, cos, sin, enemy.def.gore);
       this.emit('flesh', hit.point);
-      if (hit.point.getDistance(player.pos) < 110)
-        this.blood.splat(1, 0.7);
-      this.damageEnemy(enemy, PELLET_DAMAGE);
+      if (maxDist < 110)
+        this.blood.splat(1, 0.55 + 0.25 * Math.min(enemy.def.gore, 2));
+      this.hitEnemyLimb(enemy, hit.point, hitZ, cos, sin, pelletDmg);
+      this.damageEnemy(enemy, pelletDmg);
     }
+    this.inShot = false;
 
     this.resolveGibs();
+  }
+
+  fireChaingun() {
+    const player = this.player;
+    const def = WEAPONS.chaingun;
+    player.bullets = Math.max(0, player.bullets - def.ammoCost);
+    this.emit('chaingun');
+    player.cooldown = def.cooldown;
+    player.dryFire = false;
+    player.triggerHeld = true;
+    player.spinDown = 0.42;
+    player.shootFace = 0.42;
+    player.flash = 0.06;
+    player.recoil = 0.55;
+    this.shake = Math.max(this.shake, 0.12);
+
+    for (const enemy of this.enemies)
+      enemy.volley = 0;
+
+    const angle = player.angle + this.rand.float(-def.spread, def.spread);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const end = this.scratch.setScalar(player.pos.x + cos * 1600, player.pos.y + sin * 1600);
+    const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
+    const maxDist = hit ? hit.point.getDistance(player.pos) : 1600;
+    for (const corpse of this.enemies) {
+      if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
+        continue;
+      const dx = corpse.pos.x - player.pos.x;
+      const dy = corpse.pos.y - player.pos.y;
+      const along = dx * cos + dy * sin;
+      if (along <= 0 || along >= maxDist)
+        continue;
+      if (Math.abs(dx * sin - dy * cos) <= corpse.def.radius + 6) {
+        this.mutilateCorpse(corpse, cos, sin);
+        break;
+      }
+    }
+    if (!hit)
+      return;
+    if (hit.body.ref?.kind === 'barrel') {
+      this.burst(hit.point.x, hit.point.y, 14, 'spark');
+      this.emit('clang', hit.point);
+      this.hitBarrel(hit.body.ref, def.damage);
+      return;
+    }
+    const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
+    if (!enemy) {
+      const height = player.eye + this.rand.float(-0.02, 0.02) * maxDist;
+      const marked = this.blood.impact(hit.point.x, hit.point.y, Math.round(hit.normal.x), Math.round(hit.normal.y), height);
+      this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
+      this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
+      return;
+    }
+    const hitZ = this.rand.float(14, 48) - (player.crouch ?? 0) * 12;
+    this.blood.hit(hit.point.x, hit.point.y, hitZ, cos, sin, enemy.def.gore);
+    this.emit('flesh', hit.point);
+    if (maxDist < 110)
+      this.blood.splat(1, 0.5 + 0.25 * Math.min(enemy.def.gore, 2));
+    if (this.rand.float(0, 1) < 0.65)
+      enemy.pain = Math.max(enemy.pain, 0.24);
+    this.hitEnemyLimb(enemy, hit.point, hitZ, cos, sin, def.damage);
+    this.damageEnemy(enemy, def.damage);
+    this.resolveGibs();
+  }
+
+  fireRocket() {
+    const player = this.player;
+    const def = WEAPONS.rocket;
+    player.rockets = Math.max(0, player.rockets - def.ammoCost);
+    this.emit('rocketFire');
+    player.cooldown = def.cooldown;
+    player.dryFire = false;
+    player.shootFace = 0.42;
+    player.flash = 0.14;
+    player.recoil = 1.15;
+    this.shake = Math.max(this.shake, 0.35);
+
+    const direction = new Vec2(Math.cos(player.angle), Math.sin(player.angle));
+    const start = player.pos.clone().addScaledVector(direction, PLAYER_RADIUS + 8);
+    this.addRocket(start, direction);
   }
 
   /** What a pellet hit: 'door' or plain 'wall', judged by the tile behind the struck face. */
@@ -507,16 +1452,24 @@ export class Game {
     let best = null;
     let bestDistance = 96;
     for (const door of this.level.doors.values()) {
-      const dx = door.center.x - player.pos.x;
-      const dy = door.center.y - player.pos.y;
-      const distance = Math.hypot(dx, dy);
-      if (distance < bestDistance && (dx * facing.x + dy * facing.y) / distance > 0.35) {
+      const toDoor = this.toPlayer.subVectors(door.center, player.pos);
+      const distance = toDoor.getMagnitude();
+      if (distance > 0 && distance < bestDistance && toDoor.dotProduct(facing) / distance > 0.35) {
         best = door;
         bestDistance = distance;
       }
     }
-    if (best)
+    if (best) {
+      if (best.lock && !player.keys?.[best.lock]) {
+        const label = best.lock === 'red' ? 'Red' : best.lock === 'yellow' ? 'Yellow' : 'Blue';
+        this.say(`You need a ${label} keycard to open this door.`);
+        this.emit('locked', best.center);
+        return;
+      }
       best.target = best.target ? 0 : 1;
+      if (best.secret)
+        best.revealed = true;
+    }
   }
 
   actorNear(point, distance, enemyDistance = distance) {
@@ -623,20 +1576,49 @@ export class Game {
   updateEnemy(enemy, dt) {
     enemy.hurt = Math.max(0, enemy.hurt - dt);
     enemy.bleed -= dt;
+    const gore = enemy.def.gore;
     if (enemy.state === 'dead') {
+      enemy.pain = 0;
       enemy.deadTime += dt;
-      // the pool under a corpse keeps spreading while it lies there
-      if (enemy.bleed <= 0 && enemy.deadTime < 2.2) {
-        enemy.bleed = 0.16;
-        const reach = 10 + enemy.deadTime * 12;
-        this.blood.floorSplat(enemy.pos.x + this.rand.float(-reach, reach), enemy.pos.y + this.rand.float(-reach, reach), this.rand.float(8, 16) + enemy.deadTime * 6);
+      enemy.inSlime = Boolean(this.level.slimeAt(enemy.pos.x, enemy.pos.y));
+      if (enemy.type !== 'wraith' && enemy.deadTime <= 0.72) {
+        enemy.deathFountain = (enemy.deathFountain ?? 0.08) - dt;
+        if (enemy.deathFountain <= 0) {
+          enemy.deathFountain += 0.06;
+          const progress = enemy.deadTime / 0.72;
+          const z = Math.max(6, (enemy.gibbed ? 14 : 26) * (1 - progress * 0.65));
+          const scale = Math.sqrt(Math.max(0.18, gore));
+          const count = Math.max(2, Math.round((1 - progress * 0.45) * 9 * gore));
+          this.blood.spray(enemy.pos.x, enemy.pos.y, z, (enemy.deathDirX ?? 0) * 0.35, (enemy.deathDirY ?? 0) * 0.35, count, {
+            speed: 95,
+            spread: 195 * scale,
+            up: 265,
+            scale,
+          });
+          if (progress < 0.65)
+            this.blood.spray(enemy.pos.x, enemy.pos.y, z + 4, 0, 0, Math.max(2, Math.round(5 * gore)), {
+              speed: 55,
+              spread: 115 * scale,
+              up: 285,
+              scale,
+            });
+        }
       }
       return;
     }
-    // wounded enemies leave a trail
+    // wounded enemies leave a trail proportional to their size
     if (enemy.hp < enemy.def.hp * 0.6 && enemy.bleed <= 0) {
-      enemy.bleed = 0.14;
-      this.blood.drip(enemy.pos.x, enemy.pos.y);
+      enemy.bleed = 0.14 / Math.sqrt(Math.max(0.35, gore));
+      this.blood.drip(enemy.pos.x, enemy.pos.y, gore);
+    }
+
+    if (this.state === 'dead' || this.player.health <= 0) {
+      enemy.windup = 0;
+      enemy.leap = 0;
+      enemy.roar = 0;
+      enemy.pain = Math.max(0, enemy.pain - dt);
+      enemy.body.setVelocity(this.zero);
+      return;
     }
 
     const player = this.player;
@@ -705,14 +1687,17 @@ export class Game {
       default: this.driveBrute(enemy, dt, move, distance);
     }
 
-    const speed = enemy.def.speed * rage * (enemy.windup > 0 ? 0.15 : 1);
+    const crawlScale = enemy.crawling
+      ? (!enemy.limbs?.leftLeg && !enemy.limbs?.rightLeg
+        ? (!enemy.limbs?.leftArm && !enemy.limbs?.rightArm ? 0.18 : 0.34)
+        : 0.48)
+      : 1;
+    const speed = enemy.def.speed * rage * crawlScale * (enemy.windup > 0 ? 0.15 : 1);
     this.velocity.scaleVector(move, speed);
     if (enemy.type === 'boss')
       this.keepInArena(enemy, this.velocity);
     enemy.body.setVelocity(this.velocity);
     enemy.walk += dt * (enemy.windup > 0 ? 0 : speed * enemy.def.gait);
-    if (this.state === 'dead')
-      enemy.body.setVelocity(this.zero);
   }
 
   driveImp(enemy, dt, move, toPlayer, distance) {
@@ -748,8 +1733,10 @@ export class Game {
       return;
     const reach = enemy.def.radius + 6;
     const ahead = (vx, vy) => {
-      const length = Math.hypot(vx, vy) || 1;
-      return level.inArena(enemy.pos.x + (vx / length) * reach, enemy.pos.y + (vy / length) * reach);
+      const step = this.scratch.setScalar(vx, vy);
+      if (step.getMagnitude(true) > 0)
+        step.normalize();
+      return level.inArena(enemy.pos.x + step.x * reach, enemy.pos.y + step.y * reach);
     };
     if (ahead(velocity.x, velocity.y))
       return;
@@ -785,8 +1772,24 @@ export class Game {
       enemy.windup = 0.4;
   }
 
-  /** A crawler zigzags in fast, crouches, and leaps. */
+  /** A crawler zigzags in fast, crouches, and leaps (or drags itself in to bite when its legs are blown off). */
   driveCrawler(enemy, dt, move, toPlayer, distance) {
+    if (enemy.crawling) {
+      const reach = enemy.def.radius + PLAYER_RADIUS + 10;
+      if (enemy.windup > 0) {
+        enemy.windup -= dt;
+        if (enemy.windup <= 0) {
+          this.emit('bite', enemy.pos, { kind: 'crawler' });
+          if (distance < reach + 8)
+            this.hurtPlayer(8);
+          enemy.cooldown = 0.75;
+        }
+        return;
+      }
+      if (distance < reach && enemy.cooldown <= 0)
+        enemy.windup = 0.25;
+      return;
+    }
     if (enemy.windup > 0) {
       enemy.windup -= dt;
       if (enemy.windup <= 0) {
@@ -897,12 +1900,21 @@ export class Game {
     const player = this.player;
     player.angle += input.turn * dt * 2.6 + input.mouseX * 0.0022;
     player.cooldown = Math.max(0, player.cooldown - dt);
+    if (player.cooldown <= 0)
+      player.dryFire = false;
+    player.spinDown = Math.max(0, (player.spinDown ?? 0) - dt);
+    player.shootFace = Math.max(0, (player.shootFace ?? 0) - dt);
+    player.switchTimer = Math.max(0, (player.switchTimer ?? 0) - dt);
     player.flash = Math.max(0, player.flash - dt);
     player.recoil = Math.max(0, player.recoil - dt * 3.5);
     player.hurt = Math.max(0, player.hurt - dt);
     player.hitMarker = Math.max(0, player.hitMarker - dt);
 
-    const speed = input.run ? PLAYER_RUN : PLAYER_WALK;
+    player.crouch = Utils.clamp(player.crouch + (input.crouch ? dt * CROUCH_SPEED : -dt * CROUCH_SPEED), 0, 1);
+    player.eye = Utils.lerp(EYE, CROUCH_EYE, player.crouch);
+
+    const topSpeed = input.run ? PLAYER_RUN : PLAYER_WALK;
+    const speed = Utils.lerp(topSpeed, PLAYER_CROUCH, player.crouch);
     const cos = Math.cos(player.angle);
     const sin = Math.sin(player.angle);
     const move = this.velocity.setScalar(
@@ -921,15 +1933,25 @@ export class Game {
     if (this.state === 'play' && landed(player.bob) > landed(before))
       this.emit('step', null, { wet: player.feet.blood > 0.08, who: 'player' });
 
+    if (input.weapon)
+      this.selectWeapon(input.weapon);
     if (input.use)
       this.use();
+    player.triggerHeld = Boolean(input.fire);
     if (input.fire && player.cooldown <= 0) {
-      if (player.ammo > 0)
+      const def = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
+      const pool = def.ammoType ? AMMO_TYPES[def.ammoType] : null;
+      const current = pool ? player[pool.id] : Infinity;
+      if (current >= def.ammoCost)
         this.fire();
       else {
         player.cooldown = 0.3;
+        player.dryFire = true;
+        player.triggerHeld = false;
+        player.spinDown = 0;
+        player.shootFace = 0;
         this.emit('dry');
-        this.say('Out of shells', 1);
+        this.say(`Out of ${pool.label.toLowerCase()}`, 1);
       }
     }
   }
@@ -938,6 +1960,10 @@ export class Game {
   trackFootprints() {
     const { player } = this;
     if (this.state === 'play') {
+      for (const enemy of this.enemies) {
+        if (enemy.state === 'dead' && enemy.pos.getDistance(player.pos) < enemy.def.radius + 14)
+          player.feet.blood = 1;
+      }
       this.blood.walk(player.feet, player.pos.x, player.pos.y, 1, PLAYER_STRIDE);
     }
     for (const enemy of this.enemies) {
@@ -973,6 +1999,135 @@ export class Game {
     });
   }
 
+  updateHazards(dt) {
+    const { player } = this;
+    player.radFlash = Math.max(0, (player.radFlash ?? 0) - dt);
+    player.soulFlash = Math.max(0, (player.soulFlash ?? 0) - dt);
+    player.berserkTimer = Math.max(0, (player.berserkTimer ?? 0) - dt);
+    player.radSuit = Math.max(0, (player.radSuit ?? 0) - dt);
+    if (player.ammoFlash) {
+      player.ammoFlash.shells = Math.max(0, (player.ammoFlash.shells ?? 0) - dt);
+      player.ammoFlash.bullets = Math.max(0, (player.ammoFlash.bullets ?? 0) - dt);
+      player.ammoFlash.rockets = Math.max(0, (player.ammoFlash.rockets ?? 0) - dt);
+    }
+    if (this.state === 'play' && this.level.slimeAt(player.pos.x, player.pos.y)) {
+      if ((player.radSuit ?? 0) > 0)
+        player.slimeTimer = 0;
+      else {
+        player.slimeTimer = (player.slimeTimer ?? 0) + dt;
+        if (player.slimeTimer >= 0.85) {
+          player.slimeTimer -= 0.85;
+          this.hurtPlayer(5);
+          player.radFlash = 0.45;
+          this.emit('acid');
+        }
+      }
+    } else
+      player.slimeTimer = Math.max(0, (player.slimeTimer ?? 0) - dt * 2);
+
+    for (const crusher of this.level.crushers) {
+      crusher.phase += dt * 2.2;
+      crusher.hurtCooldown = Math.max(0, (crusher.hurtCooldown ?? 0) - dt);
+      const wave = Math.sin(crusher.phase);
+      crusher.low = CEILING - Math.max(0, wave) * (CEILING - 8);
+      if (crusher.low > 36)
+        crusher.slamming = false;
+      else if (!crusher.slamming && crusher.low < 12) {
+        crusher.slamming = true;
+        this.emit('crush', crusher.center);
+        const dist = player.pos.getDistance(crusher.center);
+        if (dist < 420)
+          this.shake = Math.max(this.shake, 0.35 * (1 - dist / 420));
+      }
+      if (crusher.low < 24) {
+        for (const enemy of this.enemies) {
+          if (enemy.pos.getDistance(crusher.center) >= TILE * 0.45 + enemy.def.radius)
+            continue;
+          if (enemy.state !== 'dead') {
+            enemy.volley = 1e6;
+            this.damageEnemy(enemy, 999);
+          } else if (!enemy.gibbed && crusher.low < 18)
+            this.mutilateCorpse(enemy, 1, 0, true);
+        }
+        this.resolveGibs();
+      }
+      if (this.state === 'play' && crusher.low < player.eye + 4 && crusher.hurtCooldown <= 0 && player.pos.getDistance(crusher.center) < TILE * 0.42 + PLAYER_RADIUS) {
+        crusher.hurtCooldown = 0.35;
+        this.hurtPlayer(18, crusher.center);
+        this.blood.spray(player.pos.x, player.pos.y, player.eye * 0.6, 0, 0, 14);
+      }
+    }
+  }
+
+  updateTeleporters(dt) {
+    const { player, level } = this;
+    player.teleFlash = Math.max(0, (player.teleFlash ?? 0) - dt);
+    player.teleportCooldown = Math.max(0, (player.teleportCooldown ?? 0) - dt);
+
+    const pad = level.teleporterAt(player.pos.x, player.pos.y);
+    if (!pad || pad.idx !== player.teleportPad || player.pos.getDistance(pad.center) >= TILE * 0.48)
+      player.teleportPad = -1;
+
+    if (
+      this.state === 'play' &&
+      player.teleportCooldown <= 0 &&
+      pad &&
+      pad.idx !== player.teleportPad &&
+      pad.targetIdx !== pad.idx &&
+      player.pos.getDistance(pad.center) < TILE * 0.42
+    ) {
+      this.burst(pad.center.x, pad.center.y, EYE - 4, 'teleport');
+      this.burst(pad.target.x, pad.target.y, EYE - 4, 'teleport');
+      // Also spawn a TFOG plasma burst directly in front of the player's exit view so it is not clipped by the camera near plane
+      const fx = pad.target.x + Math.cos(player.angle) * 28;
+      const fy = pad.target.y + Math.sin(player.angle) * 28;
+      this.burst(fx, fy, EYE - 4, 'teleport');
+      this.emit('teleport', pad.target);
+      player.body.setPosition(pad.target.clone());
+      player.body.setVelocity(this.zero);
+      player.teleportCooldown = 1.1;
+      player.teleportPad = pad.targetIdx;
+      player.teleFlash = 0.65;
+      player.shootFace = Math.max(player.shootFace ?? 0, 0.42);
+      this.shake = Math.max(this.shake, 0.45);
+
+      let telefragged = false;
+      for (const enemy of this.enemies) {
+        if (enemy.state === 'dead')
+          continue;
+        if (enemy.pos.getDistance(pad.target) <= enemy.def.radius + PLAYER_RADIUS + 10) {
+          enemy.volley = 1e6;
+          this.damageEnemy(enemy, 999);
+          telefragged = true;
+        }
+      }
+      if (telefragged) {
+        this.resolveGibs();
+        this.say('Telefrag!', 2.2);
+      }
+    }
+
+    for (const enemy of this.enemies) {
+      enemy.teleportCooldown = Math.max(0, (enemy.teleportCooldown ?? 0) - dt);
+      if (this.state !== 'play' || enemy.state !== 'chase' || enemy.type === 'boss' || enemy.teleportCooldown > 0)
+        continue;
+      const pad = level.teleporterAt(enemy.pos.x, enemy.pos.y);
+      if (!pad || pad.targetIdx === pad.idx || enemy.pos.getDistance(pad.center) >= TILE * 0.36)
+        continue;
+      if (pad.target.getDistance(player.pos) + 12 >= pad.center.getDistance(player.pos))
+        continue;
+      const blockedByPlayer = player.pos.getDistance(pad.target) < enemy.def.radius + PLAYER_RADIUS + 12;
+      const blockedByEnemy = this.enemies.some((other) => other !== enemy && other.state !== 'dead' && other.pos.getDistance(pad.target) < enemy.def.radius + other.def.radius + 8);
+      if (blockedByPlayer || blockedByEnemy)
+        continue;
+      this.burst(pad.center.x, pad.center.y, EYE - 4, 'teleport');
+      this.burst(pad.target.x, pad.target.y, EYE - 4, 'teleport');
+      this.emit('teleport', pad.target);
+      enemy.body.setPosition(pad.target.clone());
+      enemy.teleportCooldown = 1.4;
+    }
+  }
+
   update(dt, input) {
     this.time += dt;
     this.shake = Math.max(0, this.shake - dt * 1.6);
@@ -982,6 +2137,10 @@ export class Game {
       effect.age += dt;
     this.effects = this.effects.filter((effect) => effect.age < effect.life);
 
+    if (this.state === 'cleared') {
+      this.updateIntermission(dt);
+      return;
+    }
     if (this.state === 'dead')
       this.player.deadTime += dt;
     if (this.state !== 'play' && this.state !== 'dead')
@@ -996,6 +2155,7 @@ export class Game {
     this.updateFlow();
     this.updateDoors(dt);
     this.updateBarrels(dt);
+    this.updateHazards(dt);
     for (const enemy of this.enemies)
       this.updateEnemy(enemy, dt);
     for (const shot of this.shots) {
@@ -1005,12 +2165,20 @@ export class Game {
     }
 
     this.scene.step(dt);
+    this.updateTeleporters(dt);
     this.cleanup();
     this.trackFootprints();
     if (this.state === 'play')
       this.fog.update(this.player.pos.x, this.player.pos.y, this.player.angle);
 
     if (this.state === 'play') {
+      const secretIdx = this.level.secretAt(this.player.pos.x, this.player.pos.y);
+      if (secretIdx >= 0 && !this.discoveredSecrets.has(secretIdx)) {
+        this.discoveredSecrets.add(secretIdx);
+        this.secretsFound++;
+        this.say('Secret area found!', 2.5);
+        this.emit('secret');
+      }
       // a failing heart: faster the lower the health
       const { health } = this.player;
       if (health > 0 && health < 30) {
@@ -1020,10 +2188,17 @@ export class Game {
           this.heartbeat = 0.55 + health / 60;
         }
       }
+      if (this.player.weapon === 'chainsaw' && this.player.cooldown <= 0 && (this.player.switchTimer ?? 0) <= 0) {
+        this.player.chainsawIdle = (this.player.chainsawIdle ?? 0) - dt;
+        if (this.player.chainsawIdle <= 0) {
+          this.emit('chainsawIdle');
+          this.player.chainsawIdle = 0.14;
+        }
+      } else
+        this.player.chainsawIdle = Math.max(this.player.chainsawIdle ?? 0, 0.06);
       for (const exit of this.level.exits) {
         if (exit.getDistance(this.player.pos) < TILE * 0.5 + PLAYER_RADIUS + 10) {
-          this.state = 'cleared';
-          this.emit('clear');
+          this.startIntermission();
           break;
         }
       }

@@ -1,3 +1,4 @@
+import { Utils } from '@1pizzateam/spock';
 import { LIGHT_GLSL, SOLID_ALPHA } from './quads.js';
 import { mulberry32 } from './rng.js';
 
@@ -26,7 +27,7 @@ export const RUST_DARK = [38, 21, 13];
 export const HAZARD = [160, 90, 30];
 export const GLOW = [76, 128, 232];
 
-export const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+export const mix = (a, b, t) => [Utils.lerp(a[0], b[0], t), Utils.lerp(a[1], b[1], t), Utils.lerp(a[2], b[2], t)];
 
 /** A small RGB picture to draw on; the barrel shares it. */
 export class Tile {
@@ -43,7 +44,7 @@ export class Tile {
       return;
     const i = (y * this.width + x) * 3;
     for (let k = 0; k < 3; k++)
-      this.pixels[i + k] += (color[k] - this.pixels[i + k]) * amount;
+      this.pixels[i + k] = Utils.lerp(this.pixels[i + k], color[k], amount);
   }
 
   get(x, y) {
@@ -351,7 +352,7 @@ export function floorAtlas() {
         const i = (y * TILE_PIXELS + x) * 3;
         const o = (y * width + cell * TILE_PIXELS + x) * 4;
         for (let k = 0; k < 3; k++)
-          data[o + k] = Math.max(0, Math.min(255, Math.round(tile.pixels[i + k])));
+          data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
         data[o + 3] = 255;
       }
     }
@@ -497,4 +498,241 @@ void main(void) {
   gl_FragColor = vec4(color, ${SOLID_ALPHA});
 }
 `;
+
+/** Smooth random 0..1 that repeats seamlessly across `period` pixels in both X and Y. */
+function periodicField(rnd, baseCells, period = TILE_PIXELS) {
+  const octaves = [0, 1, 2].map((o) => {
+    const cells = baseCells * 2 ** o;
+    return {
+      cells,
+      grid: Array.from({ length: cells * cells }, () => rnd()),
+    };
+  });
+  return (x, y) => {
+    let total = 0;
+    let weight = 0;
+    for (let o = 0; o < 3; o++) {
+      const { cells, grid } = octaves[o];
+      const gx = (x / period) * cells;
+      const gy = (y / period) * cells;
+      const x0 = Math.floor(gx);
+      const y0 = Math.floor(gy);
+      const fx = gx - x0;
+      const fy = gy - y0;
+      const sx = fx * fx * (3 - 2 * fx);
+      const sy = fy * fy * (3 - 2 * fy);
+      const at = (ix, iy) => grid[(((iy % cells) + cells) % cells) * cells + (((ix % cells) + cells) % cells)];
+      const top = at(x0, y0) * (1 - sx) + at(x0 + 1, y0) * sx;
+      const bottom = at(x0, y0 + 1) * (1 - sx) + at(x0 + 1, y0 + 1) * sx;
+      const w = 1 / 2 ** o;
+      total += (top * (1 - sy) + bottom * sy) * w;
+      weight += w;
+    }
+    return total / weight;
+  };
+}
+
+export function slimeAtlas() {
+  const width = TILE_PIXELS;
+  const height = TILE_PIXELS;
+  const data = new Uint8Array(width * height * 4);
+  const rnd = mulberry32(99173);
+  const swirl = periodicField(rnd, 4, TILE_PIXELS);
+  const fine = periodicField(rnd, 8, TILE_PIXELS);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const s = swirl(x, y) * 0.65 + fine(x, y) * 0.35;
+      const r = Math.round(14 + s * 46);
+      const g = Math.round(68 + s * 155);
+      const b = Math.round(16 + s * 38);
+      const o = (y * width + x) * 4;
+      data[o] = Utils.clamp(r, 0, 255);
+      data[o + 1] = Utils.clamp(g, 0, 255);
+      data[o + 2] = Utils.clamp(b, 0, 255);
+      data[o + 3] = 255;
+    }
+  }
+  return { name: 'slime', data, width, height, cell: TILE_PIXELS, frames: 1 };
+}
+
+export const SLIME_FRAGMENT = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform sampler2D uSampler;
+uniform vec3 uMaterialDiffuse;
+uniform float uTime;
+uniform int uHasFog;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
+varying float vDepth;
+varying vec2 vTextureCoord;
+varying vec2 vWorld;
+varying vec3 vWorldPos;
+
+${RUST_GLSL}
+${LIGHT_GLSL}
+void main(void) {
+  vec2 uv = vWorld / 64.0;
+  vec2 driftA = vec2(
+    sin(vWorld.y * 0.08 + uTime * 0.75) * 0.035 + uTime * 0.012,
+    cos(vWorld.x * 0.08 - uTime * 0.6) * 0.035 + uTime * 0.008
+  );
+  vec2 driftB = vec2(
+    cos((vWorld.x + vWorld.y) * 0.055 - uTime * 0.52) * 0.03 - uTime * 0.009,
+    sin((vWorld.x - vWorld.y) * 0.055 + uTime * 0.68) * 0.03 + uTime * 0.011
+  );
+  vec3 baseA = texture2D(uSampler, uv + driftA).rgb;
+  vec3 baseB = texture2D(uSampler, uv * 0.75 + vec2(0.37, 0.61) + driftB).rgb;
+  vec3 base = mix(baseA, baseB, 0.45);
+  float churn = noise(vWorld / 16.0 + vec2(uTime * 0.22, -uTime * 0.16)) * 0.6
+              + noise(vWorld / 7.0 - vec2(uTime * 0.35, uTime * 0.28)) * 0.4;
+  float bubble = smoothstep(0.74, 0.88, churn);
+  float pulse = 0.92 + 0.08 * sin(uTime * 1.2 + vWorld.x * 0.05 + vWorld.y * 0.05);
+  vec3 glow = mix(base * pulse, vec3(0.58, 1.0, 0.28), bubble * 0.78);
+  vec3 color = glow * uMaterialDiffuse * max(vec3(0.68, 0.92, 0.68), surfaceLight(vWorldPos, 0.75));
+  if (uHasFog == 1) {
+    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+    color = mix(color, uFogColor, fade * 0.9);
+  }
+  gl_FragColor = vec4(color, ${SOLID_ALPHA});
+}
+`;
+
+function segmentDistance(px, py, ax, ay, bx, by) {
+  const vx = bx - ax;
+  const vy = by - ay;
+  const len2 = vx * vx + vy * vy || 1;
+  const t = Utils.clamp(((px - ax) * vx + (py - ay) * vy) / len2, 0, 1);
+  return Math.hypot(px - (ax + vx * t), py - (ay + vy * t));
+}
+
+/**
+ * A 64x64 Doom-style glowing pentagram teleporter pad: dark bevelled UAC steel frame,
+ * concentric rune circle, five-pointed demonic pentagram, and an emerald-crimson plasma core.
+ */
+export function teleporterAtlas() {
+  const width = TILE_PIXELS;
+  const height = TILE_PIXELS;
+  const data = new Uint8Array(width * height * 4);
+  const rnd = mulberry32(44119);
+  const grain = field(rnd, 6);
+  const cx = 31.5;
+  const cy = 31.5;
+  const radius = 21.5;
+
+  const starPts = [];
+  for (let k = 0; k < 5; k++) {
+    const angle = -Math.PI / 2 + (k * Math.PI * 2) / 5;
+    starPts.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius]);
+  }
+  const chords = [
+    [starPts[0], starPts[2]],
+    [starPts[2], starPts[4]],
+    [starPts[4], starPts[1]],
+    [starPts[1], starPts[3]],
+    [starPts[3], starPts[0]],
+  ];
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const g = grain(x, y);
+      const d = Math.hypot(x - cx, y - cy);
+      const border = Math.min(x, y, width - 1 - x, height - 1 - y);
+      let r = Math.round(20 + g * 16);
+      let gr = Math.round(25 + g * 18);
+      let b = Math.round(34 + g * 22);
+
+      if (border < 3) {
+        const edge = border === 1 ? 1.35 : 0.65;
+        r = Math.round(r * edge);
+        gr = Math.round(gr * edge);
+        b = Math.round(b * edge);
+      }
+
+      if (d < 25.5 && d >= 22.8) {
+        r = 16;
+        gr = 20;
+        b = 28;
+      } else if (d < 22.8) {
+        // Dark obsidian portal basin with swirling plasma undertone
+        r = Math.round(26 + g * 24);
+        gr = Math.round(14 + g * 28);
+        b = Math.round(22 + g * 26);
+
+        // Outer rune circle
+        const ringDist = Math.abs(d - radius);
+        let lineDist = ringDist;
+        for (const [p0, p1] of chords)
+          lineDist = Math.min(lineDist, segmentDistance(x, y, p0[0], p0[1], p1[0], p1[1]));
+
+        if (lineDist < 2.1) {
+          const hot = Math.max(0, 1 - lineDist / 2.1);
+          r = Math.round(Utils.lerp(r, 248, hot));
+          gr = Math.round(Utils.lerp(gr, 96 + 90 * hot * hot, hot));
+          b = Math.round(Utils.lerp(b, 54, hot));
+        }
+
+        // Emerald-cyan warp core at the center of the pentagram
+        if (d < 7.5) {
+          const core = Math.max(0, 1 - d / 7.5);
+          r = Math.round(Utils.lerp(r, 90, core * 0.7));
+          gr = Math.round(Utils.lerp(gr, 245, core));
+          b = Math.round(Utils.lerp(b, 185, core * 0.85));
+        }
+      }
+
+      const o = (y * width + x) * 4;
+      data[o] = Utils.clamp(r, 0, 255);
+      data[o + 1] = Utils.clamp(gr, 0, 255);
+      data[o + 2] = Utils.clamp(b, 0, 255);
+      data[o + 3] = 255;
+    }
+  }
+  return { name: 'teleporter', data, width, height, cell: TILE_PIXELS, frames: 1 };
+}
+
+export const TELEPORTER_FRAGMENT = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform sampler2D uSampler;
+uniform vec3 uMaterialDiffuse;
+uniform float uTime;
+uniform int uHasFog;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
+varying float vDepth;
+varying vec2 vTextureCoord;
+varying vec2 vWorld;
+varying vec3 vWorldPos;
+
+${RUST_GLSL}
+${LIGHT_GLSL}
+void main(void) {
+  vec2 centered = vTextureCoord - vec2(0.5);
+  float dist = length(centered);
+  vec3 tex = texture2D(uSampler, vTextureCoord).rgb;
+  float pulse = 0.78 + 0.22 * sin(uTime * 5.2);
+  float ringWave = 0.5 + 0.5 * sin(dist * 34.0 - uTime * 6.5);
+  float inside = 1.0 - smoothstep(0.33, 0.37, dist);
+  float runeGlow = smoothstep(0.32, 0.68, max(tex.r, tex.g));
+  vec3 plasma = mix(vec3(0.95, 0.24, 0.14), vec3(0.22, 0.96, 0.68), ringWave * 0.55 + smoothstep(0.14, 0.0, dist) * 0.45);
+  vec3 lit = mix(tex, tex * (0.9 + 0.45 * pulse) + plasma * (0.32 * inside * ringWave + 0.28 * runeGlow * pulse), inside);
+  vec3 color = lit * uMaterialDiffuse * max(vec3(0.76, 0.86, 0.82), surfaceLight(vWorldPos, inside * 0.85));
+  if (uHasFog == 1) {
+    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+    color = mix(color, uFogColor, fade * 0.9);
+  }
+  gl_FragColor = vec4(color, ${SOLID_ALPHA});
+}
+`;
+
+
 

@@ -1,4 +1,5 @@
 import { Player } from '@1pizzateam/loopr';
+import { Time, Utils } from '@1pizzateam/spock';
 import { Game } from './game.js';
 import { Hud } from './hud.js';
 import { Sound } from './audio.js';
@@ -26,15 +27,22 @@ let frameTime = 1 / 60;
 const world = new World(worldCanvas);
 hud.overlay = world.overlay;
 
-// browsers only start audio after a gesture, so every key press or click tries to unlock it
-// the press that unlocks the sound must not also start the game, or the intro music would never be heard
+// Try to start the intro music immediately on page load (works whenever the browser allows autoplay,
+// such as after a reload, same-origin navigation, high media engagement, or site audio permission).
+// If the browser suspends Web Audio until a gesture, the first interaction unlocks it without skipping the title.
+sound.unlock();
 let unlockedThisFrame = false;
-for (const type of ['keydown', 'pointerdown'])
+for (const type of ['keydown', 'pointerdown', 'mousedown', 'touchstart'])
   window.addEventListener(type, () => {
-    const locked = !sound.ctx;
+    const locked = sound.ctx?.state !== 'running';
     sound.unlock();
-    unlockedThisFrame ||= locked && !!sound.ctx;
+    unlockedThisFrame ||= locked;
   });
+for (const type of ['pointermove', 'wheel'])
+  window.addEventListener(type, () => {
+    if (sound.ctx?.state !== 'running')
+      sound.unlock();
+  }, { passive: true });
 
 function resize() {
   const ratio = window.devicePixelRatio || 1;
@@ -46,6 +54,7 @@ window.addEventListener('resize', resize);
 resize();
 
 function start() {
+  game.selectingDifficulty = false;
   game.state = 'play';
   input.lock();
 }
@@ -61,7 +70,19 @@ document.addEventListener('pointerlockchange', () => {
 
 function control(dt) {
   if (input.took('KeyM'))
+    game.say(sound.toggleMusic(game.levelIndex), 1.5);
+  if (input.took('KeyV'))
     hud.showMap = !hud.showMap;
+  if (input.took('Tab') && game.state === 'play')
+    hud.toggleAutomap(game);
+  if (hud.automap && game.state === 'play') {
+    if (input.took('Equal') || input.took('NumpadAdd'))
+      hud.zoomAutomap(0.25);
+    if (input.took('Minus') || input.took('NumpadSubtract'))
+      hud.zoomAutomap(-0.25);
+    if (input.took('KeyG'))
+      hud.toggleAutomapGrid();
+  }
   if (input.took('KeyN'))
     game.say(sound.toggleMute() ? 'Sound off' : 'Sound on', 1.5);
   if (input.took('F3')) {
@@ -71,9 +92,39 @@ function control(dt) {
 
   switch (game.state) {
     case 'title':
+      hud.automap = false;
       game.time += dt;
       title.update(dt);
+      if (!game.selectingDifficulty) {
+        if (confirmed() && !unlockedThisFrame)
+          game.selectingDifficulty = true;
+        break;
+      }
+      if (input.took('Escape')) {
+        game.selectingDifficulty = false;
+        break;
+      }
+      if (input.took('ArrowUp') || input.took('KeyW'))
+        game.cycleDifficulty(-1);
+      if (input.took('ArrowDown') || input.took('KeyS'))
+        game.cycleDifficulty(1);
+      if (input.took('Digit1'))
+        game.setDifficulty(0);
+      if (input.took('Digit2'))
+        game.setDifficulty(1);
+      if (input.took('Digit3'))
+        game.setDifficulty(2);
+      if (input.took('Digit4'))
+        game.setDifficulty(3);
+      if (input.mouseMoved) {
+        const hovered = hud.difficultyAt(input.mousePos);
+        if (hovered)
+          game.setDifficulty(hovered);
+      }
       if (confirmed() && !unlockedThisFrame) {
+        const clickedDiff = hud.difficultyAt(input.mousePos);
+        if (clickedDiff)
+          game.setDifficulty(clickedDiff);
         title.end();
         start();
       }
@@ -96,10 +147,13 @@ function control(dt) {
       }
       break;
     case 'cleared':
+      hud.automap = false;
       if (confirmed()) {
-        game.nextLevel();
-        if (game.state === 'play')
-          input.lock();
+        if (!game.skipIntermission()) {
+          game.nextLevel();
+          if (game.state === 'play')
+            input.lock();
+        }
       }
       break;
   }
@@ -126,8 +180,9 @@ const loop = new Player((dt) => {
   if (!document.hidden && quality.update(dt) !== null)
     resize();
   if (showDiagnostics) {
-    frameTime += (dt - frameTime) * 0.05;
-    hud.diagnostics = `${Math.round(1 / frameTime)} fps  ${(frameTime * 1000).toFixed(1)} ms  ${world.width}x${world.height} (${Math.round(quality.scale * 100)}%)  glow 1/${world.glowDivisor}`;
+    frameTime = Utils.lerp(frameTime, dt, 0.05);
+    const ms = Time.secToMillisec(frameTime);
+    hud.diagnostics = `${Math.round(Time.millisecToFps(ms))} fps  ${ms.toFixed(1)} ms  ${world.width}x${world.height} (${Math.round(quality.scale * 100)}%)  glow 1/${world.glowDivisor}`;
   }
   control(dt);
   unlockedThisFrame = false;
