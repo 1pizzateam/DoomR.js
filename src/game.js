@@ -137,7 +137,7 @@ export class Game {
     const changed = this.difficulty !== next;
     this.difficulty = next;
     if (changed && !this.cam)
-      this.load(this.levelIndex, this.carry);
+      this.load(this.customLevelDef ?? this.levelIndex, this.carry);
     return this.difficulty;
   }
 
@@ -202,15 +202,26 @@ export class Game {
     return target;
   }
 
-  load(index, carry = { health: MAX_HEALTH, shells: 0, bullets: 0, rockets: 0 }) {
-    this.levelIndex = index;
-    this.level = new Level(LEVELS[index]);
+  load(indexOrDef, carry = { health: MAX_HEALTH, shells: 0, bullets: 0, rockets: 0 }) {
+    if (indexOrDef && typeof indexOrDef === 'object') {
+      this.customLevelDef = indexOrDef;
+      this.levelIndex = 0;
+    } else if (typeof indexOrDef === 'number') {
+      if (indexOrDef !== this.levelIndex)
+        this.customLevelDef = null;
+      this.levelIndex = indexOrDef;
+    }
+    const def = this.customLevelDef ?? LEVELS[this.levelIndex] ?? LEVELS[0];
+    const seedIndex = this.levelIndex;
+    this.level = def instanceof Level ? def : new Level(def);
     // the grid lets BumpR test only bodies that share a cell instead of every pair; two tiles per cell
     // is wider than any body, so each one touches at most four cells
     this.scene = new Scene(new Grid(this.level.width * TILE, this.level.rowCount * TILE, GRID_CELL));
     this.scene.setGravity(new Vec2(0, 0));
-    this.rand = Rand.create(7 + index * 101);
-    this.limbRand = Rand.create(77 + index * 101);
+    const baseRaycast = this.scene.raycast.bind(this.scene);
+    this.scene.raycast = (from, to, options = {}) => this.raycastScene(baseRaycast, from, to, options);
+    this.rand = Rand.create(7 + seedIndex * 101);
+    this.limbRand = Rand.create(77 + seedIndex * 101);
     this.blood.reset(this.level, this.rand);
     this.events.length = 0;
     this.heartbeat = 0;
@@ -263,11 +274,39 @@ export class Game {
   }
 
   restart() {
-    this.load(this.levelIndex, { health: MAX_HEALTH, shells: 0, bullets: 0, rockets: 0 });
+    this.load(this.customLevelDef ?? this.levelIndex, { health: MAX_HEALTH, shells: 0, bullets: 0, rockets: 0 });
     this.state = 'play';
   }
 
+  giveAll() {
+    if (!this.player)
+      return;
+    const p = this.player;
+    p.weapons.knife = true;
+    p.weapons.chainsaw = true;
+    p.weapons.shotgun = true;
+    p.weapons.chaingun = true;
+    p.weapons.rocket = true;
+    p.shells = AMMO_TYPES.shells.max;
+    p.bullets = AMMO_TYPES.bullets.max;
+    p.rockets = AMMO_TYPES.rockets.max;
+    p.ammo = p.shells;
+    p.health = Math.max(p.health, 200);
+    p.armor = 200;
+    p.armorType = 'blue';
+    p.keys.blue = true;
+    p.keys.yellow = true;
+    p.keys.red = true;
+    if (p.weapon === 'knife')
+      p.weapon = 'shotgun';
+    this.say('IDKFA · Full Arsenal & Keycards Granted', 2.5);
+  }
+
   nextLevel() {
+    if (this.customLevelDef) {
+      this.restart();
+      return;
+    }
     if (this.levelIndex + 1 >= LEVELS.length) {
       this.load(0);
       this.state = 'title';
@@ -400,7 +439,8 @@ export class Game {
   }
 
   addWalls() {
-    const { level, scene } = this;
+    const { level } = this;
+    this.diagWalls = [];
     for (let y = 0; y < level.rowCount; y++) {
       let x = 0;
       while (x < level.width) {
@@ -410,9 +450,21 @@ export class Game {
           x++;
           continue;
         }
-        // merge horizontal runs of solid tiles into one wide AABB
+        const df = level.diagInfo(idx);
+        if (df) {
+          const body = { ref: { kind: 'wall', diag: df.diag, idx } };
+          const edges = [
+            { x1: df.ax, y1: df.ay, x2: df.bx, y2: df.by, nx: df.nx, ny: df.ny },
+            { x1: df.sx, y1: df.sy, x2: df.ax, y2: df.ay, nx: df.ax === df.sx ? (df.sx < df.cx ? -1 : 1) : 0, ny: df.ay === df.sy ? (df.sy < df.cy ? -1 : 1) : 0 },
+            { x1: df.bx, y1: df.by, x2: df.sx, y2: df.sy, nx: df.bx === df.sx ? (df.sx < df.cx ? -1 : 1) : 0, ny: df.by === df.sy ? (df.sy < df.cy ? -1 : 1) : 0 },
+          ];
+          this.diagWalls.push({ ...df, body, edges });
+          x++;
+          continue;
+        }
+        // merge horizontal runs of solid full tiles into one wide AABB
         let run = 1;
-        while (x + run < level.width && level.kind[idx + run] && level.kind[idx + run] !== DOOR)
+        while (x + run < level.width && level.kind[idx + run] && level.kind[idx + run] !== DOOR && !level.diag[idx + run])
           run++;
         this.addStaticBox(new Vec2((x + run / 2) * TILE, (y + 0.5) * TILE), run * TILE);
         x += run;
@@ -420,6 +472,144 @@ export class Game {
     }
     for (const door of level.doors.values())
       door.body = this.addStaticBox(door.center, TILE);
+  }
+
+  raycastScene(baseRaycast, from, to, options = {}) {
+    let hit = baseRaycast(from, to, options);
+    const mask = options.mask ?? 0xFFFF;
+    if (!(mask & CAT.WALL) || !this.diagWalls?.length)
+      return hit;
+    const rx = to.x - from.x;
+    const ry = to.y - from.y;
+    const rayLen = Math.hypot(rx, ry);
+    if (rayLen < 1e-6)
+      return hit;
+    let bestT = hit ? (hit.distance ?? hit.point.getDistance(from)) / rayLen : 1;
+    for (const dw of this.diagWalls) {
+      let inside = true;
+      for (const edge of dw.edges) {
+        if ((from.x - edge.x1) * edge.nx + (from.y - edge.y1) * edge.ny > -1e-4) {
+          inside = false;
+          break;
+        }
+      }
+      if (inside) {
+        bestT = 0;
+        hit = { body: dw.body, point: from.clone(), normal: new Vec2(dw.nx, dw.ny), distance: 0 };
+        break;
+      }
+      for (const edge of dw.edges) {
+        if (rx * edge.nx + ry * edge.ny >= 0)
+          continue;
+        const ex = edge.x2 - edge.x1;
+        const ey = edge.y2 - edge.y1;
+        const denom = rx * ey - ry * ex;
+        if (Math.abs(denom) < 1e-8)
+          continue;
+        const dx = edge.x1 - from.x;
+        const dy = edge.y1 - from.y;
+        const t = (dx * ey - dy * ex) / denom;
+        const u = (dx * ry - dy * rx) / denom;
+        if (t >= 0 && t < bestT && u >= -1e-5 && u <= 1 + 1e-5) {
+          bestT = t;
+          hit = {
+            body: dw.body,
+            point: new Vec2(from.x + rx * t, from.y + ry * t),
+            normal: new Vec2(edge.nx, edge.ny),
+            distance: t * rayLen,
+          };
+        }
+      }
+    }
+    return hit;
+  }
+
+  resolveBodyVsDiag(body, radius, dw) {
+    const pos = body.position;
+    const px = pos.x;
+    const py = pos.y;
+    if (Math.abs(px - dw.cx) > TILE * 0.5 + radius || Math.abs(py - dw.cy) > TILE * 0.5 + radius)
+      return false;
+    let inside = true;
+    for (const edge of dw.edges) {
+      const sd = (px - edge.x1) * edge.nx + (py - edge.y1) * edge.ny;
+      if (sd > 0) {
+        inside = false;
+        break;
+      }
+    }
+    if (inside) {
+      const sd = (px - dw.cx) * dw.nx + (py - dw.cy) * dw.ny;
+      const pen = radius - sd;
+      pos.x += dw.nx * pen;
+      pos.y += dw.ny * pen;
+      if (body.velocity) {
+        const vn = body.velocity.x * dw.nx + body.velocity.y * dw.ny;
+        if (vn < 0) {
+          body.velocity.x -= dw.nx * vn;
+          body.velocity.y -= dw.ny * vn;
+        }
+      }
+      return true;
+    }
+    let bestDistSq = Infinity;
+    let bestQx = px;
+    let bestQy = py;
+    for (const edge of dw.edges) {
+      const ex = edge.x2 - edge.x1;
+      const ey = edge.y2 - edge.y1;
+      const lenSq = ex * ex + ey * ey;
+      const u = Utils.clamp(((px - edge.x1) * ex + (py - edge.y1) * ey) / lenSq, 0, 1);
+      const qx = edge.x1 + ex * u;
+      const qy = edge.y1 + ey * u;
+      const dSq = (px - qx) * (px - qx) + (py - qy) * (py - qy);
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        bestQx = qx;
+        bestQy = qy;
+      }
+    }
+    if (bestDistSq >= radius * radius)
+      return false;
+    let nx = dw.nx;
+    let ny = dw.ny;
+    let pen = radius;
+    if (bestDistSq > 1e-8) {
+      const dist = Math.sqrt(bestDistSq);
+      nx = (px - bestQx) / dist;
+      ny = (py - bestQy) / dist;
+      pen = radius - dist;
+    }
+    pos.x += nx * pen;
+    pos.y += ny * pen;
+    if (body.velocity) {
+      const vn = body.velocity.x * nx + body.velocity.y * ny;
+      if (vn < 0) {
+        body.velocity.x -= nx * vn;
+        body.velocity.y -= ny * vn;
+      }
+    }
+    return true;
+  }
+
+  resolveDiagonalWalls() {
+    if (!this.diagWalls?.length)
+      return;
+    for (const dw of this.diagWalls) {
+      if (this.player?.body)
+        this.resolveBodyVsDiag(this.player.body, PLAYER_RADIUS, dw);
+      for (const enemy of this.enemies) {
+        if (enemy.state !== 'dead' && enemy.body)
+          this.resolveBodyVsDiag(enemy.body, enemy.def.radius, dw);
+      }
+      for (const shot of this.shots) {
+        if (shot.dead || !shot.body)
+          continue;
+        const r = shot.kind === 'rocket' ? 7 : 6;
+        if (this.resolveBodyVsDiag(shot.body, r, dw))
+          shot.body.onCollision?.(dw.body);
+      }
+    }
   }
 
   addStaticBox(center, width) {
@@ -563,19 +753,19 @@ export class Game {
     return pickup;
   }
 
-  addShot(from, direction, speed, damage) {
+  addShot(from, direction, speed, damage, owner = null) {
     const velocity = new Vec2().scaleVector(direction, speed);
     const body = makeBody(from, 6, {
       sensor: true,
       category: CAT.SHOT,
-      mask: CAT.WALL | CAT.PLAYER | CAT.BARREL,
+      mask: CAT.WALL | CAT.PLAYER | CAT.ENEMY | CAT.BARREL,
       velocity,
     });
-    const shot = { kind: 'shot', team: 'enemy', body, pos: body.position, damage, life: 5, age: 0, dead: false };
+    const shot = { kind: 'shot', team: 'enemy', body, pos: body.position, damage, life: 5, age: 0, dead: false, owner };
     body.ref = shot;
     this.emit('fireball', from);
     body.onCollision = (other) => {
-      if (shot.dead)
+      if (shot.dead || (owner && (other === owner.body || other.ref === owner)))
         return;
       shot.dead = true;
       if (other === this.player.body)
@@ -635,12 +825,15 @@ export class Game {
       this.damageEnemy(directRef, shot.damage);
     } else if (directRef?.kind === 'barrel')
       this.hitBarrel(directRef, BARREL.hp, 0.02);
-    else if (!directRef && shot.dir) {
+    else if ((!directRef || directRef.kind === 'wall') && shot.dir) {
       const from = pos.clone().addScaledVector(shot.dir, -16);
       const to = pos.clone().addScaledVector(shot.dir, 16);
       const wallHit = this.scene.raycast(from, to, { mask: CAT.WALL });
-      if (wallHit)
-        this.blood.impact(wallHit.point.x, wallHit.point.y, Math.round(wallHit.normal.x), Math.round(wallHit.normal.y), this.player.eye - 2);
+      if (wallHit) {
+        const nx = Math.abs(wallHit.normal.x) > 0.9 ? Math.round(wallHit.normal.x) : wallHit.normal.x;
+        const ny = Math.abs(wallHit.normal.y) > 0.9 ? Math.round(wallHit.normal.y) : wallHit.normal.y;
+        this.blood.impact(wallHit.point.x, wallHit.point.y, nx, ny, this.player.eye - 2);
+      }
     }
 
     const reaches = (target) => !this.scene.raycast(pos, target, { mask: CAT.WALL });
@@ -906,7 +1099,7 @@ export class Game {
 
   hurtPlayer(amount) {
     const player = this.player;
-    if (this.state !== 'play')
+    if (this.state !== 'play' || player.godMode)
       return;
     let healthLoss = amount;
     if (player.armor > 0) {
@@ -1267,7 +1460,9 @@ export class Game {
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
     if (!enemy) {
       const height = player.eye - 2 + this.rand.float(-5, 5);
-      const marked = this.blood.impact(hit.point.x, hit.point.y, Math.round(hit.normal.x), Math.round(hit.normal.y), height, 'slash');
+      const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
+      const ny = Math.abs(hit.normal.y) > 0.9 ? Math.round(hit.normal.y) : hit.normal.y;
+      const marked = this.blood.impact(hit.point.x, hit.point.y, nx, ny, height, 'slash');
       this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
       this.emit('clang', hit.point);
       this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
@@ -1339,7 +1534,9 @@ export class Game {
       if (!enemy) {
         // the pellets spread vertically like they do sideways: tight up close, wide at range
         const height = player.eye + this.rand.float(-PELLET_VERTICAL_SPREAD, PELLET_VERTICAL_SPREAD) * maxDist;
-        const marked = this.blood.impact(hit.point.x, hit.point.y, Math.round(hit.normal.x), Math.round(hit.normal.y), height);
+        const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
+        const ny = Math.abs(hit.normal.y) > 0.9 ? Math.round(hit.normal.y) : hit.normal.y;
+        const marked = this.blood.impact(hit.point.x, hit.point.y, nx, ny, height);
         this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
         this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
         continue;
@@ -1404,7 +1601,9 @@ export class Game {
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
     if (!enemy) {
       const height = player.eye + this.rand.float(-0.02, 0.02) * maxDist;
-      const marked = this.blood.impact(hit.point.x, hit.point.y, Math.round(hit.normal.x), Math.round(hit.normal.y), height);
+      const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
+      const ny = Math.abs(hit.normal.y) > 0.9 ? Math.round(hit.normal.y) : hit.normal.y;
+      const marked = this.blood.impact(hit.point.x, hit.point.y, nx, ny, height);
       this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
       this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
       return;
@@ -1440,6 +1639,8 @@ export class Game {
 
   /** What a pellet hit: 'door' or plain 'wall', judged by the tile behind the struck face. */
   surfaceAt(hit) {
+    if (hit.body?.ref?.diag)
+      return 'wall';
     const { level } = this;
     const tx = Math.floor((hit.point.x - Math.round(hit.normal.x) * 0.5) / TILE);
     const ty = Math.floor((hit.point.y - Math.round(hit.normal.y) * 0.5) / TILE);
@@ -1532,11 +1733,15 @@ export class Game {
       const x = idx % level.width;
       const y = (idx - x) / level.width;
       for (let d = 0; d < 4; d++) {
+        if (level.diag[idx] && level.hasCardinalFace(idx, d))
+          continue;
         const nx = x + (d === 0 ? -1 : d === 1 ? 1 : 0);
         const ny = y + (d === 2 ? -1 : d === 3 ? 1 : 0);
         if (!level.isWalkable(nx, ny))
           continue;
         const nidx = ny * level.width + nx;
+        if (level.diag[nidx] && level.hasCardinalFace(nidx, d ^ 1))
+          continue;
         if (level.kind[nidx] === DOOR && level.heights[nidx] >= level.baseHeight[nidx] * 0.5)
           continue;
         if (flow[nidx] >= 0)
@@ -1552,25 +1757,36 @@ export class Game {
     const { level, flow } = this;
     const x = Math.floor(enemy.pos.x / TILE);
     const y = Math.floor(enemy.pos.y / TILE);
-    const here = flow[y * level.width + x];
+    const idx = y * level.width + x;
+    const here = flow[idx];
     if (here <= 0)
       return null;
     let best = here;
     let bx = -1;
     let by = -1;
     for (let d = 0; d < 4; d++) {
+      if (level.diag[idx] && level.hasCardinalFace(idx, d))
+        continue;
       const nx = x + (d === 0 ? -1 : d === 1 ? 1 : 0);
       const ny = y + (d === 2 ? -1 : d === 3 ? 1 : 0);
       if (!level.inBounds(nx, ny))
         continue;
-      const value = flow[ny * level.width + nx];
+      const nidx = ny * level.width + nx;
+      if (level.diag[nidx] && level.hasCardinalFace(nidx, d ^ 1))
+        continue;
+      const value = flow[nidx];
       if (value >= 0 && value < best) {
         best = value;
         bx = nx;
         by = ny;
       }
     }
-    return bx < 0 ? null : out.setScalar((bx + 0.5) * TILE, (by + 0.5) * TILE);
+    if (bx < 0)
+      return null;
+    const df = level.diagInfo(by * level.width + bx);
+    if (df)
+      return out.setScalar(df.cx + df.nx * 18, df.cy + df.ny * 18);
+    return out.setScalar((bx + 0.5) * TILE, (by + 0.5) * TILE);
   }
 
   updateEnemy(enemy, dt) {
@@ -1706,7 +1922,7 @@ export class Game {
       if (enemy.windup <= 0 && enemy.los) {
         const direction = toPlayer.clone().normalize();
         const from = enemy.pos.clone().addScaledVector(direction, enemy.def.radius + 8);
-        this.addShot(from, direction, 220, 10);
+        this.addShot(from, direction, 220, 10, enemy);
         enemy.cooldown = this.rand.float(1.3, 2.4);
       }
       return;
@@ -1752,7 +1968,7 @@ export class Game {
       enemy.windup -= dt;
       if (enemy.windup <= 0 && enemy.los) {
         const direction = toPlayer.clone().normalize();
-        this.addShot(enemy.pos.clone().addScaledVector(direction, enemy.def.radius + 8), direction, 250, 8);
+        this.addShot(enemy.pos.clone().addScaledVector(direction, enemy.def.radius + 8), direction, 250, 8, enemy);
         enemy.cooldown = this.rand.float(0.9, 1.7);
       }
       return;
@@ -1862,7 +2078,7 @@ export class Game {
           const arms = rage > 1 ? 2 : 1;
           for (let k = -arms; k <= arms; k++) {
             const direction = new Vec2(Math.cos(base + k * 0.22), Math.sin(base + k * 0.22));
-            this.addShot(enemy.pos.clone().addScaledVector(direction, enemy.def.radius + 10), direction, 230, 10);
+            this.addShot(enemy.pos.clone().addScaledVector(direction, enemy.def.radius + 10), direction, 230, 10, enemy);
           }
           enemy.cooldown = 2.6 / rage;
         }
@@ -2165,6 +2381,7 @@ export class Game {
     }
 
     this.scene.step(dt);
+    this.resolveDiagonalWalls();
     this.updateTeleporters(dt);
     this.cleanup();
     this.trackFootprints();

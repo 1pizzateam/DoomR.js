@@ -1,7 +1,7 @@
 import { AmbientLight, MAX_LIGHTS, PointLight, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { mulberry32 } from './rng.js';
 import { GLOW, LIGHT, LIGHT_GLSL, METAL, mix, plate, rivet, SHADOW, Tile } from './floor.js';
-import { CEILING, DOOR, FLOOR, TILE } from './level.js';
+import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
 import { SOLID_ALPHA } from './quads.js';
 
 /**
@@ -435,7 +435,7 @@ export function ceilingLightFixtures(level) {
   for (let ty = 0; ty < level.rowCount; ty++) {
     for (let tx = 0; tx < level.width; tx++) {
       const idx = ty * level.width + tx;
-      if ((level.kind[idx] !== FLOOR && level.kind[idx] !== DOOR) || level.arena?.has(idx))
+      if ((level.kind[idx] !== FLOOR && level.kind[idx] !== DOOR && level.kind[idx] !== PILLAR && !level.diag[idx]) || level.arena?.has(idx))
         continue;
       if (ceilingCellFor(tx, ty) !== CEILING_CELLS.light)
         continue;

@@ -252,3 +252,19 @@ export function wallFaceQuads({ axis, plane, from, to, base, top, x, y, d, exit 
   }
   return out;
 }
+
+/**
+ * The quads of one diagonal (45-degree) wall hypotenuse face, stacked 64 units at a time from `base` to `top`.
+ */
+export function diagWallFaceQuads({ ax, ay, bx, by, base, top, x, y, diag, exit }) {
+  const out = [];
+  const cell = wallCellFor(x, y, 4 + diag, exit);
+  for (let y0 = base, step = 0; y0 < top - 1e-6; y0 += SIZE, step++) {
+    const y1 = Math.min(top, y0 + SIZE);
+    const part = (y1 - y0) / SIZE;
+    const uv = step === 0 ? wallCellUv(cell, 0, part) : wallCellUv(WALL_CELLS.seam, 1 - part, 1);
+    const corners = [[ax, y0, ay], [bx, y0, by], [bx, y1, by], [ax, y1, ay]];
+    out.push({ corners: corners.flat(), uv });
+  }
+  return out;
+}

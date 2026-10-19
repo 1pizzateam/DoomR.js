@@ -11,6 +11,8 @@ import { GLOW, LIGHT, LIGHT_GLSL, METAL, mix, plate, rivet, RUST_GLSL, SHADOW, T
 export const DOOR_FACE = 0;
 export const DOOR_TOP = 1;
 export const DOOR_CELLS = 2;
+export const DOOR_THICKNESS = 8;
+export const DOOR_INSET = 6;
 const SIZE = 64;
 
 const SIGNAL = [70, 230, 150];
@@ -191,10 +193,64 @@ export function doorBox(size, height) {
 }
 
 /**
- * A secret push-wall door disguised as a bulkhead wall panel (cell 0 of the 8-cell wall atlas).
+ * Two thin blast door slabs recessed inside the 64-unit wall thickness (front & back airlock pair).
+ * `dimensions` is a Vec3(width, height, thickness). When `alongY` is true, the corridor runs along Z
+ * (doorway width spans X, slabs separated along Z); when false, the corridor runs along X (doorway width
+ * spans Z, slabs separated along X).
  */
-export function secretDoorBox(size, height, wallCells = 8) {
-  const h = size / 2;
+export function doubleDoorBox(dimensions, alongY = false, inset = DOOR_INSET) {
+  const h = dimensions.x / 2;
+  const height = dimensions.y;
+  const thickness = dimensions.z;
+  const outer = SIZE / 2 - inset;
+  const slabs = [
+    [-outer, -outer + thickness],
+    [outer - thickness, outer],
+  ];
+  const vertices = [];
+  const uvs = [];
+  const push = (corners, cell, uSpan = 1, vSpan = 1) => {
+    const u0 = cell / DOOR_CELLS;
+    const u1 = u0 + uSpan / DOOR_CELLS;
+    const insetU = 0.25 / (SIZE * DOOR_CELLS);
+    const insetV = 0.25 / SIZE;
+    const uv = [
+      [u0 + insetU, insetV],
+      [u1 - insetU, insetV],
+      [u1 - insetU, vSpan - insetV],
+      [u0 + insetU, vSpan - insetV],
+    ];
+    for (const k of [0, 1, 2, 0, 2, 3]) {
+      vertices.push(...corners[k]);
+      uvs.push(...uv[k]);
+    }
+  };
+  const edgeSpan = Math.min(1, thickness / SIZE);
+  for (const [d0, d1] of slabs) {
+    if (alongY) {
+      push([[-h, 0, d1], [h, 0, d1], [h, height, d1], [-h, height, d1]], DOOR_FACE);
+      push([[h, 0, d0], [-h, 0, d0], [-h, height, d0], [h, height, d0]], DOOR_FACE);
+      push([[h, 0, d1], [h, 0, d0], [h, height, d0], [h, height, d1]], DOOR_TOP, edgeSpan, 1);
+      push([[-h, 0, d0], [-h, 0, d1], [-h, height, d1], [-h, height, d0]], DOOR_TOP, edgeSpan, 1);
+      push([[-h, height, d1], [h, height, d1], [h, height, d0], [-h, height, d0]], DOOR_TOP, 1, edgeSpan);
+    } else {
+      push([[d1, 0, h], [d1, 0, -h], [d1, height, -h], [d1, height, h]], DOOR_FACE);
+      push([[d0, 0, -h], [d0, 0, h], [d0, height, h], [d0, height, -h]], DOOR_FACE);
+      push([[d0, 0, h], [d1, 0, h], [d1, height, h], [d0, height, h]], DOOR_TOP, edgeSpan, 1);
+      push([[d1, 0, -h], [d0, 0, -h], [d0, height, -h], [d1, height, -h]], DOOR_TOP, edgeSpan, 1);
+      push([[d1, height, h], [d1, height, -h], [d0, height, -h], [d0, height, h]], DOOR_TOP, 1, edgeSpan);
+    }
+  }
+  return { vertices, uvs };
+}
+
+/**
+ * A secret push-wall door disguised as a flush bulkhead wall panel (cell 0 of the 8-cell wall atlas).
+ * `dimensions` is a Vec2(size, height) or Vec3(size, height, depth).
+ */
+export function secretDoorBox(dimensions, wallCells = 8) {
+  const h = dimensions.x / 2;
+  const height = dimensions.y;
   const sides = [
     [[-h, 0, h], [h, 0, h], [h, height, h], [-h, height, h]],
     [[h, 0, -h], [-h, 0, -h], [-h, height, -h], [h, height, -h]],
@@ -244,8 +300,8 @@ void main(void) {
   v.z += 1.2 + vDepth * 0.01;
   vHeight = world.y;
   vTextureCoord = aTextureCoord;
-  // a point on the door: along it (whichever of x and z it runs on) and up it, apart from every other door
-  vSurface = vec2(aVertexPosition.x + aVertexPosition.z, aVertexPosition.y) + uModelMatrix[3].xz * 0.37;
+  // a point on the door or wall: along it (cardinal or diagonal) and up it, apart from every other door
+  vSurface = vec2(aVertexPosition.x * 1.13 + aVertexPosition.z * 0.87, aVertexPosition.y) + uModelMatrix[3].xz * 0.37;
   vWorldPos = world.xyz;
   gl_Position = uProjectionMatrix * v;
 }

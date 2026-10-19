@@ -1,4 +1,4 @@
-import { Utils } from '@1pizzateam/spock';
+import { Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { LIGHT_GLSL, SOLID_ALPHA } from './quads.js';
 import { mulberry32 } from './rng.js';
 
@@ -602,17 +602,10 @@ void main(void) {
 }
 `;
 
-function segmentDistance(px, py, ax, ay, bx, by) {
-  const vx = bx - ax;
-  const vy = by - ay;
-  const len2 = vx * vx + vy * vy || 1;
-  const t = Utils.clamp(((px - ax) * vx + (py - ay) * vy) / len2, 0, 1);
-  return Math.hypot(px - (ax + vx * t), py - (ay + vy * t));
-}
-
 /**
- * A 64x64 Doom-style glowing pentagram teleporter pad: dark bevelled UAC steel frame,
- * concentric rune circle, five-pointed demonic pentagram, and an emerald-crimson plasma core.
+ * A 64x64 futuristic quantum teleporter machine atlas: brushed titanium octagonal housing,
+ * corner status beacons, radial power bus conduits, segmented magnetic stator rings, and a
+ * high-energy cyan-emerald quantum phase core.
  */
 export function teleporterAtlas() {
   const width = TILE_PIXELS;
@@ -622,66 +615,116 @@ export function teleporterAtlas() {
   const grain = field(rnd, 6);
   const cx = 31.5;
   const cy = 31.5;
-  const radius = 21.5;
-
-  const starPts = [];
-  for (let k = 0; k < 5; k++) {
-    const angle = -Math.PI / 2 + (k * Math.PI * 2) / 5;
-    starPts.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius]);
-  }
-  const chords = [
-    [starPts[0], starPts[2]],
-    [starPts[2], starPts[4]],
-    [starPts[4], starPts[1]],
-    [starPts[1], starPts[3]],
-    [starPts[3], starPts[0]],
-  ];
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const g = grain(x, y);
-      const d = Math.hypot(x - cx, y - cy);
+      const dx = x - cx;
+      const dy = y - cy;
+      const ax = Math.abs(dx);
+      const ay = Math.abs(dy);
+      const d = Math.hypot(dx, dy);
+      const oct = Math.max(ax, ay, (ax + ay) * 0.7071);
       const border = Math.min(x, y, width - 1 - x, height - 1 - y);
-      let r = Math.round(20 + g * 16);
-      let gr = Math.round(25 + g * 18);
-      let b = Math.round(34 + g * 22);
+
+      // Brushed titanium deck chassis
+      let r = Math.round(24 + g * 16);
+      let gr = Math.round(32 + g * 20);
+      let b = Math.round(46 + g * 24);
 
       if (border < 3) {
-        const edge = border === 1 ? 1.35 : 0.65;
+        const edge = border === 1 ? 1.38 : 0.62;
         r = Math.round(r * edge);
         gr = Math.round(gr * edge);
         b = Math.round(b * edge);
       }
 
-      if (d < 25.5 && d >= 22.8) {
-        r = 16;
-        gr = 20;
+      // Octagonal structural seam and recessed bolt channel
+      if (Math.abs(oct - 28.5) < 1.1) {
+        r = 12;
+        gr = 18;
         b = 28;
-      } else if (d < 22.8) {
-        // Dark obsidian portal basin with swirling plasma undertone
-        r = Math.round(26 + g * 24);
-        gr = Math.round(14 + g * 28);
-        b = Math.round(22 + g * 26);
+      }
 
-        // Outer rune circle
-        const ringDist = Math.abs(d - radius);
-        let lineDist = ringDist;
-        for (const [p0, p1] of chords)
-          lineDist = Math.min(lineDist, segmentDistance(x, y, p0[0], p0[1], p1[0], p1[1]));
+      // Radial power bus conduits along cardinal and diagonal axes
+      const cardinalBus = Math.min(ax, ay);
+      const diagBus = Math.abs(ax - ay) * 0.7071;
+      const busDist = Math.min(cardinalBus, diagBus);
+      if (d >= 13.5 && d <= 28.5 && busDist < 2.2) {
+        if (busDist < 0.95) {
+          const glow = 1 - busDist / 0.95;
+          r = Math.round(Utils.lerp(r, 52, glow));
+          gr = Math.round(Utils.lerp(gr, 224, glow));
+          b = Math.round(Utils.lerp(b, 250, glow));
+        } else {
+          r = 14;
+          gr = 24;
+          b = 38;
+        }
+      }
 
-        if (lineDist < 2.1) {
-          const hot = Math.max(0, 1 - lineDist / 2.1);
-          r = Math.round(Utils.lerp(r, 248, hot));
-          gr = Math.round(Utils.lerp(gr, 96 + 90 * hot * hot, hot));
-          b = Math.round(Utils.lerp(b, 54, hot));
+      // Corner status beacons on the outer housing
+      const cornerDist = Math.hypot(ax - 23.5, ay - 23.5);
+      if (cornerDist < 3.2) {
+        if (cornerDist < 1.9) {
+          const hot = 1 - cornerDist / 1.9;
+          r = Math.round(Utils.lerp(40, 150, hot));
+          gr = Math.round(Utils.lerp(180, 252, hot));
+          b = Math.round(Utils.lerp(210, 255, hot));
+        } else {
+          r = 12;
+          gr = 20;
+          b = 30;
+        }
+      }
+
+      // Heavy magnetic containment collar with ribbed cooling vents
+      if (d < 25.8 && d >= 20.2) {
+        const angle = Math.atan2(dy, dx);
+        const vent = Math.cos(angle * 16);
+        const ringDist = Math.abs(d - 22.8);
+        if (ringDist < 1.45 && vent > -0.25) {
+          const hot = (1 - ringDist / 1.45) * (0.65 + 0.35 * Math.max(0, vent));
+          r = Math.round(Utils.lerp(20, 78, hot));
+          gr = Math.round(Utils.lerp(36, 238, hot));
+          b = Math.round(Utils.lerp(54, 255, hot));
+        } else {
+          r = Math.round(16 + g * 10);
+          gr = Math.round(24 + g * 12);
+          b = Math.round(38 + g * 16);
+        }
+      } else if (d < 20.2) {
+        // Cryo-blue quantum phase chamber basin
+        r = Math.round(14 + g * 14);
+        gr = Math.round(32 + g * 22);
+        b = Math.round(52 + g * 28);
+
+        // Precision concentric harmonic stabilizer rings
+        const outerHarmonic = Math.abs(d - 16.2);
+        const innerHarmonic = Math.abs(d - 11.2);
+        const harmonicDist = Math.min(outerHarmonic, innerHarmonic);
+        if (harmonicDist < 1.35) {
+          const hot = 1 - harmonicDist / 1.35;
+          r = Math.round(Utils.lerp(r, 64, hot));
+          gr = Math.round(Utils.lerp(gr, 236, hot));
+          b = Math.round(Utils.lerp(b, 248, hot));
         }
 
-        // Emerald-cyan warp core at the center of the pentagram
-        if (d < 7.5) {
-          const core = Math.max(0, 1 - d / 7.5);
-          r = Math.round(Utils.lerp(r, 90, core * 0.7));
-          gr = Math.round(Utils.lerp(gr, 245, core));
-          b = Math.round(Utils.lerp(b, 185, core * 0.85));
+        // Inner waveguide crosshairs
+        if (d >= 7.0 && d <= 16.5 && cardinalBus < 1.15) {
+          const trace = 1 - cardinalBus / 1.15;
+          r = Math.round(Utils.lerp(r, 82, trace * 0.85));
+          gr = Math.round(Utils.lerp(gr, 246, trace));
+          b = Math.round(Utils.lerp(b, 255, trace));
+        }
+
+        // Bright cyan-emerald-white quantum aperture core
+        if (d < 8.2) {
+          const core = Math.max(0, 1 - d / 8.2);
+          const hotCore = core * core;
+          r = Math.round(Utils.lerp(r, 185, hotCore));
+          gr = Math.round(Utils.lerp(gr, 252, core));
+          b = Math.round(Utils.lerp(b, 255, core));
         }
       }
 
@@ -693,6 +736,139 @@ export function teleporterAtlas() {
     }
   }
   return { name: 'teleporter', data, width, height, cell: TILE_PIXELS, frames: 1 };
+}
+
+/**
+ * Builds the 3D quad geometry for a futuristic quantum teleporter machine at `center` (`Vec3`: x, baseY, z)
+ * with dimensions `size` (`Vec2`: tileSpan, ceilingHeight). Includes the base deck plate, stepped two-tier
+ * bevelled emitter pedestal, four corner field-containment pylons with stabilizer fins, and an overhead
+ * suspended ceiling quantum emitter assembly when `size.y > 0`.
+ */
+export function teleporterMachineQuads(center, size) {
+  const cx = center.x;
+  const baseY = center.y;
+  const cz = center.z;
+  const halfTile = size.x * 0.5;
+  const ceilY = size.y;
+  const quads = [];
+
+  const pushBox = (hx, hz, y0, y1, sideUv, capUv, capAtTop = true) => {
+    const x0 = cx - hx;
+    const x1 = cx + hx;
+    const z0 = cz - hz;
+    const z1 = cz + hz;
+    quads.push(
+      { corners: [x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1], uv: sideUv },
+      { corners: [x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0], uv: sideUv },
+      { corners: [x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0], uv: sideUv },
+      { corners: [x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1], uv: sideUv }
+    );
+    if (capAtTop)
+      quads.push({ corners: [x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0], uv: capUv });
+    else
+      quads.push({ corners: [x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1], uv: capUv });
+  };
+
+  // 1. Base deck plate covering the tile floor
+  const fx0 = cx - halfTile;
+  const fx1 = cx + halfTile;
+  const fz0 = cz - halfTile;
+  const fz1 = cz + halfTile;
+  quads.push({
+    corners: [fx0, baseY, fz1, fx1, baseY, fz1, fx1, baseY, fz0, fx0, baseY, fz0],
+    uv: [0, 0, 1, 1],
+  });
+
+  // 2. Two-tier stepped 3D quantum emitter pedestal on the floor
+  const tier1Y = baseY + 2.2;
+  const tier2Y = baseY + 3.6;
+  pushBox(25.5, 25.5, baseY, tier1Y, [0.1, 0.44, 0.9, 0.56], [0.08, 0.08, 0.92, 0.92], true);
+  pushBox(18.0, 18.0, tier1Y, tier2Y, [0.18, 0.46, 0.82, 0.54], [0.18, 0.18, 0.82, 0.82], true);
+
+  // 3. Four corner quantum field-emitter pylons with glowing energy conduit strips
+  const pylonTop = ceilY > 0 ? ceilY - 4.0 : baseY + 46.0;
+  const pylonOffset = 24.5;
+  const pylonHalf = 2.4;
+  const pylonUv = [0.44, 0.08, 0.56, 0.92];
+  const collarUv = [0.22, 0.46, 0.78, 0.54];
+  const corners = [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ];
+  for (const [sx, sz] of corners) {
+    const px = cx + sx * pylonOffset;
+    const pz = cz + sz * pylonOffset;
+    const px0 = px - pylonHalf;
+    const px1 = px + pylonHalf;
+    const pz0 = pz - pylonHalf;
+    const pz1 = pz + pylonHalf;
+    quads.push(
+      { corners: [px0, tier1Y, pz1, px1, tier1Y, pz1, px1, pylonTop, pz1, px0, pylonTop, pz1], uv: pylonUv },
+      { corners: [px1, tier1Y, pz0, px0, tier1Y, pz0, px0, pylonTop, pz0, px1, pylonTop, pz0], uv: pylonUv },
+      { corners: [px0, tier1Y, pz0, px0, tier1Y, pz1, px0, pylonTop, pz1, px0, pylonTop, pz0], uv: pylonUv },
+      { corners: [px1, tier1Y, pz1, px1, tier1Y, pz0, px1, pylonTop, pz0, px1, pylonTop, pz1], uv: pylonUv }
+    );
+    // Glowing capacitor coil collars along each pylon
+    for (const ringY of [baseY + 16.0, baseY + 32.0, baseY + 46.0]) {
+      if (ringY + 2.2 > pylonTop)
+        continue;
+      const rx0 = px - (pylonHalf + 1.1);
+      const rx1 = px + (pylonHalf + 1.1);
+      const rz0 = pz - (pylonHalf + 1.1);
+      const rz1 = pz + (pylonHalf + 1.1);
+      const ry0 = ringY;
+      const ry1 = ringY + 2.2;
+      quads.push(
+        { corners: [rx0, ry0, rz1, rx1, ry0, rz1, rx1, ry1, rz1, rx0, ry1, rz1], uv: collarUv },
+        { corners: [rx1, ry0, rz0, rx0, ry0, rz0, rx0, ry1, rz0, rx1, ry1, rz0], uv: collarUv },
+        { corners: [rx0, ry0, rz0, rx0, ry0, rz1, rx0, ry1, rz1, rx0, ry1, rz0], uv: collarUv },
+        { corners: [rx1, ry0, rz1, rx1, ry0, rz0, rx1, ry1, rz0, rx1, ry1, rz1], uv: collarUv },
+        { corners: [rx0, ry1, rz1, rx1, ry1, rz1, rx1, ry1, rz0, rx0, ry1, rz0], uv: collarUv },
+        { corners: [rx0, ry0, rz0, rx1, ry0, rz0, rx1, ry0, rz1, rx0, ry0, rz1], uv: collarUv }
+      );
+    }
+  }
+
+  // 4. Overhead ceiling quantum emitter hood and focusing ring
+  if (ceilY > 0) {
+    const hoodMid = ceilY - 2.6;
+    const hoodLow = ceilY - 4.4;
+    pushBox(25.5, 25.5, hoodMid, ceilY, [0.1, 0.44, 0.9, 0.56], [0.08, 0.08, 0.92, 0.92], false);
+    pushBox(18.0, 18.0, hoodLow, hoodMid, [0.18, 0.46, 0.82, 0.54], [0.18, 0.18, 0.82, 0.82], false);
+  }
+
+  return quads;
+}
+
+/**
+ * Converts `teleporterMachineQuads(center, size)` into a triangle-list mesh `{ vertices, uvs }`
+ * with `Float32Array` buffers suitable for RoostR `CustomMesh` and BlendR catalog import.
+ */
+export function teleporterMachineMesh(center = new Vec3(0, 0, 0), size = new Vec2(64, 62.8)) {
+  const quads = teleporterMachineQuads(center, size);
+  const vertices = new Float32Array(quads.length * 18);
+  const uvs = new Float32Array(quads.length * 12);
+  let vOut = 0;
+  let uOut = 0;
+  for (const { corners, uv } of quads) {
+    const [u0, v0, u1, v1] = uv;
+    const cornerUvs = [
+      u0, v0,
+      u1, v0,
+      u1, v1,
+      u0, v1,
+    ];
+    for (const k of [0, 1, 2, 0, 2, 3]) {
+      vertices[vOut++] = corners[k * 3];
+      vertices[vOut++] = corners[k * 3 + 1];
+      vertices[vOut++] = corners[k * 3 + 2];
+      uvs[uOut++] = cornerUvs[k * 2];
+      uvs[uOut++] = cornerUvs[k * 2 + 1];
+    }
+  }
+  return { vertices, uvs };
 }
 
 export const TELEPORTER_FRAGMENT = `
@@ -719,13 +895,16 @@ void main(void) {
   vec2 centered = vTextureCoord - vec2(0.5);
   float dist = length(centered);
   vec3 tex = texture2D(uSampler, vTextureCoord).rgb;
-  float pulse = 0.78 + 0.22 * sin(uTime * 5.2);
-  float ringWave = 0.5 + 0.5 * sin(dist * 34.0 - uTime * 6.5);
-  float inside = 1.0 - smoothstep(0.33, 0.37, dist);
-  float runeGlow = smoothstep(0.32, 0.68, max(tex.r, tex.g));
-  vec3 plasma = mix(vec3(0.95, 0.24, 0.14), vec3(0.22, 0.96, 0.68), ringWave * 0.55 + smoothstep(0.14, 0.0, dist) * 0.45);
-  vec3 lit = mix(tex, tex * (0.9 + 0.45 * pulse) + plasma * (0.32 * inside * ringWave + 0.28 * runeGlow * pulse), inside);
-  vec3 color = lit * uMaterialDiffuse * max(vec3(0.76, 0.86, 0.82), surfaceLight(vWorldPos, inside * 0.85));
+  float pulse = 0.82 + 0.18 * sin(uTime * 5.6);
+  float ringWave = 0.5 + 0.5 * sin(dist * 38.0 - uTime * 7.2);
+  float elevWave = 0.5 + 0.5 * sin(vWorldPos.y * 0.35 - uTime * 6.0);
+  float inside = 1.0 - smoothstep(0.32, 0.42, dist);
+  float techGlow = smoothstep(0.34, 0.72, max(tex.g, tex.b));
+  vec3 cyanBeam = vec3(0.18, 0.88, 1.0);
+  vec3 emeraldCore = vec3(0.24, 0.98, 0.78);
+  vec3 plasma = mix(cyanBeam, emeraldCore, ringWave * 0.55 + smoothstep(0.16, 0.0, dist) * 0.45);
+  vec3 lit = tex * (0.92 + 0.38 * pulse * techGlow) + plasma * (0.34 * inside * ringWave + 0.32 * techGlow * pulse * (0.7 + 0.3 * elevWave));
+  vec3 color = lit * uMaterialDiffuse * max(vec3(0.78, 0.9, 0.96), surfaceLight(vWorldPos, max(inside, techGlow) * 0.88));
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
     color = mix(color, uFogColor, fade * 0.9);

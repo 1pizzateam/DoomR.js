@@ -2,12 +2,12 @@ import { CustomMesh, Cylinder, FullscreenQuad, Material, Mesh, PerspectiveCamera
 import { BLOOD } from './blood.js';
 import { barrelAtlas, skinBarrel } from './barrel.js';
 import { bloodAtlas, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
-import { DOOR_FRAGMENT, DOOR_VERTEX, WALL_FRAGMENT, doorAtlas, doorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
-import { CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, updateCeilingLights } from './ceiling.js';
-import { WALL_CELLS, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
+import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
+import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, updateCeilingLights } from './ceiling.js';
+import { WALL_CELLS, diagWallFaceQuads, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
 import { EXPLOSION_FRAMES, explosionAtlas, teleportAtlas } from './explosion.js';
 import { FIREBALL_FRAMES, fireballAtlas } from './fireball.js';
-import { FLOOR_FRAGMENT, FLOOR_VERTEX, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, floorAtlas, floorCellFor, floorCellUv, slimeAtlas, teleporterAtlas } from './floor.js';
+import { FLOOR_FRAGMENT, FLOOR_VERTEX, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, floorAtlas, floorCellFor, floorCellUv, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
 import { CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
 import { faceCorners, quadTriangles } from './lines.js';
 import { MONSTERS } from './monsters.js';
@@ -470,6 +470,48 @@ export class World {
     this.lightFixtures = [];
     this.ceilingLights = [];
     this.ambientLight = null;
+    this.cutaway = false;
+    this.cutawayNearFar = new Vec2(NEAR, 8000);
+    this.ceilingMesh = null;
+    this.roofSolidMesh = null;
+    this.lightConesMesh = null;
+    this.wallTopsMesh = null;
+  }
+
+  /** Toggles architectural roof cutaway for 3D overhead diorama inspection while preserving full wall top caps. */
+  setCutaway(cutaway, nearFar = new Vec2(NEAR, 8000)) {
+    this.cutaway = Boolean(cutaway);
+    this.cutawayNearFar.copy(nearFar);
+    if (this.ceilingMesh) {
+      if (this.cutaway)
+        this.ceilingMesh.setInactive();
+      else
+        this.ceilingMesh.setActive();
+    }
+    if (this.roofSolidMesh) {
+      if (this.cutaway)
+        this.roofSolidMesh.setInactive();
+      else
+        this.roofSolidMesh.setActive();
+    }
+    if (this.lightConesMesh) {
+      if (this.cutaway)
+        this.lightConesMesh.setInactive();
+      else
+        this.lightConesMesh.setActive();
+    }
+    if (this.wallTopsMesh) {
+      if (this.cutaway)
+        this.wallTopsMesh.setActive();
+      else
+        this.wallTopsMesh.setInactive();
+    }
+    if (this.ambientLight)
+      this.ambientLight.setColor(this.cutaway ? new Vec3(0.95, 1.0, 1.08) : CEILING_AMBIENT_COLOR);
+    const activeNearFar = this.cutaway ? this.cutawayNearFar : new Vec2(NEAR, FAR);
+    this.camera.setNearFar(activeNearFar);
+    this.camera.setProjectionMatrix(this.viewportSize);
+    this.scene.setFog(BG_VEC, this.cutaway ? activeNearFar.y * 0.65 : FOG_NEAR, this.cutaway ? activeNearFar.y * 1.25 : FOG_FAR);
   }
 
   /** Stops listening for context events. */
@@ -701,21 +743,25 @@ export class World {
     };
   }
 
-  /** Builds the first-person 3D textured rocket launcher viewmodel with articulated chambered warhead. */
+  /** Builds the first-person 3D textured rocket launcher viewmodel with articulated chambered warhead and gloved player hands/forearms. */
   buildRocketLauncher() {
     this.rocketLauncherPixels ??= rocketLauncherAtlas();
     const parts = rocketLauncherParts();
     const material = new Material({ diffuse: new Vec3(1, 1, 1) });
     const root = this.chainsawPartMesh(parts.body, this.rocketLauncherPixels, material);
     const warhead = this.chainsawPartMesh(parts.warhead, this.rocketLauncherPixels, material);
+    const hands = this.chainsawPartMesh(parts.hands, this.rocketLauncherPixels, material);
     warhead.setPosition(parts.pivots.warhead);
+    hands.setPosition(parts.pivots.hands);
     root.addChild(warhead);
+    root.addChild(hands);
     setScale(root, -0.58, 0.58, 0.58);
     root.setInactive();
     this.scene.addMesh(root);
     this.rocketLauncherView = {
       root,
       warhead,
+      hands,
       material,
       pose: rocketLauncherPose(),
     };
@@ -870,12 +916,19 @@ export class World {
     marks.holesVersion = blood.holesVersion;
     marks.version = blood.version;
 
+    const inset = door.secret ? 0 : DOOR_INSET;
     // stored at the height it has on a closed door; the door has dropped by `drop`
     const holes = marks.holes.begin();
     for (const mark of blood.holes) {
       if (mark.door !== door)
         continue;
-      const quad = holeQuad({ ...mark, z: mark.z - drop, top: mark.top * height });
+      const quad = holeQuad({
+        ...mark,
+        x: mark.x - mark.nx * inset,
+        y: mark.y - mark.ny * inset,
+        z: mark.z - drop,
+        top: mark.top * height,
+      });
       if (quad)
         holes.quad(quad.corners, quad.uv);
     }
@@ -884,7 +937,13 @@ export class World {
     for (const mark of blood.walls) {
       if (mark.door !== door)
         continue;
-      const sunk = { ...mark, z: mark.z - drop, top: mark.top * height };
+      const sunk = {
+        ...mark,
+        x: mark.x - mark.nx * inset,
+        y: mark.y - mark.ny * inset,
+        z: mark.z - drop,
+        top: mark.top * height,
+      };
       const quad = wallSplatQuad(sunk);
       if (quad)
         batch.quad(quad.corners, quad.uv);
@@ -1009,7 +1068,7 @@ export class World {
         const nx = x + (d === 0 ? -1 : d === 1 ? 1 : 0);
         const ny = y + (d === 2 ? -1 : d === 3 ? 1 : 0);
         const nidx = ny * width + nx;
-        const base = level.inBounds(nx, ny) && kind[nidx] !== DOOR ? baseHeight[nidx] : 0;
+        const base = level.inBounds(nx, ny) && kind[nidx] !== DOOR && level.hasCardinalFace(nidx, d ^ 1) ? baseHeight[nidx] : 0;
         const along = d < 2 ? y : x;
         const group = groups.get(id) ?? { d, kind: kind[idx], top: Math.min(baseHeight[idx], ROOF), base: Math.min(base, ROOF), x, y, from: along, to: along };
         group.from = Math.min(group.from, along);
@@ -1020,23 +1079,26 @@ export class World {
 
     const faces = [];
     const hide = [];
+    const solid = (x, y) => level.inBounds(x, y) && (kind[y * width + x] === WALL || kind[y * width + x] === EXIT);
     for (const group of groups.values()) {
       const { d, top, base } = group;
       const axis = d < 2 ? 'x' : 'z';
       const plane = (d === 0 ? group.x : d === 1 ? group.x + 1 : d === 2 ? group.y : group.y + 1) * TILE;
       const a0 = group.from * TILE;
       const a1 = (group.to + 1) * TILE;
-      const corners = faceCorners(axis, plane, a0, a1, base, top);
       const inward = d === 0 || d === 2 ? 0.9 : -0.9;
       const offset = axis === 'x' ? [inward, 0, 0] : [0, 0, inward];
+      const nx = group.x + (d === 0 ? -1 : d === 1 ? 1 : 0);
+      const ny = group.y + (d === 2 ? -1 : d === 3 ? 1 : 0);
 
-      // the hiding faces run a little past their ends, so two of them meeting at a corner overlap and leave no crack
-      const lap = (y0, y1) => faceCorners(axis, plane, a0 - 1.2, a1 + 1.2, y0, y1);
+      // the hiding faces run a little past interior (concave) corners so two of them meeting overlap and leave no crack,
+      // while stopping flush at exterior corners and door jambs so they never protrude in front of adjacent walls
+      const lap0 = (d < 2 ? solid(nx, group.from - 1) : solid(group.from - 1, ny)) ? 1.2 : 0;
+      const lap1 = (d < 2 ? solid(nx, group.to + 1) : solid(group.to + 1, ny)) ? 1.2 : 0;
+      const lap = (y0, y1) => faceCorners(axis, plane, a0 - lap0, a1 + lap1, y0, y1);
       hide.push(...quadTriangles(lap(base, top), offset));
       // the wall carries on up to the roof, without being drawn; a low pillar does not, it has sky above,
       // and nor does a face looking into the giant's room, which is open to the sky
-      const nx = group.x + (d === 0 ? -1 : d === 1 ? 1 : 0);
-      const ny = group.y + (d === 2 ? -1 : d === 3 ? 1 : 0);
       const roofless = level.arena?.has(ny * width + nx);
       const toRoof = group.kind !== PILLAR && top < ROOF && !roofless;
       if (toRoof)
@@ -1045,8 +1107,29 @@ export class World {
       faces.push(...wallFaceQuads({ axis, plane, from: group.from, to: group.to, base, top: toRoof ? ROOF : top, x: group.x, y: group.y, d, exit: group.kind === EXIT }));
     }
 
+    for (let idx = 0; idx < kind.length; idx++) {
+      const df = level.diagInfo(idx);
+      if (!df)
+        continue;
+      const top = Math.min(baseHeight[idx], ROOF);
+      const tx = (df.bx - df.ax) / TILE;
+      const ty = (df.by - df.ay) / TILE;
+      const offset = [-df.nx * 0.9, 0, -df.ny * 0.9];
+      const lap = (y0, y1) => [
+        [df.ax - tx * 1.2, y0, df.ay - ty * 1.2],
+        [df.bx + tx * 1.2, y0, df.by + ty * 1.2],
+        [df.bx + tx * 1.2, y1, df.by + ty * 1.2],
+        [df.ax - tx * 1.2, y1, df.ay - ty * 1.2],
+      ];
+      hide.push(...quadTriangles(lap(0, top), offset));
+      const roofless = level.arena?.has(idx);
+      const toRoof = kind[idx] !== PILLAR && top < ROOF && !roofless;
+      if (toRoof)
+        hide.push(...quadTriangles(lap(top, ROOF), offset));
+      faces.push(...diagWallFaceQuads({ ax: df.ax, ay: df.ay, bx: df.bx, by: df.by, base: 0, top: toRoof ? ROOF : top, x: df.x, y: df.y, diag: df.diag, exit: kind[idx] === EXIT }));
+    }
+
     // a doorway has no wall of its own, so its two open ends get a lintel from the door's height up to the roof
-    const solid = (x, y) => level.inBounds(x, y) && (kind[y * width + x] === WALL || kind[y * width + x] === EXIT);
     for (const door of level.doors.values()) {
       const { x, y } = door;
       const top = Math.min(baseHeight[door.idx], ROOF);
@@ -1073,6 +1156,7 @@ export class World {
 
     // and the ceiling closes the roof over everything
     // (except over the giant's room: one strip of ceiling per row, with a gap wherever that room is)
+    const roofHide = [];
     for (let y = 0; y < rowCount; y++) {
       let start = 0;
       for (let x = 0; x <= width; x++) {
@@ -1080,34 +1164,57 @@ export class World {
         if (roofed)
           continue;
         if (x > start)
-          hide.push(...quadTriangles([[start * TILE, ROOF, y * TILE], [x * TILE, ROOF, y * TILE], [x * TILE, ROOF, (y + 1) * TILE], [start * TILE, ROOF, (y + 1) * TILE]]));
+          roofHide.push(...quadTriangles([[start * TILE, ROOF, y * TILE], [x * TILE, ROOF, y * TILE], [x * TILE, ROOF, (y + 1) * TILE], [start * TILE, ROOF, (y + 1) * TILE]]));
         start = x + 1;
       }
     }
 
     // low tiles can be seen from above: close their tops so the floor grid cannot show through
+    const wallTops = [];
     for (let idx = 0; idx < kind.length; idx++) {
-      if (!kind[idx] || kind[idx] === DOOR || baseHeight[idx] >= EYE + 8)
+      if (!kind[idx] || kind[idx] === DOOR)
         continue;
       const x = idx % width;
       const y = (idx - x) / width;
+      const df = level.diagInfo(idx);
+      if (baseHeight[idx] >= EYE + 8) {
+        const top = ROOF - 0.25;
+        const corners = df
+          ? [df.sx, top, df.sy, df.ax, top, df.ay, df.bx, top, df.by, df.sx, top, df.sy]
+          : [x * TILE, top, y * TILE, (x + 1) * TILE, top, y * TILE, (x + 1) * TILE, top, (y + 1) * TILE, x * TILE, top, (y + 1) * TILE];
+        wallTops.push({ corners, uv: wallCellUv(WALL_CELLS.top) });
+        continue;
+      }
       const h = baseHeight[idx] - 0.9;
       const top = baseHeight[idx] - 0.3;
-      faces.push({ corners: [x * TILE, top, y * TILE, (x + 1) * TILE, top, y * TILE, (x + 1) * TILE, top, (y + 1) * TILE, x * TILE, top, (y + 1) * TILE], uv: wallCellUv(WALL_CELLS.top) });
-      hide.push(
-        x * TILE, h, y * TILE, (x + 1) * TILE, h, y * TILE, (x + 1) * TILE, h, (y + 1) * TILE,
-        x * TILE, h, y * TILE, (x + 1) * TILE, h, (y + 1) * TILE, x * TILE, h, (y + 1) * TILE
-      );
+      const corners = df
+        ? [df.sx, top, df.sy, df.ax, top, df.ay, df.bx, top, df.by, df.sx, top, df.sy]
+        : [x * TILE, top, y * TILE, (x + 1) * TILE, top, y * TILE, (x + 1) * TILE, top, (y + 1) * TILE, x * TILE, top, (y + 1) * TILE];
+      faces.push({ corners, uv: wallCellUv(WALL_CELLS.top) });
+      if (df)
+        hide.push(df.sx, h, df.sy, df.ax, h, df.ay, df.bx, h, df.by);
+      else
+        hide.push(
+          x * TILE, h, y * TILE, (x + 1) * TILE, h, y * TILE, (x + 1) * TILE, h, (y + 1) * TILE,
+          x * TILE, h, y * TILE, (x + 1) * TILE, h, (y + 1) * TILE, x * TILE, h, (y + 1) * TILE
+        );
     }
 
     this.track(this.floorBatch(level), this.staticMeshes);
     this.slimeMesh = this.track(this.slimeBatch(level), this.staticMeshes);
     this.teleporterMesh = this.track(this.teleporterBatch(level), this.staticMeshes);
-    this.track(this.ceilingBatch(level), this.staticMeshes);
+    this.ceilingMesh = this.track(this.ceilingBatch(level), this.staticMeshes);
     this.track(this.solid(hide), this.staticMeshes);
+    this.roofSolidMesh = roofHide.length ? this.track(this.solid(roofHide), this.staticMeshes) : null;
     this.track(this.wallBatch(faces), this.staticMeshes);
-    if (this.lightFixtures.length)
-      this.track(this.lightConesBatch(this.lightFixtures), this.staticMeshes);
+    this.wallTopsMesh = wallTops.length ? this.track(this.wallBatch(wallTops), this.staticMeshes) : null;
+    if (this.wallTopsMesh)
+      this.wallTopsMesh.setInactive();
+    this.lightConesMesh = this.lightFixtures.length
+      ? this.track(this.lightConesBatch(this.lightFixtures), this.staticMeshes)
+      : null;
+    if (this.cutaway)
+      this.setCutaway(true, this.cutawayNearFar);
   }
 
   /** Soft translucent volumetric light cones hanging under every ceiling light fixture, drawn with additive blending. */
@@ -1124,7 +1231,7 @@ export class World {
     return mesh;
   }
 
-  /** The ceiling: one quad over every tile you can stand on, except the giant's room, which is open to the sky. */
+  /** The ceiling: one quad over every tile you can stand on or see over, except the giant's room, which is open to the sky. */
   ceilingBatch(level) {
     const { gl } = this;
     this.ceilingPixels ??= ceilingAtlas();
@@ -1141,7 +1248,7 @@ export class World {
     for (let ty = 0; ty < level.rowCount; ty++) {
       for (let tx = 0; tx < level.width; tx++) {
         const idx = ty * level.width + tx;
-        if ((level.kind[idx] !== FLOOR && level.kind[idx] !== DOOR) || level.arena?.has(idx))
+        if ((level.kind[idx] !== FLOOR && level.kind[idx] !== DOOR && level.kind[idx] !== PILLAR && !level.diag[idx]) || level.arena?.has(idx))
           continue;
         const x0 = tx * TILE;
         const z0 = ty * TILE;
@@ -1189,13 +1296,13 @@ export class World {
       for (let tx = 0; tx < level.width; tx++) {
         const idx = ty * level.width + tx;
         const kind = level.kind[idx];
-        if ((kind !== FLOOR && kind !== DOOR) || level.slime[idx] || level.teleporter?.[idx])
+        if ((kind !== FLOOR && kind !== DOOR && !level.diag[idx]) || level.slime[idx] || level.teleporter?.[idx])
           continue;
         const x0 = tx * TILE;
         const x1 = x0 + TILE;
         const z0 = ty * TILE;
         const z1 = z0 + TILE;
-        batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], floorCellUv(floorCellFor(tx, ty, kind === DOOR)));
+        batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], floorCellUv(floorCellFor(tx, ty, kind === DOOR && !level.doors.get(idx)?.secret)));
       }
     }
     return batch.end();
@@ -1230,38 +1337,43 @@ export class World {
     return batch.end();
   }
 
-  /** Glowing pentagram teleporter floor pads ('T'): crimson pentagram sigils over swirling green-cyan warp portals. */
+  /** Futuristic 3D quantum teleporter machines ('T'): stepped emitter pedestal, four corner field pylons, and overhead ceiling ring. */
   teleporterBatch(level) {
     const { gl } = this;
     this.teleporterPixels ??= teleporterAtlas();
+    const allQuads = [];
+    const center = new Vec3();
+    const size = new Vec2();
+    const baseY = -0.18;
+    for (let ty = 0; ty < level.rowCount; ty++) {
+      for (let tx = 0; tx < level.width; tx++) {
+        const idx = ty * level.width + tx;
+        if (!level.teleporter?.[idx])
+          continue;
+        center.setScalar((tx + 0.5) * TILE, baseY, (ty + 0.5) * TILE);
+        size.setScalar(TILE, level.arena?.has(idx) ? 0 : ROOF - 1.2);
+        const machineQuads = teleporterMachineQuads(center, size);
+        for (const q of machineQuads)
+          allQuads.push(q);
+      }
+    }
     const batch = new QuadBatch(gl, {
-      capacity: Math.max(1, level.width * level.rowCount),
+      capacity: Math.max(1, allQuads.length),
       atlas: this.teleporterPixels,
       vertex: FLOOR_VERTEX,
       fragment: TELEPORTER_FRAGMENT,
       textureOptions: { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST },
     });
     batch.addCustomUniform('time', 'uniform1f', 0);
-    const y = -0.18;
     batch.begin();
-    for (let ty = 0; ty < level.rowCount; ty++) {
-      for (let tx = 0; tx < level.width; tx++) {
-        const idx = ty * level.width + tx;
-        if (!level.teleporter?.[idx])
-          continue;
-        const x0 = tx * TILE;
-        const x1 = x0 + TILE;
-        const z0 = ty * TILE;
-        const z1 = z0 + TILE;
-        batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], [0, 0, 1, 1]);
-      }
-    }
+    for (const q of allQuads)
+      batch.quad(q.corners, q.uv);
     return batch.end();
   }
 
   buildDoor(door) {
-    // a blast door: a box in the deck's steel and rust, standing on the floor and sinking into it as it opens.
-    // A secret door ('S') is disguised with bulkhead wall panels so only keen eyes spot the recessed seam.
+    // a blast door: two thin parallel door slabs recessed inside the 64-unit wall thickness, standing on the floor
+    // and sinking into it as it opens. A secret door ('S') stays disguised as a full-thickness bulkhead wall block.
     // A locked door ('R', 'Y', 'U') carries glowing color-coded security stripes and jamb lock bars.
     const { gl } = this;
     const isSecret = Boolean(door.secret);
@@ -1270,7 +1382,9 @@ export class World {
       : door.lock
         ? ((this.lockedDoorPixels ??= {})[door.lock] ??= lockedDoorAtlas(door.lock))
         : (this.doorPixels ??= doorAtlas());
-    const { vertices, uvs } = isSecret ? secretDoorBox(TILE - 0.8, TILE) : doorBox(TILE - 0.8, TILE);
+    const { vertices, uvs } = isSecret
+      ? secretDoorBox(scratchScale.setScalar(TILE, TILE, TILE))
+      : doubleDoorBox(scratchScale.setScalar(TILE - 0.8, TILE, DOOR_THICKNESS), Boolean(door.alongY), DOOR_INSET);
     const geometry = new CustomMesh();
     geometry.vertices = new Float32Array(vertices);
     geometry.setUvs(uvs);
@@ -1430,7 +1544,7 @@ export class World {
       textureOptions: { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST },
     });
     this.scene.addMesh(root);
-    return { root, spinSpeed: isChainsaw || isShotgun || isChaingun || isRocket ? 0.6 : 1.8 };
+    return { root, spinSpeed: isChainsaw || isShotgun || isChaingun || isRocket ? 1.4 : 1.8 };
   }
 
   /** An oil drum: ribbed sides, a zig-zag hazard band, and a lid. It is orange because it hurts. */

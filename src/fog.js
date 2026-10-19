@@ -1,3 +1,4 @@
+import { Vec2 } from '@1pizzateam/spock';
 import { EYE, TILE } from './level.js';
 
 // What the minimap knows about: a cone matching the view plus a small ring around the player.
@@ -20,6 +21,7 @@ export class Fog {
     this.explored = new Uint8Array(level.width * level.rowCount);
     this.visible = new Uint8Array(level.width * level.rowCount);
     this.exploredCount = 0;
+    this.pt = new Vec2();
   }
 
   /** Walk a ray tile by tile, marking what it passes and stopping at the first thing that blocks sight. */
@@ -40,7 +42,10 @@ export class Fog {
         explored[idx] = 1;
         this.exploredCount++;
       }
-      if (level.heights[idx] >= EYE)
+      this.pt.x = px * TILE;
+      this.pt.y = py * TILE;
+      const h = level.heightAtPoint ? level.heightAtPoint(this.pt) : level.heights[idx];
+      if (h >= EYE)
         return;
       px += dx;
       py += dy;

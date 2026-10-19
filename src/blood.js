@@ -1,6 +1,6 @@
-import { Rand } from '@1pizzateam/spock';
+import { Rand, Utils, Vec2 } from '@1pizzateam/spock';
 import { dripTime, GIB_VARIANTS } from './bloodsprites.js';
-import { CEILING, DOOR, FLOOR, TILE } from './level.js';
+import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
 
 export const BLOOD = {
   particles: 1400,
@@ -33,6 +33,7 @@ export class Blood {
     // monotonic: the renderer rebuilds its splat buffers whenever this changes
     this.version = 0;
     this.holesVersion = 0;
+    this.pt = new Vec2();
     this.reset(null, null);
   }
 
@@ -197,6 +198,7 @@ export class Blood {
    */
   impact(x, y, nx, ny, z, kind = 'hole') {
     const { level } = this;
+    const isDiag = Math.abs(nx) > 0.1 && Math.abs(ny) > 0.1;
     const tx = Math.floor((x - nx * 0.5) / TILE);
     const ty = Math.floor((y - ny * 0.5) / TILE);
     if (!level.inBounds(tx, ty))
@@ -208,9 +210,21 @@ export class Blood {
     if (z <= 1 || top <= 1)
       return false;
     const height = z < top - 0.5 ? z : this.float(top * 0.3, top - 1.5);
-    // the face lies on a tile boundary: snap to it so every hole shares the wall's plane
-    const px = nx ? Math.round(x / TILE) * TILE : x;
-    const py = ny ? Math.round(y / TILE) * TILE : y;
+    let px = x;
+    let py = y;
+    if (isDiag) {
+      const cx = (tx + 0.5) * TILE;
+      const cy = (ty + 0.5) * TILE;
+      const tanX = -ny;
+      const tanY = nx;
+      const along = (x - cx) * tanX + (y - cy) * tanY;
+      px = cx + tanX * along;
+      py = cy + tanY * along;
+    } else {
+      // the face lies on a tile boundary: snap to it so every hole shares the wall's plane
+      px = nx ? Math.round(x / TILE) * TILE : x;
+      py = ny ? Math.round(y / TILE) * TILE : y;
+    }
     // a door slides: its holes are kept in the door's own height, so they travel with it
     const hole = {
       x: px,
@@ -248,13 +262,42 @@ export class Blood {
     const ty = nx;
     const wx = Math.floor((x - nx * 0.5) / TILE);
     const wy = Math.floor((y - ny * 0.5) / TILE);
-    const start = level.heights[wy * level.width + wx];
-    const kind = level.kind[wy * level.width + wx];
+    if (!level.inBounds(wx, wy))
+      return { lo: -TILE * 0.5, hi: TILE * 0.5 };
+    const startIdx = wy * level.width + wx;
+    const start = level.heights[startIdx];
+    const kind = level.kind[startIdx];
+    if (Math.abs(nx) > 0.1 && Math.abs(ny) > 0.1) {
+      const cx = (wx + 0.5) * TILE;
+      const cy = (wy + 0.5) * TILE;
+      const along = (x - cx) * tx + (y - cy) * ty;
+      const diag = level.diag?.[startIdx] ?? 0;
+      const sx = Math.sign(tx);
+      const sy = Math.sign(ty);
+      const continuesDiag = (ix, iy) => {
+        if (door || !diag || !level.inBounds(ix, iy))
+          return false;
+        const i = iy * level.width + ix;
+        return level.diag[i] === diag && level.kind[i] === kind && level.heights[i] === start;
+      };
+      const reachDiag = (dir) => {
+        let steps = 0;
+        while (continuesDiag(wx + sx * dir * (steps + 1), wy + sy * dir * (steps + 1)))
+          steps++;
+        return dir * (steps * TILE * Math.SQRT2 + TILE * Math.SQRT1_2) - along;
+      };
+      return { lo: reachDiag(-1), hi: reachDiag(1) };
+    }
+    const faceDir = ny < 0 ? 0 : nx > 0 ? 1 : ny > 0 ? 2 : 3;
     const continues = (ix, iy) => {
       if (door || !level.inBounds(ix, iy) || !level.inBounds(ix + nx, iy + ny))
         return false;
       const i = iy * level.width + ix;
-      return level.kind[i] === kind && level.heights[i] === start && level.heights[(iy + ny) * level.width + ix + nx] <= 0;
+      if (level.diag?.[i] && !level.hasCardinalFace?.(i, faceDir))
+        return false;
+      const frontIdx = (iy + ny) * level.width + ix + nx;
+      const frontOpen = level.heights[frontIdx] <= 0 || (level.diag?.[frontIdx] > 0 && !level.hasCardinalFace?.(frontIdx, faceDir ^ 2));
+      return level.kind[i] === kind && level.heights[i] === start && frontOpen;
     };
     const reach = (dir) => {
       let cx = wx;
@@ -438,6 +481,11 @@ export class Blood {
     const ty = Math.floor(y / TILE);
     if (!level.inBounds(tx, ty))
       return true;
+    if (level.heightAtPoint) {
+      this.pt.x = x;
+      this.pt.y = y;
+      return level.heightAtPoint(this.pt) > z;
+    }
     return level.heights[ty * level.width + tx] > z;
   }
 
@@ -447,11 +495,45 @@ export class Blood {
     const oy = Math.floor(p.y / TILE);
     const tx = Math.floor(nx / TILE);
     const ty = Math.floor(ny / TILE);
+    for (const [dtx, dty] of [[ox, oy], [tx, ty]]) {
+      if (!level.inBounds(dtx, dty))
+        continue;
+      const didx = dty * level.width + dtx;
+      if (level.diag?.[didx] > 0 && level.heights[didx] > p.z) {
+        const df = level.diagInfo(didx);
+        const d0 = (p.x - df.ax) * df.nx + (p.y - df.ay) * df.ny;
+        const d1 = (nx - df.ax) * df.nx + (ny - df.ay) * df.ny;
+        if (d0 >= -1e-4 && d1 <= 1e-4) {
+          if (p.z >= 1 && (p.gib || this.rand.float(0, 1) <= 0.65)) {
+            const s = p.scale ?? 1;
+            const size = (p.gib ? this.float(5.5, 9.5) : this.float(2.0, 5.2)) * s;
+            const cx = (dtx + 0.5) * TILE;
+            const cy = (dty + 0.5) * TILE;
+            const tanX = -df.ny;
+            const tanY = df.nx;
+            const halfSpan = TILE * Math.SQRT1_2 - 2;
+            const along = Utils.clamp((p.x - cx) * tanX + (p.y - cy) * tanY, -halfSpan, halfSpan);
+            const sx = cx + tanX * along;
+            const sy = cy + tanY * along;
+            if (!this.blocked(sx + df.nx * 0.5, sy + df.ny * 0.5, p.z) && this.blocked(sx - df.nx * 0.5, sy - df.ny * 0.5, p.z))
+              this.wallSplat(sx, sy, p.z, df.nx, df.ny, size, level.heights[didx], null);
+          }
+          return 'diag';
+        }
+      }
+    }
     // a face only exists where the tile next to the one the drop was in is solid. A drop that clips a corner
     // enters a tile diagonally, and the tiles beside it can be open floor: marking there would hang in the air.
-    const solid = (x, y) => level.inBounds(x, y) && level.heights[y * level.width + x] > p.z;
-    const across = tx !== ox && solid(tx, oy);
-    const along = ty !== oy && solid(ox, ty);
+    const solid = (x, y, faceDir) => {
+      if (!level.inBounds(x, y))
+        return false;
+      const i = y * level.width + x;
+      if (level.diag?.[i] > 0 && !level.hasCardinalFace?.(i, faceDir))
+        return false;
+      return level.heights[i] > p.z;
+    };
+    const across = tx !== ox && solid(tx, oy, p.vx > 0 ? 3 : 1);
+    const along = ty !== oy && solid(ox, ty, p.vy > 0 ? 0 : 2);
     if (!across && !along)
       return false;
     // when the drop came through a corner of two walls, it struck the face it reached first
@@ -466,18 +548,18 @@ export class Blood {
       const door = level.kind[idx] === DOOR ? level.doors.get(idx) : null;
       const top = door ? level.baseHeight[idx] : level.heights[idx];
       const z = door ? p.z / (1 - door.open) : p.z;
-      if (vertical) {
-        const plane = (p.vy > 0 ? ty : ty + 1) * TILE;
-        this.wallSplat(p.x, plane, z, 0, p.vy > 0 ? -1 : 1, size, top, door);
-      } else {
-        const plane = (p.vx > 0 ? tx : tx + 1) * TILE;
-        this.wallSplat(plane, p.y, z, p.vx > 0 ? -1 : 1, 0, size, top, door);
-      }
+      const plane = vertical ? (p.vy > 0 ? ty : ty + 1) * TILE : (p.vx > 0 ? tx : tx + 1) * TILE;
+      const sx = vertical ? p.x : plane;
+      const sy = vertical ? plane : p.y;
+      const wnx = vertical ? 0 : (p.vx > 0 ? -1 : 1);
+      const wny = vertical ? (p.vy > 0 ? -1 : 1) : 0;
+      if (!this.blocked(sx + wnx * 0.5, sy + wny * 0.5, p.z) && this.blocked(sx - wnx * 0.5, sy - wny * 0.5, p.z))
+        this.wallSplat(sx, sy, z, wnx, wny, size, top, door);
     }
     return vertical ? 'y' : 'x';
   }
 
-  /** True where there is a ceiling to stick to: over open floor and doorways, and not over the giant's room. */
+  /** True where there is a ceiling to stick to: over open floor, doorways, and low pillars, and not over the giant's room. */
   hitsCeiling(x, y) {
     const { level } = this;
     const tx = Math.floor(x / TILE);
@@ -485,7 +567,7 @@ export class Blood {
     if (!level.inBounds(tx, ty))
       return false;
     const idx = ty * level.width + tx;
-    return (level.kind[idx] === FLOOR || level.kind[idx] === DOOR) && !level.arena?.has(idx);
+    return (level.kind[idx] === FLOOR || level.kind[idx] === DOOR || level.kind[idx] === PILLAR || level.diag[idx] > 0) && !level.arena?.has(idx);
   }
 
   land(p) {
@@ -554,8 +636,12 @@ export class Blood {
           p.bounces--;
           if (axis === 'x')
             p.vx = -p.vx * 0.42;
-          else
+          else if (axis === 'y')
             p.vy = -p.vy * 0.42;
+          else {
+            p.vx = -p.vx * 0.42;
+            p.vy = -p.vy * 0.42;
+          }
           p.vz *= 0.65;
           p.z = nz;
           if (p.age < p.life)

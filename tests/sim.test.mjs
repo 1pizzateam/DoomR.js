@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PointLight, Vec2, Vec3 } from '@1pizzateam/roostr';
+import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PointLight, Rand, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
 import { BLOOD } from '../src/blood.js';
 import { RECIPES, Sound, spatial } from '../src/audio.js';
@@ -12,14 +12,14 @@ import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON
 import { ARSENAL_CELL, ARSENAL_FRAMES, CHAINSAW_TOOTH_PITCH, chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, KNIFE_ATTACKS, knifeAtlas, knifeMesh, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from '../src/arsenal.js';
 import { AMMO_FLASH_DURATION, FIRE_COOLDOWN } from '../src/game.js';
 import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DYNAMIC_LIGHT_ATTENUATION, FIREBALL_LIGHT_COLOR, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, ROCKET_LIGHT_COLOR, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
-import { WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallFaceQuads } from '../src/wall.js';
-import { DOOR_CELLS, DOOR_FRAGMENT, WALL_FRAGMENT, doorAtlas, doorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
+import { diagWallFaceQuads, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallFaceQuads } from '../src/wall.js';
+import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, WALL_FRAGMENT, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
 import { BARREL_ATLAS, barrelAtlas, skinBarrel } from '../src/barrel.js';
 import { EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, explosionAtlas, teleportAtlas } from '../src/explosion.js';
-import { FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, floorAtlas, floorCellFor, floorCellUv, slimeAtlas, teleporterAtlas, TILE_PIXELS } from '../src/floor.js';
+import { FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, floorAtlas, floorCellFor, floorCellUv, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
 import { LIGHT_GLSL, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT } from '../src/quads.js';
 import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads, screenSplatQuads, bloodAtlas, CELL, cellUv, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallSplatQuad } from '../src/bloodsprites.js';
-import { CROUCH_EYE, DOOR, EYE } from '../src/level.js';
+import { CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EYE, Level, PILLAR } from '../src/level.js';
 import { Quality } from '../src/quality.js';
 import { MONSTER_SKIN_CELL, MONSTER_SKIN_CELLS, MONSTER_SKIN_FRAMES, MONSTERS, monsterGoreSkinAtlas, monsterMesh, monsterParts, monsterSkinAtlas } from '../src/monsters.js';
 import { MONSTER_ATLASES, MONSTER_FRAMES, WRAITH_FRAMES, wraithAtlas } from '../src/sprites.js';
@@ -361,6 +361,7 @@ const tests = {
   'a barrel takes a couple of pellets to set off, then hurts what is near it, kills monsters in pieces and chains to neighbours'() {
     const game = fresh();
     clearEnemies(game);
+    game.rand = Rand.create(1);
     for (const barrel of game.barrels) game.scene.removeBody(barrel.body);
     game.barrels = [];
     game.player.body.setPosition(new Vec2(6 * 64, 9 * 64 + 32));
@@ -702,6 +703,7 @@ const tests = {
   'shotgun hits spray blood that lands as permanent floor splats'() {
     const game = fresh();
     clearEnemies(game);
+    game.rand = Rand.create(2);
     game.blood.reset(game.level, game.rand);
     game.addEnemy('brute', new Vec2(9 * 64 + 16, 3 * 64 + 32));
     game.player.body.setPosition(new Vec2(7 * 64, 3 * 64 + 32));
@@ -1413,8 +1415,8 @@ const tests = {
     for (const index of [0, 1]) {
       const game = fresh(index);
       const { level, blood } = game;
-      const open = (x, y) => level.inBounds(Math.floor(x / 64), Math.floor(y / 64)) && level.heights[Math.floor(y / 64) * level.width + Math.floor(x / 64)] <= 0;
-      const solid = (x, y) => level.inBounds(Math.floor(x / 64), Math.floor(y / 64)) && level.heights[Math.floor(y / 64) * level.width + Math.floor(x / 64)] > 0;
+      const open = (x, y) => level.inBounds(Math.floor(x / 64), Math.floor(y / 64)) && level.heightAtPoint(new Vec2(x, y)) <= 0;
+      const solid = (x, y) => level.inBounds(Math.floor(x / 64), Math.floor(y / 64)) && level.heightAtPoint(new Vec2(x, y)) > 0;
       let checked = 0;
       const verify = () => {
         for (const w of blood.walls) {
@@ -2632,10 +2634,14 @@ const tests = {
     assert.ok(seamDiffX / TILE_PIXELS < 12, `slime atlas wraps seamlessly horizontally (avg delta ${seamDiffX / TILE_PIXELS})`);
     assert.ok(seamDiffY / TILE_PIXELS < 12, `slime atlas wraps seamlessly vertically (avg delta ${seamDiffY / TILE_PIXELS})`);
 
-    // secret door box uses wall UV cell framing (5 faces: 4 sides + top)
-    const sBox = secretDoorBox(63.2, 64);
+    // secret door box uses wall UV cell framing (5 faces: 4 sides + top) and full 64-unit tile dimensions so it sits completely flush with adjacent walls
+    const sBox = secretDoorBox(new Vec2(64, 64));
     assert.equal(sBox.vertices.length, 30 * 3);
     assert.equal(sBox.uvs.length, 30 * 2);
+    for (let i = 0; i < sBox.vertices.length; i += 3) {
+      assert.equal(Math.abs(sBox.vertices[i]), 32, 'secret door X faces sit flush at ±32 (TILE / 2) with zero recess');
+      assert.equal(Math.abs(sBox.vertices[i + 2]), 32, 'secret door Z faces sit flush at ±32 (TILE / 2) with zero recess');
+    }
 
     // every level has slime pools (~), secret push-wall doors (S), and crushing ceiling traps (^)
     for (let i = 0; i < LEVELS.length; i++) {
@@ -3747,18 +3753,39 @@ const tests = {
       assert.ok(info && info.duration > 0, `recipe ${rName} executes with valid AudioParams`);
     }
 
-    // Teleporter atlas is power-of-two, opaque, and has bright cyan/crimson pentagram runes; shader pulses with uTime
+    // Teleporter atlas is power-of-two, opaque, and has bright cyan/emerald quantum rings and beacons (no crimson pentagram); shader pulses with uTime
     const tele = teleporterAtlas();
     assert.equal(tele.width, TILE_PIXELS);
     assert.equal(tele.height, TILE_PIXELS);
     let brightPixels = 0;
+    let redDominantPixels = 0;
     for (let i = 0; i < tele.data.length; i += 4) {
       assert.equal(tele.data[i + 3], 255, 'teleporter pad atlas is fully opaque');
       if (tele.data[i] > 180 || tele.data[i + 1] > 180 || tele.data[i + 2] > 180)
         brightPixels++;
+      if (tele.data[i] > tele.data[i + 1] && tele.data[i] > tele.data[i + 2])
+        redDominantPixels++;
     }
-    assert.ok(brightPixels > 250, 'teleporter atlas contains glowing pentagram rune and corner beacon pixels');
+    assert.ok(brightPixels > 250, 'teleporter atlas contains glowing quantum stator rings, core, and corner beacon pixels');
+    assert.equal(redDominantPixels, 0, 'futuristic teleporter atlas has cool cyan/emerald tech glow instead of crimson pentagram');
     assert.ok(TELEPORTER_FRAGMENT.includes('uTime'), 'teleporter fragment shader pulses with uTime');
+
+    // 3D futuristic teleporter machine geometry includes base pedestal, 4 corner pylons, and overhead ceiling ring
+    const enclosedQuads = teleporterMachineQuads(new Vec3(96, -0.18, 160), new Vec2(64, 62.8));
+    const openQuads = teleporterMachineQuads(new Vec3(96, -0.18, 160), new Vec2(64, 0));
+    assert.ok(enclosedQuads.length > openQuads.length, 'enclosed teleporter machine adds overhead ceiling emitter hood quads');
+    assert.ok(openQuads.length >= 60, 'teleporter machine builds 3D stepped pedestal and 4 corner field pylons with coil collars');
+    let maxMachineY = -Infinity;
+    for (const q of enclosedQuads) {
+      assert.equal(q.corners.length, 12, 'each teleporter machine quad has 4 3D vertices');
+      assert.equal(q.uv.length, 4, 'each teleporter machine quad has 4 UV bounds');
+      for (let k = 1; k < 12; k += 3)
+        maxMachineY = Math.max(maxMachineY, q.corners[k]);
+    }
+    assert.ok(maxMachineY > 60, '3D teleporter machine reaches up to the ceiling emitter unit');
+    const teleMesh = teleporterMachineMesh(new Vec3(0, 0, 0), new Vec2(64, 62.8));
+    assert.equal(teleMesh.vertices.length, enclosedQuads.length * 18, 'teleporterMachineMesh converts each quad into 2 triangles (18 floats)');
+    assert.equal(teleMesh.uvs.length, enclosedQuads.length * 12, 'teleporterMachineMesh converts each quad into 6 UVs (12 floats)');
 
     // Every level (E1M1..E1M4) has paired teleporter pads
     assert.equal(LEVELS.length, 4, 'Episode 1 has 4 levels culminating in E1M4 Phobos Anomaly');
@@ -4116,6 +4143,7 @@ const tests = {
     const measureKillBlood = (type) => {
       const game = fresh();
       clearEnemies(game);
+      game.rand = Rand.create(2);
       game.blood.reset(game.level, game.rand);
       const pos = new Vec2(9 * 64 + 16, 3 * 64 + 32);
       game.addEnemy(type, pos);
@@ -4293,7 +4321,7 @@ const tests = {
     assert.ok(cgTarget.offset instanceof Vec3, 'chaingunPose offset is a Vec3');
     assert.ok(cgTarget.rotation instanceof Vec3, 'chaingunPose rotation is a Vec3');
     assert.ok(cgTarget.rotorRot instanceof Vec3, 'chaingunPose rotorRot is a Vec3');
-    assert.ok(cgTarget.offset.y < -9.2, 'chaingun sits low near the bottom of the screen');
+    assert.ok(cgTarget.offset.y < -11.2, 'chaingun sits low near the bottom of the screen');
     assert.ok(cgTarget.offset.z > 13.5, 'chaingun sits far enough forward for a compact screen footprint');
     assert.ok(cgTarget.rotation.x > 0.04, 'chaingun barrels are pitched horizontally toward enemies');
     assert.equal(cgTarget.rotorRot.z, 0, 'idle chaingun rotor does not spin');
@@ -4723,13 +4751,13 @@ const tests = {
     assert.ok(game.events.some((e) => e.type === 'knife' && e.attack === 'diagonal'), 'open-air knife swing emits whoosh sound');
     game.player.cooldown = 0;
 
-    // 3. First room (cols 1..4, rows 1..4) has the shotgun on the floor followed by 2 shotgun shell packs (no chaingun bullet pack)
-    const room1Pickups = game.pickups.filter((p) => p.pos.x < 5 * 64 && p.pos.y < 5 * 64);
+    // 3. Opening entry (cols 1..6, rows 1..4) has the shotgun on the floor followed by 2 shotgun shell packs (no chaingun bullet pack)
+    const room1Pickups = game.pickups.filter((p) => p.pos.x < 7 * 64 && p.pos.y < 5 * 64);
     const floorShotgun = room1Pickups.find((p) => p.type === 'shotgun');
     const floorShellPacks = room1Pickups.filter((p) => p.type === 'ammo');
     const floorBullets = room1Pickups.find((p) => p.type === 'bullets');
     assert.ok(floorShotgun, 'shotgun pickup is on the floor in the first room of Level 1');
-    assert.equal(floorShellPacks.length, 2, 'two shotgun ammo pickups are on the floor in the first room of Level 1');
+    assert.equal(floorShellPacks.length, 2, 'two shotgun ammo pickups are on the floor in the opening of Level 1');
     assert.equal(floorBullets, undefined, 'no chaingun bullet pack in the first room of Level 1');
 
     // Walk over the floor shotgun: unlocks and equips shotgun with ZERO ammo
@@ -4752,14 +4780,16 @@ const tests = {
     game.touch(floorShellPacks[1].body);
     assert.equal(game.player.shells, AMMO_TYPES.shells.bonus * 2, 'second ammo pack adds another crate of shotgun shells');
 
-    // 4. Chainsaw is hidden in the top-right secret room of Level 1 (cols 50..54, rows 2..4, behind secret door S at (49, 3))
+    // 4. Chainsaw is hidden in the center of the top-right secret room of Level 1 (col 52, row 3), directly in the line of sight of secret door S at (49, 3)
     const secretChainsaw = game.pickups.find((p) => p.type === 'chainsaw');
     assert.ok(secretChainsaw, 'chainsaw pickup exists in Level 1');
     const csCol = Math.floor(secretChainsaw.pos.x / 64);
     const csRow = Math.floor(secretChainsaw.pos.y / 64);
-    assert.ok(csCol >= 50 && csCol <= 54 && csRow >= 2 && csRow <= 4, `chainsaw is hidden in top-right secret room (col=${csCol}, row=${csRow})`);
+    assert.equal(csCol, 52, 'chainsaw sits 3 tiles inside the secret room so the player sees it rotating before reaching it');
+    assert.equal(csRow, 3, 'chainsaw is aligned on row 3 directly in front of the secret push-wall at (49, 3)');
     const secretDoor = game.level.doors.get(3 * game.level.width + 49);
     assert.ok(secretDoor?.secret, 'top-right secret room is guarded by secret push-wall at (49, 3)');
+    assert.equal(game.level.doors.has(5 * game.level.width + 50), false, 'top-right secret room has no back door on row 5');
 
     // Pick up the hidden chainsaw: unlocks and auto-equips chainsaw, and slot 1 toggles between chainsaw and knife
     game.touch(secretChainsaw.body);
@@ -4971,6 +5001,245 @@ const tests = {
     run(game, 0.3);
     assert.equal(game.player.ammoFlash.shells, 0, 'ammoFlash timer decays back to 0');
     assert.equal(fakeHud.shownAmmo(game.player, 'shells'), 8, 'counter remains at 8 after flash ends');
+  },
+
+  'foe projectiles hit other foes and disappear with no friendly fire'() {
+    const game = fresh();
+    clearEnemies(game);
+    // Place player far out of the line of fire
+    game.player.body.setPosition(new Vec2(6 * 64, 7 * 64 + 32));
+    game.player.health = 100;
+
+    // Place shooter imp and blocker imp along the same horizontal corridor
+    game.addEnemy('imp', new Vec2(6 * 64, 9 * 64 + 32));
+    game.addEnemy('imp', new Vec2(6 * 64 + 90, 9 * 64 + 32));
+    const [shooter, blocker] = game.enemies;
+    const initialBlockerHp = blocker.hp;
+    const initialShooterHp = shooter.hp;
+
+    // Fire a shot directly from shooter's center (overlapping shooter) toward blocker
+    game.events.length = 0;
+    game.effects.length = 0;
+    game.addShot(shooter.pos.clone(), new Vec2(1, 0), 220, 10, shooter);
+    assert.equal(game.shots.length, 1, 'shot is spawned');
+
+    // Step one tick: shot overlaps shooter initially, must not self-collide with shooter
+    game.update(1 / 60, idle);
+    assert.equal(game.shots.length, 1, 'shot ignores its own shooter');
+    assert.equal(shooter.hp, initialShooterHp, 'shooter takes no self-damage');
+
+    // Advance until shot reaches blocker (~90px at 220px/s -> ~0.4s)
+    let exploded = false;
+    for (let i = 0; i < 40 && game.shots.length > 0; i++) {
+      game.update(1 / 60, idle);
+      if (game.events.some((e) => e.type === 'explode'))
+        exploded = true;
+    }
+
+    assert.equal(game.shots.length, 0, 'shot disappears upon hitting the other foe');
+    assert.ok(exploded, 'shot emits explode event on hitting the other foe');
+    assert.ok(game.effects.some((fx) => fx.type === 'blast'), 'shot spawns blast effect on impact');
+    assert.equal(blocker.hp, initialBlockerHp, 'other foe takes no friendly fire damage');
+    assert.ok(!blocker.dead, 'other foe remains alive');
+  },
+
+  'doors use two thin recessed slabs across the 64-unit wall thickness, oriented to their corridor'() {
+    const dims = new Vec3(63.2, 64, DOOR_THICKNESS);
+    const alongX = doubleDoorBox(dims, false, DOOR_INSET);
+    const alongY = doubleDoorBox(dims, true, DOOR_INSET);
+    assert.equal(alongX.vertices.length / 3, 60, 'two slabs with four sides and a top each (10 quads, 60 vertices)');
+    assert.equal(alongX.uvs.length / 2, 60);
+    assert.equal(alongY.vertices.length / 3, 60);
+
+    // Along-X corridor (alongY = false): doorway width spans Z [-31.6, 31.6], two thin slabs sit at X in [-26, -18] and [18, 26]
+    const xs = new Set();
+    for (let i = 0; i < alongX.vertices.length; i += 3) {
+      xs.add(alongX.vertices[i]);
+      assert.ok(alongX.vertices[i + 1] >= 0 && alongX.vertices[i + 1] <= 64, 'stands on floor up to tile height');
+      assert.ok(Math.abs(Math.abs(alongX.vertices[i + 2]) - 31.6) < 1e-6, 'spans full doorway width along Z');
+    }
+    const outer = 32 - DOOR_INSET;
+    const inner = outer - DOOR_THICKNESS;
+    assert.deepEqual([...xs].sort((a, b) => a - b), [-outer, -inner, inner, outer]);
+    assert.ok(inner * 2 >= 32, 'leaves a wide hollow airlock chamber between the two thin door slabs');
+
+    // Along-Y corridor (alongY = true): doorway width spans X [-31.6, 31.6], two thin slabs sit at Z in [-26, -18] and [18, 26]
+    const zs = new Set();
+    for (let i = 0; i < alongY.vertices.length; i += 3) {
+      zs.add(alongY.vertices[i + 2]);
+      assert.ok(Math.abs(Math.abs(alongY.vertices[i]) - 31.6) < 1e-6, 'spans full doorway width along X');
+    }
+    assert.deepEqual([...zs].sort((a, b) => a - b), [-outer, -inner, inner, outer]);
+
+    // Level parser determines corridor orientation for every door
+    const game = fresh();
+    const doorEastWest = game.level.doors.get(3 * game.level.width + 5);
+    const doorNorthSouth = game.level.doors.get(5 * game.level.width + 3);
+    assert.equal(doorEastWest.alongY, false, 'door at (5, 3) has walls North/South and opens an East/West corridor');
+    assert.equal(doorNorthSouth.alongY, true, 'door at (3, 5) has walls West/East and opens a North/South corridor');
+  },
+
+  'diagonal walls: 4 triangle orientations parse, mesh, block rays, slide bodies, and take marks'() {
+    // 1. Explicit 4-direction glyphs and auto-oriented / and \
+    const custom = new Level({
+      name: 'DiagExplicit',
+      rows: [
+        '#######',
+        '#◤...◥#',
+        '#..P..#',
+        '#◣...◢#',
+        '#######',
+      ],
+    });
+    assert.equal(custom.diag[1 * custom.width + 1], DIAG_NW, '◤ parses as DIAG_NW');
+    assert.equal(custom.diag[1 * custom.width + 5], DIAG_NE, '◥ parses as DIAG_NE');
+    assert.equal(custom.diag[3 * custom.width + 1], DIAG_SW, '◣ parses as DIAG_SW');
+    assert.equal(custom.diag[3 * custom.width + 5], DIAG_SE, '◢ parses as DIAG_SE');
+
+    const auto = new Level({
+      name: 'DiagAuto',
+      rows: [
+        '#######',
+        '#/...\\#',
+        '#..P..#',
+        '#\\.../#',
+        '#######',
+      ],
+    });
+    assert.equal(auto.diag[1 * auto.width + 1], DIAG_NW, '/ against North+West walls orients as DIAG_NW');
+    assert.equal(auto.diag[1 * auto.width + 5], DIAG_NE, '\\ against North+East walls orients as DIAG_NE');
+    assert.equal(auto.diag[3 * auto.width + 1], DIAG_SW, '\\ against South+West walls orients as DIAG_SW');
+    assert.equal(auto.diag[3 * auto.width + 5], DIAG_SE, '/ against South+East walls orients as DIAG_SE');
+
+    // 2. Half-space heightAtPoint and cardinal faces for all 4 orientations
+    // Tile (1, 1) is DIAG_NW ([64..128, 64..128]): solid in NW (lx + ly <= 64), open in SE (lx + ly > 64)
+    assert.equal(custom.heightAtPoint(new Vec2(64 + 12, 64 + 12)), 64, 'NW corner of DIAG_NW is solid');
+    assert.equal(custom.heightAtPoint(new Vec2(64 + 52, 64 + 52)), 0, 'SE half of DIAG_NW is open');
+    assert.equal(custom.hasCardinalFace(1 * custom.width + 1, 0), true, 'DIAG_NW has West leg (d=0)');
+    assert.equal(custom.hasCardinalFace(1 * custom.width + 1, 2), true, 'DIAG_NW has North leg (d=2)');
+    assert.equal(custom.hasCardinalFace(1 * custom.width + 1, 1), false, 'DIAG_NW has no East cardinal face (d=1)');
+    assert.equal(custom.hasCardinalFace(1 * custom.width + 1, 3), false, 'DIAG_NW has no South cardinal face (d=3)');
+
+    // Tile (5, 1) is DIAG_NE ([320..384, 64..128]): solid in NE (lx >= ly), open in SW (lx < ly)
+    assert.equal(custom.heightAtPoint(new Vec2(320 + 52, 64 + 12)), 64, 'NE corner of DIAG_NE is solid');
+    assert.equal(custom.heightAtPoint(new Vec2(320 + 12, 64 + 52)), 0, 'SW half of DIAG_NE is open');
+
+    // Tile (1, 3) is DIAG_SW ([64..128, 192..256]): solid in SW (ly >= lx), open in NE (ly < lx)
+    assert.equal(custom.heightAtPoint(new Vec2(64 + 12, 192 + 52)), 64, 'SW corner of DIAG_SW is solid');
+    assert.equal(custom.heightAtPoint(new Vec2(64 + 52, 192 + 12)), 0, 'NE half of DIAG_SW is open');
+
+    // Tile (5, 3) is DIAG_SE ([320..384, 192..256]): solid in SE (lx + ly >= 64), open in NW (lx + ly < 64)
+    assert.equal(custom.heightAtPoint(new Vec2(320 + 52, 192 + 52)), 64, 'SE corner of DIAG_SE is solid');
+    assert.equal(custom.heightAtPoint(new Vec2(320 + 12, 192 + 12)), 0, 'NW half of DIAG_SE is open');
+
+    // 3. 3D hypotenuse mesh generation
+    for (const [idx, expectedNx, expectedNy] of [
+      [1 * custom.width + 1, Math.SQRT1_2, Math.SQRT1_2],
+      [1 * custom.width + 5, -Math.SQRT1_2, Math.SQRT1_2],
+      [3 * custom.width + 1, Math.SQRT1_2, -Math.SQRT1_2],
+      [3 * custom.width + 5, -Math.SQRT1_2, -Math.SQRT1_2],
+    ]) {
+      const info = custom.diagInfo(idx);
+      assert.ok(Math.abs(info.nx - expectedNx) < 1e-6 && Math.abs(info.ny - expectedNy) < 1e-6);
+      const quads = diagWallFaceQuads({
+        ax: info.ax,
+        ay: info.ay,
+        bx: info.bx,
+        by: info.by,
+        base: 0,
+        top: 64,
+        x: idx % custom.width,
+        y: Math.floor(idx / custom.width),
+        diag: info.diag,
+        exit: null,
+      });
+      assert.equal(quads.length, 1);
+      assert.deepEqual(quads[0].corners.slice(0, 6), [info.ax, 0, info.ay, info.bx, 0, info.by]);
+      for (const u of quads[0].uv)
+        assert.ok(u >= 0 && u <= 1, 'diagonal wall UVs stay inside [0, 1]');
+    }
+
+    // 4. Level 1 has all 4 diagonal wall orientations; test raycasting, sliding collision, and bullet holes
+    const e1m1 = fresh(0);
+    assert.ok(e1m1.diagWalls.length >= 4, 'E1M1 contains diagonal walls');
+    const seenTypes = new Set(e1m1.diagWalls.map((dw) => dw.diag));
+    for (const d of [DIAG_NW, DIAG_NE, DIAG_SW, DIAG_SE])
+      assert.ok(seenTypes.has(d), `E1M1 includes diagonal orientation ${d}`);
+
+    const game = new Game();
+    game.load(custom);
+    game.state = 'play';
+
+    // Tile (1, 1) in custom is DIAG_NW (hypotenuse from (64, 128) to (128, 64), normal (+SQRT1_2, +SQRT1_2))
+    const hitHyp = game.scene.raycast(new Vec2(140, 140), new Vec2(70, 70), { mask: CAT.WALL });
+    assert.ok(hitHyp && hitHyp.body?.ref?.kind === 'wall' && hitHyp.body?.ref?.diag === DIAG_NW, 'ray into NW diagonal hits hypotenuse');
+    assert.ok(Math.abs(hitHyp.point.x + hitHyp.point.y - (64 + 128)) < 1e-3, 'hit point lies on the hypotenuse x + y = 192');
+    assert.ok(Math.abs(hitHyp.normal.x - Math.SQRT1_2) < 1e-3 && Math.abs(hitHyp.normal.y - Math.SQRT1_2) < 1e-3, 'hit normal is 45 degrees (+SQRT1_2, +SQRT1_2)');
+
+    // Ray passing through the open SE half of tile (1, 1) (e.g. from (120, 125) to (125, 120), where lx+ly = 56+61 = 117 > 64) is unblocked
+    const openHalfRay = game.scene.raycast(new Vec2(120, 125), new Vec2(125, 120), { mask: CAT.WALL });
+    assert.equal(openHalfRay, null, 'open half of diagonal wall tile does not block rays');
+
+    // Player pushed into the NW diagonal wall at (1, 1) slides smoothly along the 45-degree hypotenuse
+    game.player.body.setPosition(new Vec2(112, 112));
+    game.player.angle = -Math.PI * 0.75; // facing NW into the diagonal wall
+    for (let i = 0; i < 20; i++)
+      game.update(1 / 60, input({ forward: 1 }));
+    const p = game.player.pos;
+    const signedDist = (p.x - 64) * Math.SQRT1_2 + (p.y - 128) * Math.SQRT1_2;
+    assert.ok(signedDist >= 14 - 1e-4, `player stays outside the diagonal hypotenuse (signedDist=${signedDist})`);
+
+    // Bullet holes and blood splats on diagonal wall hypotenuse are recorded and clamped to hypotenuse span
+    game.blood.holes.length = 0;
+    game.blood.walls.length = 0;
+    game.blood.impact(96, 96, Math.SQRT1_2, Math.SQRT1_2, 32);
+    game.blood.wallSplat(96, 96, 32, Math.SQRT1_2, Math.SQRT1_2, 10, 64);
+    assert.equal(game.blood.holes.length, 1, 'bullet hole attaches to diagonal wall hypotenuse');
+    assert.equal(game.blood.walls.length, 1, 'blood splat attaches to diagonal wall hypotenuse');
+    assert.ok(game.blood.holes[0].lo < -40 && game.blood.holes[0].hi > 40, 'diagonal face span covers the ~90.5-unit hypotenuse');
+  },
+
+  'half-size walls (PILLAR) have ceiling above them in roofed rooms and stay roofless inside the boss arena'() {
+    // 1. In a normal roofed room, a half-size wall ('o', height 26) at tile (2, 3) has ceiling above it
+    const roofedSpec = {
+      name: 'Roofed Pillar Test',
+      rows: [
+        '#####',
+        '#P..#',
+        '#...#',
+        '#.o.#',
+        '#####',
+      ],
+    };
+    const game = new Game();
+    game.load(roofedSpec);
+    game.state = 'play';
+    const pillarIdx = 3 * game.level.width + 2;
+    assert.equal(game.level.kind[pillarIdx], PILLAR, 'tile (2, 3) is a half-size PILLAR');
+    assert.equal(game.level.baseHeight[pillarIdx], 26, 'half-size PILLAR has height 26 (< 64 ceiling)');
+    assert.equal(game.blood.hitsCeiling(2.5 * 64, 3.5 * 64), true, 'ceiling exists above half-size wall in a roofed room');
+
+    // Tile (2, 3) satisfies ceilingCellFor(2, 3) === CEILING_CELLS.light (2 % 5 === 2 && 3 % 4 === 3)
+    const fixtures = ceilingLightFixtures(game.level);
+    assert.ok(fixtures.some((f) => f.tile.x === 2 && f.tile.y === 3), 'ceiling light fixture is placed on the ceiling above a half-size wall at (2, 3)');
+
+    // 2. Inside a boss arena, half-size walls ('o') are part of level.arena and remain open to the sky
+    const arenaSpec = {
+      name: 'Boss Arena Pillar Test',
+      rows: [
+        '#######',
+        '#P#...#',
+        '#D#.o.#',
+        '#.#.B.#',
+        '#######',
+      ],
+    };
+    const arenaGame = new Game();
+    arenaGame.load(arenaSpec);
+    const arenaPillarIdx = 2 * arenaGame.level.width + 4;
+    assert.equal(arenaGame.level.kind[arenaPillarIdx], PILLAR);
+    assert.ok(arenaGame.level.arena?.has(arenaPillarIdx), 'half-size wall inside the boss room is included in the roofless arena set');
+    assert.equal(arenaGame.blood.hitsCeiling(4.5 * 64, 2.5 * 64), false, 'no ceiling over a half-size wall inside the roofless boss arena');
   },
 };
 

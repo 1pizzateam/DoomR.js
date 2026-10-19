@@ -11,6 +11,7 @@
  *
  * LEGEND:
  *   `#`  standard bulkhead wall (64 high)
+ *   `◤` `◥` `◣` `◢` (or `/` `\`) 45° diagonal triangle wall in 4 orientations (NW, NE, SW, SE)
  *   `T`  glowing pentagram teleporter pad (warps between paired pads; telefrags monsters on the exit pad)
  *   `o`  low pillar / window sill (26 high — blocks movement, shoot over when standing, cover when crouched)
  *   `D`  sliding bulkhead door (opens with E / Space)
@@ -56,28 +57,28 @@ export const LEVELS = [
     //        01234567890123456789012345678901234567890123456789012345
     rows: [
       /* 00 */ '########################################################', // Outer Hull
-      /* 01 */ '#PGaa#..........######....######.....########....#######', // NW Entry Bay / NE Comms Closets
-      /* 02 */ '#....#.i.o..a...#....#.ih.#....#..i..#..a...#..c.#W.hO.#', // NW Reception / North Alcoves (Chainsaw & Soulsphere Secret)
-      /* 03 */ '#....D..........D....S....D....###D###..#...D....S.....#', // North Airlock Corridor & Secret Push-Walls
-      /* 04 */ '#....#.....i....######....#....^.....D......#....#..i..#', // Upper Tech Hallway & Crusher
-      /* 05 */ '###D#######D##########....#####D######..#...######D#####', // Bulkhead Connectors
-      /* 06 */ '###.#.....#.#........#....#.V........#..u...#..........#', // North-West Dogleg & Rad Suit by Slime Pool
-      /* 07 */ '#...#.h.g.#.######...#..x.#..o.~~.o..########..o....o..#', // West Supply / North Hub Slime Pool
-      /* 08 */ '#.............i..#...#....#...i~~x...D......D....b.....#', // West Command Hall (North)
-      /* 09 */ '#..o.......C.........D....#....~~....###D####..........#', // West Command Hall (Main Sightline)
-      /* 10 */ '#........i..b........#....#..o.~~.o..#......#..o....o..#', // West Command Hall (South)
-      /* 11 */ '#..Z..o..i.......#...######..........#..ah..#....i.....#', // West Command Hall (Lower - Berserk Pack)
+      /* 01 */ '#P..◥#i......#g.x....#....######.....########....#######', // NW Entry Bay / NE Comms Closets
+      /* 02 */ '#.G..#...o..a#....x..#.ih.#....#..i..#..a...#..c.#..hOs#', // NW Reception / North Alcoves (Chainsaw & Soulsphere Secret)
+      /* 03 */ '#..a.Da......D.x.x..iS....D....###D###..#...D....S..W..#', // North Airlock Corridor & Secret Push-Walls
+      /* 04 */ '#◣...#.....i.#..x....#....#..........D......#....#...i.#', // Upper Tech Hallway & Crusher
+      /* 05 */ '###D#######D##########....####D#######..#...############', // Bulkhead Connectors
+      /* 06 */ '##◤.#.....#.#....S...#....#.V..~~~~~.#..u...#◤........◥#', // North-West Dogleg & Rad Suit by Slime Pool
+      /* 07 */ '#...#.h...#.######...#..x.#..o.~~~o~.########..o....o..#', // West Supply / North Hub Slime Pool
+      /* 08 */ '#.............i..#...#....#...x~~....D......D....b.....#', // West Command Hall (North)
+      /* 09 */ '#..o.......C.........D....#...i~~....###D####..........#', // West Command Hall (Main Sightline)
+      /* 10 */ '#........i..b........#....#..o.~~~o~.#......#..o....o..#', // West Command Hall (South)
+      /* 11 */ '#..Z..o..i.......#...######....~~~~~.#..ah..#◣...i....◢#', // West Command Hall (Lower - Berserk Pack)
       /* 12 */ '#..........m..h..#........#####D######......#####D######', // West Command Support
       /* 13 */ '#########D#.######...##.......#.#...............#.#....#', // South-West Connector
       /* 14 */ '#####...#.#.#........##..i.x..#.#...#########...#.#....#', // Mid-Base Crossway
       /* 15 */ '#####...#.#.#..i.c...######D###.###.#.......#...#.#..h.#', // Mid-West Ambush Closet
-      /* 16 */ '#.......#.#.#........#..~~~.....#.#.#..#T#..#...#.#....#', // Central Courtyard & Teleporter Pad A
-      /* 17 */ '#..i.x..D.#.########D#..#~~~.#..D.#.U...b...U...#.D....#', // Courtyard Airlocks & Blue-Locked Reactor
-      /* 18 */ '#.......#.#..........#..~~~.....#.#.#.y#.#..#...#......#', // Central Courtyard / Yellow Key in Reactor
-      /* 19 */ '#####D###.############....##....#.###.......#...#####..#', // Courtyard Bulkhead & Monoliths
-      /* 20 */ '#####.#.......#....#....T.##....#...####U####.......#..#', // Central Courtyard (Core & Teleporter Pad B)
-      /* 21 */ '#..h..S..x.i..D....D...b..~~.c..D......#.#....i..x..#..#', // Courtyard Secret Closet & Catwalk
-      /* 22 */ '#.AqM.#.......#....#..#...~~...##......#.#..........#..#', // West Secret Ammo Closet / Courtyard South
+      /* 16 */ '#.......#.#.#........#◤.~~~....◥#.#.#..#T#..#...#.#....#', // Central Courtyard & Teleporter Pad A
+      /* 17 */ '#..i.x..D.#.########D#..#~~~~#..#.#.#...b...U...#......#', // Courtyard Airlocks & Blue-Locked Reactor
+      /* 18 */ '#.......#.#..........#..~~~~~~..#.#.#.y#.#..#...#......#', // Central Courtyard / Yellow Key in Reactor
+      /* 19 */ '#####D###.#############...##....#.###.......#...#####..#', // Courtyard Bulkhead & Monoliths
+      /* 20 */ '#####.#.......#....#......##....#...####U####.......#..#', // Central Courtyard (Core & Teleporter Pad B)
+      /* 21 */ '#..h..S..x.i..D....#.T.b..~~.c..D......#.#....i..x..#..#', // Courtyard Secret Closet & Catwalk
+      /* 22 */ '#.AqM.#.......#....#......~~...##......#.#..........#..#', // West Secret Ammo Closet / Courtyard South
       /* 23 */ '#####.#########....####...o..o..########.########D###..#', // South Courtyard Rim
       /* 24 */ '#####.#.......#....#......i......^..............#.#....#', // South Interconnect Crusher Corridor
       /* 25 */ '#.....D...s...D....D...x........#####Y########..#.#..a.#', // Skull Ambush & Yellow-Locked Vault Door
@@ -116,7 +117,7 @@ export const LEVELS = [
       /* 12 */ '#.P....g...#.#########..o...s...o..#...#.#..####D#######', // West Arrival Bay (4,12 open) & Hub
       /* 13 */ '#..o....o..#.#.......D.............S.h.#.#......#.#....#', // Central Spine Hallway & Secret Cache
       /* 14 */ '#....V.....D.#..c.x..#######Y#######Mq.#.######.#.#.w..#', // Rad Suit before Slime Maze & Boss Approach
-      /* 15 */ '#####D######.#.......###...........###.#......#.#.#....#', // Warden Sanctum (North Chamfer)
+      /* 15 */ '#####D######.#.......##◤...........◥##.#......#.#.#....#', // Warden Sanctum (North Chamfer)
       /* 16 */ '#####.#~~~~#.####D####.T.o..a..o...###.######.#.#.####D#', // Warden Sanctum (Upper Ring & Teleporter Pad A)
       /* 17 */ '#..~..#~.s~#.#.......#...~~~...~~~.###......D.#.#....#.#', // West Slime Tunnels / Sanctum
       /* 18 */ '#.w~..D~~~~D.#..i.x..#..#~~~...~~~####.######.#.##S#.#.#', // Swarmer Closet / Warden Slime Vats
@@ -126,7 +127,7 @@ export const LEVELS = [
       /* 22 */ '#...#.#~~~~#.#..b..y.#..#~~~...~~~####.######.#...^....#', // Brute Guard Room (Yellow Key) / Sanctum
       /* 23 */ '#.h.S.#~c~~D.#.......#...~~~...~~~.###......#.#####U####', // Slime Maze Secret & Blue-Locked Connector
       /* 24 */ '#.a.#.#~~~~#.####D####...o..a..o.T.##########.....#.#..#', // Warden Sanctum (South Chamfer & Teleporter Pad B)
-      /* 25 */ '#####.#....#.#.......###...........##########..i..#.#..#', // Sanctum South Rim
+      /* 25 */ '#####.#....#.#.......##◣...........◢#########..i..#.#..#', // Sanctum South Rim
       /* 26 */ '#.....D....#.#..x.i..#######Y#######...^....D.....D.#..#', // Yellow-Locked South Boss Approach & Crusher
       /* 27 */ '#..c..######.####D####.............#####D####..x..#.#..#', // South Hub & Barrel Trap
       /* 28 */ '#.....#..............D..o...r...o..S...#.#..#######.#..#', // Lower Wraith Gallery & Secret Closet
@@ -158,7 +159,7 @@ export const LEVELS = [
       /* 08 */ '#.ag.#.c..#.#........#..~..#...#...........#.#....u....#', // West Crawler Duct & Blue Keycard Gallery
       /* 09 */ '######S####.#..x..i..#######...########D####.#..o...o..#', // Mid-North Secret Push-Wall
       /* 10 */ '#....C....#.#........#.................#.#...D....r....#', // Refinery Upper Ring
-      /* 11 */ '#..i...x..D.########D#..###...V...###..#.#...###########', // Octagonal Central Hub (North - Rad Suit)
+      /* 11 */ '#..i...x..D.########D#..##◤...V...◥##..#.#...###########', // Octagonal Central Hub (North - Rad Suit)
       /* 12 */ '#.........#.#......#.#..#~~To...o.~~#..#.#.........#...#', // Octagonal Hub (Upper Toxin Channels & Pad A)
       /* 13 */ '####D######.#.w..h.#.#..#~~~..x..~~~#..#.#######D#.#.h.#', // Swarmer Trap & Hub Toxin Rim
       /* 14 */ '####.#......D....m.#.D..U...#~~~#...U..D.......#.#.#.a.#', // Blue-Locked Central Toxin Vat Hub
@@ -166,7 +167,7 @@ export const LEVELS = [
       /* 16 */ '#.s..#.#....########.#..#..y#~~~#...#..#.#...#.#.#.....#', // Central Toxin Vat Hub (Yellow Keycard)
       /* 17 */ '#....D.#....#...~~...#..#~~~..x..~~~#..#.#.c.#.#.#####.#', // West Service Tunnel & Toxin Vat
       /* 18 */ '#.x..#.#....#.o.~~.o.#..#~~.o...oT~~#..D.#...D.#.....#.#', // East/West Hub Sluices & Teleporter Pad B
-      /* 19 */ '######.####D#...~~...#..###.......###..#.#####.#####.#.#', // Octagonal Central Hub (South)
+      /* 19 */ '######.####D#...~~...#..##◣.......◢##..#.#####.#####.#.#', // Octagonal Central Hub (South)
       /* 20 */ '#...Z.....#.#..b..x..#........U........#.#.........#.#.#', // Blue-Locked South Hub Spillway & Berserk Pack
       /* 21 */ '#..c...i..D.#........#######.....#######.#..x...b..D.#.#', // South-West & South-East Halls
       /* 22 */ '#.........#.########D#.....#..h..#.....#.#.........#.#.#', // Lower Refinery Crossway
@@ -208,7 +209,7 @@ export const LEVELS = [
       /* 12 */ '#..T.......#.#########..o...s...o..#...#.#..####D#######', // West Teleporter Pad 1A & Central Gallery
       /* 13 */ '#..o....o..#.#..T....D.............S.h.#.#......#.#....#', // Teleporter Pad 1B & Central Secret Closet
       /* 14 */ '#....V.....D.#..c.x..#######Y#######Mq.#.######.#.#.w..#', // Rad Suit, Rocket Cache & Boss Sanctum Gate
-      /* 15 */ '#####D######.#.......###...........###.#......#.#.#....#', // Twin Wardens Star Sanctum (North Wing)
+      /* 15 */ '#####D######.#.......##◤...........◥##.#......#.#.#....#', // Twin Wardens Star Sanctum (North Wing)
       /* 16 */ '#####.#~~~~#.####D####.T.o..a..o...###.######.#.#.####D#', // Star Sanctum (NW Teleporter Pad 2A)
       /* 17 */ '#..~..#~.s~#.#.......#...~~~...~~~.###......D.#.#....#.#', // West Nukage Sluice & Sanctum Pools
       /* 18 */ '#.w~..D~~~~D.#..i.x..#..#~~~...~~~####.######.#.##S#.#.#', // Swarmer Vat & Sanctum Pillars
@@ -218,7 +219,7 @@ export const LEVELS = [
       /* 22 */ '#...#.#~~~~#.#..b..y.#..#~~~...~~~####.######.#...^....#', // Yellow Keycard Guard Room & Sanctum
       /* 23 */ '#.h.S.#~c~~D.#.......#...~~~...~~~.###......#.#####U####', // Slime Secret Closet & Blue-Locked Connector
       /* 24 */ '#.a.#.#~~~~#.####D####...o..a..o.T.##########.....#.#..#', // Star Sanctum (SE Teleporter Pad 2B)
-      /* 25 */ '#####.#....#.#.......###...........##########..i..#.#..#', // Sanctum South Rim
+      /* 25 */ '#####.#....#.#.......##◣...........◢#########..i..#.#..#', // Sanctum South Rim
       /* 26 */ '#.....D....#.#..x.i..#######Y#######...^....D.....D.#..#', // Yellow-Locked South Sanctum Gate & Crusher
       /* 27 */ '#..c..######.####D####.............#####D####..x..#.#..#', // South Hub & Barrel Trap
       /* 28 */ '#.....#..............D..o...r...o..S...#.#..#######.#..#', // Lower Wraith Gallery & Secret Closet
@@ -234,4 +235,3 @@ export const LEVELS = [
     //        0         1         2         3         4         5
   },
 ];
-

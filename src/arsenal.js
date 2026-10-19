@@ -1,4 +1,4 @@
-import { Bezier, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
+import { Bezier, Mat4x3, Quat, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 
 function smoothStep(min, max, x) {
   return Bezier.cubic(0, 0, 1, 1, Utils.clamp(Utils.normalize(x, min, max), 0, 1));
@@ -146,6 +146,358 @@ function limbFromTo(p0, size0, p1, size1, mapper) {
   };
 }
 
+const scratchTransformQuat = new Quat();
+const scratchTransformMat = new Mat4x3();
+const scratchTransformVert = new Vec3();
+const scratchTransformNorm = new Vec3();
+
+function transformMesh(raw, offset = new Vec3(), rotation = new Vec3(), scale = new Vec3(1, 1, 1)) {
+  const vIn = raw.vertices;
+  const nIn = raw.normals;
+  const vertices = new Float32Array(vIn.length);
+  const normals = new Float32Array(nIn.length);
+  scratchTransformQuat.setFromEuler(rotation);
+  scratchTransformMat.compose(offset, scratchTransformQuat, scale);
+  for (let i = 0; i < vIn.length; i += 3) {
+    scratchTransformVert.setScalar(vIn[i], vIn[i + 1], vIn[i + 2]);
+    scratchTransformMat.transformPoint(scratchTransformVert, scratchTransformVert);
+    vertices[i] = scratchTransformVert.x;
+    vertices[i + 1] = scratchTransformVert.y;
+    vertices[i + 2] = scratchTransformVert.z;
+    scratchTransformNorm.setScalar(nIn[i], nIn[i + 1], nIn[i + 2]);
+    scratchTransformQuat.multiplyVector(scratchTransformNorm, scratchTransformNorm);
+    if (scratchTransformNorm.getMagnitude(true) > 0)
+      scratchTransformNorm.normalize();
+    normals[i] = scratchTransformNorm.x;
+    normals[i + 1] = scratchTransformNorm.y;
+    normals[i + 2] = scratchTransformNorm.z;
+  }
+  return { vertices, normals, uvs: new Float32Array(raw.uvs) };
+}
+
+function octagonalRing(center = new Vec3(), halfSize = new Vec2(0.5, 0.5), chamfer = new Vec2(0.28, 0.28)) {
+  const cx = center.x;
+  const cy = center.y;
+  const cz = center.z;
+  const hx = halfSize.x;
+  const hy = halfSize.y;
+  const ix = hx * (1 - chamfer.x);
+  const iy = hy * (1 - chamfer.y);
+  return [
+    new Vec3(cx + hx, cy - iy, cz),
+    new Vec3(cx + hx, cy + iy, cz),
+    new Vec3(cx + ix, cy + hy, cz),
+    new Vec3(cx - ix, cy + hy, cz),
+    new Vec3(cx - hx, cy + iy, cz),
+    new Vec3(cx - hx, cy - iy, cz),
+    new Vec3(cx - ix, cy - hy, cz),
+    new Vec3(cx + ix, cy - hy, cz),
+  ];
+}
+
+function ellipticalRing(center = new Vec3(), radii = new Vec2(0.5, 0.5), segments = 10) {
+  const ring = [];
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Trigo.twopi;
+    ring.push(new Vec3(center.x + Math.cos(a) * radii.x, center.y + Math.sin(a) * radii.y, center.z));
+  }
+  return ring;
+}
+
+function pushCapTriangle(vertices, normals, uvs, p0, p1, p2, uv0, uv1, uv2) {
+  scratchEdgeA.setScalar(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+  scratchEdgeB.setScalar(p2.x - p0.x, p2.y - p0.y, p2.z - p0.z);
+  scratchNormal.crossVectors(scratchEdgeA, scratchEdgeB);
+  if (scratchNormal.getMagnitude(true) > 0)
+    scratchNormal.normalize();
+  else
+    scratchNormal.setScalar(0, 0, 1);
+  vertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+  normals.push(
+    scratchNormal.x, scratchNormal.y, scratchNormal.z,
+    scratchNormal.x, scratchNormal.y, scratchNormal.z,
+    scratchNormal.x, scratchNormal.y, scratchNormal.z
+  );
+  uvs.push(uv0.x, uv0.y, uv1.x, uv1.y, uv2.x, uv2.y);
+}
+
+function pushSmoothQuad(vertices, normals, uvs, a0, a1, b1, b0, n0, n1, n2, n3, u0, v0, u1, v1) {
+  const corners = [a0, a1, b1, b0];
+  const vNorms = [n0, n1, n2, n3];
+  const quadUvs = [[u0, v1], [u1, v1], [u1, v0], [u0, v0]];
+  for (const k of [0, 1, 2, 0, 2, 3]) {
+    const p = corners[k];
+    const n = vNorms[k];
+    vertices.push(p.x, p.y, p.z);
+    normals.push(n.x, n.y, n.z);
+    uvs.push(...quadUvs[k]);
+  }
+}
+
+function loftRingsMesh(rings, capEnds = true, smoothNormals = false) {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+  const ringCount = rings.length;
+  const segs = rings[0].length;
+  const cFirst = new Vec3();
+  const cLast = new Vec3();
+  for (let i = 0; i < segs; i++) {
+    cFirst.add(rings[0][i]);
+    cLast.add(rings[ringCount - 1][i]);
+  }
+  cFirst.scale(1 / segs);
+  cLast.scale(1 / segs);
+  const axis = new Vec3().subVectors(cLast, cFirst);
+  const radial = new Vec3().subVectors(rings[0][0], cFirst);
+  const tangent = new Vec3().subVectors(rings[0][1], rings[0][0]);
+  const outTest = new Vec3().crossVectors(tangent, axis);
+  const orientedRings = outTest.dotProduct(radial) < 0 ? rings.map((r) => [...r].reverse()) : rings;
+
+  const uvCenter = new Vec2(0.5, 0.5);
+  const uvA = new Vec2();
+  const uvB = new Vec2();
+
+  let ringCenters = null;
+  let smoothGrid = null;
+  if (smoothNormals) {
+    ringCenters = orientedRings.map((ring) => {
+      const c = new Vec3();
+      for (let i = 0; i < segs; i++)
+        c.add(ring[i]);
+      return c.scale(1 / segs);
+    });
+    const tanU = new Vec3();
+    const tanV = new Vec3();
+    smoothGrid = orientedRings.map((ring, r) => {
+      const rPrev = Math.max(0, r - 1);
+      const rNext = Math.min(ringCount - 1, r + 1);
+      return ring.map((pt, i) => {
+        const prevI = (i - 1 + segs) % segs;
+        const nextI = (i + 1) % segs;
+        tanU.subVectors(ring[nextI], ring[prevI]);
+        tanV.subVectors(orientedRings[rNext][i], orientedRings[rPrev][i]);
+        const n = new Vec3().crossVectors(tanU, tanV);
+        if (n.getMagnitude(true) > 1e-8)
+          n.normalize();
+        else {
+          n.subVectors(pt, ringCenters[r]);
+          if (n.getMagnitude(true) > 1e-8)
+            n.normalize();
+          else
+            n.setScalar(0, 1, 0);
+        }
+        return n;
+      });
+    });
+  }
+
+  if (capEnds) {
+    const first = orientedRings[0];
+    for (let i = 0; i < segs; i++) {
+      const next = (i + 1) % segs;
+      const a0 = (i / segs) * Trigo.twopi;
+      const a1 = (next / segs) * Trigo.twopi;
+      uvA.setScalar(0.5 + Math.cos(a1) * 0.42, 0.5 + Math.sin(a1) * 0.42);
+      uvB.setScalar(0.5 + Math.cos(a0) * 0.42, 0.5 + Math.sin(a0) * 0.42);
+      pushCapTriangle(vertices, normals, uvs, cFirst, first[next], first[i], uvCenter, uvA, uvB);
+    }
+  }
+
+  for (let r = 0; r < ringCount - 1; r++) {
+    const ringA = orientedRings[r];
+    const ringB = orientedRings[r + 1];
+    const v0 = r / (ringCount - 1);
+    const v1 = (r + 1) / (ringCount - 1);
+    for (let i = 0; i < segs; i++) {
+      const next = (i + 1) % segs;
+      const u0 = i / segs;
+      const u1 = (i + 1) / segs;
+      const a0 = ringA[i];
+      const a1 = ringA[next];
+      const b1 = ringB[next];
+      const b0 = ringB[i];
+      if (smoothGrid)
+        pushSmoothQuad(
+          vertices,
+          normals,
+          uvs,
+          a0,
+          a1,
+          b1,
+          b0,
+          smoothGrid[r][i],
+          smoothGrid[r][next],
+          smoothGrid[r + 1][next],
+          smoothGrid[r + 1][i],
+          u0,
+          v0,
+          u1,
+          v1
+        );
+      else
+        pushQuad(
+          vertices,
+          normals,
+          uvs,
+          [a0.x, a0.y, a0.z],
+          [a1.x, a1.y, a1.z],
+          [b1.x, b1.y, b1.z],
+          [b0.x, b0.y, b0.z],
+          u0,
+          v0,
+          u1,
+          v1
+        );
+    }
+  }
+
+  if (capEnds) {
+    const last = orientedRings[ringCount - 1];
+    for (let i = 0; i < segs; i++) {
+      const next = (i + 1) % segs;
+      const a0 = (i / segs) * Trigo.twopi;
+      const a1 = (next / segs) * Trigo.twopi;
+      uvA.setScalar(0.5 + Math.cos(a0) * 0.42, 0.5 + Math.sin(a0) * 0.42);
+      uvB.setScalar(0.5 + Math.cos(a1) * 0.42, 0.5 + Math.sin(a1) * 0.42);
+      pushCapTriangle(vertices, normals, uvs, cLast, last[i], last[next], uvCenter, uvA, uvB);
+    }
+  }
+
+  return { vertices: new Float32Array(vertices), normals: new Float32Array(normals), uvs: new Float32Array(uvs) };
+}
+
+function subdivideStations(stations, targetCount = 12) {
+  if (!stations || stations.length < 2 || stations.length >= targetCount)
+    return stations;
+  const out = [];
+  const maxIdx = stations.length - 1;
+  for (let k = 0; k < targetCount; k++) {
+    const u = k / (targetCount - 1);
+    const scaled = u * maxIdx;
+    const idx = Math.min(maxIdx - 1, Math.floor(scaled));
+    const frac = scaled - idx;
+    const s = smoothStep(0, 1, frac);
+    const st0 = stations[idx];
+    const st1 = stations[idx + 1];
+    const r0 = st0.radii ?? st0.size;
+    const r1 = st1.radii ?? st1.size;
+    out.push({
+      pos: new Vec3(
+        Utils.lerp(st0.pos.x, st1.pos.x, frac),
+        Utils.lerp(st0.pos.y, st1.pos.y, frac),
+        Utils.lerp(st0.pos.z, st1.pos.z, frac)
+      ),
+      radii: new Vec2(
+        Utils.lerp(r0.x, r1.x, s),
+        Utils.lerp(r0.y, r1.y, s)
+      ),
+    });
+  }
+  return out;
+}
+
+function buildCurvedTubeRings(stations, segments = 16, upHint = new Vec3(0, 1, 0), profileFn = null) {
+  const count = stations.length;
+  const rings = [];
+  const tangent = new Vec3();
+  const prevUp = new Vec3().copy(upHint);
+  if (prevUp.getMagnitude(true) > 0)
+    prevUp.normalize();
+  else
+    prevUp.setScalar(0, 1, 0);
+  const right = new Vec3();
+  const up = new Vec3();
+  const proj = new Vec3();
+  const radScale = new Vec2(1, 1);
+
+  for (let k = 0; k < count; k++) {
+    if (k === 0)
+      tangent.subVectors(stations[1].pos, stations[0].pos);
+    else if (k === count - 1)
+      tangent.subVectors(stations[count - 1].pos, stations[count - 2].pos);
+    else
+      tangent.subVectors(stations[k + 1].pos, stations[k - 1].pos);
+
+    if (tangent.getMagnitude(true) > 1e-8)
+      tangent.normalize();
+    else
+      tangent.setScalar(0, 0, 1);
+
+    const dotUp = prevUp.dotProduct(tangent);
+    proj.copy(tangent).scale(dotUp);
+    up.subVectors(prevUp, proj);
+    if (up.getMagnitude(true) < 1e-5) {
+      up.setScalar(0, 0, 1);
+      if (Math.abs(up.dotProduct(tangent)) > 0.9)
+        up.setScalar(1, 0, 0);
+      proj.copy(tangent).scale(up.dotProduct(tangent));
+      up.subVectors(up, proj);
+    }
+    up.normalize();
+    right.crossVectors(up, tangent);
+    if (right.getMagnitude(true) > 1e-8)
+      right.normalize();
+    up.crossVectors(tangent, right).normalize();
+    prevUp.copy(up);
+
+    const st = stations[k];
+    const baseRadii = st.radii ?? st.size;
+    const u = count > 1 ? k / (count - 1) : 0;
+    const ring = [];
+    for (let i = 0; i < segments; i++) {
+      const theta = (i / segments) * Trigo.twopi;
+      radScale.setScalar(1, 1);
+      if (profileFn)
+        profileFn(theta, u, radScale);
+      const lx = Math.cos(theta) * baseRadii.x * radScale.x;
+      const ly = Math.sin(theta) * baseRadii.y * radScale.y;
+      ring.push(
+        new Vec3(
+          st.pos.x + right.x * lx + up.x * ly,
+          st.pos.y + right.y * lx + up.y * ly,
+          st.pos.z + right.z * lx + up.z * ly
+        )
+      );
+    }
+    rings.push(ring);
+  }
+  return rings;
+}
+
+function hollowCylinderMesh(radii = new Vec2(0.4, 0.65), lengthSegs = new Vec2(0.5, 12)) {
+  const rIn = Math.min(radii.x, radii.y);
+  const rOut = Math.max(radii.x, radii.y);
+  const hz = lengthSegs.x * 0.5;
+  const segments = Math.max(6, Math.round(lengthSegs.y));
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+  for (let i = 0; i < segments; i++) {
+    const u0 = i / segments;
+    const u1 = (i + 1) / segments;
+    const a0 = u0 * Trigo.twopi;
+    const a1 = u1 * Trigo.twopi;
+    const c0 = Math.cos(a0);
+    const s0 = Math.sin(a0);
+    const c1 = Math.cos(a1);
+    const s1 = Math.sin(a1);
+    const ox0 = c0 * rOut;
+    const oy0 = s0 * rOut;
+    const ox1 = c1 * rOut;
+    const oy1 = s1 * rOut;
+    const ix0 = c0 * rIn;
+    const iy0 = s0 * rIn;
+    const ix1 = c1 * rIn;
+    const iy1 = s1 * rIn;
+    pushQuad(vertices, normals, uvs, [ox0, oy0, -hz], [ox1, oy1, -hz], [ox1, oy1, hz], [ox0, oy0, hz], u0, 0, u1, 1);
+    pushQuad(vertices, normals, uvs, [ox0, oy0, hz], [ox1, oy1, hz], [ix1, iy1, hz], [ix0, iy0, hz], u0, 0, u1, 1);
+    pushQuad(vertices, normals, uvs, [ix1, iy1, -hz], [ix0, iy0, -hz], [ix0, iy0, hz], [ix1, iy1, hz], u0, 0, u1, 1);
+    pushQuad(vertices, normals, uvs, [ox1, oy1, -hz], [ox0, oy0, -hz], [ix0, iy0, -hz], [ix1, iy1, -hz], u0, 0, u1, 1);
+  }
+  return { vertices: new Float32Array(vertices), normals: new Float32Array(normals), uvs: new Float32Array(uvs) };
+}
+
 function appendMesh(parts) {
   let vLen = 0;
   let uLen = 0;
@@ -223,6 +575,505 @@ function remapCellSub(raw, cell, vMin = 0, vMax = 1) {
   return { ...raw, uvs };
 }
 
+function paintWeaponHandSubBands(canvas, cell, yStart = 12) {
+  const S = ARSENAL_CELL;
+  for (let y = yStart; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const cyl = Math.sin((x / S) * Trigo.pi);
+      if (y < 16) {
+        // Molded Twill Carbon-Fiber / Kevlar hard-shell dorsal knuckle armor & titanium rivets
+        const weave = ((x + y) & 3) < 2 ? 12 : -10;
+        const rim = y === yStart || y === 15 || x < 2 || x >= S - 2 ? 18 : 0;
+        const spec = Math.pow(cyl, 2.8) * 52;
+        const v = Utils.clamp(44 + cyl * 28 + spec + weave + rim, 20, 148);
+        canvas.put(cell, x, y, v * 0.94, v * 0.98, v * 1.06);
+      } else if (y < 21) {
+        // Spec-Ops tactical combat glove (Nomex weave, saddle-leather panels & Clarino suede palm pads)
+        const stitch = y === 16 || y === 20 || (x % 7 === 0 && (y & 1) === 0) ? -16 : 0;
+        const pebble = ((x + y) & 1) === 0 ? 6 : -5;
+        const spec = Math.pow(cyl, 2.1) * 38;
+        const r = Utils.clamp(78 + cyl * 40 + spec + stitch + pebble, 32, 164);
+        const g = Utils.clamp(50 + cyl * 28 + spec * 0.76 + stitch * 0.8 + pebble, 20, 118);
+        const b = Utils.clamp(32 + cyl * 18 + spec * 0.52 + stitch * 0.6 + pebble, 14, 82);
+        canvas.put(cell, x, y, r, g, b);
+      } else if (y < 25) {
+        // Ripstop military olive-drab field-jacket cuff, ballistic nylon strap & wrist chronometer readout
+        const watchDial = y >= 21 && y <= 23 && x >= 11 && x <= 20;
+        const watchAmber = y === 22 && x >= 13 && x <= 16;
+        const watchTeal = (y === 21 || y === 23) && x >= 12 && x <= 19 && (x & 1) === 0;
+        if (watchAmber)
+          canvas.put(cell, x, y, 244, 178, 56);
+        else if (watchTeal)
+          canvas.put(cell, x, y, 76, 228, 196);
+        else if (watchDial)
+          canvas.put(cell, x, y, 18, 30, 38);
+        else {
+          const weave = ((x + y) & 1) === 0 ? 6 : -6;
+          const seam = y === 21 || y === 24 ? -14 : 0;
+          const r = Utils.clamp(62 + cyl * 34 + weave + seam, 26, 116);
+          const g = Utils.clamp(76 + cyl * 40 + weave + seam, 34, 136);
+          const b = Utils.clamp(46 + cyl * 24 + weave + seam, 18, 84);
+          canvas.put(cell, x, y, r, g, b);
+        }
+      } else {
+        // Sculpted anatomical muscular bare forearm skin with brachioradialis/extensor tendons & vascular relief
+        const tendon = Math.sin((x / S) * Trigo.pi * 3.0) * 14;
+        const vein = Math.abs(x - (10 + ((y - 25) >> 1))) <= 1 ? -8 : 0;
+        const pore = ((x * 5 + y * 3) & 3) === 0 ? -4 : 2;
+        const r = Utils.clamp(168 + cyl * 54 + tendon + vein * 0.5 + pore, 106, 238);
+        const g = Utils.clamp(120 + cyl * 44 + tendon * 0.75 + vein * 0.3 + pore, 72, 186);
+        const b = Utils.clamp(90 + cyl * 34 + tendon * 0.55 + pore, 50, 148);
+        canvas.put(cell, x, y, r, g, b);
+      }
+    }
+}
+
+function weaponHandMaterials(cell = ARSENAL_CELLS.grip) {
+  return {
+    CARBON: (m) => remapCellSub(m, cell, 0.39, 0.49),
+    GLOVE: (m) => remapCellSub(m, cell, 0.52, 0.64),
+    PALM: (m) => remapCellSub(m, cell, 0.54, 0.65),
+    WATCH: (m) => remapCellSub(m, cell, 0.67, 0.74),
+    CUFF: (m) => remapCellSub(m, cell, 0.68, 0.77),
+    ARM: (m) => remapCellSub(m, cell, 0.80, 0.98),
+  };
+}
+
+function forearmAnatomyProfile(theta, u, side, outScale) {
+  const s = side >= 0 ? 1 : -1;
+  const bell = Math.sin(Utils.clamp(u, 0, 1) * Trigo.pi);
+  // Brachioradialis muscle belly along the upper-radial forearm
+  const brachioAngle = theta - 0.65 * s;
+  const brachio = Math.pow(Math.max(0, Math.cos(brachioAngle)), 3.0) * 0.14 * bell;
+  // Extensor digitorum & carpi radialis ridge with subtle longitudinal tendon flutes
+  const extensorAngle = theta - 1.35 * s;
+  const extensor = Math.pow(Math.max(0, Math.cos(extensorAngle)), 2.4) * 0.09 * bell;
+  const tendonFlutes = Math.cos(theta * 5.0) * 0.018 * (0.4 + 0.6 * bell);
+  // Deep flexor carpi / pronator teres muscle belly on the lower-medial underside
+  const flexorAngle = theta + 1.45 * s;
+  const flexor = Math.pow(Math.max(0, Math.cos(flexorAngle)), 2.2) * 0.11 * bell;
+  // Ulnar styloid process wrist bone prominence near wrist exit (u = 0.03 .. 0.18)
+  const wristWindow = Math.exp(-Math.pow((u - 0.09) / 0.06, 2.0));
+  const ulnaAngle = theta - 2.35 * s;
+  const ulnaBone = Math.pow(Math.max(0, Math.cos(ulnaAngle)), 4.0) * 0.08 * wristWindow;
+
+  const rx = 1.0 + brachio + extensor + tendonFlutes + ulnaBone;
+  const ry = 1.0 + flexor + brachio * 0.65 + tendonFlutes;
+  outScale.setScalar(rx, ry);
+}
+
+function cuffPleatProfile(theta, u, outScale) {
+  const drape = Math.cos(theta * 5.0) * 0.028 + Math.sin(theta * 3.0) * 0.018;
+  const rollWave = Math.sin(u * Trigo.pi * 2.5) * 0.035;
+  const flare = u > 0.72 && u < 0.92 ? 0.045 : 0;
+  const scale = 1.0 + drape + rollWave + flare;
+  outScale.setScalar(scale, scale);
+}
+
+function gauntletContourProfile(theta, u, outScale) {
+  // Smooth superellipse / rounded-octagonal tactical wrist gauntlet contour
+  const oct = Math.cos(theta * 4.0) * 0.032;
+  const strapRib = Math.sin(u * Trigo.pi * 2.0) * 0.025;
+  outScale.setScalar(1.0 + oct + strapRib, 1.0 - oct * 0.5 + strapRib);
+}
+
+function fingerPhalanxProfile(theta, u, outScale) {
+  // PIP joint swell around u = 0.36 and DIP joint swell around u = 0.68
+  const pipSwell = Math.exp(-Math.pow((u - 0.36) / 0.09, 2.0)) * 0.085;
+  const dipSwell = Math.exp(-Math.pow((u - 0.68) / 0.08, 2.0)) * 0.065;
+  // Slightly wider laterally at joints, slightly flatter on the volar grip pad
+  const volarFlat = Math.sin(theta) < 0 ? -0.045 * Math.pow(Math.sin(theta), 2.0) : 0.03 * Math.pow(Math.sin(theta), 2.0);
+  const lateralBulge = Math.pow(Math.cos(theta), 2.0) * (pipSwell + dipSwell);
+  const tipTaper = u > 0.82 ? 1.0 - Math.pow((u - 0.82) / 0.18, 1.6) * 0.42 : 1.0;
+  outScale.setScalar((1.0 + pipSwell * 0.7 + dipSwell * 0.7 + lateralBulge) * tipTaper, (1.0 + pipSwell * 0.5 + volarFlat) * tipTaper);
+}
+
+function handMetacarpalProfile(theta, u, side, outScale) {
+  const s = side >= 0 ? 1 : -1;
+  // Thenar eminence (thumb base muscle mound) on upper-palmar aspect & hypothenar eminence on lower-palmar aspect
+  const thenar = Math.pow(Math.max(0, Math.sin(theta - 0.45 * s)), 2.4) * 0.12 * Math.sin(Utils.clamp(u, 0, 1) * Trigo.pi);
+  const hypothenar = Math.pow(Math.max(0, -Math.sin(theta + 0.35 * s)), 2.4) * 0.10 * (1.0 - u * 0.35);
+  const tendonRidges = Math.cos(theta * 4.0) * 0.024;
+  outScale.setScalar(1.0 + thenar * 0.6 + hypothenar * 0.5 + tendonRidges, 1.0 + thenar + hypothenar + tendonRidges * 0.5);
+}
+
+/**
+ * Shared high-detail Half-Life 2 / Spec-Ops 3D player hand & muscular forearm builder.
+ * Generates a smooth-shaded, high-polygon articulated hand and forearm mesh in local weapon space:
+ * - 9-station x 18-segment smooth-shaded anatomical metacarpal glove chassis with thenar/hypothenar eminences
+ * - 7-station x 14-segment contoured twill carbon-fiber dorsal armor shell + 4 sculpted 14-segment carbon MCP knuckle domes
+ * - Dual-zone Clarino synthetic-suede palm heel & metacarpal callous cushions
+ * - 10-station x 16-segment tangent-aligned 3D articulated thumb with contoured dorsal carbon shield & volar suede thumbpad
+ * - 4x (10-station x 16-segment) tangent-aligned 3D articulated fingers with PIP/DIP joint swells, dorsal carbon phalanx plates & volar suede pads
+ * - 8-station x 16-segment ballistic nylon wrist gauntlet with 3D titanium buckle, 10-station x 20-segment pleated ripstop cuff, and 20-segment 3D digital chronometer watch
+ * - 14-station x 20-segment smooth-shaded anatomical muscular forearm with brachioradialis/extensor/flexor bellies, ulnar wrist bone, and 3D dorsal veins
+ */
+export function buildDetailedPlayerLimb({
+  side = 1,
+  handOffset = new Vec3(),
+  handRotation = new Vec3(),
+  handScale = new Vec3(1, 1, 1),
+  fingerCurl = 1.0,
+  thumbSpread = 0.0,
+  hasWatch = side > 0,
+  forearmStations = null,
+  cuffStations = null,
+  gauntletStations = null,
+  materials = null,
+} = {}) {
+  const s = side >= 0 ? 1 : -1;
+  const mats = materials ?? weaponHandMaterials(ARSENAL_CELLS.grip);
+  const { CARBON, GLOVE, PALM, WATCH, CUFF, ARM } = mats;
+  const BEZEL = mats.BEZEL ?? CARBON;
+
+  const localHandParts = [];
+  const pushLocal = (raw) => {
+    localHandParts.push({
+      mesh: transformMesh(raw, handOffset, handRotation, handScale),
+      offset: new Vec3(0, 0, 0),
+    });
+  };
+
+  // 1. High-poly 9-station x 18-segment smooth-shaded anatomical metacarpal hand chassis (z = -4.28 .. -0.64)
+  const rawHandStations = [
+    { pos: new Vec3(0.86 * s, -0.22, -4.28), radii: new Vec2(0.60, 0.96) },
+    { pos: new Vec3(0.82 * s, -0.14, -3.55), radii: new Vec2(0.65, 1.08) },
+    { pos: new Vec3(0.78 * s, -0.08, -2.75), radii: new Vec2(0.66, 1.15) },
+    { pos: new Vec3(0.74 * s, -0.04, -1.95), radii: new Vec2(0.65, 1.16) },
+    { pos: new Vec3(0.70 * s, -0.04, -1.22), radii: new Vec2(0.61, 1.10) },
+    { pos: new Vec3(0.66 * s, -0.06, -0.64), radii: new Vec2(0.54, 1.00) },
+  ];
+  const handStations = subdivideStations(rawHandStations, 9);
+  const dorsalHandRings = buildCurvedTubeRings(
+    handStations,
+    18,
+    new Vec3(0, 1, 0),
+    (theta, u, out) => handMetacarpalProfile(theta, u, s, out)
+  );
+  pushLocal(GLOVE(loftRingsMesh(dorsalHandRings, true, true)));
+
+  // 2. Contoured 7-station x 14-segment molded carbon-fiber dorsal knuckle armor shell on outer (+X*s) back of hand
+  const rawCarbonStations = [
+    { pos: new Vec3(1.14 * s, -0.14, -3.92), radii: new Vec2(0.20, 0.84) },
+    { pos: new Vec3(1.21 * s, -0.06, -2.85), radii: new Vec2(0.25, 0.96) },
+    { pos: new Vec3(1.22 * s, -0.02, -1.78), radii: new Vec2(0.26, 0.98) },
+    { pos: new Vec3(1.12 * s, -0.04, -0.78), radii: new Vec2(0.20, 0.86) },
+  ];
+  const carbonStations = subdivideStations(rawCarbonStations, 7);
+  const carbonPlateRings = buildCurvedTubeRings(carbonStations, 14, new Vec3(0, 1, 0));
+  pushLocal(CARBON(loftRingsMesh(carbonPlateRings, true, true)));
+
+  // 3. Dual-zone Clarino synthetic-suede palm cushions on inner (-X*s) palmar surface gripping the handle
+  const rawPalmHeel = [
+    { pos: new Vec3(0.42 * s, -0.46, -4.18), radii: new Vec2(0.46, 0.44) },
+    { pos: new Vec3(0.38 * s, -0.38, -2.55), radii: new Vec2(0.52, 0.50) },
+    { pos: new Vec3(0.34 * s, -0.32, -0.92), radii: new Vec2(0.44, 0.42) },
+  ];
+  const palmHeelRings = buildCurvedTubeRings(subdivideStations(rawPalmHeel, 6), 14, new Vec3(0, 1, 0));
+  pushLocal(PALM(loftRingsMesh(palmHeelRings, true, true)));
+
+  const rawPalmUpper = [
+    { pos: new Vec3(0.24 * s, 0.22, -3.75), radii: new Vec2(0.40, 0.36) },
+    { pos: new Vec3(0.20 * s, 0.28, -2.25), radii: new Vec2(0.44, 0.40) },
+    { pos: new Vec3(0.18 * s, 0.32, -0.82), radii: new Vec2(0.38, 0.35) },
+  ];
+  const palmUpperRings = buildCurvedTubeRings(subdivideStations(rawPalmUpper, 6), 14, new Vec3(0, 1, 0));
+  pushLocal(PALM(loftRingsMesh(palmUpperRings, true, true)));
+
+  // 4. High-poly 10-station x 16-segment tangent-aligned 3D articulated thumb on upper radial (+Y) thenar crest
+  const ts = thumbSpread;
+  const rawThumbStations = [
+    { pos: new Vec3(0.88 * s, 0.34, -3.32), radii: new Vec2(0.48, 0.52) },
+    { pos: new Vec3((0.80 + ts * 0.08) * s, 0.56 + ts * 0.08, -2.68), radii: new Vec2(0.45, 0.48) },
+    { pos: new Vec3((0.72 + ts * 0.14) * s, 0.74 + ts * 0.14, -2.08), radii: new Vec2(0.42, 0.44) },
+    { pos: new Vec3((0.54 + ts * 0.22) * s, 0.98 + ts * 0.22, -1.28), radii: new Vec2(0.39, 0.41) },
+    { pos: new Vec3((0.35 + ts * 0.28) * s, 1.12 + ts * 0.28, -0.52), radii: new Vec2(0.35, 0.36) },
+    { pos: new Vec3((0.22 + ts * 0.31) * s, 1.10 + ts * 0.32, -0.10), radii: new Vec2(0.18, 0.18) },
+  ];
+  const thumbStations = subdivideStations(rawThumbStations, 10);
+  const thumbRings = buildCurvedTubeRings(
+    thumbStations,
+    16,
+    new Vec3(0, 1, 0),
+    (theta, u, out) => fingerPhalanxProfile(theta, u, out)
+  );
+  pushLocal(GLOVE(loftRingsMesh(thumbRings, true, true)));
+
+  // Contoured dorsal carbon-fiber thumb shield lofted along the proximal thumb phalanx
+  const thumbArmorStations = subdivideStations(
+    [
+      { pos: new Vec3((0.88 + ts * 0.10) * s, 0.80 + ts * 0.09, -2.52), radii: new Vec2(0.24, 0.16) },
+      { pos: new Vec3((0.74 + ts * 0.16) * s, 0.98 + ts * 0.15, -1.88), radii: new Vec2(0.28, 0.18) },
+      { pos: new Vec3((0.58 + ts * 0.22) * s, 1.14 + ts * 0.20, -1.32), radii: new Vec2(0.22, 0.15) },
+    ],
+    5
+  );
+  pushLocal(CARBON(loftRingsMesh(buildCurvedTubeRings(thumbArmorStations, 12, new Vec3(0, 1, 0)), true, true)));
+
+  // Volar Clarino suede thumb grip pad lofted along the distal phalanx
+  const thumbPadStations = subdivideStations(
+    [
+      { pos: new Vec3((0.46 + ts * 0.22) * s, 0.88 + ts * 0.18, -1.22), radii: new Vec2(0.28, 0.22) },
+      { pos: new Vec3((0.30 + ts * 0.28) * s, 0.98 + ts * 0.24, -0.56), radii: new Vec2(0.26, 0.20) },
+      { pos: new Vec3((0.20 + ts * 0.30) * s, 1.00 + ts * 0.28, -0.20), radii: new Vec2(0.18, 0.14) },
+    ],
+    5
+  );
+  pushLocal(PALM(loftRingsMesh(buildCurvedTubeRings(thumbPadStations, 12, new Vec3(0, 1, 0)), true, true)));
+
+  // 5. 4 Sculpted 14-segment Carbon-Kevlar MCP Knuckle Domes along the lower-outer dorsal arch (+X*s, -Y)
+  //    + 4x (12-station x 16-segment) 3D Tangent-Aligned Articulated Fingers wrapping under the bottom (-Y)
+  //    finger grooves and up the inner (-X*s) side opposite the thumb (+Y).
+  const curl = Utils.clamp(fingerCurl, 0.0, 1.35);
+  const openExtend = 1.0 - Utils.clamp(curl, 0.0, 1.0);
+  const fingerSpecs = [
+    { z: -0.86, rScale: 0.96, yKnuckle: -0.62, yBot: -1.16, xInner: -0.78, yTipEnd: 0.42 },
+    { z: -1.82, rScale: 1.04, yKnuckle: -0.66, yBot: -1.22, xInner: -0.84, yTipEnd: 0.48 },
+    { z: -2.78, rScale: 0.98, yKnuckle: -0.64, yBot: -1.18, xInner: -0.80, yTipEnd: 0.40 },
+    { z: -3.72, rScale: 0.88, yKnuckle: -0.58, yBot: -1.08, xInner: -0.72, yTipEnd: 0.28 },
+  ];
+
+  for (const f of fingerSpecs) {
+    const fw = 0.42 * f.rScale;
+    const ft = 0.36 * f.rScale;
+    const yK = f.yKnuckle;
+
+    // Smooth-domed 5-station x 14-segment Carbon-Kevlar MCP knuckle protector on the lower-outer dorsal crest
+    const knuckleDomeStations = subdivideStations(
+      [
+        { pos: new Vec3(0.86 * s, yK + 0.06, f.z - 0.34 * f.rScale), radii: new Vec2(0.24 * f.rScale, 0.22 * f.rScale) },
+        { pos: new Vec3(0.98 * s, yK - 0.04, f.z), radii: new Vec2(0.35 * f.rScale, 0.29 * f.rScale) },
+        { pos: new Vec3(0.86 * s, yK + 0.06, f.z + 0.34 * f.rScale), radii: new Vec2(0.24 * f.rScale, 0.22 * f.rScale) },
+      ],
+      5
+    );
+    pushLocal(CARBON(loftRingsMesh(buildCurvedTubeRings(knuckleDomeStations, 14, new Vec3(0, 1, 0)), true, true)));
+
+    // Interpolate between curled saber grip (wrapping under -Y and up -X*s toward thumb) and open inspection extension
+    const xProxMid = 0.36 * curl + 0.48 * openExtend;
+    const yProxMid = (f.yBot * 0.92) * curl + (yK - 0.56) * openExtend;
+
+    const xPip = (f.xInner * 0.45) * curl + 0.05 * openExtend;
+    const yPip = f.yBot * curl + (yK - 1.12) * openExtend;
+
+    const xMid = (f.xInner * 0.96) * curl + (-0.42) * openExtend;
+    const yMid = (f.yBot * 0.48) * curl + (yK - 1.62) * openExtend;
+
+    const xDip = (f.xInner * 1.02) * curl + (-0.86) * openExtend;
+    const yDip = 0.06 * curl + (yK - 2.02) * openExtend;
+
+    const xDist = (f.xInner * 0.78) * curl + (-1.22) * openExtend;
+    const yDist = (f.yTipEnd * 0.75) * curl + (yK - 2.32) * openExtend;
+
+    const xTip = (f.xInner * 0.52) * curl + (-1.46) * openExtend;
+    const yTip = f.yTipEnd * curl + (yK - 2.50) * openExtend;
+
+    // 12-station x 16-segment true 3D curved phalangeal path rooted deep inside the lower-outer MCP knuckle dome
+    const rawFingerPath = [
+      { pos: new Vec3(0.88 * s, yK + 0.22, f.z), radii: new Vec2(fw * 1.04, ft * 1.02) },
+      { pos: new Vec3(0.82 * s, yK - 0.04, f.z), radii: new Vec2(fw * 1.02, ft * 1.00) },
+      { pos: new Vec3(xProxMid * s, yProxMid, f.z), radii: new Vec2(fw * 1.00, ft * 0.98) },
+      { pos: new Vec3(xPip * s, yPip, f.z), radii: new Vec2(fw * 1.03, ft * 1.04) },
+      { pos: new Vec3(xMid * s, yMid, f.z), radii: new Vec2(fw * 0.99, ft * 0.99) },
+      { pos: new Vec3(xDip * s, yDip, f.z), radii: new Vec2(fw * 0.95, ft * 0.95) },
+      { pos: new Vec3(xDist * s, yDist, f.z), radii: new Vec2(fw * 0.85, ft * 0.83) },
+      { pos: new Vec3(xTip * s, yTip, f.z), radii: new Vec2(fw * 0.48, ft * 0.46) },
+    ];
+    const fingerStations = subdivideStations(rawFingerPath, 12);
+    const fingerRings = buildCurvedTubeRings(
+      fingerStations,
+      16,
+      new Vec3(0, 0, 1),
+      (theta, u, out) => fingerPhalanxProfile(theta, u, out)
+    );
+    pushLocal(GLOVE(loftRingsMesh(fingerRings, true, true)));
+
+    // Tangential 6-station x 12-segment dorsal carbon-fiber proximal phalanx armor shell on the outer/bottom surface
+    const proxArmorStations = subdivideStations(
+      [
+        { pos: new Vec3(0.76 * s, yK - 0.18, f.z), radii: new Vec2(fw * 0.66, 0.11) },
+        { pos: new Vec3((xProxMid + 0.08) * s, yProxMid - 0.16, f.z), radii: new Vec2(fw * 0.72, 0.13) },
+        { pos: new Vec3((xPip - 0.06) * s, yPip - 0.14, f.z), radii: new Vec2(fw * 0.68, 0.12) },
+      ],
+      6
+    );
+    pushLocal(CARBON(loftRingsMesh(buildCurvedTubeRings(proxArmorStations, 12, new Vec3(0, 0, 1)), true, true)));
+
+    // Tangential 6-station x 12-segment volar Clarino suede finger-pad cushion on the inner gripping surface
+    const volarPadStations = subdivideStations(
+      [
+        { pos: new Vec3((xMid + 0.14) * s, yMid + 0.12, f.z), radii: new Vec2(fw * 0.72, 0.14) },
+        { pos: new Vec3((xDip + 0.16) * s, yDip + 0.08, f.z), radii: new Vec2(fw * 0.74, 0.16) },
+        { pos: new Vec3((xDist + 0.14) * s, yDist + 0.04, f.z), radii: new Vec2(fw * 0.68, 0.14) },
+      ],
+      6
+    );
+    pushLocal(PALM(loftRingsMesh(buildCurvedTubeRings(volarPadStations, 12, new Vec3(0, 0, 1)), true, true)));
+  }
+
+  // 6. High-Poly 3D Tactical Digital Chronometer Watch & Ballistic Wrist Strap
+  if (hasWatch) {
+    // Ballistic nylon watch band with 16-segment smooth contour
+    const watchBandStations = subdivideStations(
+      [
+        { pos: new Vec3(1.14 * s, -0.50, -4.68), radii: new Vec2(1.03, 1.01) },
+        { pos: new Vec3(1.22 * s, -0.58, -4.96), radii: new Vec2(1.06, 1.04) },
+        { pos: new Vec3(1.30 * s, -0.66, -5.24), radii: new Vec2(1.04, 1.02) },
+      ],
+      6
+    );
+    pushLocal(CUFF(loftRingsMesh(buildCurvedTubeRings(watchBandStations, 16, new Vec3(0, 1, 0)), true, true)));
+
+    // 20-segment brushed titanium chronometer case, notched rotating bezel, sapphire dial, lugs & pushers
+    const watchRot = new Vec3(1.18, 0.42 * s, -0.48 * s);
+    pushLocal(
+      BEZEL(
+        transformMesh(
+          cylinderMesh(new Vec2(0.62, 0.32), 20),
+          new Vec3(0.73 * s, 0.37, -4.93),
+          watchRot
+        )
+      )
+    );
+    pushLocal(
+      CARBON(
+        transformMesh(
+          hollowCylinderMesh(new Vec2(0.46, 0.60), new Vec2(0.38, 18)),
+          new Vec3(0.71 * s, 0.39, -4.92),
+          watchRot
+        )
+      )
+    );
+    pushLocal(
+      WATCH(
+        transformMesh(
+          cylinderMesh(new Vec2(0.47, 0.37), 20),
+          new Vec3(0.70 * s, 0.40, -4.91),
+          watchRot
+        )
+      )
+    );
+    // Watch lug horns & side crown/pushers
+    pushLocal(
+      BEZEL(
+        transformMesh(
+          boxMesh(new Vec3(0.72, 1.38, 0.20)),
+          new Vec3(0.75 * s, 0.35, -4.94),
+          watchRot
+        )
+      )
+    );
+    pushLocal(
+      BEZEL(
+        transformMesh(
+          cylinderMesh(new Vec2(0.11, 0.78), 10),
+          new Vec3(0.72 * s, 0.42, -4.72),
+          new Vec3(0.25, 1.15 * s, 0)
+        )
+      )
+    );
+  } else {
+    // Left-wrist ballistic nylon strap & titanium D-ring buckle
+    const strapStations = subdivideStations(
+      [
+        { pos: new Vec3(1.14 * s, -0.50, -4.68), radii: new Vec2(1.02, 1.00) },
+        { pos: new Vec3(1.26 * s, -0.62, -5.12), radii: new Vec2(1.05, 1.03) },
+      ],
+      5
+    );
+    pushLocal(BEZEL(loftRingsMesh(buildCurvedTubeRings(strapStations, 16, new Vec3(0, 1, 0)), true, true)));
+  }
+
+  // 7. 8-station x 16-segment wrist gauntlet, 10-station x 20-segment pleated ripstop cuff, and 14-station x 20-segment anatomical muscular forearm
+  if (gauntletStations) {
+    const gSub = subdivideStations(gauntletStations, 8);
+    const gRings = buildCurvedTubeRings(gSub, 16, new Vec3(0, 1, 0), (theta, u, out) =>
+      gauntletContourProfile(theta, u, out)
+    );
+    localHandParts.push({ mesh: GLOVE(loftRingsMesh(gRings, true, true)), offset: new Vec3(0, 0, 0) });
+  } else {
+    const rawGauntlet = [
+      { pos: new Vec3(0.88 * s, -0.26, -3.88), radii: new Vec2(0.88, 0.92) },
+      { pos: new Vec3(1.12 * s, -0.52, -4.65), radii: new Vec2(0.96, 0.96) },
+      { pos: new Vec3(1.36 * s, -0.76, -5.35), radii: new Vec2(1.02, 1.00) },
+    ];
+    const gRings = buildCurvedTubeRings(
+      subdivideStations(rawGauntlet, 8),
+      16,
+      new Vec3(0, 1, 0),
+      (theta, u, out) => gauntletContourProfile(theta, u, out)
+    );
+    pushLocal(GLOVE(loftRingsMesh(gRings, true, true)));
+  }
+
+  if (cuffStations) {
+    const cSub = subdivideStations(cuffStations, 10);
+    const cRings = buildCurvedTubeRings(cSub, 20, new Vec3(0, 1, 0), (theta, u, out) =>
+      cuffPleatProfile(theta, u, out)
+    );
+    localHandParts.push({ mesh: CUFF(loftRingsMesh(cRings, true, true)), offset: new Vec3(0, 0, 0) });
+  } else {
+    const rawCuff = [
+      { pos: new Vec3(1.34 * s, -0.74, -5.28), radii: new Vec2(1.08, 1.04) },
+      { pos: new Vec3(1.62 * s, -1.02, -6.08), radii: new Vec2(1.20, 1.14) },
+      { pos: new Vec3(1.92 * s, -1.32, -6.88), radii: new Vec2(1.26, 1.20) },
+      { pos: new Vec3(1.98 * s, -1.38, -7.02), radii: new Vec2(1.12, 1.06) },
+    ];
+    const cRings = buildCurvedTubeRings(
+      subdivideStations(rawCuff, 10),
+      20,
+      new Vec3(0, 1, 0),
+      (theta, u, out) => cuffPleatProfile(theta, u, out)
+    );
+    pushLocal(CUFF(loftRingsMesh(cRings, true, true)));
+  }
+
+  const defaultForearmStations = [
+    { pos: new Vec3(1.90 * s, -1.30, -6.82), radii: new Vec2(1.10, 1.04) },
+    { pos: new Vec3(2.32 * s, -1.70, -8.15), radii: new Vec2(1.24, 1.15) },
+    { pos: new Vec3(2.82 * s, -2.18, -9.68), radii: new Vec2(1.38, 1.27) },
+    { pos: new Vec3(3.38 * s, -2.72, -11.35), radii: new Vec2(1.48, 1.36) },
+    { pos: new Vec3(3.92 * s, -3.24, -12.95), radii: new Vec2(1.54, 1.42) },
+    { pos: new Vec3(4.42 * s, -3.72, -14.35), radii: new Vec2(1.56, 1.45) },
+  ];
+  const activeForearm = subdivideStations(forearmStations ?? defaultForearmStations, 14);
+  const fRings = buildCurvedTubeRings(
+    activeForearm,
+    20,
+    new Vec3(0, 1, 0),
+    (theta, u, out) => forearmAnatomyProfile(theta, u, s, out)
+  );
+  const forearmMesh = ARM(loftRingsMesh(fRings, true, true));
+  if (forearmStations)
+    localHandParts.push({ mesh: forearmMesh, offset: new Vec3(0, 0, 0) });
+  else
+    pushLocal(forearmMesh);
+
+  // Sculpted 3D dorsal superficial cephalic vein & extensor tendon relief running along the forearm
+  const veinStations = [];
+  for (let k = 1; k < activeForearm.length - 1; k++) {
+    const st = activeForearm[k];
+    const u = k / (activeForearm.length - 1);
+    const wave = Math.sin(u * Trigo.pi * 2.2) * 0.14 * s;
+    const swell = Math.sin(u * Trigo.pi) * 0.085 + 0.045;
+    veinStations.push({
+      pos: new Vec3(
+        st.pos.x - (st.radii.x * 0.32 * s) + wave,
+        st.pos.y + st.radii.y * 0.88,
+        st.pos.z
+      ),
+      radii: new Vec2(swell * 1.25, swell * 0.85),
+    });
+  }
+  const veinMesh = ARM(loftRingsMesh(buildCurvedTubeRings(veinStations, 10, new Vec3(0, 1, 0)), true, true));
+  if (forearmStations)
+    localHandParts.push({ mesh: veinMesh, offset: new Vec3(0, 0, 0) });
+  else
+    pushLocal(veinMesh);
+
+  return appendMesh(localHandParts);
+}
+
 function paintChaingunBody(canvas, cell) {
   const S = ARSENAL_CELL;
   for (let y = 0; y < S; y++)
@@ -254,39 +1105,12 @@ function paintChaingunBarrel(canvas, cell) {
 
 function paintChaingunGrip(canvas, cell) {
   const S = ARSENAL_CELL;
-  for (let y = 0; y < S; y++)
+  for (let y = 0; y < 12; y++)
     for (let x = 0; x < S; x++) {
-      const cyl = Math.sin((x / S) * Trigo.pi);
-      if (y < 12) {
-        const knurl = ((x + y) & 1) * 14;
-        canvas.put(cell, x, y, 48 + knurl, 42 + knurl * 0.8, 36 + knurl * 0.6);
-      } else if (y < 20) {
-        // Saddle-brown tactical leather combat glove with knuckle creases & specular highlights
-        const crease = y === 15 || y === 18 || x % 7 === 0 ? -18 : 0;
-        const pebble = ((x + y) & 1) === 0 ? 6 : -5;
-        const spec = Math.pow(cyl, 2.0) * 42;
-        const r = Utils.clamp(78 + cyl * 42 + spec + crease + pebble, 34, 168);
-        const g = Utils.clamp(48 + cyl * 28 + spec * 0.72 + crease * 0.7 + pebble, 20, 114);
-        const b = Utils.clamp(28 + cyl * 18 + spec * 0.45 + crease * 0.5 + pebble, 12, 74);
-        canvas.put(cell, x, y, r, g, b);
-      } else if (y < 25) {
-        // Military olive-drab woven wrist cuff band
-        const weave = ((x + y) & 1) === 0 ? 6 : -6;
-        const seam = y === 20 || y === 24 ? -14 : 0;
-        const r = Utils.clamp(64 + cyl * 36 + weave + seam, 28, 118);
-        const g = Utils.clamp(78 + cyl * 42 + weave + seam, 36, 138);
-        const b = Utils.clamp(46 + cyl * 24 + weave + seam, 18, 84);
-        canvas.put(cell, x, y, r, g, b);
-      } else {
-        // Warm sun-tanned muscular bare forearm skin with subtle extensor tendon shading
-        const tendon = Math.sin((x / S) * Trigo.pi * 2.0) * 12;
-        const pore = ((x * 3 + y * 5) & 3) === 0 ? -4 : 2;
-        const r = Utils.clamp(166 + cyl * 56 + tendon + pore, 108, 238);
-        const g = Utils.clamp(118 + cyl * 46 + tendon * 0.75 + pore, 72, 186);
-        const b = Utils.clamp(88 + cyl * 36 + tendon * 0.55 + pore, 50, 146);
-        canvas.put(cell, x, y, r, g, b);
-      }
+      const knurl = ((x + y) & 1) * 14;
+      canvas.put(cell, x, y, 48 + knurl, 42 + knurl * 0.8, 36 + knurl * 0.6);
     }
+  paintWeaponHandSubBands(canvas, cell, 12);
 }
 
 function paintChaingunMuzzle(canvas, cell) {
@@ -325,16 +1149,14 @@ export function chaingunAtlas() {
  * Builds the articulated 3D chaingun sub-meshes so the 6-barrel rotary Gatling cluster spins around its Z axis:
  * - `body`: heavy armored receiver housing, beveled upper shroud, side ammo drum & brass belt feed chute, rear motor cap, and tubular handlebars
  * - `rotor`: 6 fluted steel barrels, central rotor shaft, and 3 perforated barrel clamp disks centered around `(0, 0, 0)`
- * - `hands`: first-person player's leather-gloved hands, military olive-drab wrist cuffs, and muscular bare forearms gripping the left vertical handlebar and top horizontal crossbar
+ * - `hands`: shared high-detail first-person spec-ops gloved hands, carbon knuckle shields, digital chronometer, ripstop cuffs, and sculpted muscular forearms gripping the left vertical handlebar and top horizontal crossbar
  */
 export function chaingunParts() {
   if (cachedChaingunParts)
     return cachedChaingunParts;
 
   const GRIP = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.02, 0.35);
-  const GLOVE = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.39, 0.6);
-  const CUFF = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.64, 0.76);
-  const ARM = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.8, 0.98);
+  const handMats = weaponHandMaterials(ARSENAL_CELLS.grip);
 
   const lift = 9.6;
   const bodyParts = [
@@ -420,98 +1242,62 @@ export function chaingunParts() {
     });
   }
 
-  // Water-tight joint cross-sections for left limb (sweeping from lower-left screen into left vertical handlebar)
-  const lElbow = new Vec3(-9.4, lift - 4.4, -10.8);
-  const lMidArm = new Vec3(-6.9, lift - 0.4, -6.9);
-  const lWristRear = new Vec3(-5.55, lift + 0.9, -4.9);
-  const lWristFront = new Vec3(-4.72, lift + 1.52, -3.65);
-  const lHandBack = new Vec3(-4.22, lift + 1.75, -2.85);
-  const sLElbow = new Vec2(2.75, 2.35);
-  const sLMidArm = new Vec2(2.3, 2.0);
-  const sLWristRear = new Vec2(1.92, 1.74);
-  const sLWristFront = new Vec2(1.66, 1.58);
-  const sLHandBack = new Vec2(1.36, 1.85);
+  // High-detail left & right player hands and sculpted forearms gripping the left vertical handlebar & top crossbar
+  const leftLimb = buildDetailedPlayerLimb({
+    side: -1,
+    handOffset: new Vec3(-3.35, lift + 1.55, -2.45),
+    handRotation: new Vec3(-1.32, 0.22, -0.18),
+    handScale: new Vec3(0.76, 0.76, 0.76),
+    fingerCurl: 1.08,
+    hasWatch: false,
+    materials: handMats,
+    gauntletStations: [
+      { pos: new Vec3(-4.22, lift + 1.75, -2.85), size: new Vec2(0.84, 0.96) },
+      { pos: new Vec3(-4.52, lift + 1.62, -3.32), size: new Vec2(0.90, 0.98) },
+      { pos: new Vec3(-4.82, lift + 1.48, -3.75), size: new Vec2(0.96, 1.00) },
+    ],
+    cuffStations: [
+      { pos: new Vec3(-4.78, lift + 1.50, -3.70), radii: new Vec2(1.04, 1.04) },
+      { pos: new Vec3(-5.18, lift + 1.28, -4.30), radii: new Vec2(1.12, 1.10) },
+      { pos: new Vec3(-5.60, lift + 1.02, -4.92), radii: new Vec2(1.18, 1.14) },
+    ],
+    forearmStations: [
+      { pos: new Vec3(-5.55, lift + 1.05, -4.85), radii: new Vec2(1.12, 1.08) },
+      { pos: new Vec3(-6.35, lift + 0.52, -6.05), radii: new Vec2(1.24, 1.18) },
+      { pos: new Vec3(-7.25, lift - 0.12, -7.35), radii: new Vec2(1.36, 1.28) },
+      { pos: new Vec3(-8.20, lift - 0.88, -8.70), radii: new Vec2(1.46, 1.36) },
+      { pos: new Vec3(-9.10, lift - 1.68, -9.95), radii: new Vec2(1.54, 1.42) },
+      { pos: new Vec3(-9.95, lift - 2.48, -11.15), radii: new Vec2(1.58, 1.46) },
+    ],
+  });
 
-  // Water-tight joint cross-sections for right limb (sweeping from lower-right screen into top horizontal crossbar)
-  const rElbow = new Vec3(8.2, lift - 3.6, -11.4);
-  const rMidArm = new Vec3(5.6, lift + 0.4, -7.8);
-  const rWristRear = new Vec3(4.15, lift + 2.05, -5.85);
-  const rWristFront = new Vec3(3.25, lift + 3.05, -4.6);
-  const rHandBack = new Vec3(2.55, lift + 3.68, -3.85);
-  const sRElbow = new Vec2(2.85, 2.4);
-  const sRMidArm = new Vec2(2.4, 2.02);
-  const sRWristRear = new Vec2(2.04, 1.72);
-  const sRWristFront = new Vec2(1.82, 1.48);
-  const sRHandBack = new Vec2(1.92, 1.18);
-
-  // First-person player hands, military olive-drab wrist cuffs & smooth muscular forearms gripping both handlebars
-  const handParts = [
-    // A. Left leather-gloved hand gripping the left vertical handlebar (x = -3.5, y = lift + 1.6, z = -2.7)
-    {
-      mesh: GLOVE(prismMesh(new Vec3(1.25, 2.05, 1.5), new Vec3(1.08, 1.9, 1.32), new Vec2(-0.08, 0.06))),
-      offset: new Vec3(-4.15, lift + 1.75, -2.72),
-    },
-    // Left thumb wrapping over the upper-inner side of the left vertical handlebar
-    {
-      mesh: GLOVE(boxMesh(new Vec3(1.22, 0.56, 0.84))),
-      offset: new Vec3(-3.55, lift + 2.68, -3.22),
-    },
-    {
-      mesh: GLOVE(boxMesh(new Vec3(0.7, 0.52, 0.86))),
-      offset: new Vec3(-2.92, lift + 2.5, -2.7),
-    },
-    // Water-tight left glove gauntlet, military olive-drab cuff, and muscular bare forearm
-    limbFromTo(lWristFront, sLWristFront, lHandBack, sLHandBack, GLOVE),
-    limbFromTo(lWristRear, sLWristRear, lWristFront, sLWristFront, CUFF),
-    limbFromTo(lMidArm, sLMidArm, lWristRear, sLWristRear, ARM),
-    limbFromTo(lElbow, sLElbow, lMidArm, sLMidArm, ARM),
-
-    // B. Right leather-gloved hand gripping the top horizontal crossbar (x = 1.3..3.3, y = lift + 3.2, z = -3.8)
-    {
-      mesh: GLOVE(prismMesh(new Vec3(2.1, 0.96, 1.52), new Vec3(1.92, 0.88, 1.35), new Vec2(0.08, 0.08))),
-      offset: new Vec3(2.35, lift + 3.78, -3.85),
-    },
-    // Right thumb wrapping under the rear-left of the top crossbar
-    {
-      mesh: GLOVE(boxMesh(new Vec3(0.82, 0.84, 0.9))),
-      offset: new Vec3(1.18, lift + 3.18, -4.3),
-    },
-    {
-      mesh: GLOVE(boxMesh(new Vec3(0.88, 0.56, 0.84))),
-      offset: new Vec3(1.48, lift + 2.6, -3.8),
-    },
-    // Water-tight right glove gauntlet, military olive-drab cuff, and muscular bare forearm
-    limbFromTo(rWristFront, sRWristFront, rHandBack, sRHandBack, GLOVE),
-    limbFromTo(rWristRear, sRWristRear, rWristFront, sRWristFront, CUFF),
-    limbFromTo(rMidArm, sRMidArm, rWristRear, sRWristRear, ARM),
-    limbFromTo(rElbow, sRElbow, rMidArm, sRMidArm, ARM),
-  ];
-
-  // 4 curled leather fingers for the left hand around the left vertical handlebar (-3.5, lift + 1.6, -2.7)
-  for (const fy of [lift + 0.98, lift + 1.46, lift + 1.94, lift + 2.42])
-    handParts.push(
-      {
-        mesh: GLOVE(boxMesh(new Vec3(1.34, 0.42, 0.78))),
-        offset: new Vec3(-3.65, fy, -1.98),
-      },
-      {
-        mesh: GLOVE(boxMesh(new Vec3(0.62, 0.4, 0.84))),
-        offset: new Vec3(-2.92, fy, -2.55),
-      }
-    );
-
-  // 4 curled leather fingers for the right hand around the top horizontal crossbar (x = 1.55..3.15, y = lift + 3.2, z = -3.8)
-  for (const fx of [1.56, 2.06, 2.56, 3.06])
-    handParts.push(
-      {
-        mesh: GLOVE(boxMesh(new Vec3(0.44, 1.28, 0.78))),
-        offset: new Vec3(fx, lift + 3.22, -3.08),
-      },
-      {
-        mesh: GLOVE(boxMesh(new Vec3(0.42, 0.58, 0.86))),
-        offset: new Vec3(fx, lift + 2.56, -3.62),
-      }
-    );
+  const rightLimb = buildDetailedPlayerLimb({
+    side: 1,
+    handOffset: new Vec3(2.35, lift + 3.35, -3.55),
+    handRotation: new Vec3(-0.32, -0.18, 1.42),
+    handScale: new Vec3(0.76, 0.76, 0.76),
+    fingerCurl: 1.08,
+    hasWatch: true,
+    materials: handMats,
+    gauntletStations: [
+      { pos: new Vec3(2.65, lift + 3.62, -3.95), size: new Vec2(0.96, 0.82) },
+      { pos: new Vec3(2.98, lift + 3.36, -4.32), size: new Vec2(1.00, 0.88) },
+      { pos: new Vec3(3.32, lift + 3.08, -4.72), size: new Vec2(1.04, 0.94) },
+    ],
+    cuffStations: [
+      { pos: new Vec3(3.28, lift + 3.12, -4.66), radii: new Vec2(1.08, 1.00) },
+      { pos: new Vec3(3.72, lift + 2.68, -5.26), radii: new Vec2(1.16, 1.08) },
+      { pos: new Vec3(4.18, lift + 2.22, -5.88), radii: new Vec2(1.22, 1.14) },
+    ],
+    forearmStations: [
+      { pos: new Vec3(4.15, lift + 2.25, -5.82), radii: new Vec2(1.14, 1.06) },
+      { pos: new Vec3(4.98, lift + 1.52, -6.92), radii: new Vec2(1.26, 1.18) },
+      { pos: new Vec3(5.88, lift + 0.68, -8.12), radii: new Vec2(1.38, 1.28) },
+      { pos: new Vec3(6.82, lift - 0.25, -9.38), radii: new Vec2(1.48, 1.38) },
+      { pos: new Vec3(7.72, lift - 1.22, -10.58), radii: new Vec2(1.56, 1.44) },
+      { pos: new Vec3(8.58, lift - 2.18, -11.72), radii: new Vec2(1.60, 1.48) },
+    ],
+  });
 
   const pivots = {
     rotor: new Vec3(0, lift + 0.7, 9.6),
@@ -521,7 +1307,10 @@ export function chaingunParts() {
   cachedChaingunParts = {
     body: appendMesh(bodyParts),
     rotor: appendMesh(rotorParts),
-    hands: appendMesh(handParts),
+    hands: appendMesh([
+      { mesh: leftLimb, offset: new Vec3(0, 0, 0) },
+      { mesh: rightLimb, offset: new Vec3(0, 0, 0) },
+    ]),
     pivots,
   };
   return cachedChaingunParts;
@@ -564,7 +1353,7 @@ export function chaingunPose(
   const joltZ = attacking ? Math.sin(time * 78) * 0.24 : 0;
 
   const right = 0.85 + walkSway * 0.68 + joltX;
-  const up = -9.35 + kick * 0.16 - walkBob + joltY - clampedSwitch * 5.4;
+  const up = -11.45 + kick * 0.16 - walkBob + joltY - clampedSwitch * 5.4;
   const forward = 13.8 - kick * 0.95 + joltZ - clampedSwitch * 1.4;
   out.offset.setScalar(right, up, forward);
 
@@ -609,11 +1398,12 @@ function paintRocketTube(canvas, cell) {
 
 function paintRocketGrip(canvas, cell) {
   const S = ARSENAL_CELL;
-  for (let y = 0; y < S; y++)
+  for (let y = 0; y < 12; y++)
     for (let x = 0; x < S; x++) {
       const grain = ((x * 3 + y) & 3) * 8;
       canvas.put(cell, x, y, 92 + grain, 56 + grain * 0.7, 34 + grain * 0.4);
     }
+  paintWeaponHandSubBands(canvas, cell, 12);
 }
 
 function paintRocketWarhead(canvas, cell) {
@@ -651,10 +1441,15 @@ export function rocketLauncherAtlas() {
  *   side optical targeting scope, twin hydraulic recoil damper cylinders, and front/rear grips.
  * - `warhead`: Articulated 3D crimson-tipped high-explosive rocket warhead with cruciform fins that
  *   launches out of the muzzle on fire and slides forward from the breech during the auto-loader reload cycle.
+ * - `hands`: Shared high-detail first-person spec-ops gloved hands, carbon knuckle armor, wrist chronometer,
+ *   ripstop cuffs, and sculpted muscular forearms gripping the forward stabilization foregrip and rear trigger grip.
  */
 export function rocketLauncherParts() {
   if (cachedRocketLauncherParts)
     return cachedRocketLauncherParts;
+
+  const GRIP = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.02, 0.35);
+  const handMats = weaponHandMaterials(ARSENAL_CELLS.grip);
 
   const bodyParts = [
     // 1. Main cylindrical olive-drab launch tube & armored octagonal shroud
@@ -677,25 +1472,25 @@ export function rocketLauncherParts() {
     },
     // Flared rear venturi backblast nozzle bell
     {
-      mesh: remapCell(prismMesh(new Vec3(8.2, 8.6, 3.6), new Vec3(10.6, 11.0, 3.6), new Vec2(0, 0)), ARSENAL_CELLS.grip),
+      mesh: GRIP(prismMesh(new Vec3(8.2, 8.6, 3.6), new Vec3(10.6, 11.0, 3.6), new Vec2(0, 0))),
       offset: new Vec3(0, 1.5, -13.2),
     },
     // 2. Twin side hydraulic recoil damper cylinders flanking the launch tube
     {
-      mesh: remapCell(rotateMeshX(cylinderMesh(new Vec2(0.95, 15.6), 8), Trigo.halfpi), ARSENAL_CELLS.grip),
+      mesh: GRIP(rotateMeshX(cylinderMesh(new Vec2(0.95, 15.6), 8), Trigo.halfpi)),
       offset: new Vec3(4.35, 0.2, 0.8),
     },
     {
-      mesh: remapCell(rotateMeshX(cylinderMesh(new Vec2(0.95, 15.6), 8), Trigo.halfpi), ARSENAL_CELLS.grip),
+      mesh: GRIP(rotateMeshX(cylinderMesh(new Vec2(0.95, 15.6), 8), Trigo.halfpi)),
       offset: new Vec3(-4.35, 0.2, 0.8),
     },
     // 3. Top carry handle & sighting rail bridge
     {
-      mesh: remapCell(boxMesh(new Vec3(1.8, 1.8, 1.6)), ARSENAL_CELLS.grip),
+      mesh: GRIP(boxMesh(new Vec3(1.8, 1.8, 1.6))),
       offset: new Vec3(0, 6.2, 5.2),
     },
     {
-      mesh: remapCell(boxMesh(new Vec3(1.8, 1.8, 1.6)), ARSENAL_CELLS.grip),
+      mesh: GRIP(boxMesh(new Vec3(1.8, 1.8, 1.6))),
       offset: new Vec3(0, 6.2, -3.8),
     },
     {
@@ -708,20 +1503,20 @@ export function rocketLauncherParts() {
       offset: new Vec3(4.8, 4.5, 2.2),
     },
     {
-      mesh: remapCell(rotateMeshX(cylinderMesh(new Vec2(1.25, 2.4), 8), Trigo.halfpi), ARSENAL_CELLS.grip),
+      mesh: GRIP(rotateMeshX(cylinderMesh(new Vec2(1.25, 2.4), 8), Trigo.halfpi)),
       offset: new Vec3(4.8, 4.5, 6.0),
     },
     // 5. Forward vertical stabilization foregrip & rear trigger grip
     {
-      mesh: remapCell(prismMesh(new Vec3(3.1, 6.2, 3.8), new Vec3(2.8, 6.2, 3.2), new Vec2(0, -0.6)), ARSENAL_CELLS.grip),
+      mesh: GRIP(prismMesh(new Vec3(3.1, 6.2, 3.8), new Vec3(2.8, 6.2, 3.2), new Vec2(0, -0.6))),
       offset: new Vec3(0, -5.0, 4.2),
     },
     {
-      mesh: remapCell(prismMesh(new Vec3(3.0, 5.6, 3.6), new Vec3(2.7, 5.6, 3.0), new Vec2(0, 0.8)), ARSENAL_CELLS.grip),
+      mesh: GRIP(prismMesh(new Vec3(3.0, 5.6, 3.6), new Vec3(2.7, 5.6, 3.0), new Vec2(0, 0.8))),
       offset: new Vec3(0, -4.7, -4.8),
     },
     {
-      mesh: remapCell(boxMesh(new Vec3(2.2, 1.2, 3.4)), ARSENAL_CELLS.grip),
+      mesh: GRIP(boxMesh(new Vec3(2.2, 1.2, 3.4))),
       offset: new Vec3(0, -3.2, -2.2),
     },
   ];
@@ -741,22 +1536,84 @@ export function rocketLauncherParts() {
       offset: new Vec3(0, 0, 4.4),
     },
     {
-      mesh: remapCell(boxMesh(new Vec3(5.6, 0.45, 2.2)), ARSENAL_CELLS.grip),
+      mesh: GRIP(boxMesh(new Vec3(5.6, 0.45, 2.2))),
       offset: new Vec3(0, 0, -2.4),
     },
     {
-      mesh: remapCell(boxMesh(new Vec3(0.45, 5.6, 2.2)), ARSENAL_CELLS.grip),
+      mesh: GRIP(boxMesh(new Vec3(0.45, 5.6, 2.2))),
       offset: new Vec3(0, 0, -2.4),
     },
   ];
 
+  // High-detail left & right player hands and sculpted forearms gripping the forward foregrip & rear trigger grip
+  const leftLimb = buildDetailedPlayerLimb({
+    side: -1,
+    handOffset: new Vec3(-0.75, -5.15, 4.45),
+    handRotation: new Vec3(-1.35, 0.25, -0.15),
+    handScale: new Vec3(0.84, 0.84, 0.84),
+    fingerCurl: 1.05,
+    hasWatch: false,
+    materials: handMats,
+    gauntletStations: [
+      { pos: new Vec3(-1.85, -5.55, 3.45), size: new Vec2(0.92, 1.02) },
+      { pos: new Vec3(-2.35, -5.85, 2.65), size: new Vec2(0.98, 1.06) },
+      { pos: new Vec3(-2.85, -6.15, 1.85), size: new Vec2(1.04, 1.10) },
+    ],
+    cuffStations: [
+      { pos: new Vec3(-2.80, -6.10, 1.92), radii: new Vec2(1.12, 1.12) },
+      { pos: new Vec3(-3.45, -6.48, 0.88), radii: new Vec2(1.22, 1.18) },
+      { pos: new Vec3(-4.10, -6.88, -0.15), radii: new Vec2(1.28, 1.24) },
+    ],
+    forearmStations: [
+      { pos: new Vec3(-4.05, -6.85, -0.08), radii: new Vec2(1.22, 1.16) },
+      { pos: new Vec3(-4.95, -7.40, -1.55), radii: new Vec2(1.34, 1.26) },
+      { pos: new Vec3(-5.90, -7.98, -3.10), radii: new Vec2(1.46, 1.36) },
+      { pos: new Vec3(-6.85, -8.56, -4.65), radii: new Vec2(1.56, 1.46) },
+      { pos: new Vec3(-7.75, -9.12, -6.15), radii: new Vec2(1.64, 1.52) },
+      { pos: new Vec3(-8.60, -9.65, -7.55), radii: new Vec2(1.68, 1.56) },
+    ],
+  });
+
+  const rightLimb = buildDetailedPlayerLimb({
+    side: 1,
+    handOffset: new Vec3(0.72, -4.85, -4.55),
+    handRotation: new Vec3(-1.32, -0.22, 0.14),
+    handScale: new Vec3(0.84, 0.84, 0.84),
+    fingerCurl: 1.08,
+    hasWatch: true,
+    materials: handMats,
+    gauntletStations: [
+      { pos: new Vec3(1.65, -5.25, -5.45), size: new Vec2(0.92, 1.02) },
+      { pos: new Vec3(2.12, -5.58, -6.18), size: new Vec2(0.98, 1.06) },
+      { pos: new Vec3(2.60, -5.92, -6.92), size: new Vec2(1.04, 1.10) },
+    ],
+    cuffStations: [
+      { pos: new Vec3(2.55, -5.88, -6.85), radii: new Vec2(1.12, 1.12) },
+      { pos: new Vec3(3.15, -6.32, -7.82), radii: new Vec2(1.22, 1.18) },
+      { pos: new Vec3(3.75, -6.78, -8.78), radii: new Vec2(1.28, 1.24) },
+    ],
+    forearmStations: [
+      { pos: new Vec3(3.70, -6.74, -8.70), radii: new Vec2(1.22, 1.16) },
+      { pos: new Vec3(4.52, -7.35, -10.05), radii: new Vec2(1.34, 1.26) },
+      { pos: new Vec3(5.38, -7.98, -11.45), radii: new Vec2(1.46, 1.36) },
+      { pos: new Vec3(6.25, -8.62, -12.85), radii: new Vec2(1.56, 1.46) },
+      { pos: new Vec3(7.08, -9.24, -14.20), radii: new Vec2(1.64, 1.52) },
+      { pos: new Vec3(7.88, -9.82, -15.50), radii: new Vec2(1.68, 1.56) },
+    ],
+  });
+
   const pivots = {
     warhead: new Vec3(0, 1.5, 11.4),
+    hands: new Vec3(0, 0, 0),
   };
 
   cachedRocketLauncherParts = {
     body: appendMesh(bodyParts),
     warhead: appendMesh(warheadParts),
+    hands: appendMesh([
+      { mesh: leftLimb, offset: new Vec3(0, 0, 0) },
+      { mesh: rightLimb, offset: new Vec3(0, 0, 0) },
+    ]),
     pivots,
   };
   return cachedRocketLauncherParts;
@@ -901,47 +1758,20 @@ function paintChainsawBar(canvas, cell) {
 
 function paintChainsawGrip(canvas, cell) {
   const S = ARSENAL_CELL;
-  for (let y = 0; y < S; y++)
+  for (let y = 0; y < 12; y++)
     for (let x = 0; x < S; x++) {
-      const cyl = Math.sin((x / S) * Trigo.pi);
-      if (y < 12) {
-        // Dark ribbed cast-iron cooling fins & knurled tubular handlebar grip
-        const fin = y % 4 === 0;
-        const slot = y % 4 === 1;
-        const knurl = ((x + y) & 1) * 10;
-        if (fin)
-          canvas.put(cell, x, y, 96 + knurl, 108 + knurl, 126 + knurl);
-        else if (slot)
-          canvas.put(cell, x, y, 18, 21, 28);
-        else
-          canvas.put(cell, x, y, 42 + knurl, 48 + knurl, 58 + knurl);
-      } else if (y < 20) {
-        // Saddle-brown grained combat leather glove (palms, curled fingers, thumbs & knuckle ridges)
-        const crease = y === 15 || y === 18 || x % 7 === 0 ? -18 : 0;
-        const pebble = ((x + y) & 1) === 0 ? 6 : -5;
-        const spec = Math.pow(cyl, 2.0) * 42;
-        const r = Utils.clamp(78 + cyl * 42 + spec + crease + pebble, 34, 168);
-        const g = Utils.clamp(48 + cyl * 28 + spec * 0.72 + crease * 0.7 + pebble, 20, 114);
-        const b = Utils.clamp(28 + cyl * 18 + spec * 0.45 + crease * 0.5 + pebble, 12, 74);
-        canvas.put(cell, x, y, r, g, b);
-      } else if (y < 25) {
-        // Military olive-drab woven wrist cuff
-        const weave = ((x + y) & 1) === 0 ? 6 : -6;
-        const seam = y === 20 || y === 24 ? -14 : 0;
-        const r = Utils.clamp(64 + cyl * 36 + weave + seam, 28, 118);
-        const g = Utils.clamp(78 + cyl * 42 + weave + seam, 36, 138);
-        const b = Utils.clamp(46 + cyl * 24 + weave + seam, 18, 84);
-        canvas.put(cell, x, y, r, g, b);
-      } else {
-        // Warm muscular bare forearm skin with anatomical tendon & muscle-belly shading
-        const tendon = Math.sin((x / S) * Trigo.pi * 2.0) * 12;
-        const pore = ((x * 3 + y * 5) & 3) === 0 ? -4 : 2;
-        const r = Utils.clamp(166 + cyl * 56 + tendon + pore, 108, 238);
-        const g = Utils.clamp(118 + cyl * 46 + tendon * 0.75 + pore, 72, 186);
-        const b = Utils.clamp(88 + cyl * 36 + tendon * 0.55 + pore, 50, 146);
-        canvas.put(cell, x, y, r, g, b);
-      }
+      // Dark ribbed cast-iron cooling fins & knurled tubular handlebar grip
+      const fin = y % 4 === 0;
+      const slot = y % 4 === 1;
+      const knurl = ((x + y) & 1) * 10;
+      if (fin)
+        canvas.put(cell, x, y, 96 + knurl, 108 + knurl, 126 + knurl);
+      else if (slot)
+        canvas.put(cell, x, y, 18, 21, 28);
+      else
+        canvas.put(cell, x, y, 42 + knurl, 48 + knurl, 58 + knurl);
     }
+  paintWeaponHandSubBands(canvas, cell, 12);
 }
 
 function paintChainsawChain(canvas, cell) {
@@ -989,17 +1819,15 @@ export function chainsawAtlas() {
  * - `topChain`: 3D raked chisel cutter teeth riding along the top spine of the vertical guide bar.
  * - `bottomChain`: 3D return cutter teeth riding along the bottom return rail all the way into the clutch cover.
  * - `noseChain`: 3D 8-tooth rotary nose sprocket wheel centered in the front guide bar groove.
- * - `hands`: First-person player's 3D leather-gloved hands, olive-drab wrist cuffs, and muscular forearms
- *   gripping both the top horizontal handlebar and the left vertical handlebar.
+ * - `hands`: Shared high-detail first-person spec-ops gloved hands, carbon knuckle armor, wrist chronometer,
+ *   ripstop cuffs, and sculpted muscular forearms gripping the top horizontal handlebar and left vertical handlebar.
  */
 export function chainsawParts() {
   if (cachedChainsawParts)
     return cachedChainsawParts;
 
   const GRIP = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.02, 0.35);
-  const GLOVE = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.39, 0.60);
-  const CUFF = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.64, 0.76);
-  const ARM = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.80, 0.98);
+  const handMats = weaponHandMaterials(ARSENAL_CELLS.grip);
 
   const barX = -1.6;
   const bodyParts = [
@@ -1199,106 +2027,62 @@ export function chainsawParts() {
     });
   }
 
-  // First-person player hands, olive-drab wrist cuffs & muscular forearms gripping the left and top handlebars
-  const handParts = [
-    // A. Left leather-gloved hand gripping the left vertical handlebar (-2.25, 2.25, -1.5)
-    {
-      mesh: GLOVE(prismMesh(new Vec3(1.12, 1.72, 1.46), new Vec3(0.95, 1.62, 1.28), new Vec2(-0.1, 0.05))),
-      offset: new Vec3(-2.96, 2.15, -1.55),
-    },
-    // Left thumb wrapping over the upper-rear of the left vertical bar (leaving the bar corner visible above)
-    {
-      mesh: GLOVE(boxMesh(new Vec3(1.12, 0.52, 0.78))),
-      offset: new Vec3(-2.28, 2.86, -2.02),
-    },
-    {
-      mesh: GLOVE(boxMesh(new Vec3(0.64, 0.48, 0.8))),
-      offset: new Vec3(-1.72, 2.72, -1.55),
-    },
-    // Left glove wrist gauntlet, military olive-drab woven cuff & muscular bare left forearm sweeping in from screen left
-    {
-      mesh: GLOVE(prismMesh(new Vec3(1.44, 1.46, 1.38), new Vec3(1.3, 1.36, 1.24), new Vec2(-0.14, -0.05))),
-      offset: new Vec3(-3.55, 1.88, -2.42),
-    },
-    {
-      mesh: CUFF(prismMesh(new Vec3(1.64, 1.62, 1.42), new Vec3(1.48, 1.5, 1.3), new Vec2(-0.16, -0.06))),
-      offset: new Vec3(-4.18, 1.56, -3.32),
-    },
-    {
-      mesh: ARM(prismMesh(new Vec3(1.84, 1.82, 2.35), new Vec3(1.68, 1.68, 2.15), new Vec2(-0.22, -0.08))),
-      offset: new Vec3(-5.05, 1.08, -4.65),
-    },
-    {
-      mesh: ARM(prismMesh(new Vec3(2.04, 2.0, 2.55), new Vec3(1.84, 1.84, 2.35), new Vec2(-0.24, -0.1))),
-      offset: new Vec3(-6.05, 0.48, -6.25),
-    },
-    {
-      mesh: ARM(prismMesh(new Vec3(2.2, 2.14, 2.65), new Vec3(2.04, 2.0, 2.45), new Vec2(-0.26, -0.12))),
-      offset: new Vec3(-7.08, -0.12, -7.95),
-    },
+  // High-detail left & right player hands and sculpted forearms gripping the left vertical handlebar & top crossbar
+  const leftLimb = buildDetailedPlayerLimb({
+    side: -1,
+    handOffset: new Vec3(-2.15, 2.15, -1.25),
+    handRotation: new Vec3(-1.32, 0.22, -0.18),
+    handScale: new Vec3(0.76, 0.76, 0.76),
+    fingerCurl: 1.08,
+    hasWatch: false,
+    materials: handMats,
+    gauntletStations: [
+      { pos: new Vec3(-3.12, 2.02, -1.85), size: new Vec2(0.84, 0.96) },
+      { pos: new Vec3(-3.55, 1.85, -2.42), size: new Vec2(0.90, 0.98) },
+      { pos: new Vec3(-3.95, 1.68, -2.98), size: new Vec2(0.96, 1.00) },
+    ],
+    cuffStations: [
+      { pos: new Vec3(-3.90, 1.70, -2.92), radii: new Vec2(1.04, 1.04) },
+      { pos: new Vec3(-4.38, 1.45, -3.62), radii: new Vec2(1.12, 1.10) },
+      { pos: new Vec3(-4.88, 1.18, -4.32), radii: new Vec2(1.18, 1.14) },
+    ],
+    forearmStations: [
+      { pos: new Vec3(-4.82, 1.22, -4.25), radii: new Vec2(1.12, 1.08) },
+      { pos: new Vec3(-5.55, 0.76, -5.32), radii: new Vec2(1.24, 1.18) },
+      { pos: new Vec3(-6.32, 0.24, -6.48), radii: new Vec2(1.36, 1.28) },
+      { pos: new Vec3(-7.12, -0.32, -7.68), radii: new Vec2(1.46, 1.36) },
+      { pos: new Vec3(-7.88, -0.88, -8.82), radii: new Vec2(1.54, 1.42) },
+      { pos: new Vec3(-8.62, -1.42, -9.92), radii: new Vec2(1.58, 1.46) },
+    ],
+  });
 
-    // B. Right leather-gloved hand gripping the top horizontal handlebar (x = 1.85..3.35, y = 4.2, z = -1.5)
-    {
-      mesh: GLOVE(prismMesh(new Vec3(1.76, 0.88, 1.48), new Vec3(1.62, 0.78, 1.3), new Vec2(0.08, 0.08))),
-      offset: new Vec3(2.6, 4.72, -1.62),
-    },
-    // Right thumb wrapping under the rear-left of the top horizontal bar
-    {
-      mesh: GLOVE(boxMesh(new Vec3(0.74, 0.8, 0.84))),
-      offset: new Vec3(1.62, 4.18, -2.02),
-    },
-    {
-      mesh: GLOVE(boxMesh(new Vec3(0.82, 0.54, 0.78))),
-      offset: new Vec3(1.86, 3.64, -1.55),
-    },
-    // Right glove wrist gauntlet, military olive-drab woven cuff & muscular bare right forearm sweeping in from screen right
-    {
-      mesh: GLOVE(prismMesh(new Vec3(1.68, 1.28, 1.34), new Vec3(1.56, 1.18, 1.22), new Vec2(0.14, -0.06))),
-      offset: new Vec3(3.12, 4.24, -2.58),
-    },
-    {
-      mesh: CUFF(prismMesh(new Vec3(1.84, 1.46, 1.38), new Vec3(1.7, 1.34, 1.26), new Vec2(0.16, -0.08))),
-      offset: new Vec3(3.68, 3.7, -3.52),
-    },
-    {
-      mesh: ARM(prismMesh(new Vec3(2.02, 1.72, 2.35), new Vec3(1.86, 1.58, 2.15), new Vec2(0.22, -0.12))),
-      offset: new Vec3(4.38, 2.86, -4.88),
-    },
-    {
-      mesh: ARM(prismMesh(new Vec3(2.18, 1.92, 2.55), new Vec3(2.02, 1.76, 2.35), new Vec2(0.24, -0.14))),
-      offset: new Vec3(5.18, 1.8, -6.5),
-    },
-    {
-      mesh: ARM(prismMesh(new Vec3(2.32, 2.08, 2.65), new Vec3(2.16, 1.9, 2.45), new Vec2(0.26, -0.16))),
-      offset: new Vec3(5.98, 0.66, -8.2),
-    },
-  ];
-
-  // 4 curled leather fingers for the left hand around the left vertical handlebar (-2.25, 2.25, -1.5)
-  for (const fy of [1.56, 1.96, 2.36, 2.76])
-    handParts.push(
-      {
-        mesh: GLOVE(boxMesh(new Vec3(1.22, 0.36, 0.7))),
-        offset: new Vec3(-2.36, fy, -0.82),
-      },
-      {
-        mesh: GLOVE(boxMesh(new Vec3(0.56, 0.35, 0.76))),
-        offset: new Vec3(-1.72, fy, -1.35),
-      }
-    );
-
-  // 4 curled leather fingers for the right hand around the top horizontal handlebar (x = 1.95..3.24, y = 4.2, z = -1.5)
-  for (const fx of [1.96, 2.38, 2.80, 3.22])
-    handParts.push(
-      {
-        mesh: GLOVE(boxMesh(new Vec3(0.38, 1.18, 0.7))),
-        offset: new Vec3(fx, 4.22, -0.82),
-      },
-      {
-        mesh: GLOVE(boxMesh(new Vec3(0.37, 0.54, 0.8))),
-        offset: new Vec3(fx, 3.6, -1.35),
-      }
-    );
+  const rightLimb = buildDetailedPlayerLimb({
+    side: 1,
+    handOffset: new Vec3(2.45, 4.35, -1.25),
+    handRotation: new Vec3(-0.32, -0.18, 1.42),
+    handScale: new Vec3(0.76, 0.76, 0.76),
+    fingerCurl: 1.08,
+    hasWatch: true,
+    materials: handMats,
+    gauntletStations: [
+      { pos: new Vec3(2.85, 4.52, -1.95), size: new Vec2(0.96, 0.82) },
+      { pos: new Vec3(3.22, 4.18, -2.58), size: new Vec2(1.00, 0.88) },
+      { pos: new Vec3(3.58, 3.82, -3.22), size: new Vec2(1.04, 0.94) },
+    ],
+    cuffStations: [
+      { pos: new Vec3(3.54, 3.86, -3.15), radii: new Vec2(1.08, 1.00) },
+      { pos: new Vec3(3.98, 3.32, -3.95), radii: new Vec2(1.16, 1.08) },
+      { pos: new Vec3(4.42, 2.75, -4.75), radii: new Vec2(1.22, 1.14) },
+    ],
+    forearmStations: [
+      { pos: new Vec3(4.38, 2.80, -4.68), radii: new Vec2(1.14, 1.06) },
+      { pos: new Vec3(5.05, 1.92, -5.92), radii: new Vec2(1.26, 1.18) },
+      { pos: new Vec3(5.75, 0.98, -7.22), radii: new Vec2(1.38, 1.28) },
+      { pos: new Vec3(6.48, -0.02, -8.55), radii: new Vec2(1.48, 1.38) },
+      { pos: new Vec3(7.18, -1.02, -9.85), radii: new Vec2(1.56, 1.44) },
+      { pos: new Vec3(7.85, -1.98, -11.10), radii: new Vec2(1.60, 1.48) },
+    ],
+  });
 
   const pivots = {
     topChain: new Vec3(barX, 1.38, 0),
@@ -1312,7 +2096,10 @@ export function chainsawParts() {
     topChain: appendMesh(topTeeth),
     bottomChain: appendMesh(bottomTeeth),
     noseChain: appendMesh(noseTeeth),
-    hands: appendMesh(handParts),
+    hands: appendMesh([
+      { mesh: leftLimb, offset: new Vec3(0, 0, 0) },
+      { mesh: rightLimb, offset: new Vec3(0, 0, 0) },
+    ]),
     pivots,
     toothPitch: CHAINSAW_TOOTH_PITCH,
   };
@@ -1324,13 +2111,22 @@ export function chainsawMesh() {
   if (cachedChainsawMesh)
     return cachedChainsawMesh;
   const parts = chainsawParts();
-  const liftY = 7.2;
-  cachedChainsawMesh = appendMesh([
-    { mesh: parts.body, offset: new Vec3(0, liftY, 0) },
-    { mesh: parts.topChain, offset: new Vec3(parts.pivots.topChain.x, parts.pivots.topChain.y + liftY, parts.pivots.topChain.z) },
-    { mesh: parts.bottomChain, offset: new Vec3(parts.pivots.bottomChain.x, parts.pivots.bottomChain.y + liftY, parts.pivots.bottomChain.z) },
-    { mesh: parts.noseChain, offset: new Vec3(parts.pivots.noseChain.x, parts.pivots.noseChain.y + liftY, parts.pivots.noseChain.z) },
+  const centerZ = -2.5;
+  const raw = appendMesh([
+    { mesh: parts.body, offset: new Vec3(0, 0, centerZ) },
+    { mesh: parts.topChain, offset: new Vec3(parts.pivots.topChain.x, parts.pivots.topChain.y, parts.pivots.topChain.z + centerZ) },
+    { mesh: parts.bottomChain, offset: new Vec3(parts.pivots.bottomChain.x, parts.pivots.bottomChain.y, parts.pivots.bottomChain.z + centerZ) },
+    { mesh: parts.noseChain, offset: new Vec3(parts.pivots.noseChain.x, parts.pivots.noseChain.y, parts.pivots.noseChain.z + centerZ) },
   ]);
+  const scale = 1.35;
+  const liftY = 12.5;
+  const vertices = new Float32Array(raw.vertices.length);
+  for (let i = 0; i < raw.vertices.length; i += 3) {
+    vertices[i] = raw.vertices[i] * scale;
+    vertices[i + 1] = raw.vertices[i + 1] * scale + liftY;
+    vertices[i + 2] = raw.vertices[i + 2] * scale;
+  }
+  cachedChainsawMesh = { vertices, normals: raw.normals, uvs: raw.uvs };
   return cachedChainsawMesh;
 }
 
@@ -1415,30 +2211,20 @@ function paintShotgunBarrel(canvas, cell) {
 
 function paintShotgunGrip(canvas, cell) {
   const S = ARSENAL_CELL;
-  for (let y = 0; y < S; y++)
+  for (let y = 0; y < 12; y++)
     for (let x = 0; x < S; x++) {
       const cyl = Math.sin((x / S) * Trigo.pi);
-      if (y < 18) {
-        // Warm ribbed dark walnut wood (stock wrist & pump forend)
-        const groove = y % 4 === 0;
-        const ridge = y % 4 === 1;
-        const grain = Math.sin(y * 0.5 + Math.sin(x * 0.35) * 2.0) * 14;
-        const shade = (groove ? -32 : ridge ? 16 : 0) + cyl * 26;
-        const r = Utils.clamp(112 + grain + shade, 36, 192);
-        const g = Utils.clamp(64 + (grain + shade) * 0.58, 20, 118);
-        const b = Utils.clamp(30 + (grain + shade) * 0.32, 10, 62);
-        canvas.put(cell, x, y, r, g, b);
-      } else {
-        // Dark espresso-brown grained combat leather glove (palm, curled fingers & thumb)
-        const crease = y === 22 || y === 27 || x % 7 === 0 ? -16 : 0;
-        const pebble = ((x + y) & 1) === 0 ? 5 : -4;
-        const spec = Math.pow(cyl, 2.2) * 34;
-        const r = Utils.clamp(58 + cyl * 34 + spec + crease + pebble, 24, 134);
-        const g = Utils.clamp(38 + cyl * 24 + spec * 0.72 + crease * 0.7 + pebble, 15, 94);
-        const b = Utils.clamp(24 + cyl * 16 + spec * 0.45 + crease * 0.5 + pebble, 10, 64);
-        canvas.put(cell, x, y, r, g, b);
-      }
+      // Warm ribbed dark walnut wood (stock wrist & pump forend)
+      const groove = y % 3 === 0;
+      const ridge = y % 3 === 1;
+      const grain = Math.sin(y * 0.55 + Math.sin(x * 0.35) * 2.0) * 14;
+      const shade = (groove ? -32 : ridge ? 16 : 0) + cyl * 26;
+      const r = Utils.clamp(112 + grain + shade, 36, 192);
+      const g = Utils.clamp(64 + (grain + shade) * 0.58, 20, 118);
+      const b = Utils.clamp(30 + (grain + shade) * 0.32, 10, 62);
+      canvas.put(cell, x, y, r, g, b);
     }
+  paintWeaponHandSubBands(canvas, cell, 12);
 }
 
 function paintShotgunMuzzle(canvas, cell) {
@@ -1501,19 +2287,18 @@ export function shotgunAtlas() {
  * - `body`: walnut stock wrist, machined gunmetal receiver with ejection port, blued-steel barrel, perforated heat shield,
  *   under-barrel magazine tube, ventilated top sighting rib, and front brass bead sight
  * - `pump`: ribbed dark walnut pump forend, twin gleaming chrome action bars, and sliding steel breech bolt
- * - `arm`: marine's leather-gloved left hand, olive-drab wrist cuff, and muscular bare forearm gripping the pump forend during reload
+ * - `arm`: shared high-detail spec-ops left hand (carbon-fiber knuckle shield, Clarino suede palm, articulated thumb & fingers),
+ *   ripstop olive wrist cuff, and 6-station sculpted muscular forearm cradling the walnut pump forend during reload
  * - `shell`: 3D crimson-and-brass 12-gauge shotgun hull that ejects out of the right-side port during the pump stroke
  */
 export function shotgunParts() {
   if (cachedShotgunParts)
     return cachedShotgunParts;
 
-  const WALNUT = (raw) => remapCellSub(raw, ARSENAL_CELLS.grip, 0.02, 0.54);
-  const GLOVE = (raw) => remapCellSub(raw, ARSENAL_CELLS.grip, 0.58, 0.98);
+  const WALNUT = (raw) => remapCellSub(raw, ARSENAL_CELLS.grip, 0.02, 0.35);
   const BRASS = (raw) => remapCellSub(raw, ARSENAL_CELLS.muzzle, 0.02, 0.19);
   const HULL = (raw) => remapCellSub(raw, ARSENAL_CELLS.muzzle, 0.24, 0.44);
-  const CUFF = (raw) => remapCellSub(raw, ARSENAL_CELLS.muzzle, 0.49, 0.66);
-  const ARM = (raw) => remapCellSub(raw, ARSENAL_CELLS.muzzle, 0.71, 0.98);
+  const handMats = weaponHandMaterials(ARSENAL_CELLS.grip);
 
   const bodyParts = [
     // 1. Rear dark walnut stock wrist & angled pistol grip
@@ -1611,47 +2396,37 @@ export function shotgunParts() {
       offset: new Vec3(0, 0, gz),
     });
 
-  // Articulated 3D player left hand, olive wrist cuff & muscular bare forearm (local -X is screen left)
-  const armParts = [
-    // Leather-gloved palm pad cradling the underside of the walnut pump forend
-    {
-      mesh: GLOVE(prismMesh(new Vec3(2.95, 1.05, 4.4), new Vec3(2.65, 1.05, 4.1), new Vec2(-0.15, 0))),
-      offset: new Vec3(-0.35, -1.35, -0.15),
-    },
-    // Gloved left-hand thumb & radial knuckle wrapping firmly up the left flank (-X) of the walnut forend
-    {
-      mesh: GLOVE(prismMesh(new Vec3(1.12, 1.85, 3.8), new Vec3(0.92, 1.85, 3.3), new Vec2(0.18, 0.15))),
-      offset: new Vec3(-1.52, -0.22, -0.25),
-    },
-    {
-      mesh: GLOVE(boxMesh(new Vec3(0.88, 0.92, 2.3))),
-      offset: new Vec3(-1.46, 0.56, 0.65),
-    },
-    // Military olive-drab woven wrist cuff band at the base of the leather glove
-    {
-      mesh: CUFF(prismMesh(new Vec3(2.55, 2.15, 2.1), new Vec3(2.35, 1.95, 1.9), new Vec2(0.32, 0.16))),
-      offset: new Vec3(-1.75, -1.75, -2.55),
-    },
-    // Muscular bare left forearm sweeping from lower-left screen up into the wrist cuff
-    {
-      mesh: ARM(prismMesh(new Vec3(2.65, 2.25, 3.8), new Vec3(2.35, 2.05, 3.4), new Vec2(0.75, 0.38))),
-      offset: new Vec3(-2.55, -2.25, -4.75),
-    },
-    {
-      mesh: ARM(prismMesh(new Vec3(2.95, 2.45, 4.2), new Vec3(2.65, 2.25, 3.8), new Vec2(0.85, 0.42))),
-      offset: new Vec3(-3.65, -2.85, -7.85),
-    },
-    {
-      mesh: ARM(prismMesh(new Vec3(3.15, 2.6, 4.4), new Vec3(2.95, 2.45, 4.2), new Vec2(0.9, 0.45))),
-      offset: new Vec3(-4.85, -3.45, -11.05),
-    },
-  ];
-  // 4 curled leather-gloved fingers wrapping under and up the right side (+X) of the walnut forend
-  for (const fz of [-1.65, -0.6, 0.45, 1.5])
-    armParts.push({
-      mesh: GLOVE(boxMesh(new Vec3(0.92, 1.75, 0.78))),
-      offset: new Vec3(1.32, -0.42, fz),
-    });
+  // Shared high-detail player left hand, ripstop olive wrist cuff & 6-station sculpted muscular forearm
+  // Cradling the underside of the walnut pump forend (palm facing up +Y, thumb wrapping left -X, fingers curling up right +X)
+  const armMesh = buildDetailedPlayerLimb({
+    side: -1,
+    handOffset: new Vec3(-0.15, -0.58, 2.15),
+    handRotation: new Vec3(0.08, -0.06, -1.18),
+    handScale: new Vec3(1.06, 1.06, 1.06),
+    fingerCurl: 1.05,
+    thumbSpread: 0.22,
+    hasWatch: false,
+    materials: handMats,
+    gauntletStations: [
+      { pos: new Vec3(-1.35, -1.28, -1.85), size: new Vec2(1.02, 0.96) },
+      { pos: new Vec3(-1.72, -1.62, -2.65), size: new Vec2(1.10, 1.02) },
+      { pos: new Vec3(-2.08, -1.94, -3.45), size: new Vec2(1.16, 1.08) },
+    ],
+    cuffStations: [
+      { pos: new Vec3(-2.05, -1.90, -3.38), radii: new Vec2(1.22, 1.12) },
+      { pos: new Vec3(-2.42, -2.22, -4.25), radii: new Vec2(1.32, 1.22) },
+      { pos: new Vec3(-2.78, -2.54, -5.08), radii: new Vec2(1.38, 1.28) },
+      { pos: new Vec3(-2.84, -2.58, -5.18), radii: new Vec2(1.26, 1.16) },
+    ],
+    forearmStations: [
+      { pos: new Vec3(-2.76, -2.52, -5.05), radii: new Vec2(1.22, 1.12) },
+      { pos: new Vec3(-3.32, -2.98, -6.55), radii: new Vec2(1.36, 1.24) },
+      { pos: new Vec3(-3.94, -3.48, -8.25), radii: new Vec2(1.48, 1.36) },
+      { pos: new Vec3(-4.58, -4.02, -10.05), radii: new Vec2(1.58, 1.44) },
+      { pos: new Vec3(-5.18, -4.52, -11.85), radii: new Vec2(1.66, 1.52) },
+      { pos: new Vec3(-5.75, -4.98, -13.45), radii: new Vec2(1.70, 1.56) },
+    ],
+  });
 
   // Articulated 3D 12-gauge shotgun shell (crimson hull + brass rim) that ejects during the pump stroke
   const shellParts = [
@@ -1674,7 +2449,7 @@ export function shotgunParts() {
   cachedShotgunParts = {
     body: appendMesh(bodyParts),
     pump: appendMesh(pumpParts),
-    arm: appendMesh(armParts),
+    arm: armMesh,
     shell: appendMesh(shellParts),
     pivots,
   };
@@ -1808,17 +2583,26 @@ function paintKnifeHandle(canvas, cell) {
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
       const cyl = Math.sin((x / S) * Trigo.pi);
-      if (y < 20) {
-        // Dark ribbed Kraton polymer combat handle with diamond knurling & finger-groove channels
-        const groove = y % 4 === 0 ? -14 : 0;
-        const knurl = ((x + y) & 1) === 0 ? 6 : -4;
-        const v = Utils.clamp(38 + cyl * 28 + groove + knurl, 18, 86);
-        canvas.put(cell, x, y, v, v + 2, v + 5);
+      if (y < 16) {
+        // Contoured charcoal-olive G10 / Kraton composite grip scales with diamond checkering & finger-groove channels
+        const groove = y % 4 === 0 ? -15 : y % 4 === 2 ? 6 : 0;
+        const diamond = ((x + y) & 1) === 0 ? 7 : -6;
+        const weave = Math.sin(x * 0.85) * Math.cos(y * 0.85) * 5;
+        const base = Utils.clamp(36 + cyl * 30 + groove + diamond + weave, 14, 94);
+        canvas.put(cell, x, y, base * 0.92, base * 1.02, base * 0.96);
+      } else if (y < 25) {
+        // Matte Parkerized Titanium-Nitride (TiN) dark gunmetal M9 crossguard, barrel ring & octagonal pommel
+        const spec = Math.pow(cyl, 2.6) * 48;
+        const seam = y === 16 || y === 24 ? -16 : 0;
+        const grain = ((x * 3 + y) & 3) - 1.5;
+        const v = Utils.clamp(62 + cyl * 38 + spec + seam + grain * 2.5, 32, 168);
+        canvas.put(cell, x, y, v * 0.93, v * 0.98, v * 1.08);
       } else {
-        // Parkerized gunmetal steel crossguard & skull-crusher pommel cap
-        const spec = Math.pow(cyl, 2.4) * 42;
-        const v = Utils.clamp(68 + cyl * 36 + spec, 42, 156);
-        canvas.put(cell, x, y, v * 0.94, v * 0.98, v * 1.06);
+        // Machined brushed stainless Torx bolts, lanyard bail & tungsten-carbide breaker tip
+        const star = Math.abs(x - S * 0.5) < 4 && (y === 28 || y === 29) ? -42 : 0;
+        const spec = Math.pow(cyl, 1.8) * 64;
+        const v = Utils.clamp(132 + cyl * 52 + spec + star, 54, 242);
+        canvas.put(cell, x, y, v * 0.96, v * 0.99, v * 1.05);
       }
     }
 }
@@ -1827,27 +2611,112 @@ function paintKnifeBlade(canvas, cell) {
   const S = ARSENAL_CELL;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const bevel = y >= 21;
-      const fuller = y >= 9 && y <= 14 && x >= 5 && x <= S - 7;
-      const spineEdge = y < 4;
-      const glint = Math.sin((x / S) * Trigo.pi) * 36;
-      if (fuller) {
-        // Darkened blood fuller groove along the flat of the blade
-        canvas.put(cell, x, y, 48, 54, 66);
-      } else if (bevel) {
-        // Honed razor-sharp lower cutting edge bevel
-        const v = Utils.clamp(204 + glint, 168, 250);
-        canvas.put(cell, x, y, v * 0.96, v, v * 1.04);
-      } else if (spineEdge) {
-        // Serrated sawback spine highlight
-        const tooth = (x & 3) < 2 ? 24 : -18;
-        const v = Utils.clamp(162 + glint + tooth, 108, 232);
-        canvas.put(cell, x, y, v * 0.95, v * 0.99, v * 1.05);
+      const glint = Math.sin((x / S) * Trigo.pi) * 42;
+      const spec = Math.pow(Math.sin((x / S) * Trigo.pi), 3.2) * 34;
+      if (y < 7) {
+        // CNC-milled double-row sawback spine teeth with bright metallic edge bevels and dark gullets
+        const tooth = (x & 3) < 2 ? 28 : -24;
+        const v = Utils.clamp(158 + glint + tooth, 88, 238);
+        canvas.put(cell, x, y, v * 0.95, v * 0.99, v * 1.06);
+      } else if (y < 15) {
+        // Darkened Ti-Al-N blood-fuller trough & laser-etched tactical spec-ops markings
+        const border = y === 7 || y === 14;
+        const stencil = y >= 10 && y <= 12 && x >= 7 && x <= S - 8 && ((x * 7 + y * 3) & 3) === 0;
+        if (stencil)
+          canvas.put(cell, x, y, 168, 178, 192);
+        else if (border)
+          canvas.put(cell, x, y, 86, 94, 108);
+        else {
+          const trough = Math.sin(((y - 7) / 7) * Trigo.pi) * -18;
+          const v = Utils.clamp(54 + glint * 0.45 + trough, 28, 92);
+          canvas.put(cell, x, y, v * 0.92, v * 0.98, v * 1.12);
+        }
+      } else if (y < 23) {
+        // Satin bead-blasted 440C / S35VN high-carbon steel blade flat & clip-point swedge
+        const brushed = ((x * 7 + y * 2) & 3) * 3.5 - 5;
+        const plunge = x === 4 || x === S - 5 ? -18 : 0;
+        const v = Utils.clamp(146 + glint + spec * 0.5 + brushed + plunge, 94, 224);
+        canvas.put(cell, x, y, v * 0.94, v * 0.99, v * 1.06);
       } else {
-        // Brushed cold-rolled high-carbon Bowie steel flat
-        const brushed = ((x * 5 + y) & 3) * 4;
-        const v = Utils.clamp(138 + glint + brushed, 96, 206);
+        // Mirror-honed hollow-ground primary bevel & razor cutting edge apex
+        const edgeApex = y >= S - 3 ? 28 : 0;
+        const grindLine = y === 23 ? -16 : 0;
+        const v = Utils.clamp(196 + glint + spec + edgeApex + grindLine, 148, 254);
+        canvas.put(cell, x, y, v * 0.97, v, v * 1.04);
+      }
+    }
+}
+
+function paintKnifeGlove(canvas, cell) {
+  const S = ARSENAL_CELL;
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const cyl = Math.sin((x / S) * Trigo.pi);
+      if (y < 10) {
+        // Molded Twill Carbon-Fiber / Kevlar hard-shell dorsal knuckle armor plate
+        const weave = ((x + y) & 3) < 2 ? 12 : -10;
+        const rim = y === 0 || y === 9 || x < 2 || x >= S - 2 ? 18 : 0;
+        const spec = Math.pow(cyl, 2.8) * 52;
+        const v = Utils.clamp(44 + cyl * 28 + spec + weave + rim, 20, 148);
         canvas.put(cell, x, y, v * 0.94, v * 0.98, v * 1.06);
+      } else if (y < 22) {
+        // Half-Life 2 / Spec-Ops tactical glove dorsal chassis (dark slate Nomex weave + saddle-leather panels)
+        const stitch = y === 10 || y === 21 || (x % 8 === 0 && (y & 1) === 0) ? -16 : 0;
+        const pleat = y === 14 || y === 17 ? -14 : 0;
+        const hex = ((x * 3 + y * 5) & 3) === 0 ? 5 : -3;
+        const spec = Math.pow(cyl, 2.2) * 32;
+        const r = Utils.clamp(62 + cyl * 36 + spec + stitch + pleat + hex, 26, 138);
+        const g = Utils.clamp(58 + cyl * 32 + spec * 0.9 + stitch + pleat + hex, 24, 128);
+        const b = Utils.clamp(54 + cyl * 28 + spec * 0.8 + stitch + pleat + hex, 22, 118);
+        canvas.put(cell, x, y, r, g, b);
+      } else {
+        // Perforated synthetic Clarino suede & warm tactical leather palm/fingertip grip pads
+        const pore = (x & 1) === 0 && (y & 1) === 0 ? -9 : 4;
+        const crease = y === 25 || y === 29 ? -14 : 0;
+        const spec = Math.pow(cyl, 2.0) * 26;
+        const r = Utils.clamp(84 + cyl * 38 + spec + pore + crease, 36, 156);
+        const g = Utils.clamp(56 + cyl * 26 + spec * 0.75 + pore + crease * 0.8, 24, 112);
+        const b = Utils.clamp(38 + cyl * 18 + spec * 0.5 + pore + crease * 0.6, 16, 82);
+        canvas.put(cell, x, y, r, g, b);
+      }
+    }
+}
+
+function paintKnifeArm(canvas, cell) {
+  const S = ARSENAL_CELL;
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const cyl = Math.sin((x / S) * Trigo.pi);
+      if (y < 8) {
+        // Tactical digital field chronometer / HEV wrist watch face (sapphire glass + glowing amber-teal readout)
+        const bezel = y === 0 || y === 7 || x < 4 || x >= S - 4;
+        const tick = (y === 2 || y === 5) && x >= 7 && x <= S - 8 && (x % 3 !== 0);
+        const amber = y === 4 && x >= 9 && x <= 15;
+        if (bezel)
+          canvas.put(cell, x, y, 48, 54, 62);
+        else if (amber)
+          canvas.put(cell, x, y, 244, 178, 56);
+        else if (tick)
+          canvas.put(cell, x, y, 76, 228, 196);
+        else
+          canvas.put(cell, x, y, 16, 28, 34);
+      } else if (y < 17) {
+        // Heavy olive-drab & charcoal ripstop tactical field-jacket cuff & ballistic nylon wrist strap
+        const ripstop = (x & 3) === 0 || (y & 3) === 0 ? -7 : 3;
+        const seam = y === 8 || y === 12 || y === 16 ? -16 : 0;
+        const r = Utils.clamp(62 + cyl * 34 + ripstop + seam, 26, 116);
+        const g = Utils.clamp(76 + cyl * 40 + ripstop + seam, 34, 136);
+        const b = Utils.clamp(48 + cyl * 24 + ripstop + seam, 20, 86);
+        canvas.put(cell, x, y, r, g, b);
+      } else {
+        // Anatomical muscular forearm skin with brachioradialis/extensor tendon relief & subtle vascular shading
+        const tendon = Math.sin((x / S) * Trigo.pi * 3.0) * 14;
+        const vein = Math.abs(x - (11 + ((y - 17) >> 1))) <= 1 ? -8 : 0;
+        const pore = ((x * 5 + y * 3) & 3) === 0 ? -4 : 2;
+        const r = Utils.clamp(168 + cyl * 54 + tendon + vein * 0.5 + pore, 106, 238);
+        const g = Utils.clamp(120 + cyl * 44 + tendon * 0.75 + vein * 0.3 + pore, 72, 186);
+        const b = Utils.clamp(90 + cyl * 34 + tendon * 0.55 + pore, 50, 148);
+        canvas.put(cell, x, y, r, g, b);
       }
     }
 }
@@ -1862,136 +2731,260 @@ export function knifeAtlas() {
   const canvas = createCanvas(ARSENAL_CELL, ARSENAL_FRAMES);
   paintKnifeHandle(canvas, ARSENAL_CELLS.body);
   paintKnifeBlade(canvas, ARSENAL_CELLS.barrel);
-  paintShotgunGrip(canvas, ARSENAL_CELLS.grip);
-  paintShotgunMuzzle(canvas, ARSENAL_CELLS.muzzle);
+  paintKnifeGlove(canvas, ARSENAL_CELLS.grip);
+  paintKnifeArm(canvas, ARSENAL_CELLS.muzzle);
   cachedKnifeAtlas = { width: canvas.width, height: canvas.height, data: canvas.data };
   return cachedKnifeAtlas;
 }
 
 /**
- * Returns the articulated 3D marine combat knife geometries and joint pivots:
- * - `blade`: Heavy clip-point Bowie combat blade with honed lower bevel, dark blood fuller groove,
- *   sawback spine serrations, S-shaped steel crossguard, ribbed Kraton handle, and skull-crusher pommel.
- * - `arm`: First-person player's leather-gloved right hand with carbon-steel knuckle armor,
- *   military olive-drab wrist cuff, and muscular bare forearm gripping the knife handle.
+ * Returns the high-detail Half-Life 2 / CS:Source style articulated 3D tactical combat knife and gloved hand:
+ * - `blade`: M9 / KM2000 tactical clip-point Bowie bayonet featuring a multi-station lofted satin blade,
+ *   hollow-ground curved razor belly, honed clip-point swedge bevel, dual recessed dark TiN blood fullers,
+ *   choil finger notch & ricasso bolster, 10-tooth canted sawback spine, thumb jimping ramp, M9 crossguard
+ *   with hollow barrel-mount ring, 9-station contoured octagonal G10 handle with 6 Torx bolts, and octagonal
+ *   skull-crusher pommel with lanyard bail & tungsten-carbide glass-breaker spike.
+ * - `arm`: First-person spec-ops armored glove with molded carbon-fiber dorsal knuckle shield, 4 individual
+ *   carbon knuckle domes, 4x3-phalange articulated curled fingers with Clarino suede pads, 3-phalange thumb
+ *   braced on the spine jimping ramp, ballistic wrist strap, 3D digital wrist chronometer watch, ripstop
+ *   olive field-jacket cuff, and a water-tight 6-station sculpted muscular forearm.
  */
 export function knifeParts() {
   if (cachedKnifeParts)
     return cachedKnifeParts;
 
-  const HANDLE = (m) => remapCellSub(m, ARSENAL_CELLS.body, 0.05, 0.58);
-  const GUARD = (m) => remapCellSub(m, ARSENAL_CELLS.body, 0.66, 0.95);
-  const BLADE = (m) => remapCell(m, ARSENAL_CELLS.barrel);
-  const GLOVE = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.58, 0.98);
-  const CUFF = (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.49, 0.66);
-  const ARM = (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.71, 0.98);
+  const HANDLE = (m) => remapCellSub(m, ARSENAL_CELLS.body, 0.03, 0.46);
+  const GUARD = (m) => remapCellSub(m, ARSENAL_CELLS.body, 0.53, 0.75);
+  const BOLT = (m) => remapCellSub(m, ARSENAL_CELLS.body, 0.80, 0.97);
+
+  const SAWBACK = (m) => remapCellSub(m, ARSENAL_CELLS.barrel, 0.03, 0.19);
+  const FULLER = (m) => remapCellSub(m, ARSENAL_CELLS.barrel, 0.24, 0.44);
+  const BLADE_FLAT = (m) => remapCellSub(m, ARSENAL_CELLS.barrel, 0.49, 0.69);
+  const RAZOR_EDGE = (m) => remapCellSub(m, ARSENAL_CELLS.barrel, 0.74, 0.98);
+
+  const CARBON_ARMOR = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.03, 0.28);
+  const GLOVE_BODY = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.33, 0.66);
+  const GLOVE_PALM = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.71, 0.97);
+
+  const WATCH_FACE = (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.03, 0.22);
+  const SLEEVE_CUFF = (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.27, 0.50);
+  const FOREARM_SKIN = (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.56, 0.97);
+
+  // Helper to build a 6-vertex blade core cross-section ring at station z:
+  // Counterclockwise in XY when viewed from +Z: right-lower grind ridge -> right-upper shoulder ->
+  // spine-right -> spine-left -> left-upper shoulder -> left-lower grind ridge.
+  const bladeCoreSection = (z, halfThick, yBottom, yTop, spineBevel = 0.05) => {
+    const sx = Math.max(0.015, halfThick * 0.72);
+    const sy = Math.max(yBottom + 0.04, yTop - spineBevel);
+    return [
+      new Vec3(halfThick, yBottom, z),
+      new Vec3(halfThick, sy, z),
+      new Vec3(sx, yTop, z),
+      new Vec3(-sx, yTop, z),
+      new Vec3(-halfThick, sy, z),
+      new Vec3(-halfThick, yBottom, z),
+    ];
+  };
+
+  // Helper to build a 6-vertex hollow-ground razor cutting bevel ring at station z:
+  // Counterclockwise in XY: right-grind shoulder -> right-mid hollow -> razor apex right ->
+  // razor apex left -> left-mid hollow -> left-grind shoulder.
+  const razorBevelSection = (z, halfThick, yGrind, yEdge) => {
+    const midY = yGrind * 0.45 + yEdge * 0.55;
+    const midX = halfThick * 0.46;
+    const apexX = Math.min(0.016, halfThick * 0.15);
+    return [
+      new Vec3(halfThick, yGrind, z),
+      new Vec3(midX, midY, z),
+      new Vec3(apexX, yEdge, z),
+      new Vec3(-apexX, yEdge, z),
+      new Vec3(-midX, midY, z),
+      new Vec3(-halfThick, yGrind, z),
+    ];
+  };
+
+  // 1. Multi-station lofted ergonomic octagonal G10 / Kraton handle (z = -4.92 .. +0.12)
+  // Features palm swell in the center and 4 sculpted finger-groove valleys along -Y
+  const handleStations = [
+    { z: -4.92, cy: -0.08, hx: 0.64, hy: 0.92, ch: new Vec2(0.32, 0.28) },
+    { z: -4.35, cy: -0.06, hx: 0.58, hy: 0.84, ch: new Vec2(0.34, 0.30) },
+    { z: -3.72, cy: -0.10, hx: 0.63, hy: 0.88, ch: new Vec2(0.34, 0.30) },
+    { z: -3.15, cy: -0.02, hx: 0.68, hy: 0.96, ch: new Vec2(0.32, 0.28) },
+    { z: -2.45, cy: -0.08, hx: 0.70, hy: 0.92, ch: new Vec2(0.34, 0.30) },
+    { z: -1.82, cy: -0.01, hx: 0.68, hy: 0.98, ch: new Vec2(0.32, 0.28) },
+    { z: -1.22, cy: -0.09, hx: 0.64, hy: 0.88, ch: new Vec2(0.34, 0.30) },
+    { z: -0.58, cy: -0.03, hx: 0.62, hy: 0.94, ch: new Vec2(0.32, 0.28) },
+    { z: 0.12, cy: -0.02, hx: 0.66, hy: 0.96, ch: new Vec2(0.28, 0.26) },
+  ];
+  const handleRings = handleStations.map((s) =>
+    octagonalRing(new Vec3(0, s.cy, s.z), new Vec2(s.hx, s.hy), s.ch)
+  );
+
+  // 2. Multi-station octagonal skull-crusher pommel & carbide glass-breaker spike (z = -6.12 .. -4.92)
+  const pommelRings = [
+    octagonalRing(new Vec3(0, -0.10, -5.58), new Vec2(0.46, 0.68), new Vec2(0.34, 0.34)),
+    octagonalRing(new Vec3(0, -0.09, -5.22), new Vec2(0.72, 1.02), new Vec2(0.28, 0.28)),
+    octagonalRing(new Vec3(0, -0.08, -4.90), new Vec2(0.68, 0.96), new Vec2(0.28, 0.28)),
+  ];
+  const spikeRings = [
+    octagonalRing(new Vec3(0, -0.10, -6.14), new Vec2(0.05, 0.05), new Vec2(0.30, 0.30)),
+    octagonalRing(new Vec3(0, -0.10, -5.78), new Vec2(0.24, 0.26), new Vec2(0.30, 0.30)),
+    octagonalRing(new Vec3(0, -0.10, -5.56), new Vec2(0.34, 0.38), new Vec2(0.30, 0.30)),
+  ];
+
+  // 3. Multi-station aggressive swept tactical combat crossguard (z = 0.12 .. 0.76)
+  const guardRings = [
+    octagonalRing(new Vec3(0, -0.02, 0.12), new Vec2(0.76, 1.54), new Vec2(0.28, 0.20)),
+    octagonalRing(new Vec3(0, 0.00, 0.44), new Vec2(0.86, 1.68), new Vec2(0.24, 0.16)),
+    octagonalRing(new Vec3(0, 0.02, 0.76), new Vec2(0.72, 1.52), new Vec2(0.30, 0.22)),
+  ];
+
+  // 4. Forged satin blade flat & clip-point core lofted across 9 stations (z = 0.70 .. 11.45)
+  const bladeCoreRings = [
+    bladeCoreSection(0.70, 0.22, -0.36, 1.14, 0.04),
+    bladeCoreSection(1.42, 0.21, -0.20, 1.14, 0.04),
+    bladeCoreSection(2.80, 0.20, -0.22, 1.14, 0.05),
+    bladeCoreSection(4.60, 0.20, -0.24, 1.14, 0.05),
+    bladeCoreSection(6.55, 0.19, -0.22, 1.12, 0.05),
+    bladeCoreSection(7.95, 0.16, -0.16, 0.86, 0.06),
+    bladeCoreSection(9.25, 0.12, -0.06, 0.56, 0.05),
+    bladeCoreSection(10.45, 0.07, 0.02, 0.28, 0.03),
+    bladeCoreSection(11.45, 0.018, 0.08, 0.13, 0.01),
+  ];
+
+  // 5. Hollow-ground mirror-honed curved Bowie razor edge lofted across 9 stations (z = 1.38 .. 11.45)
+  const razorBevelRings = [
+    razorBevelSection(1.38, 0.20, -0.20, -0.82),
+    razorBevelSection(2.20, 0.20, -0.21, -0.94),
+    razorBevelSection(3.80, 0.20, -0.23, -0.98),
+    razorBevelSection(5.40, 0.20, -0.24, -1.05),
+    razorBevelSection(6.75, 0.19, -0.22, -1.02),
+    razorBevelSection(8.05, 0.16, -0.16, -0.86),
+    razorBevelSection(9.30, 0.12, -0.06, -0.56),
+    razorBevelSection(10.48, 0.07, 0.02, -0.20),
+    razorBevelSection(11.45, 0.016, 0.08, 0.06),
+  ];
+
+  // 6. Honed clip-point false-edge swedge bevel along the upper clip (z = 6.50 .. 11.45)
+  const swedgeBevelRings = [
+    bladeCoreSection(6.50, 0.17, 1.06, 1.16, 0.04),
+    bladeCoreSection(7.95, 0.14, 0.80, 0.96, 0.06),
+    bladeCoreSection(9.25, 0.10, 0.50, 0.66, 0.05),
+    bladeCoreSection(10.45, 0.06, 0.24, 0.36, 0.03),
+    bladeCoreSection(11.45, 0.015, 0.09, 0.14, 0.01),
+  ];
 
   const bladeParts = [
-    // 1. Tapered steel skull-crusher pommel cap & lanyard lug at rear of grip
+    // Skull-crusher octagonal pommel cap & tungsten-carbide breaker spike
+    { mesh: GUARD(loftRingsMesh(pommelRings, true)), offset: new Vec3(0, 0, 0) },
+    { mesh: BOLT(loftRingsMesh(spikeRings, true)), offset: new Vec3(0, 0, 0) },
+    // Lower pommel lanyard bail loop
     {
-      mesh: GUARD(prismMesh(new Vec3(1.38, 1.96, 0.92), new Vec3(0.92, 1.38, 0.68), new Vec2(0, -0.08))),
-      offset: new Vec3(0, -0.1, -5.25),
+      mesh: BOLT(transformMesh(hollowCylinderMesh(new Vec2(0.16, 0.28), new Vec2(0.24, 8)), new Vec3(0, 0, 0), new Vec3(0, Trigo.halfpi, 0))),
+      offset: new Vec3(0, -0.92, -5.38),
     },
-    // 2. Contoured ribbed Kraton tactical grip handle
+    // Contoured octagonal G10 / Kraton handle scales
+    { mesh: HANDLE(loftRingsMesh(handleRings, true)), offset: new Vec3(0, 0, 0) },
+    // Tactical combat crossguard center block
+    { mesh: GUARD(loftRingsMesh(guardRings, true)), offset: new Vec3(0, 0, 0) },
+    // Upper forward-swept aggressive quillon spur
     {
-      mesh: HANDLE(prismMesh(new Vec3(1.26, 1.88, 5.1), new Vec3(1.18, 1.72, 4.9), new Vec2(0, 0))),
-      offset: new Vec3(0, -0.05, -2.35),
+      mesh: GUARD(prismMesh(new Vec3(1.12, 0.54, 0.62), new Vec3(0.58, 0.54, 0.38), new Vec2(0, 0.26))),
+      offset: new Vec3(0, 1.66, 0.54),
     },
-    // 3. Heavy S-shaped steel crossguard (upper thumb ramp + lower index-finger guard hook)
+    // Lower forward-swept index-finger guard quillon hook
     {
-      mesh: GUARD(boxMesh(new Vec3(1.58, 3.55, 0.68))),
-      offset: new Vec3(0, 0.05, 0.42),
+      mesh: GUARD(prismMesh(new Vec3(0.62, 0.58, 0.42), new Vec3(1.18, 0.58, 0.62), new Vec2(0, -0.26))),
+      offset: new Vec3(0, -1.68, 0.70),
     },
+    // Ricasso bolster & curved finger-choil guard block ahead of crossguard (z = 0.72 .. 1.42)
     {
-      mesh: GUARD(boxMesh(new Vec3(1.36, 0.68, 0.88))),
-      offset: new Vec3(0, -1.55, 0.72),
+      mesh: BLADE_FLAT(prismMesh(new Vec3(0.46, 0.72, 0.68), new Vec3(0.44, 0.72, 0.52), new Vec2(0, -0.06))),
+      offset: new Vec3(0, -0.52, 1.04),
     },
-    // 4. Forged Bowie combat blade: thick flat spine, recessed blood fuller, razor lower belly, and clip-point tip
+    // Main forged satin blade flat & clip-point core
+    { mesh: BLADE_FLAT(loftRingsMesh(bladeCoreRings, true)), offset: new Vec3(0, 0, 0) },
+    // Hollow-ground mirror-honed curved Bowie razor edge
+    { mesh: RAZOR_EDGE(loftRingsMesh(razorBevelRings, true)), offset: new Vec3(0, 0, 0) },
+    // Upper clip-point honed swedge bevel
+    { mesh: RAZOR_EDGE(loftRingsMesh(swedgeBevelRings, true)), offset: new Vec3(0, 0, 0) },
+    // Recessed dark TiN blood-fuller channels & central fuller rib on both blade flats (z = 1.78 .. 7.25)
     {
-      mesh: BLADE(boxMesh(new Vec3(0.36, 1.48, 6.8))),
-      offset: new Vec3(0, 0.36, 4.15),
-    },
-    // Honed razor-sharp lower cutting edge belly
-    {
-      mesh: BLADE(prismMesh(new Vec3(0.34, 0.86, 6.8), new Vec3(0.08, 0.86, 6.4), new Vec2(0, 0.15))),
-      offset: new Vec3(0, -0.62, 4.15),
-    },
-    // Clip-point piercing Bowie tip tapering to a needle point at z = 10.6
-    {
-      mesh: BLADE(prismMesh(new Vec3(0.34, 1.85, 3.2), new Vec3(0.06, 0.24, 3.2), new Vec2(0, -0.25))),
-      offset: new Vec3(0, 0.02, 9.05),
-    },
-  ];
-
-  // Grip ribs around the handle & sawback serration teeth along the top spine
-  for (const gz of [-3.9, -2.9, -1.9, -0.9])
-    bladeParts.push({
-      mesh: HANDLE(boxMesh(new Vec3(1.36, 1.98, 0.42))),
-      offset: new Vec3(0, -0.05, gz),
-    });
-  for (let i = 0; i < 6; i++)
-    bladeParts.push({
-      mesh: BLADE(prismMesh(new Vec3(0.32, 0.36, 0.56), new Vec3(0.16, 0.36, 0.28), new Vec2(0, -0.1))),
-      offset: new Vec3(0, 1.24, 1.45 + i * 0.92),
-    });
-
-  // First-person marine right hand (leather combat glove + carbon-steel knuckles), olive cuff, and muscular right forearm
-  const armParts = [
-    // Right palm & armored dorsal metacarpal backplate gripping the right (+X) and top of the handle
-    {
-      mesh: GLOVE(prismMesh(new Vec3(1.18, 2.25, 4.35), new Vec3(1.02, 2.08, 4.05), new Vec2(0.08, -0.06))),
-      offset: new Vec3(0.68, -0.02, -2.35),
-    },
-    // Gloved right thumb braced forward along the upper spine ramp behind the crossguard
-    {
-      mesh: GLOVE(prismMesh(new Vec3(0.95, 0.92, 2.25), new Vec3(0.78, 0.78, 1.95), new Vec2(-0.12, 0.14))),
-      offset: new Vec3(0.42, 1.08, -0.95),
-    },
-    // Right wrist gauntlet, military olive-drab woven cuff & muscular bare right forearm extending to bottom-right screen
-    {
-      mesh: GLOVE(rotateMeshX(prismMesh(new Vec3(1.95, 1.92, 2.05), new Vec3(1.78, 1.82, 1.85), new Vec2(0.14, -0.08)), -0.32)),
-      offset: new Vec3(0.96, -0.42, -4.25),
+      mesh: FULLER(prismMesh(new Vec3(0.43, 0.48, 5.45), new Vec3(0.41, 0.48, 5.15), new Vec2(0, -0.08))),
+      offset: new Vec3(0, 0.44, 4.48),
     },
     {
-      mesh: CUFF(rotateMeshX(prismMesh(new Vec3(2.22, 2.12, 2.35), new Vec3(2.04, 1.98, 2.15), new Vec2(0.18, -0.1)), -0.32)),
-      offset: new Vec3(1.52, -0.92, -5.75),
-    },
-    {
-      mesh: ARM(rotateMeshX(prismMesh(new Vec3(2.48, 2.32, 3.6), new Vec3(2.24, 2.15, 3.3), new Vec2(0.24, -0.14)), -0.32)),
-      offset: new Vec3(2.32, -1.68, -8.05),
-    },
-    {
-      mesh: ARM(rotateMeshX(prismMesh(new Vec3(2.76, 2.54, 4.0), new Vec3(2.48, 2.32, 3.6), new Vec2(0.28, -0.16)), -0.32)),
-      offset: new Vec3(3.28, -2.62, -10.95),
-    },
-    {
-      mesh: ARM(rotateMeshX(prismMesh(new Vec3(2.98, 2.72, 4.3), new Vec3(2.76, 2.54, 4.0), new Vec2(0.32, -0.18)), -0.32)),
-      offset: new Vec3(4.35, -3.65, -14.05),
+      mesh: BLADE_FLAT(boxMesh(new Vec3(0.445, 0.10, 5.05))),
+      offset: new Vec3(0, 0.44, 4.45),
     },
   ];
 
-  // 4 curled leather-gloved fingers wrapping tightly around the left (-X) and underside of the knife handle
-  for (const fz of [-3.85, -2.85, -1.85, -0.85])
-    armParts.push(
-      {
-        mesh: GLOVE(boxMesh(new Vec3(0.95, 1.85, 0.78))),
-        offset: new Vec3(-0.62, -0.12, fz),
-      },
-      {
-        mesh: GLOVE(boxMesh(new Vec3(1.35, 0.78, 0.76))),
-        offset: new Vec3(-0.08, -1.02, fz),
-      }
-    );
+  // 6 ergonomic G10 grip checkering ribs between the finger grooves
+  for (const gz of [-4.28, -3.52, -2.76, -2.02, -1.28, -0.54])
+    bladeParts.push({
+      mesh: HANDLE(
+        loftRingsMesh(
+          [
+            octagonalRing(new Vec3(0, -0.05, gz - 0.13), new Vec2(0.67, 0.94), new Vec2(0.32, 0.28)),
+            octagonalRing(new Vec3(0, -0.05, gz), new Vec2(0.73, 0.99), new Vec2(0.30, 0.26)),
+            octagonalRing(new Vec3(0, -0.05, gz + 0.13), new Vec2(0.67, 0.94), new Vec2(0.32, 0.28)),
+          ],
+          false
+        )
+      ),
+      offset: new Vec3(0, 0, 0),
+    });
+
+  // 3 recessed stainless Torx screw bolts traversing the left and right G10 grip scales
+  for (const bz of [-3.88, -2.42, -0.96])
+    bladeParts.push({
+      mesh: BOLT(transformMesh(cylinderMesh(new Vec2(0.22, 1.48), 8), new Vec3(0, -0.02, bz), new Vec3(0, Trigo.halfpi, 0))),
+      offset: new Vec3(0, 0, 0),
+    });
+
+  // 5 fine anti-slip thumb jimping notches at the base of the blade spine (z = 0.78 .. 1.46)
+  for (let j = 0; j < 5; j++)
+    bladeParts.push({
+      mesh: GUARD(boxMesh(new Vec3(0.46, 0.12, 0.08))),
+      offset: new Vec3(0, 1.18, 0.80 + j * 0.15),
+    });
+
+  // 10 canted CNC double-row sawback spine teeth (z = 1.68 .. 6.36)
+  for (let i = 0; i < 10; i++) {
+    const sideShift = (i & 1) === 0 ? 0.04 : -0.04;
+    bladeParts.push({
+      mesh: SAWBACK(prismMesh(new Vec3(0.36, 0.30, 0.44), new Vec3(0.14, 0.30, 0.18), new Vec2(sideShift, -0.11))),
+      offset: new Vec3(0, 1.28, 1.72 + i * 0.50),
+    });
+  }
+
+  // ---- Shared High-Detail Spec-Ops Tactical Gloved Right Hand, Chronometer Watch & Sculpted Forearm ----
+  const armMesh = buildDetailedPlayerLimb({
+    side: 1,
+    hasWatch: true,
+    materials: {
+      CARBON: CARBON_ARMOR,
+      GLOVE: GLOVE_BODY,
+      PALM: GLOVE_PALM,
+      WATCH: WATCH_FACE,
+      CUFF: SLEEVE_CUFF,
+      ARM: FOREARM_SKIN,
+    },
+  });
 
   const pivots = {
     blade: new Vec3(0, 0, 0),
     arm: new Vec3(0, 0, 0),
   };
 
+  const bladeMesh = appendMesh(bladeParts);
   cachedKnifeParts = {
-    body: appendMesh([...bladeParts, ...armParts]),
-    blade: appendMesh(bladeParts),
-    arm: appendMesh(armParts),
+    body: appendMesh([
+      { mesh: bladeMesh, offset: new Vec3(0, 0, 0) },
+      { mesh: armMesh, offset: new Vec3(0, 0, 0) },
+    ]),
+    blade: bladeMesh,
+    arm: armMesh,
     pivots,
   };
   return cachedKnifeParts;
@@ -2001,10 +2994,9 @@ export function knifeMesh() {
   if (cachedKnifeMesh)
     return cachedKnifeMesh;
   const parts = knifeParts();
-  const liftY = 6.5;
+  const liftY = 7.5;
   cachedKnifeMesh = appendMesh([
-    { mesh: parts.blade, offset: new Vec3(0, liftY, 0) },
-    { mesh: parts.arm, offset: new Vec3(0, liftY, 0) },
+    { mesh: parts.blade, offset: new Vec3(0, liftY, -2.2) },
   ]);
   return cachedKnifeMesh;
 }
@@ -2088,3 +3080,620 @@ export function knifePose(
   out.rotation.setScalar(pitch, yaw, roll);
   return out;
 }
+
+// ---- Standalone Articulated First-Person Player Hands & Forearms Rig ----
+
+let cachedPlayerHandsAtlas = null;
+let cachedPlayerHandsParts = null;
+let cachedPlayerHandsMesh = null;
+
+function paintPlayerHandsArmorCell(canvas, cell) {
+  const S = ARSENAL_CELL;
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const cyl = Math.sin((x / S) * Trigo.pi);
+      if (y < 16) {
+        // 2x2 Twill Carbon-Fiber / Kevlar dorsal knuckle armor shell & titanium rivets
+        const weave = ((x + y) & 3) < 2 ? 14 : -11;
+        const rim = y === 0 || y === 15 || x < 2 || x >= S - 2 ? 20 : 0;
+        const spec = Math.pow(cyl, 2.8) * 56;
+        const v = Utils.clamp(46 + cyl * 30 + spec + weave + rim, 20, 156);
+        canvas.put(cell, x, y, v * 0.94, v * 0.98, v * 1.07);
+      } else {
+        // Dark Parkerized Titanium-Nitride watch bezel, strap buckle & tactical hardware
+        const spec = Math.pow(cyl, 2.4) * 52;
+        const seam = y === 16 || y === 31 ? -16 : 0;
+        const v = Utils.clamp(68 + cyl * 42 + spec + seam, 32, 178);
+        canvas.put(cell, x, y, v * 0.94, v * 0.99, v * 1.06);
+      }
+    }
+}
+
+export function playerHandsAtlas() {
+  if (cachedPlayerHandsAtlas)
+    return cachedPlayerHandsAtlas;
+  const canvas = createCanvas(ARSENAL_CELL, ARSENAL_FRAMES);
+  paintPlayerHandsArmorCell(canvas, ARSENAL_CELLS.body);
+  paintKnifeArm(canvas, ARSENAL_CELLS.barrel);
+  paintKnifeGlove(canvas, ARSENAL_CELLS.grip);
+  paintKnifeArm(canvas, ARSENAL_CELLS.muzzle);
+  cachedPlayerHandsAtlas = { width: canvas.width, height: canvas.height, data: canvas.data };
+  return cachedPlayerHandsAtlas;
+}
+
+function buildArticulatedHandSide(side, mats) {
+  const s = side >= 0 ? 1 : -1;
+  const { CARBON, BEZEL, GLOVE, PALM, WATCH, CUFF, ARM } = mats;
+
+  // 1. High-Poly Smooth-Shaded Forearm + Pleated Cuff + Wrist Gauntlet + Chronometer Watch (centered around wrist pivot 0,0,0)
+  const rawGauntletStations = [
+    { pos: new Vec3(0.0, 0.02, 0.15), radii: new Vec2(0.96, 0.66) },
+    { pos: new Vec3(0.16 * s, -0.18, -0.65), radii: new Vec2(1.00, 0.76) },
+    { pos: new Vec3(0.36 * s, -0.40, -1.35), radii: new Vec2(1.04, 0.86) },
+  ];
+  const wristGauntletRings = buildCurvedTubeRings(
+    subdivideStations(rawGauntletStations, 6),
+    18,
+    new Vec3(0, 1, 0),
+    (theta, u, out) => gauntletContourProfile(theta, u, out)
+  );
+
+  const rawCuffStations = [
+    { pos: new Vec3(0.34 * s, -0.38, -1.28), radii: new Vec2(1.10, 0.94) },
+    { pos: new Vec3(0.60 * s, -0.66, -2.08), radii: new Vec2(1.18, 1.06) },
+    { pos: new Vec3(0.88 * s, -0.94, -2.88), radii: new Vec2(1.24, 1.14) },
+    { pos: new Vec3(0.92 * s, -0.98, -2.98), radii: new Vec2(1.14, 1.04) },
+  ];
+  const sleeveCuffRings = buildCurvedTubeRings(
+    subdivideStations(rawCuffStations, 10),
+    20,
+    new Vec3(0, 1, 0),
+    (theta, u, out) => cuffPleatProfile(theta, u, out)
+  );
+
+  const rawForearmStations = [
+    { pos: new Vec3(0.86 * s, -0.92, -2.82), radii: new Vec2(1.10, 1.00) },
+    { pos: new Vec3(1.26 * s, -1.30, -4.15), radii: new Vec2(1.22, 1.12) },
+    { pos: new Vec3(1.72 * s, -1.76, -5.68), radii: new Vec2(1.34, 1.24) },
+    { pos: new Vec3(2.24 * s, -2.26, -7.35), radii: new Vec2(1.44, 1.34) },
+    { pos: new Vec3(2.74 * s, -2.76, -8.95), radii: new Vec2(1.50, 1.40) },
+    { pos: new Vec3(3.20 * s, -3.20, -10.35), radii: new Vec2(1.54, 1.44) },
+  ];
+  const fineForearmStations = subdivideStations(rawForearmStations, 14);
+  const forearmRings = buildCurvedTubeRings(
+    fineForearmStations,
+    20,
+    new Vec3(0, 1, 0),
+    (theta, u, out) => forearmAnatomyProfile(theta, u, s, out)
+  );
+
+  // Subtle 3D dorsal superficial vein running along the sculpted forearm
+  const veinStations = [];
+  for (let i = 1; i < fineForearmStations.length - 1; i++) {
+    const v = i / (fineForearmStations.length - 1);
+    const st = fineForearmStations[i];
+    const wave = Math.sin(v * Trigo.pi * 2.2) * 0.08 * s;
+    const vr = 0.055 * Math.sin(v * Trigo.pi);
+    veinStations.push({
+      pos: new Vec3(st.pos.x - st.radii.x * 0.18 * s + wave, st.pos.y + st.radii.y * 0.94, st.pos.z + 0.06),
+      radii: new Vec2(vr * 1.25, vr * 0.85),
+    });
+  }
+  const forearmVeinRings = buildCurvedTubeRings(veinStations, 8, new Vec3(0, 1, 0));
+
+  const forearmParts = [
+    { mesh: GLOVE(loftRingsMesh(wristGauntletRings, true, true)), offset: new Vec3(0, 0, 0) },
+    { mesh: CUFF(loftRingsMesh(sleeveCuffRings, true, true)), offset: new Vec3(0, 0, 0) },
+    { mesh: ARM(loftRingsMesh(forearmRings, true, true)), offset: new Vec3(0, 0, 0) },
+    { mesh: ARM(loftRingsMesh(forearmVeinRings, true, true)), offset: new Vec3(0, 0, 0) },
+  ];
+
+  if (s > 0) {
+    // High-Detail Right-Wrist 3D Tactical Digital Chronometer Watch seated on dorsal (+Y) wrist
+    const watchStrapRings = buildCurvedTubeRings(
+      subdivideStations(
+        [
+          { pos: new Vec3(0.20 * s, -0.22, -0.75), radii: new Vec2(1.05, 0.82) },
+          { pos: new Vec3(0.30 * s, -0.34, -1.18), radii: new Vec2(1.08, 0.88) },
+        ],
+        4
+      ),
+      18,
+      new Vec3(0, 1, 0),
+      (theta, u, out) => gauntletContourProfile(theta, u, out)
+    );
+    const watchCenter = new Vec3(0.24 * s, 0.56, -0.92);
+    const watchEuler = new Vec3(1.32, 0.18 * s, -0.12 * s);
+    forearmParts.push(
+      { mesh: CUFF(loftRingsMesh(watchStrapRings, true, true)), offset: new Vec3(0, 0, 0) },
+      {
+        mesh: BEZEL(transformMesh(cylinderMesh(new Vec2(0.58, 0.28), 20), watchCenter, watchEuler)),
+        offset: new Vec3(0, 0, 0),
+      },
+      {
+        mesh: BEZEL(transformMesh(hollowCylinderMesh(new Vec2(0.45, 0.59), new Vec2(0.14, 20)), watchCenter, watchEuler)),
+        offset: new Vec3(0, 0, 0),
+      },
+      {
+        mesh: WATCH(
+          transformMesh(
+            cylinderMesh(new Vec2(0.45, 0.33), 20),
+            new Vec3(0.24 * s, 0.58, -0.91),
+            watchEuler
+          )
+        ),
+        offset: new Vec3(0, 0, 0),
+      },
+      {
+        mesh: BEZEL(transformMesh(boxMesh(new Vec3(0.62, 0.20, 1.32)), watchCenter, watchEuler)),
+        offset: new Vec3(0, 0, 0),
+      },
+      {
+        mesh: BEZEL(
+          transformMesh(
+            cylinderMesh(new Vec2(0.11, 0.24), 10),
+            new Vec3(0.56 * s, 0.56, -0.92),
+            new Vec3(watchEuler.x, watchEuler.y, watchEuler.z + Trigo.halfpi)
+          )
+        ),
+        offset: new Vec3(0, 0, 0),
+      }
+    );
+  } else {
+    // Left-wrist ballistic nylon buckle strap with smooth-shaded contour
+    const leftStrapRings = buildCurvedTubeRings(
+      subdivideStations(
+        [
+          { pos: new Vec3(0.20 * s, -0.22, -0.78), radii: new Vec2(1.04, 0.82) },
+          { pos: new Vec3(0.28 * s, -0.32, -1.12), radii: new Vec2(1.07, 0.86) },
+        ],
+        4
+      ),
+      18,
+      new Vec3(0, 1, 0),
+      (theta, u, out) => gauntletContourProfile(theta, u, out)
+    );
+    forearmParts.push({
+      mesh: BEZEL(loftRingsMesh(leftStrapRings, true, true)),
+      offset: new Vec3(0, 0, 0),
+    });
+  }
+
+  // 2. High-Poly 9-Station x 18-Segment Broad Open Metacarpal Hand Chassis + Dorsal (+Y) Carbon Plate + Palmar (-Y) Clarino Pads + 4 Distal MCP Domes
+  const rawHandStations = [
+    { pos: new Vec3(0.0, 0.04, -0.25), radii: new Vec2(0.96, 0.62) },
+    { pos: new Vec3(0.02 * s, 0.06, 0.85), radii: new Vec2(1.16, 0.64) },
+    { pos: new Vec3(0.04 * s, 0.06, 2.05), radii: new Vec2(1.28, 0.60) },
+    { pos: new Vec3(0.02 * s, 0.04, 3.22), radii: new Vec2(1.30, 0.52) },
+  ];
+  const dorsalHandRings = buildCurvedTubeRings(
+    subdivideStations(rawHandStations, 9),
+    18,
+    new Vec3(0, 1, 0),
+    (theta, u, out) => {
+      const cosT = Math.cos(theta);
+      const sinT = Math.sin(theta);
+      // With tangent=(0,0,1) and up=(0,1,0): right=(-1,0,0), so cosT*s > 0 is inner radial (-X*s) thumb side, sinT > 0 is dorsal (+Y) top
+      const radialSide = cosT * s;
+      const dorsalArch = sinT > 0 ? 1.0 + 0.08 * Math.sin(u * Trigo.pi) * (1.0 - 0.16 * radialSide) : 1.0;
+      const tendonFlutes = sinT > 0.25 ? 0.03 * Math.cos(theta * 4) * Math.sin(u * Trigo.pi) : 0.0;
+      const palmarHollow =
+        sinT < -0.15
+          ? -0.09 * Math.sin(u * Trigo.pi) * Math.max(0, 1.0 - 1.5 * cosT * cosT) +
+            0.08 * Math.max(0, radialSide) * (1.0 - u * 0.45) +
+            0.06 * Math.max(0, -radialSide)
+          : 0.0;
+      const knuckleSpread = 1.0 + 0.08 * Math.pow(u, 1.4);
+      out.setScalar(knuckleSpread, dorsalArch + tendonFlutes + palmarHollow);
+    }
+  );
+
+  // Molded twill carbon-fiber dorsal armor shield on the top (+Y) back of the hand
+  const rawCarbonStations = [
+    { pos: new Vec3(0.02 * s, 0.44, 0.25), radii: new Vec2(0.84, 0.18) },
+    { pos: new Vec3(0.04 * s, 0.48, 1.48), radii: new Vec2(1.02, 0.22) },
+    { pos: new Vec3(0.02 * s, 0.42, 2.68), radii: new Vec2(1.06, 0.18) },
+  ];
+  const carbonPlateRings = buildCurvedTubeRings(
+    subdivideStations(rawCarbonStations, 7),
+    16,
+    new Vec3(0, 1, 0),
+    (theta, u, out) => {
+      const ridge = 1.0 + 0.04 * Math.cos(theta * 4);
+      const arch = 1.0 + 0.10 * Math.sin(u * Trigo.pi);
+      out.setScalar(arch * ridge, ridge);
+    }
+  );
+
+  // Dual-zone Clarino synthetic-suede palm cushions on the bottom (-Y) palmar surface
+  const rawPalmHeelStations = [
+    { pos: new Vec3(0.06 * s, -0.40, 0.05), radii: new Vec2(0.80, 0.22) },
+    { pos: new Vec3(0.08 * s, -0.44, 1.15), radii: new Vec2(0.94, 0.25) },
+    { pos: new Vec3(0.06 * s, -0.40, 2.05), radii: new Vec2(0.90, 0.20) },
+  ];
+  const palmHeelRings = buildCurvedTubeRings(
+    subdivideStations(rawPalmHeelStations, 6),
+    14,
+    new Vec3(0, 1, 0),
+    (_theta, u, out) => {
+      const swell = 1.0 + 0.10 * Math.sin(u * Trigo.pi);
+      out.setScalar(swell, swell);
+    }
+  );
+
+  const rawPalmCallousStations = [
+    { pos: new Vec3(0.02 * s, -0.34, 2.15), radii: new Vec2(0.98, 0.18) },
+    { pos: new Vec3(0.02 * s, -0.36, 2.68), radii: new Vec2(1.06, 0.22) },
+    { pos: new Vec3(0.02 * s, -0.30, 3.12), radii: new Vec2(1.02, 0.17) },
+  ];
+  const palmCallousRings = buildCurvedTubeRings(
+    subdivideStations(rawPalmCallousStations, 5),
+    14,
+    new Vec3(0, 1, 0)
+  );
+
+  const handParts = [
+    { mesh: GLOVE(loftRingsMesh(dorsalHandRings, true, true)), offset: new Vec3(0, 0, 0) },
+    { mesh: CARBON(loftRingsMesh(carbonPlateRings, true, true)), offset: new Vec3(0, 0, 0) },
+    { mesh: PALM(loftRingsMesh(palmHeelRings, true, true)), offset: new Vec3(0, 0, 0) },
+    { mesh: PALM(loftRingsMesh(palmCallousRings, true, true)), offset: new Vec3(0, 0, 0) },
+  ];
+
+  // 4 Distal MCP Knuckle specs spread across X from inner radial (Index = -0.96*s) to outer ulnar (Pinky = +0.96*s)
+  const fingerSpecs = [
+    { x: -0.96 * s, y: 0.06, z: 3.18, rScale: 0.96, splayX: -0.12 * s, len: 3.25 },
+    { x: -0.32 * s, y: 0.10, z: 3.34, rScale: 1.04, splayX: -0.02 * s, len: 3.55 },
+    { x: 0.34 * s, y: 0.06, z: 3.16, rScale: 0.98, splayX: 0.05 * s, len: 3.30 },
+    { x: 0.96 * s, y: -0.02, z: 2.86, rScale: 0.86, splayX: 0.14 * s, len: 2.68 },
+  ];
+
+  for (const f of fingerSpecs) {
+    const kR = f.rScale;
+    const knuckleDomeRings = buildCurvedTubeRings(
+      subdivideStations(
+        [
+          { pos: new Vec3(f.x, f.y + 0.24 * kR, f.z - 0.32 * kR), radii: new Vec2(0.24 * kR, 0.18 * kR) },
+          { pos: new Vec3(f.x, f.y + 0.34 * kR, f.z), radii: new Vec2(0.35 * kR, 0.26 * kR) },
+          { pos: new Vec3(f.x, f.y + 0.24 * kR, f.z + 0.32 * kR), radii: new Vec2(0.24 * kR, 0.18 * kR) },
+        ],
+        5
+      ),
+      14,
+      new Vec3(0, 1, 0)
+    );
+    handParts.push({
+      mesh: CARBON(loftRingsMesh(knuckleDomeRings, true, true)),
+      offset: new Vec3(0, 0, 0),
+    });
+  }
+
+  // 3. High-Poly Smooth-Shaded Open 3-Phalange Thumb rooted on the inner radial (-X*s) thenar base
+  const thumbPivot = new Vec3(-0.92 * s, -0.08, 0.92);
+  const rawThumbStations = [
+    { pos: new Vec3(0.28 * s, -0.04, -0.45), radii: new Vec2(0.54, 0.50) },
+    { pos: new Vec3(0.0, 0.0, 0.0), radii: new Vec2(0.48, 0.45) },
+    { pos: new Vec3(-0.52 * s, -0.04, 0.82), radii: new Vec2(0.43, 0.40) },
+    { pos: new Vec3(-0.92 * s, -0.06, 1.58), radii: new Vec2(0.41, 0.39) },
+    { pos: new Vec3(-1.18 * s, -0.04, 2.22), radii: new Vec2(0.36, 0.34) },
+    { pos: new Vec3(-1.30 * s, -0.02, 2.68), radii: new Vec2(0.22, 0.20) },
+  ];
+  const thumbStations = subdivideStations(rawThumbStations, 11);
+  const thumbAllRings = buildCurvedTubeRings(
+    thumbStations,
+    16,
+    new Vec3(0, 1, 0),
+    (theta, u, out) => fingerPhalanxProfile(theta, u, out)
+  );
+  const thumbArmorStations = [2, 3, 4, 5].map((idx) => {
+    const st = thumbStations[idx];
+    return {
+      pos: new Vec3(st.pos.x, st.pos.y + 0.18, st.pos.z),
+      radii: new Vec2(st.radii.x * 0.64, st.radii.y * 0.34),
+    };
+  });
+  const thumbArmorRings = buildCurvedTubeRings(thumbArmorStations, 12, new Vec3(0, 1, 0));
+
+  const thumbPadStations = [6, 7, 8, 9].map((idx) => {
+    const st = thumbStations[idx];
+    return {
+      pos: new Vec3(st.pos.x, st.pos.y - 0.15, st.pos.z),
+      radii: new Vec2(st.radii.x * 0.72, st.radii.y * 0.36),
+    };
+  });
+  const thumbPadRings = buildCurvedTubeRings(thumbPadStations, 12, new Vec3(0, 1, 0));
+
+  const thumbMesh = appendMesh([
+    { mesh: GLOVE(loftRingsMesh(thumbAllRings, true, true)), offset: new Vec3(0, 0, 0) },
+    { mesh: CARBON(loftRingsMesh(thumbArmorRings, true, true)), offset: new Vec3(0, 0, 0) },
+    { mesh: PALM(loftRingsMesh(thumbPadRings, true, true)), offset: new Vec3(0, 0, 0) },
+  ]);
+
+  // Helper to build a high-poly 12-station x 16-segment open 3-phalange finger extending forward along +Z from its MCP knuckle dome
+  const buildFingerLocal = (f, pivot) => {
+    const fw = 0.36 * f.rScale;
+    const ft = 0.33 * f.rScale;
+    const toLocal = (wx, wy, wz) => new Vec3(wx - pivot.x, wy - pivot.y, wz - pivot.z);
+    const L = f.len;
+    const sx = f.splayX;
+    const rawFingerStations = [
+      { pos: toLocal(f.x, f.y + 0.04, f.z - 0.34), radii: new Vec2(fw * 1.06, ft * 1.04) },
+      { pos: toLocal(f.x, f.y + 0.02, f.z), radii: new Vec2(fw * 1.02, ft * 1.00) },
+      { pos: toLocal(f.x + sx * 0.22, f.y - 0.02, f.z + L * 0.24), radii: new Vec2(fw * 0.99, ft * 0.98) },
+      { pos: toLocal(f.x + sx * 0.45, f.y - 0.08, f.z + L * 0.46), radii: new Vec2(fw * 1.03, ft * 1.04) },
+      { pos: toLocal(f.x + sx * 0.66, f.y - 0.16, f.z + L * 0.66), radii: new Vec2(fw * 0.96, ft * 0.95) },
+      { pos: toLocal(f.x + sx * 0.82, f.y - 0.24, f.z + L * 0.80), radii: new Vec2(fw * 0.94, ft * 0.93) },
+      { pos: toLocal(f.x + sx * 0.94, f.y - 0.31, f.z + L * 0.92), radii: new Vec2(fw * 0.82, ft * 0.80) },
+      { pos: toLocal(f.x + sx, f.y - 0.35, f.z + L), radii: new Vec2(fw * 0.52, ft * 0.48) },
+    ];
+    const fineFingerStations = subdivideStations(rawFingerStations, 12);
+    const rings = buildCurvedTubeRings(
+      fineFingerStations,
+      16,
+      new Vec3(0, 1, 0),
+      (theta, u, out) => fingerPhalanxProfile(theta, u, out)
+    );
+    const phalanxArmorStations = [2, 3, 4, 5, 6].map((idx) => {
+      const st = fineFingerStations[idx];
+      return {
+        pos: new Vec3(st.pos.x, st.pos.y + 0.15 * f.rScale, st.pos.z),
+        radii: new Vec2(st.radii.x * 0.68, st.radii.y * 0.34),
+      };
+    });
+    const phalanxArmorRings = buildCurvedTubeRings(phalanxArmorStations, 12, new Vec3(0, 1, 0));
+    const padStations = [3, 4, 5, 6, 7, 8, 9, 10].map((idx) => {
+      const st = fineFingerStations[idx];
+      return {
+        pos: new Vec3(st.pos.x, st.pos.y - 0.14 * f.rScale, st.pos.z),
+        radii: new Vec2(st.radii.x * 0.76, st.radii.y * 0.36),
+      };
+    });
+    const padRings = buildCurvedTubeRings(padStations, 10, new Vec3(0, 1, 0));
+    return [
+      { mesh: GLOVE(loftRingsMesh(rings, true, true)), offset: new Vec3(0, 0, 0) },
+      { mesh: CARBON(loftRingsMesh(phalanxArmorRings, true, true)), offset: new Vec3(0, 0, 0) },
+      { mesh: PALM(loftRingsMesh(padRings, true, true)), offset: new Vec3(0, 0, 0) },
+    ];
+  };
+
+  const indexPivot = new Vec3(fingerSpecs[0].x, fingerSpecs[0].y, fingerSpecs[0].z);
+  const indexMesh = appendMesh(buildFingerLocal(fingerSpecs[0], indexPivot));
+
+  const fingersPivot = new Vec3(fingerSpecs[2].x, fingerSpecs[2].y, fingerSpecs[2].z);
+  const lowerFingerParts = [
+    ...buildFingerLocal(fingerSpecs[1], fingersPivot),
+    ...buildFingerLocal(fingerSpecs[2], fingersPivot),
+    ...buildFingerLocal(fingerSpecs[3], fingersPivot),
+  ];
+  const fingersMesh = appendMesh(lowerFingerParts);
+
+  return {
+    forearm: appendMesh(forearmParts),
+    hand: appendMesh(handParts),
+    thumb: thumbMesh,
+    index: indexMesh,
+    fingers: fingersMesh,
+    pivots: {
+      hand: new Vec3(0, 0, 0),
+      thumb: thumbPivot,
+      index: indexPivot,
+      fingers: fingersPivot,
+    },
+  };
+}
+
+/**
+ * Returns the standalone articulated 3D First-Person Player Hands & Forearms rig:
+ * - `leftForearm`, `leftHand`, `leftThumb`, `leftIndex`, `leftFingers`
+ * - `rightForearm`, `rightHand`, `rightThumb`, `rightIndex`, `rightFingers`
+ * Enables inspecting and posing the shared high-detail player hands across every weapon grip in BlendR and DoomR.
+ */
+export function playerHandsParts() {
+  if (cachedPlayerHandsParts)
+    return cachedPlayerHandsParts;
+
+  const mats = {
+    CARBON: (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.03, 0.28),
+    BEZEL: (m) => remapCellSub(m, ARSENAL_CELLS.body, 0.53, 0.95),
+    GLOVE: (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.33, 0.66),
+    PALM: (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.71, 0.97),
+    WATCH: (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.03, 0.22),
+    CUFF: (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.27, 0.50),
+    ARM: (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.56, 0.97),
+  };
+
+  const left = buildArticulatedHandSide(-1, mats);
+  const right = buildArticulatedHandSide(1, mats);
+
+  const pivots = {
+    leftForearm: new Vec3(-4.2, -1.8, 1.5),
+    leftHand: new Vec3().copy(left.pivots.hand),
+    leftThumb: new Vec3().copy(left.pivots.thumb),
+    leftIndex: new Vec3().copy(left.pivots.index),
+    leftFingers: new Vec3().copy(left.pivots.fingers),
+    rightForearm: new Vec3(4.2, -1.8, 1.5),
+    rightHand: new Vec3().copy(right.pivots.hand),
+    rightThumb: new Vec3().copy(right.pivots.thumb),
+    rightIndex: new Vec3().copy(right.pivots.index),
+    rightFingers: new Vec3().copy(right.pivots.fingers),
+  };
+
+  const leftArmCombined = appendMesh([
+    { mesh: left.forearm, offset: new Vec3(0, 0, 0) },
+    { mesh: left.hand, offset: pivots.leftHand },
+    { mesh: left.thumb, offset: pivots.leftThumb },
+    { mesh: left.index, offset: pivots.leftIndex },
+    { mesh: left.fingers, offset: pivots.leftFingers },
+  ]);
+
+  const rightArmCombined = appendMesh([
+    { mesh: right.forearm, offset: new Vec3(0, 0, 0) },
+    { mesh: right.hand, offset: pivots.rightHand },
+    { mesh: right.thumb, offset: pivots.rightThumb },
+    { mesh: right.index, offset: pivots.rightIndex },
+    { mesh: right.fingers, offset: pivots.rightFingers },
+  ]);
+
+  cachedPlayerHandsParts = {
+    body: appendMesh([
+      { mesh: leftArmCombined, offset: pivots.leftForearm },
+      { mesh: rightArmCombined, offset: pivots.rightForearm },
+    ]),
+    leftArm: leftArmCombined,
+    rightArm: rightArmCombined,
+    leftForearm: left.forearm,
+    leftHand: left.hand,
+    leftThumb: left.thumb,
+    leftIndex: left.index,
+    leftFingers: left.fingers,
+    rightForearm: right.forearm,
+    rightHand: right.hand,
+    rightThumb: right.thumb,
+    rightIndex: right.index,
+    rightFingers: right.fingers,
+    pivots,
+  };
+  return cachedPlayerHandsParts;
+}
+
+export function playerHandsMesh() {
+  if (cachedPlayerHandsMesh)
+    return cachedPlayerHandsMesh;
+  const parts = playerHandsParts();
+  cachedPlayerHandsMesh = appendMesh([
+    { mesh: parts.body, offset: new Vec3(0, 7.2, 0) },
+  ]);
+  return cachedPlayerHandsMesh;
+}
+
+/**
+ * Computes the allocation-free 3D pose for the standalone First-Person Player Hands & Forearms rig
+ * across all DoomR weapon grip configurations (`'idle'`, `'knife'`, `'chainsaw'`, `'shotgun'`, `'chaingun'`, `'rocket'`).
+ */
+export function playerHandsPose(
+  { time = 0, bob = 0, moving = 0, grip = 'idle' } = {},
+  target = null
+) {
+  const out = target ?? {
+    offset: new Vec3(),
+    rotation: new Vec3(),
+    leftForearmPos: new Vec3(),
+    leftForearmRot: new Vec3(),
+    leftHandRot: new Vec3(),
+    leftThumbRot: new Vec3(),
+    leftIndexRot: new Vec3(),
+    leftFingersRot: new Vec3(),
+    rightForearmPos: new Vec3(),
+    rightForearmRot: new Vec3(),
+    rightHandRot: new Vec3(),
+    rightThumbRot: new Vec3(),
+    rightIndexRot: new Vec3(),
+    rightFingersRot: new Vec3(),
+  };
+
+  const { pivots } = playerHandsParts();
+  const breathe = Math.sin(time * 2.4) * 0.05;
+  const flex = Math.sin(time * 3.2) * 0.10;
+  const walkSway = Math.sin(bob) * 0.55 * moving;
+  const walkBob = Math.abs(Math.cos(bob)) * 0.35 * moving;
+
+  out.offset.setScalar(walkSway * 0.6, -5.2 - walkBob + breathe, 11.5);
+  out.rotation.setScalar(-0.12, 0, -walkSway * 0.05);
+
+  out.leftForearmPos.copy(pivots.leftForearm);
+  out.rightForearmPos.copy(pivots.rightForearm);
+  out.leftForearmRot.setScalar(0, 0, 0);
+  out.rightForearmRot.setScalar(0, 0, 0);
+  out.leftHandRot.setScalar(0, 0, 0);
+  out.rightHandRot.setScalar(0, 0, 0);
+  out.leftThumbRot.setScalar(0, 0, 0);
+  out.rightThumbRot.setScalar(0, 0, 0);
+  out.leftIndexRot.setScalar(0, 0, 0);
+  out.rightIndexRot.setScalar(0, 0, 0);
+  out.leftFingersRot.setScalar(0, 0, 0);
+  out.rightFingersRot.setScalar(0, 0, 0);
+
+  if (grip === 'knife') {
+    // Right hand forward in saber-grip on M9 bayonet handle; left hand in open CQC parrying guard stance
+    out.leftForearmPos.setScalar(-4.6, -3.2 + breathe * 1.5, -0.8);
+    out.leftForearmRot.setScalar(-0.32, 0.28, -0.35);
+    out.leftHandRot.setScalar(0.12, 0.15, -0.45);
+    out.leftThumbRot.setScalar(0.10, -0.14, 0.12);
+    out.leftIndexRot.setScalar(0.22, 0, 0);
+    out.leftFingersRot.setScalar(0.32, 0, 0);
+
+    out.rightForearmPos.setScalar(2.4, -1.1 + Math.sin(time * 4.0) * 0.18, 2.8);
+    out.rightForearmRot.setScalar(-0.48, 0.18, -1.25);
+    out.rightHandRot.setScalar(0.08, 0.05, 0.04);
+    out.rightThumbRot.setScalar(0.24, 0.28, -0.18);
+    out.rightIndexRot.setScalar(1.18, 0, 0);
+    out.rightFingersRot.setScalar(1.28, 0, 0);
+  } else if (grip === 'chainsaw') {
+    // Left hand overhand on top tubular handlebar; right hand on rear throttle trigger grip with 2-stroke vibration
+    const buzz = Math.sin(time * 52) * 0.06;
+    out.leftForearmPos.setScalar(-3.2, 0.85 + buzz, 2.6);
+    out.leftForearmRot.setScalar(0.18, 0.12, -0.18);
+    out.leftHandRot.setScalar(0.06, 0, -0.12);
+    out.leftIndexRot.setScalar(1.12, 0, 0);
+    out.leftFingersRot.setScalar(1.22, 0, 0);
+
+    out.rightForearmPos.setScalar(1.8, -2.1 - buzz, -1.8);
+    out.rightForearmRot.setScalar(-0.15, -0.08, -1.12);
+    out.rightIndexRot.setScalar(0.75 + Math.sin(time * 8.0) * 0.14, 0, 0);
+    out.rightFingersRot.setScalar(1.20, 0, 0);
+  } else if (grip === 'shotgun') {
+    // Left hand cradling the underside of the walnut pump forend & cycling backward/forward; right hand on stock wrist
+    const pumpCycle = Math.max(0, Math.sin(time * 3.0));
+    out.leftForearmPos.setScalar(-1.4, -1.25, 4.8 - pumpCycle * 3.6);
+    out.leftForearmRot.setScalar(0.08, -0.06, -2.65);
+    out.leftHandRot.setScalar(0.05, 0, 0.12 * pumpCycle);
+    out.leftThumbRot.setScalar(0.18, -0.22, 0.15);
+    out.leftIndexRot.setScalar(0.95, 0, 0);
+    out.leftFingersRot.setScalar(1.08, 0, 0);
+
+    out.rightForearmPos.setScalar(1.6, -2.45, -3.2);
+    out.rightForearmRot.setScalar(-0.22, -0.05, -1.18);
+    out.rightIndexRot.setScalar(0.68, 0, 0);
+    out.rightFingersRot.setScalar(1.18, 0, 0);
+  } else if (grip === 'chaingun') {
+    // Left hand overhand on top crossbar handle; right hand on rear spade trigger grip
+    const kick = Math.sin(time * 36) * 0.12;
+    out.leftForearmPos.setScalar(-1.8, 1.45, 2.2 - kick);
+    out.leftForearmRot.setScalar(0.24, 0.10, -0.15);
+    out.leftIndexRot.setScalar(1.15, 0, 0);
+    out.leftFingersRot.setScalar(1.24, 0, 0);
+
+    out.rightForearmPos.setScalar(2.2, -1.65, -2.4 - kick);
+    out.rightForearmRot.setScalar(-0.12, -0.10, -1.15);
+    out.rightIndexRot.setScalar(0.72, 0, 0);
+    out.rightFingersRot.setScalar(1.22, 0, 0);
+  } else if (grip === 'rocket') {
+    // Right hand on forward pistol trigger grip; left hand stabilizing forward under-barrel grip
+    out.leftForearmPos.setScalar(-2.4, -2.65, 3.8);
+    out.leftForearmRot.setScalar(-0.08, 0.16, -2.25);
+    out.leftIndexRot.setScalar(1.02, 0, 0);
+    out.leftFingersRot.setScalar(1.14, 0, 0);
+
+    out.rightForearmPos.setScalar(1.4, -2.85, 0.4);
+    out.rightForearmRot.setScalar(-0.14, -0.06, -1.18);
+    out.rightIndexRot.setScalar(0.68, 0, 0);
+    out.rightFingersRot.setScalar(1.18, 0, 0);
+  } else {
+    // Open-hand inspection pose: both hands open with fingers extended forward along +Z and thumbs on inner radial sides
+    out.leftForearmPos.setScalar(-3.8, -1.6 + breathe, 1.8);
+    out.leftForearmRot.setScalar(-0.18 + breathe, 0.14, -0.22);
+    out.leftHandRot.setScalar(Math.sin(time * 2.0) * 0.08, 0.05, -0.10);
+    out.leftThumbRot.setScalar(0.06, -0.08 + flex * 0.3, 0.08);
+    out.leftIndexRot.setScalar(0.10 + flex * 0.6, 0, 0);
+    out.leftFingersRot.setScalar(0.14 + flex * 0.8, 0, 0);
+
+    out.rightForearmPos.setScalar(3.8, -1.6 + breathe, 1.8);
+    out.rightForearmRot.setScalar(-0.18 + breathe, -0.14, 0.22);
+    out.rightHandRot.setScalar(Math.cos(time * 2.0) * 0.08, -0.05, 0.10);
+    out.rightThumbRot.setScalar(0.06, 0.08 - flex * 0.3, -0.08);
+    out.rightIndexRot.setScalar(0.10 - flex * 0.6, 0, 0);
+    out.rightFingersRot.setScalar(0.14 - flex * 0.8, 0, 0);
+  }
+
+  return out;
+}
+

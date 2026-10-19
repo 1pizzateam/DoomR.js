@@ -12,8 +12,24 @@ export const PILLAR = 2;
 export const DOOR = 3;
 export const EXIT = 4;
 
+export const DIAG_NONE = 0;
+export const DIAG_NW = 1;
+export const DIAG_NE = 2;
+export const DIAG_SW = 3;
+export const DIAG_SE = 4;
+
 const SOLIDS = {
   '#': { kind: WALL, height: 64 },
+  '/': { kind: WALL, height: 64, diag: '/' },
+  '\\': { kind: WALL, height: 64, diag: '\\' },
+  '◤': { kind: WALL, height: 64, diag: DIAG_NW },
+  '◥': { kind: WALL, height: 64, diag: DIAG_NE },
+  '◣': { kind: WALL, height: 64, diag: DIAG_SW },
+  '◢': { kind: WALL, height: 64, diag: DIAG_SE },
+  '┌': { kind: WALL, height: 64, diag: DIAG_NW },
+  '┐': { kind: WALL, height: 64, diag: DIAG_NE },
+  '└': { kind: WALL, height: 64, diag: DIAG_SW },
+  '┘': { kind: WALL, height: 64, diag: DIAG_SE },
   o: { kind: PILLAR, height: 26 },
   D: { kind: DOOR, height: 64 },
   S: { kind: DOOR, height: 64, secret: true },
@@ -66,6 +82,7 @@ export class Level {
 
     const total = this.width * this.rowCount;
     this.kind = new Uint8Array(total);
+    this.diag = new Uint8Array(total);
     this.slime = new Uint8Array(total);
     this.teleporter = new Uint8Array(total);
     this.baseHeight = new Float32Array(total);
@@ -186,14 +203,21 @@ export class Level {
     const stack = giants.map((giant) => Math.floor(giant.pos.y / TILE) * width + Math.floor(giant.pos.x / TILE));
     while (stack.length) {
       const idx = stack.pop();
-      if (arena.has(idx) || this.kind[idx] !== FLOOR)
+      if (arena.has(idx) || (this.kind[idx] !== FLOOR && this.kind[idx] !== PILLAR))
         continue;
       arena.add(idx);
       const x = idx % width;
       const y = (idx - x) / width;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        if (this.inBounds(x + dx, y + dy))
-          stack.push((y + dy) * width + x + dx);
+      for (let d = 0; d < 4; d++) {
+        const nx = x + DX[d];
+        const ny = y + DY[d];
+        if (!this.inBounds(nx, ny))
+          continue;
+        const nidx = ny * width + nx;
+        if (this.diag[nidx] > 0 && !this.hasCardinalFace(nidx, d ^ 1))
+          arena.add(nidx);
+        else
+          stack.push(nidx);
       }
     }
     return arena;
@@ -216,8 +240,10 @@ export class Level {
           this.kind[idx] = solid.kind;
           this.baseHeight[idx] = solid.height;
           this.heights[idx] = solid.height;
+          if (typeof solid.diag === 'number')
+            this.diag[idx] = solid.diag;
           if (solid.kind === DOOR)
-            this.doors.set(idx, { idx, x, y, center: this.center(x, y), open: 0, target: 0, timer: 0, secret: !!solid.secret, lock: solid.lock ?? null, revealed: false, body: null });
+            this.doors.set(idx, { idx, x, y, center: this.center(x, y), open: 0, target: 0, timer: 0, secret: !!solid.secret, lock: solid.lock ?? null, revealed: false, alongY: false, body: null });
           if (solid.kind === EXIT)
             this.exits.push(this.center(x, y));
         } else if (char === 'P')
@@ -241,6 +267,30 @@ export class Level {
           throw new Error(`${this.name}: unknown tile "${char}" at ${x},${y}`);
       }
     }
+    const solidWall = (x, y) => this.inBounds(x, y) && (this.kind[y * this.width + x] === WALL || this.kind[y * this.width + x] === EXIT);
+    for (let y = 0; y < this.rowCount; y++) {
+      const row = this.rows[y];
+      for (let x = 0; x < this.width; x++) {
+        const solid = SOLIDS[row[x]];
+        if (!solid?.diag || typeof solid.diag === 'number')
+          continue;
+        const idx = y * this.width + x;
+        if (solid.diag === '/') {
+          const nw = (solidWall(x - 1, y) ? 2 : 0) + (solidWall(x, y - 1) ? 2 : 0) + (solidWall(x - 1, y - 1) ? 1 : 0);
+          const se = (solidWall(x + 1, y) ? 2 : 0) + (solidWall(x, y + 1) ? 2 : 0) + (solidWall(x + 1, y + 1) ? 1 : 0);
+          this.diag[idx] = nw >= se ? DIAG_NW : DIAG_SE;
+        } else {
+          const ne = (solidWall(x + 1, y) ? 2 : 0) + (solidWall(x, y - 1) ? 2 : 0) + (solidWall(x + 1, y - 1) ? 1 : 0);
+          const sw = (solidWall(x - 1, y) ? 2 : 0) + (solidWall(x, y + 1) ? 2 : 0) + (solidWall(x - 1, y + 1) ? 1 : 0);
+          this.diag[idx] = ne >= sw ? DIAG_NE : DIAG_SW;
+        }
+      }
+    }
+    for (const door of this.doors.values()) {
+      const solidX = (solidWall(door.x - 1, door.y) ? 1 : 0) + (solidWall(door.x + 1, door.y) ? 1 : 0);
+      const solidY = (solidWall(door.x, door.y - 1) ? 1 : 0) + (solidWall(door.x, door.y + 1) ? 1 : 0);
+      door.alongY = solidX > solidY;
+    }
     for (let i = 0; i < this.teleporters.length; i++) {
       const pad = this.teleporters[i];
       const mateIndex = i % 2 === 0 ? (i + 1 < this.teleporters.length ? i + 1 : 0) : i - 1;
@@ -255,6 +305,63 @@ export class Level {
       throw new Error(`${this.name}: no player start`);
   }
 
+  /** Whether tile `idx` has its cardinal boundary on side `d` (0: -x, 1: +x, 2: -y, 3: +y) closed by a full wall face. */
+  hasCardinalFace(idx, d) {
+    const diag = this.diag[idx];
+    if (!diag)
+      return true;
+    if (diag === DIAG_NW)
+      return d === 0 || d === 2;
+    if (diag === DIAG_NE)
+      return d === 1 || d === 2;
+    if (diag === DIAG_SW)
+      return d === 0 || d === 3;
+    return d === 1 || d === 3;
+  }
+
+  /** Geometry of a diagonal wall triangle at tile `idx`, or null when the tile is not diagonal. */
+  diagInfo(idx) {
+    const diag = this.diag[idx];
+    if (!diag)
+      return null;
+    const x = idx % this.width;
+    const y = (idx - x) / this.width;
+    const x0 = x * TILE;
+    const x1 = (x + 1) * TILE;
+    const y0 = y * TILE;
+    const y1 = (y + 1) * TILE;
+    const cx = (x + 0.5) * TILE;
+    const cy = (y + 0.5) * TILE;
+    const s = Math.SQRT1_2;
+    if (diag === DIAG_NW)
+      return { idx, x, y, diag, ax: x0, ay: y1, bx: x1, by: y0, sx: x0, sy: y0, ox: x1, oy: y1, nx: s, ny: s, cx, cy };
+    if (diag === DIAG_NE)
+      return { idx, x, y, diag, ax: x1, ay: y1, bx: x0, by: y0, sx: x1, sy: y0, ox: x0, oy: y1, nx: -s, ny: s, cx, cy };
+    if (diag === DIAG_SW)
+      return { idx, x, y, diag, ax: x0, ay: y0, bx: x1, by: y1, sx: x0, sy: y1, ox: x1, oy: y0, nx: s, ny: -s, cx, cy };
+    return { idx, x, y, diag, ax: x1, ay: y0, bx: x0, by: y1, sx: x1, sy: y1, ox: x0, oy: y0, nx: -s, ny: -s, cx, cy };
+  }
+
+  /** Effective wall height at a 2D world point (`Vec2`), respecting the open half of diagonal tiles. */
+  heightAtPoint(pos) {
+    const tx = Math.floor(pos.x / TILE);
+    const ty = Math.floor(pos.y / TILE);
+    if (!this.inBounds(tx, ty))
+      return CEILING;
+    const idx = ty * this.width + tx;
+    const h = this.heights[idx];
+    if (!h)
+      return 0;
+    const diag = this.diag[idx];
+    if (!diag)
+      return h;
+    const dx = pos.x - (tx + 0.5) * TILE;
+    const dy = pos.y - (ty + 0.5) * TILE;
+    const nx = diag === DIAG_NW || diag === DIAG_SW ? 1 : -1;
+    const ny = diag === DIAG_NW || diag === DIAG_NE ? 1 : -1;
+    return dx * nx + dy * ny <= 0 ? h : 0;
+  }
+
   buildFaces() {
     let nextId = 1;
     const { width, rowCount, baseHeight, kind, faceIds } = this;
@@ -264,8 +371,8 @@ export class Level {
       if (nx < 0 || ny < 0 || nx >= width || ny >= rowCount)
         return Infinity;
       const nidx = ny * width + nx;
-      // doors slide away, so the walls beside them need their own side faces
-      return kind[nidx] === DOOR ? 0 : baseHeight[nidx];
+      // doors slide away, and the open side of a diagonal tile does not cover this boundary
+      return kind[nidx] === DOOR || !this.hasCardinalFace(nidx, d ^ 1) ? 0 : baseHeight[nidx];
     };
 
     for (let y = 0; y < rowCount; y++) {
@@ -275,6 +382,8 @@ export class Level {
         if (!h)
           continue;
         for (let d = 0; d < 4; d++) {
+          if (!this.hasCardinalFace(idx, d))
+            continue;
           const nh = neighbourHeight(x, y, d);
           if (nh >= h)
             continue;
@@ -284,7 +393,7 @@ export class Level {
           let id = 0;
           if (px >= 0 && py >= 0 && kind[idx] !== DOOR) {
             const pidx = py * width + px;
-            if (kind[pidx] === kind[idx] && baseHeight[pidx] === h && neighbourHeight(px, py, d) === nh)
+            if (kind[pidx] === kind[idx] && baseHeight[pidx] === h && this.hasCardinalFace(pidx, d) && neighbourHeight(px, py, d) === nh)
               id = faceIds[pidx * 4 + d];
           }
           faceIds[idx * 4 + d] = id || nextId++;
@@ -305,8 +414,9 @@ export class Level {
   isWalkable(x, y) {
     if (!this.inBounds(x, y))
       return false;
-    const kind = this.kind[y * this.width + x];
-    return kind === FLOOR || kind === DOOR;
+    const idx = y * this.width + x;
+    const kind = this.kind[idx];
+    return kind === FLOOR || kind === DOOR || this.diag[idx] > 0;
   }
 
   /** Doors sink into the floor, so an open door is just a wall with no height left. */

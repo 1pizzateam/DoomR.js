@@ -532,6 +532,17 @@ export class Hud {
             : doorObj?.lock === 'blue'
               ? RGB[BLUE]
               : RGB[GREEN];
+        if (!door && level.diag?.[idx] > 0) {
+          const df = level.diagInfo(idx);
+          const ax = ox + (df.ax / TILE) * s;
+          const ay = oy + (df.ay / TILE) * s;
+          const bx = ox + (df.bx / TILE) * s;
+          const by = oy + (df.by / TILE) * s;
+          const sx = ox + (df.sx / TILE) * s;
+          const sy = oy + (df.sy / TILE) * s;
+          layer.line([sx, sy, ax, ay, bx, by, sx, sy], RGB[BLUE], visible ? 0.9 : 0.35);
+          continue;
+        }
         layer.rectLine(ox + x * s + 0.5, oy + y * s + 0.5, s - 1, s - 1, door ? doorCol : RGB[BLUE], door ? (visible ? 1 : 0.55) : (visible ? 0.9 : 0.35));
       }
     }
@@ -679,8 +690,15 @@ export class Hud {
           const alpha = visible ? 1 : 0.7;
           layer.rectLine(tx + 1, ty + 1, s - 2, s - 2, doorCol, alpha);
           const closed = 1 - (doorObj?.open ?? 0);
-          if (closed > 0.05)
+          if (closed > 0.05 && isSecret)
             layer.line([tx + 2, ty + s * 0.5, tx + 2 + (s - 4) * closed, ty + s * 0.5], doorCol, alpha);
+          else if (closed > 0.05 && doorObj?.alongY) {
+            layer.line([tx + 2, ty + s * 0.28, tx + 2 + (s - 4) * closed, ty + s * 0.28], doorCol, alpha);
+            layer.line([tx + 2, ty + s * 0.72, tx + 2 + (s - 4) * closed, ty + s * 0.72], doorCol, alpha);
+          } else if (closed > 0.05) {
+            layer.line([tx + s * 0.28, ty + 2, tx + s * 0.28, ty + 2 + (s - 4) * closed], doorCol, alpha);
+            layer.line([tx + s * 0.72, ty + 2, tx + s * 0.72, ty + 2 + (s - 4) * closed], doorCol, alpha);
+          }
           if (isSecret)
             this.text('S', tx + s * 0.5, ty + s * 0.5 + 3, ORANGE, { size: Math.max(8, Math.min(11, Math.floor(s * 0.55))), align: 'center', weight: 800, glow: 5 });
           continue;
@@ -691,25 +709,49 @@ export class Hud {
           continue;
         }
 
-        // full-height wall (or unrevealed secret door disguised as a normal wall):
-        // subtle blue block outline + classic Doom red vector boundary lines against open space
-        layer.rectLine(tx + 0.5, ty + 0.5, s - 1, s - 1, RGB[BLUE], visible ? 0.38 : 0.2);
         const edgeAlpha = visible ? 0.95 : 0.58;
-        const isOpenNeighbor = (nx, ny) => {
+        const isOpenNeighbor = (nx, ny, dir) => {
           if (nx < 0 || ny < 0 || nx >= level.width || ny >= level.rowCount)
             return false;
           const nIdx = ny * level.width + nx;
+          if (level.diag?.[nIdx] > 0 && !level.hasCardinalFace?.(nIdx, dir ^ 2))
+            return true;
           const nDoor = level.doors.get(nIdx);
           const nHidden = nDoor?.secret && !nDoor.revealed;
           return !level.kind[nIdx] || level.heights[nIdx] < CEILING || (level.kind[nIdx] === DOOR && !nHidden) || level.kind[nIdx] === EXIT;
         };
-        if (isOpenNeighbor(x, y - 1))
+
+        if (level.diag?.[idx] > 0) {
+          const df = level.diagInfo(idx);
+          const ax = ox + (df.ax / TILE) * s;
+          const ay = oy + (df.ay / TILE) * s;
+          const bx = ox + (df.bx / TILE) * s;
+          const by = oy + (df.by / TILE) * s;
+          const sx = ox + (df.sx / TILE) * s;
+          const sy = oy + (df.sy / TILE) * s;
+          layer.line([sx, sy, ax, ay, bx, by, sx, sy], RGB[BLUE], visible ? 0.38 : 0.2);
+          layer.line([ax, ay, bx, by], RGB[RED], edgeAlpha);
+          if (level.hasCardinalFace(idx, 0) && isOpenNeighbor(x, y - 1, 0))
+            layer.line([tx, ty + 0.5, tx + s, ty + 0.5], RGB[RED], edgeAlpha);
+          if (level.hasCardinalFace(idx, 2) && isOpenNeighbor(x, y + 1, 2))
+            layer.line([tx, ty + s - 0.5, tx + s, ty + s - 0.5], RGB[RED], edgeAlpha);
+          if (level.hasCardinalFace(idx, 3) && isOpenNeighbor(x - 1, y, 3))
+            layer.line([tx + 0.5, ty, tx + 0.5, ty + s], RGB[RED], edgeAlpha);
+          if (level.hasCardinalFace(idx, 1) && isOpenNeighbor(x + 1, y, 1))
+            layer.line([tx + s - 0.5, ty, tx + s - 0.5, ty + s], RGB[RED], edgeAlpha);
+          continue;
+        }
+
+        // full-height wall (or unrevealed secret door disguised as a normal wall):
+        // subtle blue block outline + classic Doom red vector boundary lines against open space
+        layer.rectLine(tx + 0.5, ty + 0.5, s - 1, s - 1, RGB[BLUE], visible ? 0.38 : 0.2);
+        if (isOpenNeighbor(x, y - 1, 0))
           layer.line([tx, ty + 0.5, tx + s, ty + 0.5], RGB[RED], edgeAlpha);
-        if (isOpenNeighbor(x, y + 1))
+        if (isOpenNeighbor(x, y + 1, 2))
           layer.line([tx, ty + s - 0.5, tx + s, ty + s - 0.5], RGB[RED], edgeAlpha);
-        if (isOpenNeighbor(x - 1, y))
+        if (isOpenNeighbor(x - 1, y, 3))
           layer.line([tx + 0.5, ty, tx + 0.5, ty + s], RGB[RED], edgeAlpha);
-        if (isOpenNeighbor(x + 1, y))
+        if (isOpenNeighbor(x + 1, y, 1))
           layer.line([tx + s - 0.5, ty, tx + s - 0.5, ty + s], RGB[RED], edgeAlpha);
       }
     }
