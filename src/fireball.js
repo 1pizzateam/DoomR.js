@@ -1,3 +1,7 @@
+import { Trigo, Vec2 } from '@1pizzateam/spock';
+
+const scratchPt = new Vec2();
+
 /**
  * The enemy projectile (hellfire orb) as a 2D pixel-art sprite animation:
  * - Drawn procedurally in code as a crisp power-of-two RGBA atlas (32 x 32 per cell, 8 frames = 256 x 32).
@@ -26,7 +30,7 @@ function drawFireballFrame(data, atlasWidth, frame) {
   const ox = frame * S;
   const cx = 15.5;
   const cy = 15.5;
-  const phase = (frame / FIREBALL_FRAMES) * Math.PI * 2;
+  const phase = (frame / FIREBALL_FRAMES) * Trigo.twopi;
   const pulse = 1 + 0.08 * Math.sin(phase * 2);
 
   const put = (x, y, color) => {
@@ -43,11 +47,11 @@ function drawFireballFrame(data, atlasWidth, frame) {
 
   // 1. Churning plasma body with swirling flame tongues and dark cinder crust
   const baseRadius = 10.2 * pulse;
-  for (let y = 1; y < S - 1; y++) {
+  for (let y = 1; y < S - 1; y++)
     for (let x = 1; x < S - 1; x++) {
       const dx = x - cx;
       const dy = y - cy;
-      const dist = Math.hypot(dx, dy);
+      const dist = scratchPt.setScalar(dx, dy).getMagnitude();
       const angle = Math.atan2(dy, dx);
 
       // Swirling 4-lobe and 7-lobe demonic flame tongues
@@ -78,11 +82,10 @@ function drawFireballFrame(data, atlasWidth, frame) {
 
       put(x, y, color);
     }
-  }
 
   // 2. Whipping helical flame tendrils & orbiting hell-sparks
   for (let k = 0; k < 6; k++) {
-    const baseAngle = phase + (k * Math.PI) / 3;
+    const baseAngle = phase + (k * Trigo.pi) / 3;
     for (let step = 0; step < 5; step++) {
       const t = step / 4;
       const rad = (7.2 + t * 4.8) * pulse;

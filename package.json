@@ -26,13 +26,13 @@
     "test": "node tests/levels.test.mjs && node tests/sim.test.mjs"
   },
   "dependencies": {
-    "@1pizzateam/bumpr": "1.0.0",
+    "@1pizzateam/bumpr": "1.1.0",
     "@1pizzateam/loopr": "2.1.0",
     "@1pizzateam/roostr": "0.8.0",
-    "@1pizzateam/spock": "4.3.0"
+    "@1pizzateam/spock": "4.4.0"
   },
   "overrides": {
-    "@1pizzateam/spock": "4.3.0"
+    "@1pizzateam/spock": "4.4.0"
   },
   "devDependencies": {
     "vite": "8.2.1"

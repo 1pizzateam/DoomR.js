@@ -1,3 +1,5 @@
+import { Bezier, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+
 /**
  * The explosion of a barrel as a 2D sprite animation: a ground-deflected flash and horizontal shockwave, a boiling
  * hemispherical fireball that flattens and spreads across the floor before mushrooming upward, sparks thrown up and
@@ -8,6 +10,8 @@
 export const EXPLOSION_CELL = 64;
 export const EXPLOSION_FRAMES = 16;
 export const EXPLOSION_FLOOR_Y = 61;
+
+const scratchPt = new Vec2();
 
 const WHITE = [255, 248, 214];
 const YELLOW = [255, 214, 96];
@@ -24,10 +28,7 @@ function hash(x, y, salt) {
   return ((Math.imul(h, 1274126177) >>> 0) % 4096) / 4096;
 }
 
-const smooth = (a, b, x) => {
-  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
+const smooth = (a, b, x) => Bezier.cubic(0, 0, 1, 1, Utils.clamp(Utils.normalize(x, a, b), 0, 1));
 
 /** The picture of the ground explosion at `t`, 0 at the flash and 1 when only a little smoke is left; RGBA, 64 x 64. */
 function drawFrame(t) {
@@ -77,11 +78,11 @@ function drawFrame(t) {
       const capDy = y - capCy;
       const capScaleX = capDy > 0 ? domeRx * (0.72 + 0.28 * (1 - rise)) : domeRx;
       const capScaleY = capDy > 0 ? Math.max(5, floorY - capCy) : Math.max(5, domeRy * 0.68);
-      const dCap = Math.hypot(dx / capScaleX, capDy / capScaleY) / lumpy;
+      const dCap = scratchPt.setScalar(dx / capScaleX, capDy / capScaleY).getMagnitude() / lumpy;
 
       // Wide horizontal ground-deflected blast skirt hugging the floor (h = 0..skirtRy)
       const skirtLump = 1 + 0.12 * Math.sin(dx * 0.35 + phase * 1.6);
-      const dSkirt = Math.hypot(dx / (skirtRx * skirtLump), h / skirtRy);
+      const dSkirt = scratchPt.setScalar(dx / (skirtRx * skirtLump), h / skirtRy).getMagnitude();
 
       // Combine the flat-bottomed floor skirt and the rising dome into a single non-spherical ground plume
       const d = Math.min(dCap, dSkirt, (dCap + dSkirt) * 0.56);
@@ -121,7 +122,7 @@ function drawFrame(t) {
     const ringY = Math.min(floorY - 3, 7 + 34 * prog);
     const fade = 1 - prog;
     for (let k = 0; k <= 180; k += 2) {
-      const a = (k * Math.PI) / 180;
+      const a = (k * Trigo.pi) / 180;
       if (hash(k, 3, 7) > 0.35 + fade * 0.6)
         continue;
       put(cx + Math.cos(a) * ringX, floorY - Math.sin(a) * ringY, fade > 0.5 ? WHITE : YELLOW);
@@ -140,7 +141,7 @@ function drawFrame(t) {
   // 3. Sparks and embers: blasted upward and sideways from the floor, arcing and skittering along the deck
   for (let k = 0; k < 24; k++) {
     // Upper hemisphere angles only (0.04*PI .. 0.96*PI) — the floor blocks downward ejection
-    const angle = (0.04 + hash(k, 1, 11) * 0.92) * Math.PI;
+    const angle = (0.04 + hash(k, 1, 11) * 0.92) * Trigo.pi;
     const speed = 14 + hash(k, 2, 11) * 30;
     const life = 0.4 + hash(k, 3, 11) * 0.55;
     if (t < 0.05 || t > life)
@@ -169,12 +170,10 @@ function drawFrame(t) {
         ? floorY - 3 - smokeRise * 3
         : capCy - 4 - smokeRise * (10 + (k - 2) * 3.5);
       const r = (groundCollar ? 3.5 : 4) + hash(k, 6, 13) * 3.5 + smokeRise * 2.5;
-      for (let y = Math.floor(by - r); y <= Math.ceil(by + r); y++) {
-        for (let x = Math.floor(bx - r); x <= Math.ceil(bx + r); x++) {
-          if (Math.hypot((x - bx) / (groundCollar ? 1.45 : 1.15), y - by) <= r && hash(x, y, 17) > dissolve * 0.8 + 0.12 && (x + y) % 2 === (k & 1))
+      for (let y = Math.floor(by - r); y <= Math.ceil(by + r); y++)
+        for (let x = Math.floor(bx - r); x <= Math.ceil(bx + r); x++)
+          if (scratchPt.setScalar((x - bx) / (groundCollar ? 1.45 : 1.15), y - by).getMagnitude() <= r && hash(x, y, 17) > dissolve * 0.8 + 0.12 && (x + y) % 2 === (k & 1))
             put(x, y, hash(x, y, 19) < 0.5 ? SMOKE : SMOKE_DARK);
-        }
-      }
     }
   }
 
@@ -182,7 +181,7 @@ function drawFrame(t) {
   if (t < 0.12) {
     const flash = 1 - t / 0.12;
     for (let k = 0; k < 11; k++) {
-      const angle = (0.02 + (k / 10) * 0.96) * Math.PI;
+      const angle = (0.02 + (k / 10) * 0.96) * Trigo.pi;
       const reach = (8 + 11 * hash(k, 1, 23)) * (0.45 + flash * 0.55);
       for (let d = 0; d < reach; d += 0.7)
         put(cx + Math.cos(angle) * d * 1.15, floorY - 1 - Math.sin(angle) * d * 0.9, d < reach * 0.5 ? WHITE : YELLOW);
@@ -198,10 +197,9 @@ export function explosionAtlas() {
   const data = new Uint8Array(width * height * 4);
   for (let frame = 0; frame < EXPLOSION_FRAMES; frame++) {
     const picture = drawFrame(frame / (EXPLOSION_FRAMES - 1));
-    for (let y = 0; y < height; y++) {
+    for (let y = 0; y < height; y++)
       for (let x = 0; x < EXPLOSION_CELL; x++)
         data.set(picture.subarray((y * EXPLOSION_CELL + x) * 4, (y * EXPLOSION_CELL + x) * 4 + 4), (y * width + frame * EXPLOSION_CELL + x) * 4);
-    }
   }
   return { name: 'explosion', data, width, height, cell: EXPLOSION_CELL, frames: EXPLOSION_FRAMES };
 }
@@ -236,17 +234,17 @@ function drawTeleportFrame(t) {
   const open = smooth(0, 0.28, t);
   const fade = smooth(0.58, 1, t);
   const dissolve = smooth(0.72, 1, t) * 0.94;
-  const spin = t * Math.PI * 3.4;
+  const spin = t * Trigo.pi * 3.4;
 
   // 1. Swirling vertical plasma vortex body + concentric dimensional rings
   const rx = (8 + 20 * open) * (1 - 0.22 * fade);
   const ry = (11 + 22 * open) * (1 - 0.15 * fade);
-  for (let y = 2; y < size - 2; y++) {
+  for (let y = 2; y < size - 2; y++)
     for (let x = 2; x < size - 2; x++) {
       const dx = x - cx;
       const dy = y - cy;
       const angle = Math.atan2(dy, dx);
-      const rNorm = Math.hypot(dx / rx, dy / ry);
+      const rNorm = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude();
       const spiral =
         1 +
         0.18 * Math.sin(angle * 4 - spin + rNorm * 5.5) +
@@ -258,7 +256,7 @@ function drawTeleportFrame(t) {
         continue;
 
       // Concentric plasma wave bands inside the vortex
-      const ringWave = 0.5 + 0.5 * Math.cos((d * 3.2 - t * 2.6) * Math.PI * 2);
+      const ringWave = 0.5 + 0.5 * Math.cos((d * 3.2 - t * 2.6) * Trigo.twopi);
       const grain = (hash(x, y, 37) - 0.5) * 0.24;
       const energy = (1 - d) * (1.15 - fade * 0.55) + ringWave * 0.28 * (1 - d * 0.6) + grain;
 
@@ -279,12 +277,11 @@ function drawTeleportFrame(t) {
         color = TELE_DEEP;
       put(x, y, color);
     }
-  }
 
   // 2. Crackling radial plasma lightning tendrils whipping around the vortex
   const boltCount = 12;
   for (let b = 0; b < boltCount; b++) {
-    const baseAngle = (b / boltCount) * Math.PI * 2 + spin * (b % 2 === 0 ? 0.65 : -0.55);
+    const baseAngle = (b / boltCount) * Trigo.twopi + spin * (b % 2 === 0 ? 0.65 : -0.55);
     const maxReach = (10 + 19 * open) * (0.7 + 0.3 * hash(b, 1, 53)) * (1 - 0.3 * fade);
     const steps = Math.ceil(maxReach * 1.4);
     for (let s = 2; s <= steps; s++) {
@@ -301,11 +298,11 @@ function drawTeleportFrame(t) {
   }
 
   // 3. Classic 8-point TFOG star-flash spikes (strongest on opening and on the final snap)
-  const starPulse = t < 0.32 ? 1 - t / 0.32 : t > 0.68 ? Math.sin(((t - 0.68) / 0.32) * Math.PI) * 0.75 : 0.25;
-  if (starPulse > 0.05) {
+  const starPulse = t < 0.32 ? 1 - t / 0.32 : t > 0.68 ? Math.sin(((t - 0.68) / 0.32) * Trigo.pi) * 0.75 : 0.25;
+  if (starPulse > 0.05)
     for (let k = 0; k < 8; k++) {
       const cardinal = k % 2 === 0;
-      const a = (k * Math.PI) / 4;
+      const a = (k * Trigo.pi) / 4;
       const reach = (cardinal ? 27 : 19) * (0.45 + 0.55 * starPulse);
       for (let r = 0; r <= reach; r += 0.65) {
         const px = cx + Math.cos(a) * r;
@@ -318,11 +315,10 @@ function drawTeleportFrame(t) {
         }
       }
     }
-  }
 
   // 4. Orbiting plasma sparks & dimensional motes
   for (let k = 0; k < 22; k++) {
-    const a = hash(k, 2, 71) * Math.PI * 2 + spin * (0.4 + hash(k, 3, 71) * 0.6);
+    const a = hash(k, 2, 71) * Trigo.twopi + spin * (0.4 + hash(k, 3, 71) * 0.6);
     const dist = (6 + hash(k, 4, 71) * 22) * (0.35 + 0.75 * Math.min(1, t * 1.6));
     if (dist > 29)
       continue;
@@ -348,10 +344,9 @@ export function teleportAtlas() {
   const data = new Uint8Array(width * height * 4);
   for (let frame = 0; frame < EXPLOSION_FRAMES; frame++) {
     const picture = drawTeleportFrame(frame / (EXPLOSION_FRAMES - 1));
-    for (let y = 0; y < height; y++) {
+    for (let y = 0; y < height; y++)
       for (let x = 0; x < EXPLOSION_CELL; x++)
         data.set(picture.subarray((y * EXPLOSION_CELL + x) * 4, (y * EXPLOSION_CELL + x) * 4 + 4), (y * width + frame * EXPLOSION_CELL + x) * 4);
-    }
   }
   return { name: 'teleport', data, width, height, cell: EXPLOSION_CELL, frames: EXPLOSION_FRAMES };
 }

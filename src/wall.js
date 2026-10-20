@@ -1,3 +1,4 @@
+import { Utils } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 import { GLOW, LIGHT, METAL, mix, plate, rivet, SHADOW, Tile } from './floor.js';
 
@@ -43,10 +44,9 @@ function bulkhead(t, rnd) {
     t.set(x, 56, LIGHT, 0.35);
     t.set(x, 57, SHADOW, 0.7);
   }
-  for (let y = 58; y < SIZE; y++) {
+  for (let y = 58; y < SIZE; y++)
     for (let x = 0; x < SIZE; x++)
       t.set(x, y, mix(METAL, SHADOW, 0.45 + ((x >> 3) + (y >> 2)) % 2 * 0.08));
-  }
   // vertical joints at the sides, so neighbouring cells read as separate panels
   for (let y = 0; y < SIZE; y++) {
     t.set(0, y, SHADOW, 0.85);
@@ -72,13 +72,12 @@ function drawPlain(t, rnd) {
 function drawVent(t, rnd) {
   bulkhead(t, rnd);
   bevel(t, 12, 9, 40, 40, true);
-  for (let y = 13; y < 46; y += 4) {
+  for (let y = 13; y < 46; y += 4)
     for (let x = 15; x < 49; x++) {
       t.set(x, y, SHADOW);
       t.set(x, y + 1, SHADOW, 0.8);
       t.set(x, y + 2, LIGHT, 0.45);
     }
-  }
   for (const [x, y] of [[14, 11], [47, 11], [14, 44], [47, 44]])
     rivet(t, x, y);
 }
@@ -146,7 +145,7 @@ function drawExit(t, rnd) {
     t.set(10, 8 + i, SIGNAL, 0.95);
     t.set(53, 8 + i, SIGNAL, 0.95);
   }
-  for (const y0 of [16, 28, 40]) {
+  for (const y0 of [16, 28, 40])
     for (let k = 0; k < 14; k++) {
       const x = 32 - 14 + k;
       const dy = k < 7 ? k : 13 - k;
@@ -155,16 +154,14 @@ function drawExit(t, rnd) {
         t.set(x + 14, y0 + dy / 1.4 + w, SIGNAL, 0.4);
       }
     }
-  }
 }
 
 /** The top of a low wall or a pillar: plain plate with a bevelled edge. */
 function drawTop(t, rnd) {
   plate(t, 0, 0, SIZE, SIZE, rnd, mix(METAL, SHADOW, 0.2));
-  for (let i = 8; i < 56; i += 8) {
+  for (let i = 8; i < 56; i += 8)
     for (let x = 4; x < 60; x++)
       t.set(x, i, SHADOW, 0.5);
-  }
   rivet(t, 3, 3);
   rivet(t, 58, 3);
   rivet(t, 3, 58);
@@ -189,15 +186,14 @@ export function wallAtlas() {
   DRAW.forEach((draw, cell) => {
     const t = new Tile(SIZE, SIZE);
     draw(t, mulberry32(9000 + cell * 7919));
-    for (let y = 0; y < SIZE; y++) {
+    for (let y = 0; y < SIZE; y++)
       for (let x = 0; x < SIZE; x++) {
         const i = (y * SIZE + x) * 3;
         const o = (y * width + cell * SIZE + x) * 4;
         for (let k = 0; k < 3; k++)
-          data[o + k] = Math.max(0, Math.min(255, Math.round(t.pixels[i + k])));
+          data[o + k] = Utils.clamp(Math.round(t.pixels[i + k]), 0, 255);
         data[o + 3] = 255;
       }
-    }
   });
   return { name: 'wall', data, width, height: SIZE, cell: SIZE, frames: WALL_CELL_COUNT };
 }

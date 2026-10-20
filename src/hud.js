@@ -1,4 +1,4 @@
-import { Utils } from '@1pizzateam/spock';
+import { Trigo, Utils } from '@1pizzateam/spock';
 import { CEILING, DOOR, EXIT, PILLAR, TILE } from './level.js';
 import { LEVELS } from './levels.js';
 import { screenSplatQuads } from './bloodsprites.js';
@@ -15,7 +15,7 @@ const RED = 3;
 const BACKGROUND = '#07090f';
 const RGB = COLORS.map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255));
 const BACKGROUND_RGB = [7 / 255, 9 / 255, 15 / 255];
-const dimmed = (color, amount) => color.map((v, i) => BACKGROUND_RGB[i] + (v - BACKGROUND_RGB[i]) * amount);
+const dimmed = (color, amount) => color.map((v, i) => Utils.lerp(BACKGROUND_RGB[i], v, amount));
 const FLOOR_SEEN = dimmed(RGB[BLUE], 0.25);
 const FLOOR_VISIBLE = dimmed(RGB[BLUE], 0.6);
 const SLIME_SEEN = dimmed(RGB[GREEN], 0.38);
@@ -406,7 +406,7 @@ export class Hud {
         : ammoDef && (player[ammoType] ?? 0) <= ammoDef.low
           ? ORANGE
           : GREEN;
-    const activeSize = activeFlash > 0 ? 20 + Math.round(Math.sin(activeFlashNorm * Math.PI) * 6) : 20;
+    const activeSize = activeFlash > 0 ? 20 + Math.round(Math.sin(activeFlashNorm * Trigo.pi) * 6) : 20;
     this.text(ammoDef ? ammoDef.label : 'MELEE', rightX - 96, base - 24, activeFlash > 0 ? activeCol : BLUE, {
       size: 11,
       align: 'right',
@@ -495,7 +495,7 @@ export class Hud {
     const level = game.level;
     const maxW = Math.min(260, Math.floor(width * 0.25));
     const maxH = Math.min(180, Math.floor(this.height * 0.28));
-    const s = Math.max(3, Math.min(7, Math.floor(Math.min(maxW / level.width, maxH / level.rowCount))));
+    const s = Utils.clamp(Math.floor(Math.min(maxW / level.width, maxH / level.rowCount)), 3, 7);
     const mw = level.width * s;
     const mh = level.rowCount * s;
     const ox = width - mw - 20;
@@ -506,7 +506,7 @@ export class Hud {
 
     // fog of war: only tiles that have been seen are drawn, and the ones in view right now are brighter
     const fog = game.fog;
-    for (let y = 0; y < level.rowCount; y++) {
+    for (let y = 0; y < level.rowCount; y++)
       for (let x = 0; x < level.width; x++) {
         const idx = y * level.width + x;
         if (!fog.isExplored(idx))
@@ -545,7 +545,6 @@ export class Hud {
         }
         layer.rectLine(ox + x * s + 0.5, oy + y * s + 0.5, s - 1, s - 1, door ? doorCol : RGB[BLUE], door ? (visible ? 1 : 0.55) : (visible ? 0.9 : 0.35));
       }
-    }
 
     // enemies only show while they are in view: the map is not a radar
     for (const enemy of game.enemies) {
@@ -599,7 +598,7 @@ export class Hud {
     const mapY0 = y0 + headerH + 8;
     const mapW = Math.max(60, w - 20);
     const mapH = Math.max(60, h - headerH - footerH - 16);
-    const baseScale = Math.max(6, Math.min(22, Math.min(mapW / level.width, mapH / level.rowCount) * 0.88));
+    const baseScale = Utils.clamp(Math.min(mapW / level.width, mapH / level.rowCount) * 0.88, 6, 22);
     const s = baseScale * this.automapZoom;
     const mw = level.width * s;
     const mh = level.rowCount * s;
@@ -634,7 +633,7 @@ export class Hud {
     }
 
     // explored architecture: boundary walls, elevation steps, doors, secrets, slime, and exit portal
-    for (let y = 0; y < level.rowCount; y++) {
+    for (let y = 0; y < level.rowCount; y++)
       for (let x = 0; x < level.width; x++) {
         const idx = y * level.width + x;
         if (!fog.isExplored(idx))
@@ -653,7 +652,7 @@ export class Hud {
           if (isTeleporter) {
             layer.rectLine(tx + 1.5, ty + 1.5, Math.max(2, s - 3), Math.max(2, s - 3), RGB[GREEN], visible ? 0.95 : 0.72);
             layer.circleLine(tx + s * 0.5, ty + s * 0.5, Math.max(1.5, s * 0.28), RGB[BLUE], visible ? 0.85 : 0.55);
-            this.text('T', tx + s * 0.5, ty + s * 0.5 + 3, GREEN, { size: Math.max(8, Math.min(11, Math.floor(s * 0.55))), align: 'center', weight: 800, glow: 5 });
+            this.text('T', tx + s * 0.5, ty + s * 0.5 + 3, GREEN, { size: Utils.clamp(Math.floor(s * 0.55), 8, 11), align: 'center', weight: 800, glow: 5 });
           } else if (isSlime) {
             layer.fillRect(tx + 1.5, ty + 1.5, Math.max(1, s - 3), Math.max(1, s - 3), visible ? SLIME_VISIBLE : SLIME_SEEN);
             layer.line([tx + 2, ty + s - 2, tx + s - 2, ty + 2], RGB[GREEN], visible ? 0.55 : 0.3);
@@ -661,7 +660,7 @@ export class Hud {
             layer.fillRect(tx + s * 0.5 - 0.5, ty + s * 0.5 - 0.5, 1.5, 1.5, visible ? FLOOR_VISIBLE : FLOOR_SEEN);
           if (game.discoveredSecrets?.has(idx)) {
             layer.rectLine(tx + 2, ty + 2, Math.max(2, s - 4), Math.max(2, s - 4), RGB[ORANGE], 0.8);
-            this.text('S', tx + s * 0.5, ty + s * 0.5 + 3, ORANGE, { size: Math.max(8, Math.min(12, Math.floor(s * 0.6))), align: 'center', weight: 800, glow: 5 });
+            this.text('S', tx + s * 0.5, ty + s * 0.5 + 3, ORANGE, { size: Utils.clamp(Math.floor(s * 0.6), 8, 12), align: 'center', weight: 800, glow: 5 });
           }
           continue;
         }
@@ -672,7 +671,7 @@ export class Hud {
           layer.rectLine(tx + 1, ty + 1, s - 2, s - 2, RGB[GREEN], 0.95);
           layer.line([tx + 2, ty + 2, tx + s - 2, ty + s - 2], RGB[ORANGE], 0.85);
           layer.line([tx + s - 2, ty + 2, tx + 2, ty + s - 2], RGB[ORANGE], 0.85);
-          this.text('X', tx + s * 0.5, ty + s * 0.5 + 3, GREEN, { size: Math.max(8, Math.min(11, Math.floor(s * 0.55))), align: 'center', weight: 800, glow: 6 });
+          this.text('X', tx + s * 0.5, ty + s * 0.5 + 3, GREEN, { size: Utils.clamp(Math.floor(s * 0.55), 8, 11), align: 'center', weight: 800, glow: 6 });
           continue;
         }
 
@@ -700,7 +699,7 @@ export class Hud {
             layer.line([tx + s * 0.72, ty + 2, tx + s * 0.72, ty + 2 + (s - 4) * closed], doorCol, alpha);
           }
           if (isSecret)
-            this.text('S', tx + s * 0.5, ty + s * 0.5 + 3, ORANGE, { size: Math.max(8, Math.min(11, Math.floor(s * 0.55))), align: 'center', weight: 800, glow: 5 });
+            this.text('S', tx + s * 0.5, ty + s * 0.5 + 3, ORANGE, { size: Utils.clamp(Math.floor(s * 0.55), 8, 11), align: 'center', weight: 800, glow: 5 });
           continue;
         }
 
@@ -754,10 +753,9 @@ export class Hud {
         if (isOpenNeighbor(x + 1, y, 1))
           layer.line([tx + s - 0.5, ty, tx + s - 0.5, ty + s], RGB[RED], edgeAlpha);
       }
-    }
 
     // ceiling crushers on explored tiles
-    if (level.crushers) {
+    if (level.crushers)
       for (const crusher of level.crushers) {
         if (!fog.isExplored(crusher.idx))
           continue;
@@ -769,10 +767,9 @@ export class Hud {
         layer.line([cx + 2, cy + 2, cx + s - 2, cy + s - 2], RGB[ORANGE], 0.75);
         layer.line([cx + s - 2, cy + 2, cx + 2, cy + s - 2], RGB[ORANGE], 0.75);
       }
-    }
 
     // uncollected keycards and high-value pickups on explored tiles
-    if (game.pickups) {
+    if (game.pickups)
       for (const item of game.pickups) {
         if (item.taken)
           continue;
@@ -800,7 +797,6 @@ export class Hud {
         const r = isKey ? Math.max(3.5, s * 0.28) : Math.max(2.5, s * 0.2);
         layer.line([sx, sy - r, sx + r, sy, sx, sy + r, sx - r, sy, sx, sy - r], col, 0.95);
       }
-    }
 
     // visible enemies (only while currently in line-of-sight)
     for (const enemy of game.enemies) {
@@ -827,7 +823,7 @@ export class Hud {
       layer.line([px, py, px + Math.cos(a - 0.62) * coneLen, py + Math.sin(a - 0.62) * coneLen], RGB[GREEN], 0.22);
       layer.line([px, py, px + Math.cos(a + 0.62) * coneLen, py + Math.sin(a + 0.62) * coneLen], RGB[GREEN], 0.22);
 
-      const arrowR = Math.max(6, Math.min(13, s * 0.65));
+      const arrowR = Utils.clamp(s * 0.65, 6, 13);
       const tipX = px + cos * arrowR * 1.25;
       const tipY = py + sin * arrowR * 1.25;
       const tailX = px - cos * arrowR * 0.95;
@@ -872,8 +868,8 @@ export class Hud {
     const { width, height } = this;
     const cx = width / 2;
     const cy = height / 2;
-    const w = Math.min(620, Math.max(420, width - 48));
-    const h = Math.min(470, Math.max(380, height - 48));
+    const w = Utils.clamp(width - 48, 420, 620);
+    const h = Utils.clamp(height - 48, 380, 470);
     const x0 = cx - w / 2;
     const y0 = cy - h / 2;
     const last = game.levelIndex + 1 >= LEVELS.length;
@@ -1022,7 +1018,7 @@ export class Hud {
   difficultyAt(pos) {
     const cx = this.width / 2;
     const cy = this.height / 2;
-    const boxW = Math.min(390, Math.max(280, this.width - 48));
+    const boxW = Utils.clamp(this.width - 48, 280, 390);
     const boxX = cx - boxW / 2;
     const rowsTop = cy - 42;
     const rowH = 26;
@@ -1057,7 +1053,7 @@ export class Hud {
         keys.forEach((k, i) => this.text(k, cx, cy + 100 + i * 20, BLUE, { size: 12, align: 'center', alpha: 0.75, glow: 3 }));
       } else {
         this.text('DOOMR', cx, cy - 116, BLUE, { size: Math.min(84, width / 8), align: 'center', weight: 800, glow: 22 });
-        const boxW = Math.min(390, Math.max(280, width - 48));
+        const boxW = Utils.clamp(width - 48, 280, 390);
         const boxH = 160;
         const boxX = cx - boxW / 2;
         const boxY = cy - 72;

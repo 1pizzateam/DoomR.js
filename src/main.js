@@ -1,5 +1,5 @@
 import { Player } from '@1pizzateam/loopr';
-import { Time, Utils } from '@1pizzateam/spock';
+import { Time } from '@1pizzateam/spock';
 import { Game } from './game.js';
 import { Hud } from './hud.js';
 import { Sound } from './audio.js';
@@ -21,7 +21,6 @@ const sound = new Sound();
 const quality = new Quality();
 const title = new TitleDirector(game);
 let showDiagnostics = false;
-let frameTime = 1 / 60;
 
 // if the browser drops the GPU context, the world rebuilds itself when it comes back (see World.restoreGpu)
 const world = new World(worldCanvas);
@@ -148,12 +147,10 @@ function control(dt) {
       break;
     case 'cleared':
       hud.automap = false;
-      if (confirmed()) {
-        if (!game.skipIntermission()) {
-          game.nextLevel();
-          if (game.state === 'play')
-            input.lock();
-        }
+      if (confirmed() && !game.skipIntermission()) {
+        game.nextLevel();
+        if (game.state === 'play')
+          input.lock();
       }
       break;
   }
@@ -180,9 +177,9 @@ const loop = new Player((dt) => {
   if (!document.hidden && quality.update(dt) !== null)
     resize();
   if (showDiagnostics) {
-    frameTime = Utils.lerp(frameTime, dt, 0.05);
-    const ms = Time.secToMillisec(frameTime);
-    hud.diagnostics = `${Math.round(Time.millisecToFps(ms))} fps  ${ms.toFixed(1)} ms  ${world.width}x${world.height} (${Math.round(quality.scale * 100)}%)  glow 1/${world.glowDivisor}`;
+    const fps = loop.getFPS();
+    const ms = fps > 0 ? Time.fpsToMillisec(fps) : 0;
+    hud.diagnostics = `${Math.round(fps)} fps  ${ms.toFixed(1)} ms  ${world.width}x${world.height} (${Math.round(quality.scale * 100)}%)  glow 1/${world.glowDivisor}`;
   }
   control(dt);
   unlockedThisFrame = false;

@@ -1,4 +1,4 @@
-import { Vec2 } from '@1pizzateam/spock';
+import { Trigo, Vec2 } from '@1pizzateam/spock';
 import { EYE, TILE } from './level.js';
 
 // What the minimap knows about: a cone matching the view plus a small ring around the player.
@@ -22,18 +22,18 @@ export class Fog {
     this.visible = new Uint8Array(level.width * level.rowCount);
     this.exploredCount = 0;
     this.pt = new Vec2();
+    this.pos = new Vec2();
+    this.step = new Vec2();
   }
 
   /** Walk a ray tile by tile, marking what it passes and stopping at the first thing that blocks sight. */
   cast(x, y, angle, range) {
-    const { level, explored, visible } = this;
-    const dx = Math.cos(angle) * STEP;
-    const dy = Math.sin(angle) * STEP;
-    let px = x / TILE;
-    let py = y / TILE;
+    const { level, explored, visible, pos, step } = this;
+    step.setScalar(STEP, 0).setRadian(angle);
+    pos.setScalar(x / TILE, y / TILE);
     for (let travelled = 0; travelled <= range; travelled += STEP) {
-      const tx = Math.floor(px);
-      const ty = Math.floor(py);
+      const tx = Math.floor(pos.x);
+      const ty = Math.floor(pos.y);
       if (!level.inBounds(tx, ty))
         return;
       const idx = ty * level.width + tx;
@@ -42,13 +42,11 @@ export class Fog {
         explored[idx] = 1;
         this.exploredCount++;
       }
-      this.pt.x = px * TILE;
-      this.pt.y = py * TILE;
+      this.pt.scaleVector(pos, TILE);
       const h = level.heightAtPoint ? level.heightAtPoint(this.pt) : level.heights[idx];
       if (h >= EYE)
         return;
-      px += dx;
-      py += dy;
+      pos.add(step);
     }
   }
 
@@ -57,7 +55,7 @@ export class Fog {
     for (let i = 0; i < CONE_RAYS; i++)
       this.cast(x, y, angle + (i / (CONE_RAYS - 1) - 0.5) * 2 * CONE_HALF_ANGLE, CONE_RANGE);
     for (let i = 0; i < RING_RAYS; i++)
-      this.cast(x, y, (i / RING_RAYS) * Math.PI * 2, RING_RANGE);
+      this.cast(x, y, (i / RING_RAYS) * Trigo.twopi, RING_RANGE);
   }
 
   tileIndex(x, y) {

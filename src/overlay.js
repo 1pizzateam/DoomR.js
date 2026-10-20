@@ -1,4 +1,5 @@
 import { CustomMesh, Material, Mesh, Scene, Vec2, Vec3 } from '@1pizzateam/roostr';
+import { Trigo } from '@1pizzateam/spock';
 import { bloodAtlas } from './bloodsprites.js';
 import { faceAtlas } from './face.js';
 import { arsenalAtlas } from './weapon.js';
@@ -243,8 +244,8 @@ class Layer {
   /** Strokes a closed circle approximated with segments. */
   circleLine(cx, cy, radius, color, alpha = 1, segments = 10) {
     for (let i = 0; i < segments; i++) {
-      const a = (i / segments) * Math.PI * 2;
-      const b = ((i + 1) / segments) * Math.PI * 2;
+      const a = (i / segments) * Trigo.twopi;
+      const b = ((i + 1) / segments) * Trigo.twopi;
       this.line([cx + Math.cos(a) * radius, cy + Math.sin(a) * radius, cx + Math.cos(b) * radius, cy + Math.sin(b) * radius], color, alpha);
     }
   }

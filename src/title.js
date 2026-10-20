@@ -1,4 +1,4 @@
-import { Utils, Vec2 } from '@1pizzateam/spock';
+import { Bezier, Utils, Vec2 } from '@1pizzateam/spock';
 
 /**
  * The title screen's film: a loop of slow camera shots through the real first level, with its monsters breathing
@@ -22,7 +22,7 @@ export const SHOTS = [
 
 const FADE = 0.7;
 // where the extra barrel stands: a few steps from the imps
-const BARREL_AT = [610, 640];
+const BARREL_AT = new Vec2(610, 640);
 const mix = Utils.lerp;
 
 export class TitleDirector {
@@ -40,7 +40,7 @@ export class TitleDirector {
   begin() {
     const { game } = this;
     game.load(0);
-    game.addBarrel(new Vec2(BARREL_AT[0], BARREL_AT[1]));
+    game.addBarrel(BARREL_AT.clone());
     this.barrel = game.barrels[game.barrels.length - 1];
     this.dirty = true;
     this.active = true;
@@ -83,13 +83,12 @@ export class TitleDirector {
     }
     // the rules are paused on the title screen, so the few things that must move are moved here
     game.updateBarrels(dt);
-    for (const enemy of game.enemies) {
+    for (const enemy of game.enemies)
       if (enemy.state === 'dead')
         game.updateEnemy(enemy, dt);
-    }
 
     const u = Utils.clamp(this.t / shot.duration, 0, 1);
-    const e = u * 0.6 + u * u * (3 - 2 * u) * 0.4; // mostly steady, easing slightly at both ends
+    const e = u * 0.6 + Bezier.cubic(0, 0, 1, 1, u) * 0.4; // mostly steady, easing slightly at both ends
     const sway = Math.sin(game.time * 0.8 + this.shot) * 1.4;
     game.cam = {
       x: mix(shot.from[0], shot.to[0], e),

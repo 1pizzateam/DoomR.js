@@ -1,5 +1,5 @@
-import { Grid, Rand, Utils, Vec2 } from '@1pizzateam/spock';
-import { Physics, Scene } from '@1pizzateam/bumpr';
+import { Grid, Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Physics, Raycast, Scene } from '@1pizzateam/bumpr';
 import { Blood, makeFeet } from './blood.js';
 import { Fog } from './fog.js';
 import { CEILING, CROUCH_EYE, DOOR, EYE, Level, TILE } from './level.js';
@@ -74,8 +74,8 @@ const PLAYER_WALK = 160;
 const PLAYER_RUN = 235;
 const CROUCH_SPEED = 10;
 // the head bob advances 9 rad/s at walking pace and the camera dips twice per 2π of it, so one stride is π of bob
-const PLAYER_STRIDE = (PLAYER_WALK * Math.PI) / 9;
-const FOOTFALL = (3 * Math.PI) / 4; // bob phase where sin(2 * bob), the camera height, is at its lowest
+const PLAYER_STRIDE = (PLAYER_WALK * Trigo.pi) / 9;
+const FOOTFALL = (3 * Trigo.pi) / 4; // bob phase where sin(2 * bob), the camera height, is at its lowest
 const PELLETS = WEAPONS.shotgun.pellets;
 const PELLET_DAMAGE = WEAPONS.shotgun.damage;
 const PELLET_MIN_DAMAGE = WEAPONS.shotgun.minDamage;
@@ -177,29 +177,20 @@ export class Game {
       }
       const cx = (nx + 0.5) * TILE;
       const cy = (ny + 0.5) * TILE;
-      if (Math.hypot(cx - this.level.playerStart.x, cy - this.level.playerStart.y) < TILE * 2.5)
+      this.scratch.setScalar(cx, cy);
+      if (this.scratch.getDistance(this.level.playerStart) < TILE * 2.5)
         continue;
-      let blockedByBarrel = false;
-      for (const b of this.level.barrels) {
-        if (Math.hypot(b.pos.x - cx, b.pos.y - cy) < TILE * 0.45) {
-          blockedByBarrel = true;
-          break;
-        }
-      }
-      if (!blockedByBarrel)
-        open.push([cx, cy]);
+      if (this.level.barrels.some((b) => b.pos.getDistance(this.scratch) < TILE * 0.45))
+        continue;
+      open.push([cx, cy]);
     }
     if (open.length > 0) {
       const pick = open[(tx * 7 + ty * 13 + slot) % open.length];
-      target.x = pick[0];
-      target.y = pick[1];
-      return target;
+      return target.setScalar(pick[0], pick[1]);
     }
     const ox = slot % 2 === 0 ? 10 : -10;
     const oy = slot < 2 ? 10 : -10;
-    target.x = spawnPos.x + ox;
-    target.y = spawnPos.y + oy;
-    return target;
+    return target.setScalar(spawnPos.x + ox, spawnPos.y + oy);
   }
 
   load(indexOrDef, carry = { health: MAX_HEALTH, shells: 0, bullets: 0, rockets: 0 }) {
@@ -216,10 +207,9 @@ export class Game {
     this.level = def instanceof Level ? def : new Level(def);
     // the grid lets BumpR test only bodies that share a cell instead of every pair; two tiles per cell
     // is wider than any body, so each one touches at most four cells
-    this.scene = new Scene(new Grid(this.level.width * TILE, this.level.rowCount * TILE, GRID_CELL));
+    this.scene = new Scene(new Grid(new Vec2(this.level.width * TILE, this.level.rowCount * TILE), GRID_CELL));
     this.scene.setGravity(new Vec2(0, 0));
-    const baseRaycast = this.scene.raycast.bind(this.scene);
-    this.scene.raycast = (from, to, options = {}) => this.raycastScene(baseRaycast, from, to, options);
+    this.scene.setPositionCorrection(1);
     this.rand = Rand.create(7 + seedIndex * 101);
     this.limbRand = Rand.create(77 + seedIndex * 101);
     this.blood.reset(this.level, this.rand);
@@ -253,7 +243,7 @@ export class Game {
       const count = spawn.type === 'swarmer' ? diff.swarmerPack : (PACK[spawn.type] ?? 1);
       for (let i = 0; i < count; i++) {
         // a pack starts in a ring around its spawn point
-        const angle = (i / count) * Math.PI * 2 + this.rand.float(0, 1);
+        const angle = (i / count) * Trigo.twopi + this.rand.float(0, 1);
         const spread = count > 1 ? ENEMY_TYPES[spawn.type].radius * 1.6 : 0;
         this.addEnemy(spawn.type, new Vec2(spawn.pos.x + Math.cos(angle) * spread, spawn.pos.y + Math.sin(angle) * spread));
       }
@@ -422,12 +412,12 @@ export class Game {
     enemy.roar = enemy.def.roar ?? 0;
     this.emit('alert', enemy.pos, { kind: enemy.type });
     // a pack wakes as one
-    if (enemy.type === 'swarmer') {
-      for (const other of this.enemies) {
-        if (other.type === 'swarmer' && other.state === 'idle' && other.pos.getDistance(enemy.pos) < 240 && !this.scene.raycast(other.pos, enemy.pos, { mask: CAT.WALL }))
+    if (enemy.type === 'swarmer')
+      for (const body of this.scene.queryCircle(enemy.pos, 240, { mask: CAT.ENEMY })) {
+        const other = body.ref;
+        if (other?.type === 'swarmer' && other.state === 'idle' && this.scene.hasLineOfSight(other.pos, enemy.pos, { mask: CAT.WALL }))
           other.state = 'chase';
       }
-    }
     if (enemy.type === 'boss') {
       this.say('THE WARDEN WAKES', 2.5);
       this.shake = Math.max(this.shake, 0.8);
@@ -452,13 +442,8 @@ export class Game {
         }
         const df = level.diagInfo(idx);
         if (df) {
-          const body = { ref: { kind: 'wall', diag: df.diag, idx } };
-          const edges = [
-            { x1: df.ax, y1: df.ay, x2: df.bx, y2: df.by, nx: df.nx, ny: df.ny },
-            { x1: df.sx, y1: df.sy, x2: df.ax, y2: df.ay, nx: df.ax === df.sx ? (df.sx < df.cx ? -1 : 1) : 0, ny: df.ay === df.sy ? (df.sy < df.cy ? -1 : 1) : 0 },
-            { x1: df.bx, y1: df.by, x2: df.sx, y2: df.sy, nx: df.bx === df.sx ? (df.sx < df.cx ? -1 : 1) : 0, ny: df.by === df.sy ? (df.sy < df.cy ? -1 : 1) : 0 },
-          ];
-          this.diagWalls.push({ ...df, body, edges });
+          const body = this.addStaticTriangle(df);
+          this.diagWalls.push({ ...df, body });
           x++;
           continue;
         }
@@ -474,142 +459,11 @@ export class Game {
       door.body = this.addStaticBox(door.center, TILE);
   }
 
-  raycastScene(baseRaycast, from, to, options = {}) {
-    let hit = baseRaycast(from, to, options);
-    const mask = options.mask ?? 0xFFFF;
-    if (!(mask & CAT.WALL) || !this.diagWalls?.length)
-      return hit;
-    const rx = to.x - from.x;
-    const ry = to.y - from.y;
-    const rayLen = Math.hypot(rx, ry);
-    if (rayLen < 1e-6)
-      return hit;
-    let bestT = hit ? (hit.distance ?? hit.point.getDistance(from)) / rayLen : 1;
-    for (const dw of this.diagWalls) {
-      let inside = true;
-      for (const edge of dw.edges) {
-        if ((from.x - edge.x1) * edge.nx + (from.y - edge.y1) * edge.ny > -1e-4) {
-          inside = false;
-          break;
-        }
-      }
-      if (inside) {
-        bestT = 0;
-        hit = { body: dw.body, point: from.clone(), normal: new Vec2(dw.nx, dw.ny), distance: 0 };
-        break;
-      }
-      for (const edge of dw.edges) {
-        if (rx * edge.nx + ry * edge.ny >= 0)
-          continue;
-        const ex = edge.x2 - edge.x1;
-        const ey = edge.y2 - edge.y1;
-        const denom = rx * ey - ry * ex;
-        if (Math.abs(denom) < 1e-8)
-          continue;
-        const dx = edge.x1 - from.x;
-        const dy = edge.y1 - from.y;
-        const t = (dx * ey - dy * ex) / denom;
-        const u = (dx * ry - dy * rx) / denom;
-        if (t >= 0 && t < bestT && u >= -1e-5 && u <= 1 + 1e-5) {
-          bestT = t;
-          hit = {
-            body: dw.body,
-            point: new Vec2(from.x + rx * t, from.y + ry * t),
-            normal: new Vec2(edge.nx, edge.ny),
-            distance: t * rayLen,
-          };
-        }
-      }
-    }
-    return hit;
-  }
-
-  resolveBodyVsDiag(body, radius, dw) {
-    const pos = body.position;
-    const px = pos.x;
-    const py = pos.y;
-    if (Math.abs(px - dw.cx) > TILE * 0.5 + radius || Math.abs(py - dw.cy) > TILE * 0.5 + radius)
-      return false;
-    let inside = true;
-    for (const edge of dw.edges) {
-      const sd = (px - edge.x1) * edge.nx + (py - edge.y1) * edge.ny;
-      if (sd > 0) {
-        inside = false;
-        break;
-      }
-    }
-    if (inside) {
-      const sd = (px - dw.cx) * dw.nx + (py - dw.cy) * dw.ny;
-      const pen = radius - sd;
-      pos.x += dw.nx * pen;
-      pos.y += dw.ny * pen;
-      if (body.velocity) {
-        const vn = body.velocity.x * dw.nx + body.velocity.y * dw.ny;
-        if (vn < 0) {
-          body.velocity.x -= dw.nx * vn;
-          body.velocity.y -= dw.ny * vn;
-        }
-      }
-      return true;
-    }
-    let bestDistSq = Infinity;
-    let bestQx = px;
-    let bestQy = py;
-    for (const edge of dw.edges) {
-      const ex = edge.x2 - edge.x1;
-      const ey = edge.y2 - edge.y1;
-      const lenSq = ex * ex + ey * ey;
-      const u = Utils.clamp(((px - edge.x1) * ex + (py - edge.y1) * ey) / lenSq, 0, 1);
-      const qx = edge.x1 + ex * u;
-      const qy = edge.y1 + ey * u;
-      const dSq = (px - qx) * (px - qx) + (py - qy) * (py - qy);
-      if (dSq < bestDistSq) {
-        bestDistSq = dSq;
-        bestQx = qx;
-        bestQy = qy;
-      }
-    }
-    if (bestDistSq >= radius * radius)
-      return false;
-    let nx = dw.nx;
-    let ny = dw.ny;
-    let pen = radius;
-    if (bestDistSq > 1e-8) {
-      const dist = Math.sqrt(bestDistSq);
-      nx = (px - bestQx) / dist;
-      ny = (py - bestQy) / dist;
-      pen = radius - dist;
-    }
-    pos.x += nx * pen;
-    pos.y += ny * pen;
-    if (body.velocity) {
-      const vn = body.velocity.x * nx + body.velocity.y * ny;
-      if (vn < 0) {
-        body.velocity.x -= nx * vn;
-        body.velocity.y -= ny * vn;
-      }
-    }
-    return true;
-  }
-
-  resolveDiagonalWalls() {
-    if (!this.diagWalls?.length)
-      return;
-    for (const dw of this.diagWalls) {
-      if (this.player?.body)
-        this.resolveBodyVsDiag(this.player.body, PLAYER_RADIUS, dw);
-      for (const enemy of this.enemies) {
-        if (enemy.state !== 'dead' && enemy.body)
-          this.resolveBodyVsDiag(enemy.body, enemy.def.radius, dw);
-      }
-      for (const shot of this.shots) {
-        if (shot.dead || !shot.body)
-          continue;
-        const r = shot.kind === 'rocket' ? 7 : 6;
-        if (this.resolveBodyVsDiag(shot.body, r, dw))
-          shot.body.onCollision?.(dw.body);
-      }
-    }
+  addStaticTriangle(df) {
+    const body = new Physics(df.tri.position, new Vec2(), df.tri.size, 0, 1, 0, df.tri.shape, 0, false, CAT.WALL, 0xFFFF, 0, 'static');
+    body.ref = { kind: 'wall', diag: df.diag, idx: df.idx };
+    this.scene.addBody(body);
+    return body;
   }
 
   addStaticBox(center, width) {
@@ -718,7 +572,7 @@ export class Game {
       bleed: 0,
       deadTime: 0,
       feet: makeFeet(),
-      phase: this.rand.float(0, 6.28),
+      phase: this.rand.float(0, Trigo.twopi),
       mode: '',
       leap: 0,
       roar: 0,
@@ -761,11 +615,13 @@ export class Game {
       mask: CAT.WALL | CAT.PLAYER | CAT.ENEMY | CAT.BARREL,
       velocity,
     });
+    if (owner?.body)
+      body.ignoreCollisionWith(owner.body);
     const shot = { kind: 'shot', team: 'enemy', body, pos: body.position, damage, life: 5, age: 0, dead: false, owner };
     body.ref = shot;
     this.emit('fireball', from);
     body.onCollision = (other) => {
-      if (shot.dead || (owner && (other === owner.body || other.ref === owner)))
+      if (shot.dead)
         return;
       shot.dead = true;
       if (other === this.player.body)
@@ -836,29 +692,34 @@ export class Game {
       }
     }
 
-    const reaches = (target) => !this.scene.raycast(pos, target, { mask: CAT.WALL });
+    const reaches = (target) => this.scene.hasLineOfSight(pos, target, { mask: CAT.WALL });
     const away = this.player.pos.getDistance(pos);
     this.shake = Math.max(this.shake, Utils.clamp(1 - away / 520, 0, 1) * 1.15);
     if (away < shot.radius && reaches(this.player.pos))
       this.hurtPlayer(Math.round(6 + 26 * (1 - away / shot.radius)));
 
-    for (const enemy of this.enemies) {
+    for (const body of this.scene.queryCircle(pos, shot.radius, { mask: CAT.ENEMY })) {
+      const enemy = body.ref;
+      if (!enemy || enemy.state === 'dead')
+        continue;
       const d = enemy.pos.getDistance(pos);
       if (d >= shot.radius + enemy.def.radius || !reaches(enemy.pos))
         continue;
-      if (enemy.state === 'dead') {
-        const dir = this.scratch.subVectors(enemy.pos, pos);
-        if (dir.getMagnitude(true) > 0)
-          dir.normalize();
-        else
-          dir.setScalar(1, 0);
-        this.mutilateCorpse(enemy, dir.x, dir.y, true);
-        continue;
-      }
       enemy.volley = 1e6;
       this.damageEnemy(enemy, Math.round(8 + shot.splash * Math.max(0, 1 - d / shot.radius)));
     }
-    for (const barrel of this.barrels) {
+    for (const enemy of this.enemies) {
+      if (enemy.state !== 'dead' || !enemy.body.overlapsCircle(pos, shot.radius) || !reaches(enemy.pos))
+        continue;
+      const dir = this.scratch.subVectors(enemy.pos, pos);
+      if (dir.getMagnitude(true) > 0)
+        dir.normalize();
+      else
+        dir.setScalar(1, 0);
+      this.mutilateCorpse(enemy, dir.x, dir.y, true);
+    }
+    for (const body of this.scene.queryCircle(pos, shot.radius, { mask: CAT.BARREL })) {
+      const barrel = body.ref;
       const d = barrel.pos.getDistance(pos);
       if (!barrel.gone && d < shot.radius && reaches(barrel.pos))
         this.hitBarrel(barrel, BARREL.hp, 0.08 + 0.2 * (d / shot.radius));
@@ -898,7 +759,7 @@ export class Game {
     barrel.gone = true;
     this.scene.removeBody(barrel.body);
     const { x, y } = barrel.pos;
-    const reaches = (target) => !this.scene.raycast(barrel.pos, target, { mask: CAT.WALL });
+    const reaches = (target) => this.scene.hasLineOfSight(barrel.pos, target, { mask: CAT.WALL });
     this.burst(x, y, 0, 'boom');
     this.emit('boom', barrel.pos);
 
@@ -907,23 +768,28 @@ export class Game {
     if (away < BARREL.blast && reaches(this.player.pos))
       this.hurtPlayer(Math.round(8 + 42 * (1 - away / BARREL.blast)));
 
-    for (const enemy of this.enemies) {
+    for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, { mask: CAT.ENEMY })) {
+      const enemy = body.ref;
+      if (!enemy || enemy.state === 'dead')
+        continue;
       const d = enemy.pos.getDistance(barrel.pos);
       if (d >= BARREL.blast + enemy.def.radius || !reaches(enemy.pos))
         continue;
-      if (enemy.state === 'dead') {
-        const dir = this.scratch.subVectors(enemy.pos, barrel.pos);
-        if (dir.getMagnitude(true) > 0)
-          dir.normalize();
-        else
-          dir.setScalar(1, 0);
-        this.mutilateCorpse(enemy, dir.x, dir.y, true);
-        continue;
-      }
       enemy.volley = 1e6; // anything a blast kills is blown apart
       this.damageEnemy(enemy, 6 + 30 * Math.max(0, 1 - d / BARREL.blast));
     }
-    for (const other of this.barrels) {
+    for (const enemy of this.enemies) {
+      if (enemy.state !== 'dead' || !enemy.body.overlapsCircle(barrel.pos, BARREL.blast) || !reaches(enemy.pos))
+        continue;
+      const dir = this.scratch.subVectors(enemy.pos, barrel.pos);
+      if (dir.getMagnitude(true) > 0)
+        dir.normalize();
+      else
+        dir.setScalar(1, 0);
+      this.mutilateCorpse(enemy, dir.x, dir.y, true);
+    }
+    for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, { mask: CAT.BARREL })) {
+      const other = body.ref;
       const d = other.pos.getDistance(barrel.pos);
       if (!other.gone && d < BARREL.blast && reaches(other.pos))
         this.hitBarrel(other, BARREL.hp, 0.12 + 0.25 * (d / BARREL.blast));
@@ -1346,6 +1212,20 @@ export class Game {
       this.fireShotgun();
   }
 
+  hitCorpseAlongRay(end, dirX, dirY, radiusPad, forceGib = false) {
+    const { player } = this;
+    for (const corpse of this.enemies) {
+      if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
+        continue;
+      if ((corpse.pos.x - player.pos.x) * dirX + (corpse.pos.y - player.pos.y) * dirY <= 0)
+        continue;
+      if (Raycast.sweepCircleCircle(player.pos, end, radiusPad, corpse.pos, corpse.def.radius)) {
+        this.mutilateCorpse(corpse, dirX, dirY, forceGib);
+        return;
+      }
+    }
+  }
+
   fireKnife() {
     const player = this.player;
     const def = WEAPONS.knife;
@@ -1366,21 +1246,7 @@ export class Game {
     const sin = Math.sin(player.angle);
     const end = this.scratch.setScalar(player.pos.x + cos * def.reach, player.pos.y + sin * def.reach);
     const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
-    const maxDist = hit ? hit.point.getDistance(player.pos) : def.reach;
-
-    for (const corpse of this.enemies) {
-      if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
-        continue;
-      const dx = corpse.pos.x - player.pos.x;
-      const dy = corpse.pos.y - player.pos.y;
-      const along = dx * cos + dy * sin;
-      if (along <= 0 || along >= maxDist)
-        continue;
-      if (Math.abs(dx * sin - dy * cos) <= corpse.def.radius + 10) {
-        this.mutilateCorpse(corpse, cos, sin, Boolean(player.berserk));
-        break;
-      }
-    }
+    this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 10, Boolean(player.berserk));
 
     const dmg = def.damage * (player.berserk ? POWERUP_TYPES.berserk.multiplier : 1);
     if (!hit)
@@ -1431,22 +1297,8 @@ export class Game {
     const sin = Math.sin(player.angle);
     const end = this.scratch.setScalar(player.pos.x + cos * def.reach, player.pos.y + sin * def.reach);
     const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
-    const maxDist = hit ? hit.point.getDistance(player.pos) : def.reach;
     this.emit('chainsaw', null, { hit: Boolean(hit) });
-
-    for (const corpse of this.enemies) {
-      if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
-        continue;
-      const dx = corpse.pos.x - player.pos.x;
-      const dy = corpse.pos.y - player.pos.y;
-      const along = dx * cos + dy * sin;
-      if (along <= 0 || along >= maxDist)
-        continue;
-      if (Math.abs(dx * sin - dy * cos) <= corpse.def.radius + 10) {
-        this.mutilateCorpse(corpse, cos, sin, true);
-        break;
-      }
-    }
+    this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 10, true);
 
     const dmg = def.damage * (player.berserk ? POWERUP_TYPES.berserk.multiplier : 1);
     if (!hit)
@@ -1507,19 +1359,7 @@ export class Game {
       end.setScalar(player.pos.x + cos * 1600, player.pos.y + sin * 1600);
       const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
       const maxDist = hit ? hit.point.getDistance(player.pos) : 1600;
-      for (const corpse of this.enemies) {
-        if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
-          continue;
-        const dx = corpse.pos.x - player.pos.x;
-        const dy = corpse.pos.y - player.pos.y;
-        const along = dx * cos + dy * sin;
-        if (along <= 0 || along >= maxDist)
-          continue;
-        if (Math.abs(dx * sin - dy * cos) <= corpse.def.radius + 6) {
-          this.mutilateCorpse(corpse, cos, sin);
-          break;
-        }
-      }
+      this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 6);
       if (!hit)
         continue;
       const falloff = Utils.clamp((maxDist - PELLET_FALLOFF_START) / (PELLET_FALLOFF_END - PELLET_FALLOFF_START), 0, 1);
@@ -1577,19 +1417,7 @@ export class Game {
     const end = this.scratch.setScalar(player.pos.x + cos * 1600, player.pos.y + sin * 1600);
     const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
     const maxDist = hit ? hit.point.getDistance(player.pos) : 1600;
-    for (const corpse of this.enemies) {
-      if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
-        continue;
-      const dx = corpse.pos.x - player.pos.x;
-      const dy = corpse.pos.y - player.pos.y;
-      const along = dx * cos + dy * sin;
-      if (along <= 0 || along >= maxDist)
-        continue;
-      if (Math.abs(dx * sin - dy * cos) <= corpse.def.radius + 6) {
-        this.mutilateCorpse(corpse, cos, sin);
-        break;
-      }
-    }
+    this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 6);
     if (!hit)
       return;
     if (hit.body.ref?.kind === 'barrel') {
@@ -1632,7 +1460,7 @@ export class Game {
     player.recoil = 1.15;
     this.shake = Math.max(this.shake, 0.35);
 
-    const direction = new Vec2(Math.cos(player.angle), Math.sin(player.angle));
+    const direction = new Vec2(1, 0).setRadian(player.angle);
     const start = player.pos.clone().addScaledVector(direction, PLAYER_RADIUS + 8);
     this.addRocket(start, direction);
   }
@@ -1649,7 +1477,7 @@ export class Game {
 
   use() {
     const player = this.player;
-    const facing = this.scratch.setScalar(Math.cos(player.angle), Math.sin(player.angle));
+    const facing = this.scratch.setScalar(1, 0).setRadian(player.angle);
     let best = null;
     let bestDistance = 96;
     for (const door of this.level.doors.values()) {
@@ -1674,12 +1502,11 @@ export class Game {
   }
 
   actorNear(point, distance, enemyDistance = distance) {
-    if (this.player.pos.getDistance(point) < distance)
+    if (this.scene.queryCircleFirst(point, Math.max(0, distance - PLAYER_RADIUS), { mask: CAT.PLAYER }))
       return true;
-    for (const enemy of this.enemies) {
-      if (enemy.state !== 'dead' && enemy.pos.getDistance(point) < enemyDistance)
+    for (const body of this.scene.queryCircle(point, enemyDistance, { mask: CAT.ENEMY }))
+      if (body.ref?.state !== 'dead' && body.position.getDistance(point) < enemyDistance)
         return true;
-    }
     return false;
   }
 
@@ -1844,7 +1671,7 @@ export class Game {
     enemy.losTimer -= dt;
     if (enemy.losTimer <= 0) {
       enemy.losTimer = 0.15;
-      enemy.los = distance < enemy.def.sight && !this.scene.raycast(enemy.pos, player.pos, { mask: CAT.WALL });
+      enemy.los = distance < enemy.def.sight && this.scene.hasLineOfSight(enemy.pos, player.pos, { mask: CAT.WALL });
     }
 
     if (enemy.state === 'idle') {
@@ -1864,7 +1691,7 @@ export class Game {
       this.velocity.scaleVector(enemy.leapDir, LEAP_SPEED);
       enemy.body.setVelocity(this.velocity);
       enemy.walk += dt * 14;
-      if (!enemy.hit && distance < enemy.def.radius + PLAYER_RADIUS + 8) {
+      if (!enemy.hit && enemy.body.overlapsCircle(player.pos, PLAYER_RADIUS + 8)) {
         enemy.hit = true;
         this.hurtPlayer(12);
       }
@@ -1936,7 +1763,7 @@ export class Game {
       if (distance < 200)
         move.scale(-0.8);
       else if (distance < 340)
-        move.copy(move.perp()).scale(enemy.strafe * 0.7);
+        move.perp().scale(enemy.strafe * 0.7);
       if (enemy.cooldown <= 0 && distance < 750)
         enemy.windup = 0.4;
     }
@@ -1983,7 +1810,7 @@ export class Game {
     if (distance < 190)
       move.scale(-0.8);
     else if (distance < 380)
-      move.setScalar(-move.y * enemy.strafe * 0.8, move.x * enemy.strafe * 0.8);
+      move.perp().scale(enemy.strafe * 0.8);
     if (enemy.cooldown <= 0 && distance < 800)
       enemy.windup = 0.4;
   }
@@ -2074,10 +1901,10 @@ export class Game {
             this.hurtPlayer(28);
           enemy.cooldown = 1.3 / rage;
         } else {
-          const base = Math.atan2(toPlayer.y, toPlayer.x);
+          const base = toPlayer.getAngle() || 0;
           const arms = rage > 1 ? 2 : 1;
           for (let k = -arms; k <= arms; k++) {
-            const direction = new Vec2(Math.cos(base + k * 0.22), Math.sin(base + k * 0.22));
+            const direction = new Vec2(1, 0).setRadian(base + k * 0.22);
             this.addShot(enemy.pos.clone().addScaledVector(direction, enemy.def.radius + 10), direction, 230, 10, enemy);
           }
           enemy.cooldown = 2.6 / rage;
@@ -2145,7 +1972,7 @@ export class Game {
     const before = player.bob;
     player.bob += dt * player.moving * 9;
     // the head is lowest once per stride; that is when the foot lands
-    const landed = (bob) => Math.floor((bob - FOOTFALL) / Math.PI);
+    const landed = (bob) => Math.floor((bob - FOOTFALL) / Trigo.pi);
     if (this.state === 'play' && landed(player.bob) > landed(before))
       this.emit('step', null, { wet: player.feet.blood > 0.08, who: 'player' });
 
@@ -2176,10 +2003,9 @@ export class Game {
   trackFootprints() {
     const { player } = this;
     if (this.state === 'play') {
-      for (const enemy of this.enemies) {
-        if (enemy.state === 'dead' && enemy.pos.getDistance(player.pos) < enemy.def.radius + 14)
+      for (const enemy of this.enemies)
+        if (enemy.state === 'dead' && enemy.body.overlapsCircle(player.pos, PLAYER_RADIUS))
           player.feet.blood = 1;
-      }
       this.blood.walk(player.feet, player.pos.x, player.pos.y, 1, PLAYER_STRIDE);
     }
     for (const enemy of this.enemies) {
@@ -2187,7 +2013,7 @@ export class Game {
         continue;
       if (enemy.def.flying)
         continue;
-      const step = this.blood.walk(enemy.feet, enemy.pos.x, enemy.pos.y, 1, Math.PI / enemy.def.gait, false);
+      const step = this.blood.walk(enemy.feet, enemy.pos.x, enemy.pos.y, 1, Trigo.pi / enemy.def.gait, false);
       if (!step || !enemy.def.steps)
         continue;
       if (enemy.def.stomp) {
@@ -2256,18 +2082,20 @@ export class Game {
           this.shake = Math.max(this.shake, 0.35 * (1 - dist / 420));
       }
       if (crusher.low < 24) {
-        for (const enemy of this.enemies) {
-          if (enemy.pos.getDistance(crusher.center) >= TILE * 0.45 + enemy.def.radius)
+        for (const body of this.scene.queryCircle(crusher.center, TILE * 0.45, { mask: CAT.ENEMY })) {
+          const enemy = body.ref;
+          if (!enemy || enemy.state === 'dead')
             continue;
-          if (enemy.state !== 'dead') {
-            enemy.volley = 1e6;
-            this.damageEnemy(enemy, 999);
-          } else if (!enemy.gibbed && crusher.low < 18)
-            this.mutilateCorpse(enemy, 1, 0, true);
+          enemy.volley = 1e6;
+          this.damageEnemy(enemy, 999);
         }
+        if (crusher.low < 18)
+          for (const enemy of this.enemies)
+            if (enemy.state === 'dead' && !enemy.gibbed && enemy.body.overlapsCircle(crusher.center, TILE * 0.45))
+              this.mutilateCorpse(enemy, 1, 0, true);
         this.resolveGibs();
       }
-      if (this.state === 'play' && crusher.low < player.eye + 4 && crusher.hurtCooldown <= 0 && player.pos.getDistance(crusher.center) < TILE * 0.42 + PLAYER_RADIUS) {
+      if (this.state === 'play' && crusher.low < player.eye + 4 && crusher.hurtCooldown <= 0 && this.scene.queryCircleFirst(crusher.center, TILE * 0.42, { mask: CAT.PLAYER })) {
         crusher.hurtCooldown = 0.35;
         this.hurtPlayer(18, crusher.center);
         this.blood.spray(player.pos.x, player.pos.y, player.eye * 0.6, 0, 0, 14);
@@ -2308,14 +2136,13 @@ export class Game {
       this.shake = Math.max(this.shake, 0.45);
 
       let telefragged = false;
-      for (const enemy of this.enemies) {
-        if (enemy.state === 'dead')
+      for (const body of this.scene.queryCircle(pad.target, PLAYER_RADIUS + 10, { mask: CAT.ENEMY })) {
+        const enemy = body.ref;
+        if (!enemy || enemy.state === 'dead')
           continue;
-        if (enemy.pos.getDistance(pad.target) <= enemy.def.radius + PLAYER_RADIUS + 10) {
-          enemy.volley = 1e6;
-          this.damageEnemy(enemy, 999);
-          telefragged = true;
-        }
+        enemy.volley = 1e6;
+        this.damageEnemy(enemy, 999);
+        telefragged = true;
       }
       if (telefragged) {
         this.resolveGibs();
@@ -2332,9 +2159,8 @@ export class Game {
         continue;
       if (pad.target.getDistance(player.pos) + 12 >= pad.center.getDistance(player.pos))
         continue;
-      const blockedByPlayer = player.pos.getDistance(pad.target) < enemy.def.radius + PLAYER_RADIUS + 12;
-      const blockedByEnemy = this.enemies.some((other) => other !== enemy && other.state !== 'dead' && other.pos.getDistance(pad.target) < enemy.def.radius + other.def.radius + 8);
-      if (blockedByPlayer || blockedByEnemy)
+      if (this.scene.queryCircleFirst(pad.target, enemy.def.radius + 12, { mask: CAT.PLAYER }) ||
+          this.scene.queryCircleFirst(pad.target, enemy.def.radius + 8, { mask: CAT.ENEMY, ignoreBody: enemy.body }))
         continue;
       this.burst(pad.center.x, pad.center.y, EYE - 4, 'teleport');
       this.burst(pad.target.x, pad.target.y, EYE - 4, 'teleport');
@@ -2381,7 +2207,6 @@ export class Game {
     }
 
     this.scene.step(dt);
-    this.resolveDiagonalWalls();
     this.updateTeleporters(dt);
     this.cleanup();
     this.trackFootprints();
@@ -2413,12 +2238,11 @@ export class Game {
         }
       } else
         this.player.chainsawIdle = Math.max(this.player.chainsawIdle ?? 0, 0.06);
-      for (const exit of this.level.exits) {
-        if (exit.getDistance(this.player.pos) < TILE * 0.5 + PLAYER_RADIUS + 10) {
+      for (const exit of this.level.exits)
+        if (this.player.body.overlapsCircle(exit, TILE * 0.5 + 10)) {
           this.startIntermission();
           break;
         }
-      }
     }
   }
 }

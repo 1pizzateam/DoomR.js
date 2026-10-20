@@ -1,8 +1,10 @@
-import { Utils, Vec2, Vec3 } from '@1pizzateam/spock';
+import { Bezier, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { LIGHT_GLSL, SOLID_ALPHA } from './quads.js';
 import { mulberry32 } from './rng.js';
 
 export { LIGHT_GLSL };
+
+const scratchPt = new Vec2();
 
 /**
  * The floor of an old space base: worn deck plates, grating, hatches, cable runs, inlaid light strips and the odd
@@ -53,10 +55,9 @@ export class Tile {
   }
 
   rect(x0, y0, w, h, color, amount = 1) {
-    for (let y = y0; y < y0 + h; y++) {
+    for (let y = y0; y < y0 + h; y++)
       for (let x = x0; x < x0 + w; x++)
         this.set(x, y, color, amount);
-    }
   }
 }
 
@@ -75,8 +76,8 @@ export function field(rnd, scale) {
       const y0 = Math.floor(gy);
       const fx = gx - x0;
       const fy = gy - y0;
-      const sx = fx * fx * (3 - 2 * fx);
-      const sy = fy * fy * (3 - 2 * fy);
+      const sx = Bezier.cubic(0, 0, 1, 1, fx);
+      const sy = Bezier.cubic(0, 0, 1, 1, fy);
       const at = (ix, iy) => grids[o][(((iy % size) + size) % size) * (size + 1) + (((ix % size) + size) % size)];
       const top = at(x0, y0) * (1 - sx) + at(x0 + 1, y0) * sx;
       const bottom = at(x0, y0 + 1) * (1 - sx) + at(x0 + 1, y0 + 1) * sx;
@@ -90,12 +91,11 @@ export function field(rnd, scale) {
 
 /** A beveled steel plate: grain, a light edge top and left, a dark one bottom and right, and rivets in the corners. */
 export function plate(t, x0, y0, w, h, rnd, base = METAL) {
-  for (let y = y0; y < y0 + h; y++) {
+  for (let y = y0; y < y0 + h; y++)
     for (let x = x0; x < x0 + w; x++) {
       const grain = (rnd() - 0.5) * 7 + (((x >> 2) + (y >> 2)) % 2 ? 1.5 : 0);
       t.set(x, y, [base[0] + grain, base[1] + grain, base[2] + grain * 1.2]);
     }
-  }
   for (let i = 0; i < w; i++) {
     t.set(x0 + i, y0, LIGHT, 0.85);
     t.set(x0 + i, y0 + 1, LIGHT, 0.3);
@@ -130,7 +130,7 @@ function rivets(t, inset) {
 export function rust(t, rnd, amount, holes = 0) {
   const patch = field(rnd, 22);
   const fine = field(rnd, 5);
-  for (let y = 2; y < t.height - 2; y++) {
+  for (let y = 2; y < t.height - 2; y++)
     for (let x = 2; x < t.width - 2; x++) {
       const n = patch(x, y) + (fine(x, y) - 0.5) * 0.25;
       const edge = n - (1 - amount);
@@ -144,7 +144,6 @@ export function rust(t, rnd, amount, holes = 0) {
         color = mix(SHADOW, RUST_DARK, fine(x, y) * 0.3);
       t.set(x, y, color, 0.35 + depth * 0.6);
     }
-  }
   // streaks run down from the thick places
   for (let k = 0; k < 7; k++) {
     const x = 4 + Math.floor(rnd() * (t.width - 8));
@@ -178,14 +177,13 @@ function drawPlain(t, rnd) {
 function drawGrating(t, rnd) {
   plate(t, 0, 0, 64, 64, rnd);
   // a mesh of bars over a dark drop
-  for (let y = 7; y < 57; y++) {
+  for (let y = 7; y < 57; y++)
     for (let x = 7; x < 57; x++) {
       const bar = (x + y) % 8 < 2 || (x - y + 64) % 8 < 2;
       t.set(x, y, bar ? mix(METAL, LIGHT, 0.55 + (rnd() - 0.5) * 0.2) : SHADOW);
       if (bar && (x + y) % 8 === 0)
         t.set(x, y, LIGHT, 0.5);
     }
-  }
   // the frame round it
   for (let i = 5; i < 59; i++) {
     t.set(i, 5, SHADOW);
@@ -200,9 +198,9 @@ function drawHatch(t, rnd) {
   plate(t, 0, 0, 64, 64, rnd);
   const cx = 31.5;
   const cy = 31.5;
-  for (let y = 0; y < 64; y++) {
+  for (let y = 0; y < 64; y++)
     for (let x = 0; x < 64; x++) {
-      const d = Math.hypot(x - cx, y - cy);
+      const d = scratchPt.setScalar(x - cx, y - cy).getMagnitude();
       if (d < 22 && d >= 19)
         t.set(x, y, SHADOW);
       else if (d < 19 && d >= 17)
@@ -213,16 +211,15 @@ function drawHatch(t, rnd) {
         t.set(x, y, rib ? mix(METAL, LIGHT, 0.45) : mix(METAL, SHADOW, 0.25));
       }
     }
-  }
   // the wheel handle
   for (let a = 0; a < 6; a++) {
-    const angle = (a / 6) * Math.PI;
+    const angle = (a / 6) * Trigo.pi;
     for (let d = -8; d <= 8; d += 0.5)
       t.set(cx + Math.cos(angle) * d, cy + Math.sin(angle) * d, mix(METAL, LIGHT, 0.7));
   }
   t.rect(29, 29, 5, 5, LIGHT, 0.8);
   for (let k = 0; k < 8; k++) {
-    const angle = (k / 8) * Math.PI * 2 + 0.4;
+    const angle = (k / 8) * Trigo.twopi + 0.4;
     rivet(t, Math.round(cx + Math.cos(angle) * 25) - 1, Math.round(cy + Math.sin(angle) * 25) - 1);
   }
 }
@@ -282,7 +279,7 @@ function drawCracked(t, rnd) {
 function drawConduit(t, rnd) {
   drawPlain(t, rnd);
   // cables run across the tile under clamps
-  for (const y of [19, 27, 41]) {
+  for (const y of [19, 27, 41])
     for (let x = 0; x < 64; x++) {
       const sag = Math.round(Math.sin(x * 0.12 + y) * 0.9);
       t.set(x, y + sag, LIGHT, 0.7);
@@ -290,7 +287,6 @@ function drawConduit(t, rnd) {
       t.set(x, y + sag + 2, mix(METAL, SHADOW, 0.3));
       t.set(x, y + sag + 3, SHADOW);
     }
-  }
   for (const x of [14, 46]) {
     t.rect(x, 15, 5, 33, mix(METAL, LIGHT, 0.35));
     t.rect(x, 15, 5, 1, LIGHT);
@@ -304,7 +300,7 @@ function drawConduit(t, rnd) {
 function drawHazard(t, rnd) {
   plate(t, 0, 0, 64, 64, rnd, [18, 21, 29]);
   const wear = field(rnd, 8);
-  for (let y = 5; y < 59; y++) {
+  for (let y = 5; y < 59; y++)
     for (let x = 3; x < 61; x++) {
       const stripe = Math.floor((x + y) / 9) % 2 === 0;
       if (!stripe)
@@ -312,7 +308,6 @@ function drawHazard(t, rnd) {
       const worn = wear(x, y) > 0.62;
       t.set(x, y, worn ? mix(HAZARD, RUST_DARK, 0.75) : mix(HAZARD, RUST, 0.25 + (rnd() - 0.5) * 0.2), 0.9);
     }
-  }
   for (let i = 3; i < 61; i++) {
     t.set(i, 5, SHADOW);
     t.set(i, 58, SHADOW);
@@ -347,7 +342,7 @@ export function floorAtlas() {
   DRAW.forEach((draw, cell) => {
     const tile = new Tile();
     draw(tile, mulberry32(7000 + cell * 104729));
-    for (let y = 0; y < height; y++) {
+    for (let y = 0; y < height; y++)
       for (let x = 0; x < TILE_PIXELS; x++) {
         const i = (y * TILE_PIXELS + x) * 3;
         const o = (y * width + cell * TILE_PIXELS + x) * 4;
@@ -355,7 +350,6 @@ export function floorAtlas() {
           data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
         data[o + 3] = 255;
       }
-    }
   });
   return { name: 'floor', data, width, height, cell: TILE_PIXELS, frames: FLOOR_CELL_COUNT };
 }
@@ -519,8 +513,8 @@ function periodicField(rnd, baseCells, period = TILE_PIXELS) {
       const y0 = Math.floor(gy);
       const fx = gx - x0;
       const fy = gy - y0;
-      const sx = fx * fx * (3 - 2 * fx);
-      const sy = fy * fy * (3 - 2 * fy);
+      const sx = Bezier.cubic(0, 0, 1, 1, fx);
+      const sy = Bezier.cubic(0, 0, 1, 1, fy);
       const at = (ix, iy) => grid[(((iy % cells) + cells) % cells) * cells + (((ix % cells) + cells) % cells)];
       const top = at(x0, y0) * (1 - sx) + at(x0 + 1, y0) * sx;
       const bottom = at(x0, y0 + 1) * (1 - sx) + at(x0 + 1, y0 + 1) * sx;
@@ -539,7 +533,7 @@ export function slimeAtlas() {
   const rnd = mulberry32(99173);
   const swirl = periodicField(rnd, 4, TILE_PIXELS);
   const fine = periodicField(rnd, 8, TILE_PIXELS);
-  for (let y = 0; y < height; y++) {
+  for (let y = 0; y < height; y++)
     for (let x = 0; x < width; x++) {
       const s = swirl(x, y) * 0.65 + fine(x, y) * 0.35;
       const r = Math.round(14 + s * 46);
@@ -551,7 +545,6 @@ export function slimeAtlas() {
       data[o + 2] = Utils.clamp(b, 0, 255);
       data[o + 3] = 255;
     }
-  }
   return { name: 'slime', data, width, height, cell: TILE_PIXELS, frames: 1 };
 }
 
@@ -616,14 +609,14 @@ export function teleporterAtlas() {
   const cx = 31.5;
   const cy = 31.5;
 
-  for (let y = 0; y < height; y++) {
+  for (let y = 0; y < height; y++)
     for (let x = 0; x < width; x++) {
       const g = grain(x, y);
       const dx = x - cx;
       const dy = y - cy;
       const ax = Math.abs(dx);
       const ay = Math.abs(dy);
-      const d = Math.hypot(dx, dy);
+      const d = scratchPt.setScalar(dx, dy).getMagnitude();
       const oct = Math.max(ax, ay, (ax + ay) * 0.7071);
       const border = Math.min(x, y, width - 1 - x, height - 1 - y);
 
@@ -664,7 +657,7 @@ export function teleporterAtlas() {
       }
 
       // Corner status beacons on the outer housing
-      const cornerDist = Math.hypot(ax - 23.5, ay - 23.5);
+      const cornerDist = scratchPt.setScalar(ax - 23.5, ay - 23.5).getMagnitude();
       if (cornerDist < 3.2) {
         if (cornerDist < 1.9) {
           const hot = 1 - cornerDist / 1.9;
@@ -734,7 +727,6 @@ export function teleporterAtlas() {
       data[o + 2] = Utils.clamp(b, 0, 255);
       data[o + 3] = 255;
     }
-  }
   return { name: 'teleporter', data, width, height, cell: TILE_PIXELS, frames: 1 };
 }
 

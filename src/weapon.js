@@ -12,7 +12,12 @@
  * Frames are 192 x 256 pixels side by side in one atlas.
  */
 
-import { Trigo, Utils } from '@1pizzateam/spock';
+import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+
+const scratchVec2 = new Vec2();
+function mag2(x, y) {
+  return scratchVec2.setScalar(x, y).getMagnitude();
+}
 
 export const WEAPON_CELL_W = 192;
 export const WEAPON_CELL_H = 256;
@@ -257,7 +262,7 @@ export function weaponFrame(elapsed, hasAmmo = true, weapon = 'shotgun', time = 
  * it stands a few art pixels below the edge, so the kick never shows a gap under it.
  */
 export function weaponPlacement({ width, height, bob = 0, moving = 0, recoil = 0, switchOffset = 0 }) {
-  const scale = Math.min(1.4, Math.max(0.7, height / 760));
+  const scale = Utils.clamp(height / 760, 0.7, 1.4);
   const pixel = Math.max(2, Math.round(2 * scale));
   const sway = Math.sin(bob) * 14 * moving * scale;
   const rise = Math.abs(Math.cos(bob)) * 8 * moving * scale;
@@ -326,7 +331,7 @@ class Art {
   }
 
   line(x0, y0, x1, y1, color) {
-    const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0)) || 1;
+    const steps = Math.ceil(mag2(x1 - x0, y1 - y0)) || 1;
     for (let i = 0; i <= steps; i++)
       this.put(x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps, color);
   }
@@ -373,7 +378,7 @@ class Art {
 
 /** A colour from a ramp, `t` 0..1, dithered with a 4x4 Bayer matrix so it reads as smooth shading. */
 function ramp(colors, t, x, y) {
-  const at = Math.min(colors.length - 1, Math.max(0, t * (colors.length - 1)));
+  const at = Utils.clamp(t * (colors.length - 1), 0, colors.length - 1);
   const low = Math.floor(at);
   const high = Math.min(colors.length - 1, low + 1);
   const mix = at - low;
@@ -386,7 +391,7 @@ const steelCyl = (bias = 0) => (u, v, x, y) => {
   const spec = Math.exp(-(((u - 0.32) / 0.16) ** 2)) * 0.58;
   const body = Math.max(0, 1 - Math.abs(u - 0.38) * 1.5) * 0.48;
   const rim = u > 0.8 ? (u - 0.8) * 0.85 : 0;
-  return ramp(STEEL, Math.min(1, Math.max(0, 0.04 + body + spec + rim + bias)), x, y);
+  return ramp(STEEL, Utils.clamp(0.04 + body + spec + rim + bias, 0, 1), x, y);
 };
 
 /**
@@ -399,7 +404,7 @@ function drawCenteredGun(a, lit) {
   for (let y = recTop; y < H; y++) {
     const v = (y - recTop) / (H - 1 - recTop);
     const p = v ** 1.15;
-    const shoulderCurve = v < 0.22 ? Math.sin((v / 0.22) * (Math.PI / 2)) : 1;
+    const shoulderCurve = v < 0.22 ? Math.sin((v / 0.22) * Trigo.halfpi) : 1;
     const halfW = Math.round(20 + shoulderCurve * 5 + p * 12);
     const flatHalf = Math.round(13 + p * 7);
     const bevelHalf = Math.round(18 + shoulderCurve * 4 + p * 10);
@@ -464,8 +469,8 @@ function drawCenteredGun(a, lit) {
   for (let y = foreTop; y <= foreBot; y++) {
     const v = (y - foreTop) / (foreBot - foreTop);
     const p = v ** 1.2;
-    const curve = Math.sin(v * Math.PI);
-    const shoulder = v < 0.14 ? Math.sin((v / 0.14) * (Math.PI / 2)) : v > 0.86 ? Math.sin(((1 - v) / 0.14) * (Math.PI / 2)) : 1;
+    const curve = Math.sin(v * Trigo.pi);
+    const shoulder = v < 0.14 ? Math.sin((v / 0.14) * Trigo.halfpi) : v > 0.86 ? Math.sin(((1 - v) / 0.14) * Trigo.halfpi) : 1;
     // Strong perspective flare from front (16px) to rear (29px) so the forend reads as horizontal
     const halfW = Math.round((16 + p * 12 + curve * 3.5) * (0.76 + 0.24 * shoulder));
     // Perspective-compressed rib spacing (tighter near the front, wider near the camera)
@@ -507,7 +512,7 @@ function drawCenteredGun(a, lit) {
   for (let y = barrelTop; y <= barrelBot; y++) {
     const v = (y - barrelTop) / (barrelBot - barrelTop);
     const p = v ** 1.18;
-    const ringCurve = y > 220 ? Math.cos(((y - 220) / 8) * (Math.PI / 2)) * 2 : 0;
+    const ringCurve = y > 220 ? Math.cos(((y - 220) / 8) * Trigo.halfpi) * 2 : 0;
     const halfW = Math.round(9 + p * 10 - (y > 220 ? 2 - ringCurve : 0));
     for (let x = CX - halfW; x <= CX + halfW; x++) {
       if (x === CX - halfW || x === CX + halfW) {
@@ -553,7 +558,7 @@ function drawCenteredGun(a, lit) {
     for (let x = CX - 9; x <= CX + 9; x++) {
       const dx = (x - CX) / 9;
       const dy = (y - MUZZLE_Y) / 2.2;
-      const d = Math.hypot(dx, dy);
+      const d = mag2(dx, dy);
       if (d <= 1.05) {
         if (d > 0.72)
           a.put(x, y, dy < 0 ? STEEL[6] : STEEL[2]);
@@ -616,9 +621,9 @@ function drawAngledPumpGun(a, pump = 1) {
   const foreBot = pump === 2 ? 211 : 198;
 
   const foreHalfAt = (y) => {
-    const v = Math.max(0, Math.min(1, (y - foreTop) / Math.max(1, foreBot - foreTop)));
+    const v = Utils.clamp((y - foreTop) / Math.max(1, foreBot - foreTop), 0, 1);
     const p = v ** 1.08;
-    const curve = Math.sin(Math.min(1, v * 1.12) * Math.PI) * 2.5;
+    const curve = Math.sin(Math.min(1, v * 1.12) * Trigo.pi) * 2.5;
     return 15.0 + p * 10.5 + curve;
   };
 
@@ -632,7 +637,7 @@ function drawAngledPumpGun(a, pump = 1) {
   for (let y = Math.max(0, Math.floor(wristY - 3)); y < H; y++) {
     const v = (y - wristY) / Math.max(1, H - 1 - wristY);
     const cx = wristX + (elbowX - wristX) * (v ** 0.92);
-    const swell = Math.sin(Math.min(1, v * 1.15) * Math.PI) * 4.5;
+    const swell = Math.sin(Math.min(1, v * 1.15) * Trigo.pi) * 4.5;
     const halfW = 14.0 + v * 5.5 + swell;
     for (let x = Math.floor(cx - halfW); x <= Math.ceil(cx + halfW); x++) {
       const u = (x - (cx - halfW)) / (halfW * 2);
@@ -642,7 +647,7 @@ function drawAngledPumpGun(a, pump = 1) {
         a.put(x, y, ARM[0]);
         continue;
       }
-      const muscle = Math.sin(u * Math.PI) * 0.65 + (u < 0.44 ? 0.22 : -0.06);
+      const muscle = Math.sin(u * Trigo.pi) * 0.65 + (u < 0.44 ? 0.22 : -0.06);
       const tendon = Math.exp(-(((u - 0.38) / 0.13) ** 2)) * 0.2 * (1 - v * 0.4);
       a.put(x, y, ramp(ARM, muscle + tendon - v * 0.05 + (hash(x, y) - 0.5) * 0.07, x, y));
     }
@@ -673,7 +678,7 @@ function drawAngledPumpGun(a, pump = 1) {
         a.put(x, y, GLOVE[0]);
         continue;
       }
-      const knuckle = Math.sin(u * Math.PI * 3.5) * 0.12 * (1 - v);
+      const knuckle = Math.sin(u * Trigo.pi * 3.5) * 0.12 * (1 - v);
       const shade = (1 - Math.abs(u - 0.36) * 1.15) * 0.52 + (1 - v) * 0.14 + knuckle + (hash(x, y) - 0.5) * 0.06;
       a.put(x, y, ramp(GLOVE, shade - 0.08, x, y));
     }
@@ -740,7 +745,7 @@ function drawAngledPumpGun(a, pump = 1) {
       else if (d > 0.64) {
         // Gleaming chrome twin action bars that pull the pump forend back into the receiver
         const rodU = (d - 0.64) / 0.26;
-        a.put(x, y, ramp(BOLT, 0.42 + Math.sin(rodU * Math.PI) * 0.52, x, y));
+        a.put(x, y, ramp(BOLT, 0.42 + Math.sin(rodU * Trigo.pi) * 0.52, x, y));
       } else
         a.put(x, y, STEEL[1]);
     }
@@ -789,7 +794,7 @@ function drawAngledPumpGun(a, pump = 1) {
     const bHalf = 7.5 + (((y - topY) / (recTop + 6 - topY)) ** 1.15) * 9.0;
 
     // Outer edge of the glove swells gently around the left side of the wood and tapers into the wrist cuff
-    const outerX = woodLeft - (v < 0.45 ? 3.5 + Math.sin((v / 0.45) * Math.PI) * 3.0 : 5.5 - (v - 0.45) * 3.0);
+    const outerX = woodLeft - (v < 0.45 ? 3.5 + Math.sin((v / 0.45) * Trigo.pi) * 3.0 : 5.5 - (v - 0.45) * 3.0);
     // Inner edge of the thumb hugs the left side of the walnut forend, staying strictly left of the steel barrel!
     const rawInner = woodLeft + (v < 0.35 ? 3.0 + v * 12.0 : 7.2 + (v - 0.35) * 5.0);
     const innerX = Math.min(cx - bHalf - 1.5, rawInner);
@@ -803,7 +808,7 @@ function drawAngledPumpGun(a, pump = 1) {
       }
       // Subtle thumb knuckle crease at v ≈ 0.36
       const crease = Math.abs(v - 0.36) < 0.04 ? -0.15 : 0;
-      const shade = Math.sin(u * Math.PI) * 0.56 + (1 - v * 0.35) * 0.18 + crease - 0.06 + (hash(x, y) - 0.5) * 0.06;
+      const shade = Math.sin(u * Trigo.pi) * 0.56 + (1 - v * 0.35) * 0.18 + crease - 0.06 + (hash(x, y) - 0.5) * 0.06;
       a.put(x, y, ramp(GLOVE, shade, x, y));
     }
   }
@@ -858,7 +863,7 @@ function drawAngledPumpGun(a, pump = 1) {
   // Foreshortened elliptical muzzle crown & front brass bead sight at (topX, topY)
   for (let y = topY - 4; y <= topY + 5; y++)
     for (let x = topX - 11; x <= topX + 11; x++) {
-      const d = Math.hypot((x - topX) / 8.0, (y - (topY + 1)) / 2.3);
+      const d = mag2((x - topX) / 8.0, (y - (topY + 1)) / 2.3);
       if (d <= 1.05) {
         if (d > 0.78)
           a.put(x, y, STEEL[0]);
@@ -886,7 +891,7 @@ function drawAngledPumpGun(a, pump = 1) {
         const ry2 = dx * ss + dy * sc;
         if (Math.abs(rx2) <= 8.5 && Math.abs(ry2) <= 3.6) {
           const v = (ry2 + 3.6) / 7.2;
-          const cyl = Math.sin(v * Math.PI);
+          const cyl = Math.sin(v * Trigo.pi);
           if (rx2 < -3.5) {
             const rim = rx2 < -7 ? 0.15 : 0;
             a.put(ex + dx, ey + dy, ramp(BRASS, 0.25 + cyl * 0.65 + rim, ex + dx, ey + dy));
@@ -902,7 +907,7 @@ function applyFlashLight(a, cx, cy, strength) {
     for (let x = 0; x < W; x++) {
       if (!a.has(x, y))
         continue;
-      const dist = Math.hypot(x - cx, (y - cy) * 1.15);
+      const dist = mag2(x - cx, (y - cy) * 1.15);
       const k = Math.max(0, 1 - dist / 92) * 0.64 * strength;
       if (k <= 0)
         continue;
@@ -919,8 +924,8 @@ function applyFlashLight(a, cx, cy, strength) {
  */
 function flameSpike(angle, targetAngle, width, sharpness = 1.25) {
   let diff = Math.abs(angle - targetAngle);
-  if (diff > Math.PI)
-    diff = Math.PI * 2 - diff;
+  if (diff > Trigo.pi)
+    diff = Trigo.twopi - diff;
   if (diff >= width)
     return 0;
   return (1 - diff / width) ** sharpness;
@@ -950,20 +955,20 @@ function drawFlash(a, size, cool, muzzleY = MUZZLE_Y) {
       const dx = rawDx / rx;
       const dy = rawDy / ry;
       const angle = Math.atan2(dy, dx);
-      const dist = Math.hypot(dx, dy);
+      const dist = mag2(dx, dy);
 
       // Volumetric Doom SHTFA0 / SHTFB0 flame lobes radiating around the muzzle axis:
       // - Wide horizontal blast wings (left & right)
       // - Thick upper-diagonal fire plumes
       // - Central upward blast tongue
       // - Lower-side perspective flares wrapping around the barrel sides
-      const upMain = flameSpike(angle, -Math.PI * 0.5, 0.52, 1.18) * 1.05;
-      const diagL = flameSpike(angle, -Math.PI * 0.72, 0.48, 1.2) * (cool ? 0.92 : 1.08);
-      const diagR = flameSpike(angle, -Math.PI * 0.28, 0.48, 1.2) * (cool ? 0.96 : 1.1);
-      const wingL = flameSpike(angle, -Math.PI * 0.95, 0.46, 1.15) * 1.12;
-      const wingR = flameSpike(angle, -Math.PI * 0.05, 0.46, 1.15) * 1.12;
-      const lowL = flameSpike(angle, Math.PI * 0.82, 0.36, 1.3) * 0.78;
-      const lowR = flameSpike(angle, Math.PI * 0.18, 0.36, 1.3) * 0.78;
+      const upMain = flameSpike(angle, -Trigo.halfpi, 0.52, 1.18) * 1.05;
+      const diagL = flameSpike(angle, -Trigo.pi * 0.72, 0.48, 1.2) * (cool ? 0.92 : 1.08);
+      const diagR = flameSpike(angle, -Trigo.pi * 0.28, 0.48, 1.2) * (cool ? 0.96 : 1.1);
+      const wingL = flameSpike(angle, -Trigo.pi * 0.95, 0.46, 1.15) * 1.12;
+      const wingR = flameSpike(angle, -Trigo.pi * 0.05, 0.46, 1.15) * 1.12;
+      const lowL = flameSpike(angle, Trigo.pi * 0.82, 0.36, 1.3) * 0.78;
+      const lowR = flameSpike(angle, Trigo.pi * 0.18, 0.36, 1.3) * 0.78;
 
       // Organic ragged flame tongues along the perimeter (without thin needle spikes)
       const wave1 = Math.sin(angle * 7 + (cool ? 1.8 : 0.4)) * 0.5 + 0.5;
@@ -980,7 +985,7 @@ function drawFlash(a, size, cool, muzzleY = MUZZLE_Y) {
       // 2D cellular/turbulent fire noise so the interior has rolling bright yellow/orange flame pockets
       const cellNoise = (hash(x >> 1, (y >> 1) + (cool ? 31 : 7)) - 0.5) * 0.18;
       const fineNoise = (hash(x, y) - 0.5) * 0.08;
-      const heat = Math.min(1, Math.max(0, (1 - normD ** 1.25) * (cool ? 0.92 : 1.12) + cellNoise + fineNoise));
+      const heat = Utils.clamp((1 - normD ** 1.25) * (cool ? 0.92 : 1.12) + cellNoise + fineNoise, 0, 1);
 
       // Dithered dark-red outer edge so it blends into the dark room instead of a hard sticker border
       if (heat < 0.14 && ((x + y) & 1) === 1)
@@ -994,7 +999,7 @@ function drawFlash(a, size, cool, muzzleY = MUZZLE_Y) {
   const coreRy = cool ? 5 : 8;
   for (let y = Math.floor(cy - coreRy); y <= muzzleY + 2; y++)
     for (let x = Math.floor(CX - coreRx); x <= Math.ceil(CX + coreRx); x++) {
-      const cd = Math.hypot((x - CX) / coreRx, (y - (muzzleY - 1)) / coreRy);
+      const cd = mag2((x - CX) / coreRx, (y - (muzzleY - 1)) / coreRy);
       if (cd <= 1) {
         const coreHeat = Math.min(1, 0.72 + (1 - cd) * 0.35);
         a.put(x, y, ramp(FIRE_RAMP, coreHeat, x, y));
@@ -1065,7 +1070,7 @@ function drawChainsawArt(frame) {
         a.put(x, y, STEEL[0]);
         continue;
       }
-      const cyl = Math.sin(u * Math.PI) * 0.72 + (u < 0.45 ? 0.18 : -0.04);
+      const cyl = Math.sin(u * Trigo.pi) * 0.72 + (u < 0.45 ? 0.18 : -0.04);
       a.put(x, y, ramp(HAZARD_YELLOW, cyl + (hash(x, y) - 0.5) * 0.08, x, y));
     }
   }
@@ -1226,7 +1231,7 @@ function drawChainsawArt(frame) {
   const { topY: noseTopY, botY: noseBotY } = barBounds(xTip);
   for (let y = noseTopY; y <= noseBotY; y++) {
     const nv = (y - noseTopY) / Math.max(1, noseBotY - noseTopY);
-    const curveOut = Math.round(Math.sin(nv * Math.PI) * 2.2);
+    const curveOut = Math.round(Math.sin(nv * Trigo.pi) * 2.2);
     const nx = xTip - curveOut;
     a.put(nx, y, ((y + chainPhase) & 1) ? BOLT[4] : STEEL[1]);
     a.put(nx + 1, y, STEEL[2]);
@@ -1349,7 +1354,7 @@ function drawExtractedCasing(a, cx, cy, angle, scale = 1) {
         continue;
       }
       // Cylindrical brass shading with a hot specular highlight band along the upper-left side of the case
-      const cyl = Math.sin(v * Math.PI);
+      const cyl = Math.sin(v * Trigo.pi);
       const spec = Math.exp(-(((v - 0.34) / 0.18) ** 2)) * 0.32;
       const rimBoost = u < -0.78 ? 0.14 : 0;
       const shade = Utils.clamp(0.18 + cyl * 0.56 + spec + rimBoost, 0, 1);
@@ -1374,7 +1379,7 @@ function drawChaingunArt(frame) {
   const clampY = 218 + recoilDy;
   // Advance by exactly 45 deg (pi/4) per active frame (1..4 -> 45, 90, 135, 180 deg) so opposite barrel pairs (180 deg apart)
   // keep rolling smoothly across both firing (`flashA`/`flashB`) and spin-down (`pumpA`/`pumpB`).
-  const spin = rolling ? frame * (Math.PI / 4) : 0.18;
+  const spin = rolling ? frame * (Trigo.pi / 4) : 0.18;
 
   // Draw the volumetric muzzle blast behind the barrel bundle ONLY on active firing frames (flashA / flashB)
   if (frame === WEAPON_FRAMES.flashA)
@@ -1425,7 +1430,7 @@ function drawChaingunArt(frame) {
           // Bright chrome & brass master power-rail barrel: high-contrast landmark that sweeps across the rotor
           const brassRing = relY > 4 && relY % 7 < 2;
           if (brassRing) {
-            a.put(x, y, ramp(BRASS, 0.48 + Math.sin(u * Math.PI) * 0.46 + depth * 0.1, x, y));
+            a.put(x, y, ramp(BRASS, 0.48 + Math.sin(u * Trigo.pi) * 0.46 + depth * 0.1, x, y));
             continue;
           }
           if (firing && depth > -0.1 && Math.abs(u - 0.48) < 0.2 && relY > 3) {
@@ -1458,7 +1463,7 @@ function drawChaingunArt(frame) {
     const ry = 2.4 + p * 1.4;
     for (let dy = -Math.ceil(ry); dy <= Math.ceil(ry); dy++)
       for (let dx = -rx; dx <= rx; dx++) {
-        const d = Math.hypot(dx / rx, dy / ry);
+        const d = mag2(dx / rx, dy / ry);
         if (d >= 0.72 && d <= 1.04) {
           const u = (dx + rx) / (rx * 2);
           const edge = d > 0.92 || d < 0.78;
@@ -1496,7 +1501,7 @@ function drawChaingunArt(frame) {
     for (let x = cx - muzRx - 1; x <= cx + muzRx + 1; x++) {
       const dx = (x - cx) / muzRx;
       const dy = (y - topY) / muzRy;
-      const d = Math.hypot(dx, dy);
+      const d = mag2(dx, dy);
       if (d <= 1.06) {
         if (d > 0.84)
           a.put(x, y, dy < 0 ? STEEL[6] : STEEL[0]);
@@ -1525,7 +1530,7 @@ function drawChaingunArt(frame) {
   for (let y = recTop; y < H; y++) {
     const v = (y - recTop) / Math.max(1, H - 1 - recTop);
     const p = v ** 1.15;
-    const shoulder = v < 0.2 ? Math.sin((v / 0.2) * (Math.PI / 2)) : 1;
+    const shoulder = v < 0.2 ? Math.sin((v / 0.2) * Trigo.halfpi) : 1;
     const half = Math.round(23 + shoulder * 4 + p * 15);
     const bevelHalf = Math.round(16 + shoulder * 3 + p * 11);
     for (let dx = -half; dx <= half; dx++) {
@@ -1562,15 +1567,14 @@ function drawChaingunArt(frame) {
         }
         if (firing) {
           const clawMaxX = frame === WEAPON_FRAMES.flashA ? 17 : 19;
-          if (dx <= clawMaxX && y >= recTop + 5 && y <= recTop + 9) {
-            // Silver reciprocating extractor claw & bolt face kicking spent brass out of the port
+          // Silver reciprocating extractor claw, incandescent breech gas, or dark open port
+          if (dx <= clawMaxX && y >= recTop + 5 && y <= recTop + 9)
             a.put(x, y, dx === clawMaxX ? BOLT[5] : BOLT[3]);
-          } else if (frame === WEAPON_FRAMES.flashA && dx >= 18 && y >= recTop + 5 && y <= recTop + 9) {
-            // Incandescent breech propellant gas inside the open chamber on primary extraction
+          else if (frame === WEAPON_FRAMES.flashA && dx >= 18 && y >= recTop + 5 && y <= recTop + 9)
             a.put(x, y, dx < 21 ? FIRE_RAMP[5] : FIRE_RAMP[3]);
-          } else if (frame === WEAPON_FRAMES.flashB && dx >= 20 && y >= recTop + 6 && y <= recTop + 8) {
+          else if (frame === WEAPON_FRAMES.flashB && dx >= 20 && y >= recTop + 6 && y <= recTop + 8)
             a.put(x, y, FIRE_RAMP[2]);
-          } else
+          else
             a.put(x, y, STEEL[0]);
         } else {
           // Closed steel bolt carrier slide with horizontal extractor guide groove when not firing
@@ -1593,7 +1597,7 @@ function drawChaingunArt(frame) {
           else if (roundU >= 0.76)
             a.put(x, y, FIRE_RAMP[3]);
           else
-            a.put(x, y, ramp(BRASS, 0.52 + Math.sin(roundU * Math.PI) * 0.42 + (pitch === 0 ? 0.1 : -0.06), x, y));
+            a.put(x, y, ramp(BRASS, 0.52 + Math.sin(roundU * Trigo.pi) * 0.42 + (pitch === 0 ? 0.1 : -0.06), x, y));
           continue;
         }
       }
@@ -1646,7 +1650,7 @@ function drawChaingunArt(frame) {
     // Compact white-hot plasma/muzzle core right at the top firing barrel bore so the spinning barrels below stay 100% clear
     for (let dy = -4; dy <= 1; dy++)
       for (let dx = -5; dx <= 5; dx++) {
-        const d = Math.hypot(dx / 5, dy / 3.5);
+        const d = mag2(dx / 5, dy / 3.5);
         if (d <= 1)
           a.put(cx + dx, topY - 2 + dy, d < 0.55 ? FIRE_RAMP[5] : FIRE_RAMP[4]);
       }
@@ -1654,7 +1658,7 @@ function drawChaingunArt(frame) {
     applyFlashLight(a, cx, topY, 0.55);
     for (let dy = -3; dy <= 1; dy++)
       for (let dx = -4; dx <= 4; dx++) {
-        const d = Math.hypot(dx / 4, dy / 2.8);
+        const d = mag2(dx / 4, dy / 2.8);
         if (d <= 1)
           a.put(cx + dx, topY - 2 + dy, d < 0.5 ? FIRE_RAMP[5] : FIRE_RAMP[3]);
       }
@@ -1693,7 +1697,7 @@ function drawRocketArt(frame) {
         continue;
       }
       const u = (dx + half) / Math.max(1, half * 2);
-      const arch = Math.sin(u * Math.PI) * 0.075;
+      const arch = Math.sin(u * Trigo.pi) * 0.075;
       const vCurve = v + arch;
       const collar = (vCurve > 0.36 && vCurve < 0.45) || (vCurve > 0.72 && vCurve < 0.8);
       const hazard = vCurve > 0.16 && vCurve < 0.29 && Math.abs(u - 0.5) < 0.38;
@@ -1708,7 +1712,7 @@ function drawRocketArt(frame) {
         a.put(x, y, ramp(STEEL, railShade + (hash(x, y) - 0.5) * 0.05, x, y));
         continue;
       }
-      const cyl = Math.sin(u * Math.PI) * 0.68 + (u < 0.42 ? 0.22 : -0.04) + (collar ? 0.14 : 0);
+      const cyl = Math.sin(u * Trigo.pi) * 0.68 + (u < 0.42 ? 0.22 : -0.04) + (collar ? 0.14 : 0);
       if (collar && (Math.abs(vCurve - 0.36) < 0.014 || Math.abs(vCurve - 0.45) < 0.014))
         a.put(x, y, STEEL[1]);
       else if (collar)
@@ -1742,7 +1746,7 @@ function drawRocketArt(frame) {
     for (let x = Math.floor(CX - muzRx - 1); x <= Math.ceil(CX + muzRx + 1); x++) {
       const dx = (x - CX) / muzRx;
       const dy = (y - topY) / muzRy;
-      const d = Math.hypot(dx, dy);
+      const d = mag2(dx, dy);
       if (d <= 1.06) {
         if (d > 0.76)
           a.put(x, y, dy < 0 ? STEEL[6] : STEEL[2]);

@@ -1,8 +1,11 @@
 import { AmbientLight, MAX_LIGHTS, PointLight, Vec2, Vec3 } from '@1pizzateam/roostr';
+import { Utils } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 import { GLOW, LIGHT, LIGHT_GLSL, METAL, mix, plate, rivet, SHADOW, Tile } from './floor.js';
 import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
 import { SOLID_ALPHA } from './quads.js';
+
+const scratchPt = new Vec2();
 
 /**
  * The ceiling of an old space base: deep recessed coffer bays, heavy I-beam girders, X-braced space-frame trusses,
@@ -63,12 +66,11 @@ function cofferBase(t, rnd, cavityColor = COFFER) {
 
   // Deep stepped coffer recess (6..57)
   t.rect(6, 6, 52, 52, VOID, 0.95);
-  for (let y = 8; y < 56; y++) {
+  for (let y = 8; y < 56; y++)
     for (let x = 8; x < 56; x++) {
       const grain = (rnd() - 0.5) * 4;
       t.set(x, y, [cavityColor[0] + grain, cavityColor[1] + grain, cavityColor[2] + grain * 1.2]);
     }
-  }
   // Inner bevel of the sunken coffer lip
   for (let i = 6; i < 58; i++) {
     t.set(i, 6, VOID);
@@ -102,12 +104,11 @@ function drawPanels(t, rnd) {
   // Fine recessed acoustic micro-slats inside both upper and lower coffer bays
   for (const [y0, y1] of [[10, 26], [38, 54]]) {
     t.rect(10, y0, 44, y1 - y0, VOID, 0.7);
-    for (let y = y0 + 1; y < y1 - 1; y += 3) {
+    for (let y = y0 + 1; y < y1 - 1; y += 3)
       for (let x = 12; x < 52; x++) {
         t.set(x, y, mix(COFFER, FLANGE, 0.28), 0.85);
         t.set(x, y + 1, VOID, 0.92);
       }
-    }
     // Vertical stiffener strap down the middle of the slats
     t.rect(30, y0, 4, y1 - y0, GIRDER, 0.9);
     for (let y = y0; y < y1; y++)
@@ -144,14 +145,13 @@ function drawRibs(t, rnd) {
 function drawDuct(t, rnd) {
   cofferBase(t, rnd, VOID);
   // Twin thin armored conduit pipes alongside the main trunk
-  for (const py of [10, 51]) {
+  for (const py of [10, 51])
     for (let x = 6; x < 58; x++) {
       t.set(x, py, VOID);
       t.set(x, py + 1, FLANGE, 0.65);
       t.set(x, py + 2, GIRDER, 0.9);
       t.set(x, py + 3, VOID);
     }
-  }
   // Main cylindrical overhead HVAC trunk (y = 17..47)
   for (let y = 17; y < 47; y++) {
     const norm = (y - 31.5) / 15;
@@ -182,11 +182,11 @@ function drawGrille(t, rnd) {
   const cx = 31.5;
   const cy = 31.5;
   // Deep circular/octagonal exhaust well with dark fan blades visible inside
-  for (let y = 11; y < 53; y++) {
+  for (let y = 11; y < 53; y++)
     for (let x = 11; x < 53; x++) {
       const dx = x - cx;
       const dy = y - cy;
-      const r = Math.hypot(dx, dy);
+      const r = scratchPt.setScalar(dx, dy).getMagnitude();
       if (r < 20.5) {
         if (r > 18.2)
           t.set(x, y, mix(GIRDER, FLANGE, 0.45), 0.95);
@@ -199,7 +199,6 @@ function drawGrille(t, rnd) {
         }
       }
     }
-  }
   // Heavy protective grating bars across the turbine well
   for (let x = 14; x <= 50; x += 6) {
     t.rect(x, 12, 2, 40, mix(GIRDER, FLANGE, 0.45), 0.9);
@@ -223,7 +222,7 @@ function drawLight(t, rnd) {
     t.set(x, 47, VOID);
   }
   // Polished parabolic reflector bed and twin bright fluorescent tubes
-  for (let y = 19; y < 45; y++) {
+  for (let y = 19; y < 45; y++)
     for (let x = 9; x < 55; x++) {
       const dTube1 = Math.abs(y - 25.5);
       const dTube2 = Math.abs(y - 37.5);
@@ -233,7 +232,6 @@ function drawLight(t, rnd) {
       const glow = Math.max(tube, spine);
       t.set(x, y, mix(GLOW, WARM, 0.45 + 0.52 * glow), 0.72 + 0.28 * glow);
     }
-  }
   // Cross louver baffles dividing the troffer into 4 bays
   for (const x of [19, 31, 43]) {
     t.rect(x, 18, 2, 28, GIRDER, 0.75);
@@ -251,7 +249,7 @@ function drawTruss(t, rnd) {
     t.set(x, 33, GIRDER, 0.75);
   }
   // Diagonal X-brace struts from corner to corner
-  for (let y = 8; y < 56; y++) {
+  for (let y = 8; y < 56; y++)
     for (let x = 8; x < 56; x++) {
       const d1 = Math.abs(x - y);
       const d2 = Math.abs(x - (63 - y));
@@ -262,7 +260,6 @@ function drawTruss(t, rnd) {
       } else if (d <= 4.5)
         t.set(x, y, VOID, 0.9);
     }
-  }
   // Central bolted gusset plate where the X-struts cross
   t.rect(25, 25, 14, 14, VOID, 0.9);
   t.rect(26, 26, 12, 12, mix(GIRDER, FLANGE, 0.35), 0.95);
@@ -281,14 +278,13 @@ function drawPipes(t, rnd) {
   cofferBase(t, rnd, COFFER);
   t.rect(10, 10, 44, 44, VOID, 0.82);
   // Three parallel overhead pipes running along X
-  for (const [yc, rad] of [[17, 4], [31, 6], [46, 4]]) {
+  for (const [yc, rad] of [[17, 4], [31, 6], [46, 4]])
     for (let dy = -rad; dy <= rad; dy++) {
       const cyl = Math.sqrt(Math.max(0, 1 - (dy / (rad + 0.5)) ** 2));
       const col = mix(VOID, FLANGE, 0.2 + cyl * 0.72);
       for (let x = 6; x < 58; x++)
         t.set(x, yc + dy, col, 0.96);
     }
-  }
   // Vertical cross-over manifold box & pipe clamps
   for (const x of [16, 46]) {
     t.rect(x, 11, 4, 42, mix(GIRDER, FLANGE, 0.48), 0.95);
@@ -336,15 +332,14 @@ export function ceilingAtlas() {
   DRAW.forEach((draw, cell) => {
     const t = new Tile(SIZE, SIZE);
     draw(t, mulberry32(4400 + cell * 7919));
-    for (let y = 0; y < SIZE; y++) {
+    for (let y = 0; y < SIZE; y++)
       for (let x = 0; x < SIZE; x++) {
         const i = (y * SIZE + x) * 3;
         const o = (y * width + cell * SIZE + x) * 4;
         for (let k = 0; k < 3; k++)
-          data[o + k] = Math.max(0, Math.min(255, Math.round(t.pixels[i + k])));
+          data[o + k] = Utils.clamp(Math.round(t.pixels[i + k]), 0, 255);
         data[o + 3] = 255;
       }
-    }
   });
   return { name: 'ceiling', data, width, height: SIZE, cell: SIZE, frames: 8 };
 }

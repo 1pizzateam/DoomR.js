@@ -1,3 +1,5 @@
+import { Utils, Vec2 } from '@1pizzateam/spock';
+
 /**
  * Classic Doom Supercharge Powerups as 3D textured meshes:
  * - Soulsphere ('soulsphere', map symbol 'O'):
@@ -14,6 +16,8 @@
 export const POWERUP_CELL = 32;
 export const POWERUP_FRAMES = 4;
 export const POWERUP_CELLS = { front: 0, side: 1, top: 2, trim: 3 };
+
+const scratchPt = new Vec2();
 
 export const POWERUP_TYPES = {
   soulsphere: { bonus: 100, maxHealth: 200 },
@@ -110,10 +114,10 @@ function drawSoulsphereFront(put) {
     for (let x = 0; x < S; x++) {
       const dx = (x - 15.5) / 14.5;
       const dy = (y - 15.5) / 14.5;
-      const r = Math.hypot(dx, dy);
+      const r = scratchPt.setScalar(dx, dy).getMagnitude();
       const swirl = Math.sin(dx * 5 + dy * 4) * 0.12;
       const shade = Math.max(0, 1 - r * 0.85 + swirl);
-      const idx = Math.min(SOUL_PALETTE.length - 1, Math.max(0, Math.floor(shade * (SOUL_PALETTE.length - 1))));
+      const idx = Utils.clamp(Math.floor(shade * (SOUL_PALETTE.length - 1)), 0, SOUL_PALETTE.length - 1);
       put(x, y, SOUL_PALETTE[idx]);
     }
 
@@ -149,9 +153,9 @@ function drawSoulsphereSide(put) {
     for (let x = 0; x < S; x++) {
       const dx = (x - 15.5) / 15;
       const dy = (y - 15.5) / 15;
-      const r = Math.hypot(dx, dy);
+      const r = scratchPt.setScalar(dx, dy).getMagnitude();
       const arc = Math.abs(Math.sin(x * 0.42 + y * 0.25)) > 0.92;
-      const idx = arc ? 6 : Math.min(5, Math.max(1, Math.floor((1 - r * 0.7) * 5)));
+      const idx = arc ? 6 : Utils.clamp(Math.floor((1 - r * 0.7) * 5), 1, 5);
       put(x, y, SOUL_PALETTE[idx]);
     }
 }
@@ -160,7 +164,7 @@ function drawSoulsphereTop(put) {
   const S = POWERUP_CELL;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const r = Math.hypot(x - 15.5, y - 15.5);
+      const r = scratchPt.setScalar(x - 15.5, y - 15.5).getMagnitude();
       const ring = Math.abs(r - 6) < 1.2 || Math.abs(r - 11) < 1.1;
       put(x, y, r < 3 ? SOUL_PALETTE[7] : ring ? SOUL_PALETTE[6] : r < 10 ? SOUL_PALETTE[4] : SOUL_PALETTE[2]);
     }
@@ -337,7 +341,7 @@ function drawRadsuitTop(put) {
   const S = POWERUP_CELL;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const r = Math.hypot(x - 15.5, y - 15.5);
+      const r = scratchPt.setScalar(x - 15.5, y - 15.5).getMagnitude();
       put(x, y, r < 6 ? RADSUIT_VISOR[3] : r < 12 ? RADSUIT_SHELL[6] : RADSUIT_SHELL[3]);
     }
 }

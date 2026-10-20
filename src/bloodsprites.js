@@ -1,3 +1,4 @@
+import { Bezier, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 
 /**
@@ -33,6 +34,7 @@ const CELL_COUNT = CELLS.tips + TIP_KINDS;
 const EDGE = 0.3;
 const RED = [232, 16, 44];
 const BONE = [238, 172, 138];
+const scratchPt = new Vec2();
 
 class Canvas {
   constructor() {
@@ -60,22 +62,21 @@ class Canvas {
   }
 
   line(x0, y0, x1, y1, light, isBone = 0) {
-    const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 1.5) || 1;
+    const steps = Math.ceil(scratchPt.setScalar(x1 - x0, y1 - y0).getMagnitude() * 1.5) || 1;
     for (let i = 0; i <= steps; i++)
       this.put(x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps, light, isBone);
   }
 
   /** A blob: dim inside, bright rim, optionally a bright highlight. */
   blob(cx, cy, radius, light = 0.9, isBone = 0) {
-    for (let y = Math.floor(cy - radius - 1); y <= Math.ceil(cy + radius + 1); y++) {
+    for (let y = Math.floor(cy - radius - 1); y <= Math.ceil(cy + radius + 1); y++)
       for (let x = Math.floor(cx - radius - 1); x <= Math.ceil(cx + radius + 1); x++) {
-        const d = Math.hypot(x - cx, y - cy);
+        const d = scratchPt.setScalar(x - cx, y - cy).getMagnitude();
         if (d <= radius - 0.9)
           this.put(x, y, (x + y) % 2 ? light * 0.36 : light * 0.24, isBone);
         else if (d <= radius + 0.2)
           this.put(x, y, light, isBone);
       }
-    }
   }
 
   polygon(points, rim, fill, hatch = false) {
@@ -89,14 +90,11 @@ class Canvas {
       }
       return hit;
     };
-    if (fill > 0) {
-      for (let y = 0; y < CELL; y++) {
-        for (let x = 0; x < CELL; x++) {
+    if (fill > 0)
+      for (let y = 0; y < CELL; y++)
+        for (let x = 0; x < CELL; x++)
           if (inside(x, y))
             this.put(x, y, hatch && x % 3 === 0 ? fill * 1.6 : (x + y) % 2 ? fill * 0.8 : fill * 0.55);
-        }
-      }
-    }
     for (let i = 0; i < points.length; i++) {
       const [x0, y0] = points[i];
       const [x1, y1] = points[(i + 1) % points.length];
@@ -112,19 +110,18 @@ function drawFloorSplat(c, variant, rnd) {
   const radius = 4.5 + (variant % 3) * 1.6 + rnd();
   const phase = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
   const edge = (angle) => radius * (0.78 + 0.16 * Math.sin(angle * 3 + phase[0]) + 0.12 * Math.sin(angle * 5 + phase[1]) + 0.1 * Math.sin(angle * 2 + phase[2]));
-  for (let y = 0; y < CELL; y++) {
+  for (let y = 0; y < CELL; y++)
     for (let x = 0; x < CELL; x++) {
-      const d = Math.hypot(x - mid, y - mid);
+      const d = scratchPt.setScalar(x - mid, y - mid).getMagnitude();
       const r = edge(Math.atan2(y - mid, x - mid));
       if (d <= r - 1)
         c.put(x, y, (x + y) % 2 ? 0.34 : 0.2);
       else if (d <= r + 0.3)
         c.put(x, y, 0.95);
     }
-  }
   const rays = 6 + Math.floor(rnd() * 5) + (variant > 3 ? 2 : 0);
   for (let i = 0; i < rays; i++) {
-    const angle = rnd() * Math.PI * 2;
+    const angle = rnd() * Trigo.twopi;
     const from = edge(angle) * 0.6;
     const tip = radius + 2 + rnd() * 7;
     c.line(mid + Math.cos(angle) * from, mid + Math.sin(angle) * from, mid + Math.cos(angle) * tip, mid + Math.sin(angle) * tip, 0.85);
@@ -135,7 +132,7 @@ function drawFloorSplat(c, variant, rnd) {
   }
   const drops = 2 + Math.floor(rnd() * 4);
   for (let i = 0; i < drops; i++) {
-    const angle = rnd() * Math.PI * 2;
+    const angle = rnd() * Trigo.twopi;
     const distance = radius + 5 + rnd() * 6;
     c.blob(mid + Math.cos(angle) * distance, mid + Math.sin(angle) * distance, 0.8 + rnd() * 1.1, 0.95);
   }
@@ -146,19 +143,18 @@ function drawWallSplat(c, variant, rnd) {
   const cx = mid;
   const cy = mid;
   const radius = 3.2 + (variant % 2) * 1.2 + rnd();
-  for (let y = 0; y < CELL; y++) {
+  for (let y = 0; y < CELL; y++)
     for (let x = 0; x < CELL; x++) {
-      const d = Math.hypot((x - cx) * 0.9, (y - cy) * 1.1);
+      const d = scratchPt.setScalar((x - cx) * 0.9, (y - cy) * 1.1).getMagnitude();
       const r = radius * (0.85 + 0.25 * Math.sin(Math.atan2(y - cy, x - cx) * 3 + variant));
       if (d <= r - 1)
         c.put(x, y, (x + y) % 2 ? 0.34 : 0.2);
       else if (d <= r + 0.3)
         c.put(x, y, 0.95);
     }
-  }
   const rays = 7 + Math.floor(rnd() * 5);
   for (let i = 0; i < rays; i++) {
-    const angle = rnd() * Math.PI * 2;
+    const angle = rnd() * Trigo.twopi;
     const tip = radius + 2 + rnd() * 7;
     c.line(cx + Math.cos(angle) * radius * 0.6, cy + Math.sin(angle) * radius * 0.6, cx + Math.cos(angle) * tip, cy + Math.sin(angle) * tip, 0.85);
     if (rnd() < 0.5)
@@ -176,13 +172,12 @@ function drawPrint(c, filled) {
   const at = ([x, y]) => [mid + x * PRINT_PIXELS, mid + y * PRINT_PIXELS];
   for (const shape of [HEEL, FOREFOOT])
     c.polygon(shape.map(at), filled ? 0.95 : 0.8, filled ? 0.38 : 0);
-  if (filled) {
+  if (filled)
     for (const x of [0.4, 2.2, 3.9]) {
       const [x0, y0] = at([x, -1.9]);
       const [x1, y1] = at([x, 1.9]);
       c.line(x0, y0, x1, y1, 0.85);
     }
-  }
 }
 
 function drawDrop(c) {
@@ -242,7 +237,7 @@ const STEMS = [
   // wavy: two wide, swaying from side to side as it runs
   (c) => {
     for (let y = 0; y < CELL; y++) {
-      const x = Math.round(15 + 1.5 * Math.sin((y / 32) * Math.PI * 2));
+      const x = Math.round(15 + 1.5 * Math.sin((y / 32) * Trigo.twopi));
       edged(c, x, x + 1, y);
     }
   },
@@ -252,32 +247,29 @@ const STEMS = [
       c.put(15, y, 0.9);
       c.put(16, y, 0.5);
     }
-    for (const by of [5, 16, 27]) {
+    for (const by of [5, 16, 27])
       for (let dy = -2; dy <= 2; dy++) {
         const half = dy === 0 ? 2 : 1;
         edged(c, 15 - half + 1, 16 + half - 1, by + dy);
       }
-    }
   },
   // dry-brush: four wide and broken, where the blood did not quite cover the steel
   (c) => {
-    for (let y = 0; y < CELL; y++) {
+    for (let y = 0; y < CELL; y++)
       for (let x = 14; x <= 17; x++) {
         const gap = ((y * 5 + x * 3) % 9) < 3 && x > 14 && x < 17;
         if (!gap)
           c.put(x, y, x === 14 || x === 17 ? 0.9 : (x + y) % 2 ? 0.5 : 0.32);
       }
-    }
   },
   // a double: two thin threads side by side, joined here and there
   (c) => {
     for (let y = 0; y < CELL; y++) {
       c.put(14, y, 0.9);
       c.put(17, y, 0.9);
-      if (y % 16 === 7 || y % 16 === 8) {
+      if (y % 16 === 7 || y % 16 === 8)
         for (let x = 15; x <= 16; x++)
           c.put(x, y, 0.55);
-      }
     }
   },
 ];
@@ -308,10 +300,9 @@ function drawTip(c, kind) {
     });
     return;
   }
-  for (const [x, length] of [[14, 4], [15, 6], [16, 7], [17, 3]]) {
+  for (const [x, length] of [[14, 4], [15, 6], [16, 7], [17, 3]])
     for (let row = 0; row < length; row++)
       c.put(x, row, row === length - 1 ? 0.95 : x % 2 ? 0.55 : 0.8);
-  }
 }
 
 /**
@@ -327,7 +318,7 @@ function drawGib(c, variant, rnd) {
     const points = [];
     const sides = 8;
     for (let i = 0; i < sides; i++) {
-      const angle = (i / sides) * Math.PI * 2;
+      const angle = (i / sides) * Trigo.twopi;
       const radius = 6.5 + rnd() * 6;
       points.push([mid + Math.cos(angle) * radius, mid + Math.sin(angle) * radius]);
     }
@@ -342,14 +333,13 @@ function drawGib(c, variant, rnd) {
       c.put(mid - 6, mid + dy, 0.96, 1);
       c.put(mid - 5, mid + dy, 0.88, 1);
     }
-    for (const ry of [-6, 0, 6]) {
+    for (const ry of [-6, 0, 6])
       for (let t = 0; t <= 14; t++) {
         const rx = mid - 5 + t;
-        const y = mid + ry + Math.sin((t / 14) * Math.PI) * 2.4;
+        const y = mid + ry + Math.sin((t / 14) * Trigo.pi) * 2.4;
         c.put(rx, y, 0.96, 1);
         c.put(rx, y + 1, 0.82, 1);
       }
-    }
   } else if (variant === 2) {
     // cracked demon jawbone / skull shard with jagged teeth
     c.blob(mid, mid + 1, 8.2, 0.86);
@@ -359,13 +349,12 @@ function drawGib(c, variant, rnd) {
       c.put(x, 11, 0.9, 1);
       c.put(x, 12, 0.82, 1);
     }
-    for (const tx of [9, 13, 17, 21]) {
+    for (const tx of [9, 13, 17, 21])
       for (let ty = 13; ty <= 18; ty++) {
         c.put(tx, ty, 0.98, 1);
         if (ty < 17)
           c.put(tx + 1, ty, 0.85, 1);
       }
-    }
   } else if (variant === 3) {
     // ruptured eyeball / organ with trailing arterial nerve cord
     c.blob(mid - 2, mid - 2, 7.2, 0.92);
@@ -417,7 +406,7 @@ export function bloodAtlas() {
       drawTip(c, cell - CELLS.tips);
     else
       drawGib(c, cell - CELLS.gib, rnd);
-    for (let y = 0; y < CELL; y++) {
+    for (let y = 0; y < CELL; y++)
       for (let x = 0; x < CELL; x++) {
         const idx = y * CELL + x;
         const light = Math.min(1, c.light[idx]);
@@ -428,7 +417,6 @@ export function bloodAtlas() {
         data[o + 2] = Math.round(pal[2] * light);
         data[o + 3] = light > 0 ? 255 : 0;
       }
-    }
   }
   atlas = { name: 'blood', data, width, height, cell: CELL, frames: CELL_COUNT };
   return atlas;
@@ -446,7 +434,7 @@ export function cellUv(cell) {
 export function floorSplatQuad({ x, y, size, seed, height = 0.3 }) {
   const rnd = mulberry32(seed);
   const variant = Math.floor(rnd() * FLOOR_VARIANTS);
-  const angle = rnd() * Math.PI * 2;
+  const angle = rnd() * Trigo.twopi;
   const half = size * 1.6;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
@@ -566,7 +554,7 @@ function progress(t, profile) {
     return 0.5 + 0.5 * ease((t - 0.55) / 0.45);
   }
   if (profile === 2)
-    return t * t * (3 - 2 * t);
+    return Bezier.cubic(0, 0, 1, 1, t);
   return 1 - (1 - t) ** 3;
 }
 

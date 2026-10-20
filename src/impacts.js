@@ -1,5 +1,7 @@
-import { Utils } from '@1pizzateam/spock';
+import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
+
+const scratchPt = new Vec2();
 
 /**
  * What a bullet leaves behind and what it throws up, as pixel art drawn here in code (no image files): bullet holes in
@@ -58,7 +60,7 @@ class Cell {
   }
 
   line(x0, y0, x1, y1, color, over = true) {
-    const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 1.5) || 1;
+    const steps = Math.ceil(scratchPt.setScalar(x1 - x0, y1 - y0).getMagnitude() * 1.5) || 1;
     for (let i = 0; i <= steps; i++)
       this.put(Utils.lerp(x0, x1, i / steps), Utils.lerp(y0, y1, i / steps), color, over);
   }
@@ -72,16 +74,15 @@ function ellipse(cx, cy, rx, ry, turn, paint) {
   const cos = Math.cos(turn);
   const sin = Math.sin(turn);
   const reach = Math.ceil(Math.max(rx, ry) + 2);
-  for (let y = Math.floor(cy - reach); y <= Math.ceil(cy + reach); y++) {
+  for (let y = Math.floor(cy - reach); y <= Math.ceil(cy + reach); y++)
     for (let x = Math.floor(cx - reach); x <= Math.ceil(cx + reach); x++) {
       const dx = x - cx;
       const dy = y - cy;
       const u = (dx * cos + dy * sin) / rx;
       const v = (-dx * sin + dy * cos) / ry;
       // which way the rim faces: lit on the upper left, in shadow on the lower right
-      paint(x, y, Math.hypot(u, v), dx + dy);
+      paint(x, y, scratchPt.setScalar(u, v).getMagnitude(), dx + dy);
     }
-  }
 }
 
 /** A dent or crater: dark inside, a bevelled rim round it, and a bright edge of bare metal where the steel was torn. */
@@ -98,9 +99,8 @@ function crater(c, cx, cy, rx, ry, turn, { depth = 1, bare = true, rnd } = {}) {
       // a line of bare, freshly torn metal on the lit lip
       if (bare && side < -1 && d > 0.85 * e)
         c.put(x, y, BARE);
-    } else if (d <= 1.55 * e) {
+    } else if (d <= 1.55 * e)
       c.put(x, y, side < 0 ? SCORCH : SHADE, false);
-    }
   });
 }
 
@@ -125,19 +125,18 @@ function crack(c, rnd, x, y, angle, length, light = true, branches = 1) {
 
 /** A soft scorch: dithered dark, thinning outwards. */
 function scorch(c, rnd, cx, cy, radius, density = 1) {
-  for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++) {
+  for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++)
     for (let x = Math.floor(cx - radius); x <= Math.ceil(cx + radius); x++) {
-      const d = Math.hypot(x - cx, y - cy);
+      const d = scratchPt.setScalar(x - cx, y - cy).getMagnitude();
       if (d < radius && (x + y) % 2 === 0 && rnd() < (1.1 - d / radius) * density)
         c.put(x, y, SCORCH, false);
     }
-  }
 }
 
 /** Flecks of steel thrown out round a hit. */
 function flecks(c, rnd, cx, cy, count, near, far) {
   for (let i = 0; i < count; i++) {
-    const angle = rnd() * Math.PI * 2;
+    const angle = rnd() * Trigo.twopi;
     const distance = near + rnd() * (far - near);
     const x = cx + Math.cos(angle) * distance;
     const y = cy + Math.sin(angle) * distance;
@@ -161,7 +160,7 @@ const KINDS = [
     const petals = 4 + Math.floor(rnd() * 3);
     const start = rnd() * 6.28;
     for (let k = 0; k < petals; k++) {
-      const a = start + (k / petals) * Math.PI * 2 + (rnd() - 0.5) * 0.4;
+      const a = start + (k / petals) * Trigo.twopi + (rnd() - 0.5) * 0.4;
       const length = 4 + rnd() * 3;
       for (let d = 2.5; d < length + 2.5; d += 0.6) {
         const w = Math.max(0.3, 1.6 * (1 - (d - 2.5) / length));
@@ -226,13 +225,12 @@ const KINDS = [
     const n = 7 + Math.floor(rnd() * 3);
     for (let i = 0; i < n; i++)
       crack(c, rnd, mid, mid, (i / n) * 6.28 + rnd() * 0.3, 4 + Math.floor(rnd() * 6), false, 0);
-    for (let r of [5, 8]) {
+    for (let r of [5, 8])
       for (let k = 0; k < 14; k++) {
         const a = rnd() * 6.28;
         if (rnd() < 0.55)
           c.put(mid + Math.cos(a) * r, mid + Math.sin(a) * r, CRACK, false);
       }
-    }
     crater(c, mid, mid, 2.4, 2.4, 0, { rnd });
   },
 ];
@@ -275,10 +273,9 @@ function drawSpark(c, variant, frame) {
     c.put(mid, mid, color);
     for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]])
       c.put(mid + dx, mid + dy, size > 1 ? YELLOW : ORANGE, false);
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
       for (let d = 1; d <= size; d++)
         c.put(mid + dx * d, mid + dy * d, d === 1 ? FLASH : YELLOW);
-    }
   };
   if (variant === 0) {
     if (frame === 0)
@@ -286,23 +283,23 @@ function drawSpark(c, variant, frame) {
     else if (frame === 1)
       flash(2, YELLOW);
     for (let k = 0; k < 6; k++)
-      spark(rnd() * Math.PI * 2, 7 + rnd() * 7, 0.55 + rnd() * 0.4, 6);
+      spark(rnd() * Trigo.twopi, 7 + rnd() * 7, 0.55 + rnd() * 0.4, 6);
   } else if (variant === 1) {
     if (frame === 0)
       flash(2, FLASH);
     else if (frame === 1)
       flash(1, YELLOW);
     for (let k = 0; k < 7; k++)
-      spark(Math.PI / 2 + (rnd() - 0.5) * 1.8, 4 + rnd() * 6, 0.5 + rnd() * 0.5, 12);
+      spark(Trigo.halfpi + (rnd() - 0.5) * 1.8, 4 + rnd() * 6, 0.5 + rnd() * 0.5, 12);
   } else if (variant === 2) {
     // a glint: a bright point with a cross, smaller on the second frame
     if (frame < 2)
       flash(frame === 0 ? 3 : 2, frame === 0 ? FLASH : YELLOW);
     for (let k = 0; k < 4; k++)
-      spark(rnd() * Math.PI * 2, 3.5 + rnd() * 4.5, 0.7 + rnd() * 0.3, 10);
+      spark(rnd() * Trigo.twopi, 3.5 + rnd() * 4.5, 0.7 + rnd() * 0.3, 10);
   } else {
     // a ricochet: the sparks leave in a narrow cone to one side
-    const heading = -0.5 + rnd() * 0.4 + (rnd() < 0.5 ? 0 : Math.PI - 0.4);
+    const heading = -0.5 + rnd() * 0.4 + (rnd() < 0.5 ? 0 : Trigo.pi - 0.4);
     if (frame === 0)
       flash(2, FLASH);
     else if (frame === 1)
@@ -324,8 +321,8 @@ function drawSlash(c, variant, rnd) {
 
   for (let y = y0; y <= y1; y++) {
     const t = (y - y0) / (y1 - y0);
-    const env = Math.sin(t * Math.PI);
-    const cx = mid + (y - mid) * tilt + Math.sin(t * Math.PI) * curve + (rnd() - 0.5) * 0.35;
+    const env = Math.sin(t * Trigo.pi);
+    const cx = mid + (y - mid) * tilt + Math.sin(t * Trigo.pi) * curve + (rnd() - 0.5) * 0.35;
     const tooth = (y + variant) % 3 === 0;
     const halfW = (0.75 + 0.85 * env) + (tooth ? 0.55 : 0);
 
@@ -362,17 +359,16 @@ function drawSlash(c, variant, rnd) {
   }
 
   // Double-bite overlapping vertical chatter notch on variant 3
-  if (variant === 3) {
+  if (variant === 3)
     for (let y = y0 + 2; y <= y1 - 5; y++) {
       const sx = mid + 1.6 - (y - mid) * tilt * 0.7;
       c.put(sx, y, CHAR);
       c.put(sx + 1, y, BARE, false);
     }
-  }
 
   // Stress cracks branching sideways from the vertical gash on variants 4 and 5
   if (variant >= 4) {
-    crack(c, rnd, mid - 1, mid - 3, Math.PI + (rnd() - 0.5) * 0.5, 4, true, 0);
+    crack(c, rnd, mid - 1, mid - 3, Trigo.pi + (rnd() - 0.5) * 0.5, 4, true, 0);
     crack(c, rnd, mid + 1, mid + 3, (rnd() - 0.5) * 0.5, 4, true, 0);
   }
 
@@ -394,10 +390,9 @@ export function impactAtlas() {
       const slashIdx = cell - IMPACT_CELLS.slash;
       drawSlash(c, slashIdx, mulberry32(4096 + slashIdx * 6151));
     }
-    for (let y = 0; y < IMPACT_CELL; y++) {
+    for (let y = 0; y < IMPACT_CELL; y++)
       for (let x = 0; x < IMPACT_CELL; x++)
         data.set(c.pixels.subarray((y * IMPACT_CELL + x) * 4, (y * IMPACT_CELL + x) * 4 + 4), (y * width + cell * IMPACT_CELL + x) * 4);
-    }
   }
   return { name: 'impacts', data, width, height: IMPACT_CELL, cell: IMPACT_CELL, frames: IMPACT_CELL_COUNT };
 }

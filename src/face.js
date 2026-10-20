@@ -1,3 +1,5 @@
+import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+
 /**
  * The marine's HUD portrait (modelled on the classic Doom status-bar mugshot, STFST / STFOUCH / STFEVL / STFKILL):
  * - Drawn procedurally in code as a crisp pixel-art sprite atlas (48 x 56 pixels per frame).
@@ -21,6 +23,7 @@ export const FACE_FRAME_COUNT = FACE_TIERS * FACE_POSE_COUNT + 1;
 const W = FACE_CELL_W;
 const H = FACE_CELL_H;
 const CX = 24;
+const scratchPt = new Vec2();
 
 const SKIN = [
   [48, 26, 18],
@@ -126,7 +129,7 @@ function hash(x, y) {
 }
 
 function ramp(palette, t, x, y) {
-  const scaled = Math.max(0, Math.min(palette.length - 1.001, t * (palette.length - 1)));
+  const scaled = Utils.clamp(t * (palette.length - 1), 0, palette.length - 1.001);
   const idx = Math.floor(scaled);
   const frac = scaled - idx;
   const threshold = BAYER4[((y & 3) << 2) | (x & 3)] / 16;
@@ -143,7 +146,7 @@ function ramp(palette, t, x, y) {
 export function faceFrame({ health = 100, hurt = 0, shotElapsed = -1, time = 0 } = {}) {
   if (health <= 0)
     return FACE_DEAD_FRAME;
-  const clamped = Math.max(1, Math.min(100, health));
+  const clamped = Utils.clamp(health, 1, 100);
   const tier =
     clamped > 90
       ? 0
@@ -173,7 +176,7 @@ export function faceFrame({ health = 100, hurt = 0, shotElapsed = -1, time = 0 }
  * Screen rectangle `{ x0, y0, x1, y1, pixel }` for the HUD portrait box at the bottom-left of the screen.
  */
 export function facePlacement({ width, height, hurt = 0 } = {}) {
-  const scale = Math.min(1.35, Math.max(0.75, height / 760));
+  const scale = Utils.clamp(height / 760, 0.75, 1.35);
   const pixel = Math.max(1, Math.round(1.5 * scale));
   const w = W * pixel;
   const h = H * pixel;
@@ -230,7 +233,7 @@ function drawMarineFace(a, tier, pose, dead = false) {
   for (let y = 37; y <= 48; y++)
     for (let x = hx - 9; x <= hx + 9; x++) {
       const u = (x - (hx - 9)) / 18;
-      const cyl = Math.sin(u * Math.PI);
+      const cyl = Math.sin(u * Trigo.pi);
       const rib = (y + shiftY) % 2 === 0 ? 0.18 : -0.08;
       const piston = Math.abs(Math.abs(x - hx) - 5) < 1.2;
       a.put(x, y, piston ? ramp(ARMOR_STEEL, 0.35 + cyl * 0.4, x, y) : ramp(NECK_SEAL, 0.2 + cyl * 0.55 + rib, x, y));
@@ -240,7 +243,7 @@ function drawMarineFace(a, tier, pose, dead = false) {
   for (let y = 34; y < H; y++) {
     const t = (y - 34) / (H - 1 - 34);
     const outerHalfW = Math.min(23, Math.round(17 + t * 8));
-    // V-shaped armored gorget opening around the lower jaw and ribbed neck seal
+    // V-shaped armored armored gorget opening around the lower jaw and ribbed neck seal
     const throatHalfW = y < 46 ? Math.round(11.5 - (y - 34) * 0.55) : 0;
     for (let x = CX - outerHalfW; x <= CX + outerHalfW; x++) {
       const dx = x - CX;
@@ -253,7 +256,7 @@ function drawMarineFace(a, tier, pose, dead = false) {
         continue;
 
       const u = (x - (CX - outerHalfW)) / Math.max(1, outerHalfW * 2);
-      const dome = Math.sin(u * Math.PI);
+      const dome = Math.sin(u * Trigo.pi);
       const gorgetRim = y < 47 && Math.abs(adx - throatHalfW) <= 1.6;
       const pauldronSeam = Math.abs(adx - 13) <= 0.8 || y === pauldronTop + 4;
       const bevelTop = y <= pauldronTop + 1;
@@ -292,7 +295,7 @@ function drawMarineFace(a, tier, pose, dead = false) {
     const v = (y - headTop) / (headBot - headTop);
     let halfW;
     if (v < 0.25)
-      halfW = 11 + Math.sin((v / 0.25) * (Math.PI * 0.5)) * 4.0;
+      halfW = 11 + Math.sin((v / 0.25) * Trigo.halfpi) * 4.0;
     else if (v < 0.62)
       halfW = 14.8 - (v - 0.25) * 2.2;
     else if (v < 0.85)
@@ -310,27 +313,27 @@ function drawMarineFace(a, tier, pose, dead = false) {
       let light = 0.22 + cyl * 0.52 + (-nx * 0.08);
 
       // Forehead dome & brow bossing
-      const browDist = Math.hypot(dx / 11, (y - (18 + shiftY)) / 3.2);
+      const browDist = scratchPt.setScalar(dx / 11, (y - (18 + shiftY)) / 3.2).getMagnitude();
       if (browDist < 1)
         light += (1 - browDist) * 0.2;
 
       // Smooth orbital eye sockets (left and right)
-      const sockL = Math.hypot((dx + 6) / 4.8, (y - (eyeY + 0.5)) / 3.0);
-      const sockR = Math.hypot((dx - 6) / 4.8, (y - (eyeY + 0.5)) / 3.0);
+      const sockL = scratchPt.setScalar((dx + 6) / 4.8, (y - (eyeY + 0.5)) / 3.0).getMagnitude();
+      const sockR = scratchPt.setScalar((dx - 6) / 4.8, (y - (eyeY + 0.5)) / 3.0).getMagnitude();
       const sock = Math.min(sockL, sockR);
       if (sock < 1)
         light -= (1 - sock) * 0.32;
 
       // Sculpted zygomatic cheekbones below outer eyes
-      const cheekL = Math.hypot((dx + 8.5) / 4.8, (y - (28 + shiftY)) / 3.5);
-      const cheekR = Math.hypot((dx - 8.5) / 4.8, (y - (28 + shiftY)) / 3.5);
+      const cheekL = scratchPt.setScalar((dx + 8.5) / 4.8, (y - (28 + shiftY)) / 3.5).getMagnitude();
+      const cheekR = scratchPt.setScalar((dx - 8.5) / 4.8, (y - (28 + shiftY)) / 3.5).getMagnitude();
       const cheek = Math.min(cheekL, cheekR);
       if (cheek < 1)
         light += (1 - cheek) * 0.18;
 
       // Sub-malar cheek hollows above jawline
-      const hollowL = Math.hypot((dx + 9.5) / 4.2, (y - (34 + shiftY)) / 4.0);
-      const hollowR = Math.hypot((dx - 9.5) / 4.2, (y - (34 + shiftY)) / 4.0);
+      const hollowL = scratchPt.setScalar((dx + 9.5) / 4.2, (y - (34 + shiftY)) / 4.0).getMagnitude();
+      const hollowR = scratchPt.setScalar((dx - 9.5) / 4.2, (y - (34 + shiftY)) / 4.0).getMagnitude();
       const hollow = Math.min(hollowL, hollowR);
       if (hollow < 1)
         light -= (1 - hollow) * 0.18;
@@ -345,7 +348,7 @@ function drawMarineFace(a, tier, pose, dead = false) {
       }
 
       // Strong cleft chin pad
-      const chinDist = Math.hypot(dx / 5.5, (y - (42 + shiftY)) / 2.8);
+      const chinDist = scratchPt.setScalar(dx / 5.5, (y - (42 + shiftY)) / 2.8).getMagnitude();
       if (chinDist < 1) {
         if (Math.abs(dx) < 1.2 && y >= 41 + shiftY)
           light -= 0.18;
@@ -354,14 +357,14 @@ function drawMarineFace(a, tier, pose, dead = false) {
       }
 
       // Smooth radial bruising around right cheekbone (tier >= 1) and left eye/cheek (tier >= 2)
-      const bruiseR = Math.hypot((dx - 7.5) / 4.5, (y - (27.5 + shiftY)) / 3.8);
-      const bruiseL = Math.hypot((dx + 7.5) / 4.2, (y - (26.5 + shiftY)) / 3.5);
+      const bruiseR = scratchPt.setScalar((dx - 7.5) / 4.5, (y - (27.5 + shiftY)) / 3.8).getMagnitude();
+      const bruiseL = scratchPt.setScalar((dx + 7.5) / 4.2, (y - (26.5 + shiftY)) / 3.5).getMagnitude();
       if ((tier >= 1 && bruiseR < 1 && hash(x, y) > bruiseR * (tier === 1 ? 0.82 : 0.65)) || (tier >= 2 && bruiseL < 1 && hash(x + 9, y) > bruiseL * 0.68)) {
-        a.put(x, y, ramp(BRUISE, Math.max(0.1, Math.min(0.95, light)), x, y));
+        a.put(x, y, ramp(BRUISE, Utils.clamp(light, 0.1, 0.95), x, y));
         continue;
       }
 
-      const rgb = Math.abs(dx) === hw ? SKIN[0] : ramp(SKIN, Math.max(0.05, Math.min(0.98, light)), x, y);
+      const rgb = Math.abs(dx) === hw ? SKIN[0] : ramp(SKIN, Utils.clamp(light, 0.05, 0.98), x, y);
       a.put(x, y, rgb);
     }
   }
@@ -436,7 +439,7 @@ function drawMarineFace(a, tier, pose, dead = false) {
       if (Math.abs(dx) > halfN)
         continue;
       const nx = dx / Math.max(1, halfN);
-      const tipGlow = Math.hypot(dx / 2.2, (y - (29 + shiftY)) / 2.0) < 1 ? 0.14 : 0;
+      const tipGlow = scratchPt.setScalar(dx / 2.2, (y - (29 + shiftY)) / 2.0).getMagnitude() < 1 ? 0.14 : 0;
       const shade = 0.36 + Math.sqrt(Math.max(0, 1 - nx * nx)) * 0.44 - nx * 0.1 + tipGlow;
       a.put(hx + dx, y, ramp(SKIN, shade, hx + dx, y));
     }

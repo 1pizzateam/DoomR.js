@@ -90,7 +90,7 @@ varying vec2 vTextureCoord;
 
 const vec3 BACKGROUND = vec3(${BG.map((v) => v.toFixed(5)).join(', ')});
 const vec3 BLOOD = vec3(${COLORS.red.map((v) => v.toFixed(5)).join(', ')});
-const float FULL = ${Math.hypot(...COLORS.orange.map((v, i) => v - BG[i])).toFixed(5)};
+const float FULL = ${new Vec3(COLORS.orange).subtract(new Vec3(BG)).getMagnitude().toFixed(5)};
 
 void main(void) {
   vec4 texel = texture2D(uSampler, vTextureCoord);
@@ -161,7 +161,7 @@ varying vec3 vNormal;
 
 const vec3 BACKGROUND = vec3(${BG.map((v) => v.toFixed(5)).join(', ')});
 const vec3 BLOOD = vec3(${COLORS.red.map((v) => v.toFixed(5)).join(', ')});
-const float FULL = ${Math.hypot(...COLORS.orange.map((v, i) => v - BG[i])).toFixed(5)};
+const float FULL = ${new Vec3(COLORS.orange).subtract(new Vec3(BG)).getMagnitude().toFixed(5)};
 
 ${LIGHT_GLSL}
 void main(void) {
@@ -1433,7 +1433,7 @@ export class World {
   /** Poses one monster sprite for this frame, or advances its death / gibbing animation. */
   updateEnemy(enemy, view, player, time, game = null) {
     const dead = enemy.state === 'dead';
-    const dt = Math.min(0.1, Math.max(0, time - (view.lastTime ?? time)));
+    const dt = Utils.clamp(time - (view.lastTime ?? time), 0, 0.1);
     view.lastTime = time;
     const fade = dead ? Math.max(0.78, 1 - enemy.deadTime * 0.12) : 1;
     const flash = !dead && (enemy.hurt > 0 || enemy.pain > 0) ? 1 : 0;
@@ -1621,12 +1621,11 @@ export class World {
       view.stamp = stamp;
       update(entity, view);
     }
-    for (const [entity, view] of map) {
+    for (const [entity, view] of map)
       if (view.stamp !== stamp) {
         this.discard(view.root);
         map.delete(entity);
       }
-    }
   }
 
   // ---- frame --------------------------------------------------------------
@@ -1776,7 +1775,7 @@ export class World {
       .addScaledVector(scratchForward, pose.offset.z);
     view.root.setPosition(scratchPos);
 
-    scratchRot.setScalar(0, Math.PI * 0.5 - player.angle + pose.rotation.y, 0);
+    scratchRot.setScalar(0, Trigo.halfpi - player.angle + pose.rotation.y, 0);
     scratchQuat.setFromEuler(scratchRot);
     scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
     scratchLocalQuat.setFromEuler(scratchRot);
@@ -1836,7 +1835,7 @@ export class World {
       .addScaledVector(scratchForward, pose.offset.z);
     view.root.setPosition(scratchPos);
 
-    scratchRot.setScalar(0, Math.PI * 0.5 - player.angle + pose.rotation.y, 0);
+    scratchRot.setScalar(0, Trigo.halfpi - player.angle + pose.rotation.y, 0);
     scratchQuat.setFromEuler(scratchRot);
     scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
     scratchLocalQuat.setFromEuler(scratchRot);
@@ -1896,7 +1895,7 @@ export class World {
       .addScaledVector(scratchForward, pose.offset.z);
     view.root.setPosition(scratchPos);
 
-    scratchRot.setScalar(0, Math.PI * 0.5 - player.angle + pose.rotation.y, 0);
+    scratchRot.setScalar(0, Trigo.halfpi - player.angle + pose.rotation.y, 0);
     scratchQuat.setFromEuler(scratchRot);
     scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
     scratchLocalQuat.setFromEuler(scratchRot);
@@ -1959,7 +1958,7 @@ export class World {
       .addScaledVector(scratchForward, pose.offset.z);
     view.root.setPosition(scratchPos);
 
-    scratchRot.setScalar(0, Math.PI * 0.5 - player.angle + pose.rotation.y, 0);
+    scratchRot.setScalar(0, Trigo.halfpi - player.angle + pose.rotation.y, 0);
     scratchQuat.setFromEuler(scratchRot);
     scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
     scratchLocalQuat.setFromEuler(scratchRot);
@@ -2010,7 +2009,7 @@ export class World {
       .addScaledVector(scratchForward, pose.offset.z);
     view.root.setPosition(scratchPos);
 
-    scratchRot.setScalar(0, Math.PI * 0.5 - player.angle + pose.rotation.y, 0);
+    scratchRot.setScalar(0, Trigo.halfpi - player.angle + pose.rotation.y, 0);
     scratchQuat.setFromEuler(scratchRot);
     scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
     scratchLocalQuat.setFromEuler(scratchRot);
@@ -2031,7 +2030,8 @@ export class World {
     // a roll tips "up" towards the viewer's right
     const dx = cam.lookX - cam.x;
     const dz = cam.lookY - cam.y;
-    const length = Math.hypot(dx, dz) || 1;
+    scratchForward.setScalar(dx, 0, dz);
+    const length = scratchForward.getMagnitude() || 1;
     camera.up.setScalar((-dz / length) * Math.sin(cam.roll), Math.cos(cam.roll), (dx / length) * Math.sin(cam.roll));
     if (Math.abs(cam.zoom - this.zoom) > 0.002) {
       this.zoom = cam.zoom;

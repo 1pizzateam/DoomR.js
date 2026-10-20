@@ -1,3 +1,4 @@
+import { Utils } from '@1pizzateam/spock';
 import { SOLID_ALPHA } from './quads.js';
 import { mulberry32 } from './rng.js';
 import { GLOW, LIGHT, LIGHT_GLSL, METAL, mix, plate, rivet, RUST_GLSL, SHADOW, Tile } from './floor.js';
@@ -39,10 +40,9 @@ function bevel(t, x0, y0, w, h, rise = true) {
 }
 
 function hazardStrip(t, x0, y0, w, h, color = HAZARD) {
-  for (let y = y0; y < y0 + h; y++) {
+  for (let y = y0; y < y0 + h; y++)
     for (let x = x0; x < x0 + w; x++)
       t.set(x, y, Math.floor((x + y) / 4) % 2 ? color : HAZARD_DARK);
-  }
   for (let x = x0; x < x0 + w; x++) {
     t.set(x, y0, SHADOW, 0.7);
     t.set(x, y0 + h - 1, SHADOW, 0.7);
@@ -65,17 +65,15 @@ function drawFace(rnd, lockColor = null) {
   for (const x0 of [5, 33]) {
     plate(t, x0, 12, 26, 40, rnd, mix(METAL, LIGHT, 0.18));
     bevel(t, x0 + 3, 28, 20, 20, false);
-    for (let y = 31; y < 46; y += 4) {
+    for (let y = 31; y < 46; y += 4)
       for (let x = x0 + 5; x < x0 + 21; x++) {
         t.set(x, y, SHADOW, 0.55);
         t.set(x, y + 1, LIGHT, 0.2);
       }
-    }
     // the viewing slit
-    for (let y = 16; y < 24; y++) {
+    for (let y = 16; y < 24; y++)
       for (let x = x0 + 5; x < x0 + 21; x++)
         t.set(x, y, mix(SHADOW, slitGlow, (theme ? 0.34 : 0.14) + (y - 16) * 0.018));
-    }
     bevel(t, x0 + 4, 15, 18, 10, false);
     for (let x = x0 + 5; x < x0 + 21; x++)
       t.set(x, 17, slitGlow, theme ? 0.85 : 0.5);
@@ -105,12 +103,11 @@ function drawFace(rnd, lockColor = null) {
   }
   if (theme) {
     // vertical keycard lock rails along the outer door jambs & central keycard reader escutcheon
-    for (const x of [2, 60]) {
+    for (const x of [2, 60])
       for (let y = 12; y < 52; y++) {
         t.set(x, y, sig, 0.92);
         t.set(x + 1, y, slitGlow, 0.75);
       }
-    }
     t.rect(26, 27, 12, 10, SHADOW, 0.85);
     bevel(t, 26, 27, 12, 10, false);
     t.rect(28, 29, 8, 6, sig, 0.95);
@@ -124,10 +121,9 @@ function drawFace(rnd, lockColor = null) {
 function drawTop(rnd) {
   const t = new Tile(SIZE, SIZE);
   plate(t, 0, 0, SIZE, SIZE, rnd, mix(METAL, SHADOW, 0.3));
-  for (let i = 8; i < 56; i += 8) {
+  for (let i = 8; i < 56; i += 8)
     for (let x = 4; x < 60; x++)
       t.set(x, i, SHADOW, 0.6);
-  }
   rivet(t, 3, 3);
   rivet(t, 58, 3);
   rivet(t, 3, 58);
@@ -139,15 +135,14 @@ function buildDoorAtlas(name, lockColor = null) {
   const width = SIZE * DOOR_CELLS;
   const data = new Uint8Array(width * SIZE * 4);
   [drawFace(mulberry32(555), lockColor), drawTop(mulberry32(777))].forEach((tile, cell) => {
-    for (let y = 0; y < SIZE; y++) {
+    for (let y = 0; y < SIZE; y++)
       for (let x = 0; x < SIZE; x++) {
         const i = (y * SIZE + x) * 3;
         const o = (y * width + cell * SIZE + x) * 4;
         for (let k = 0; k < 3; k++)
-          data[o + k] = Math.max(0, Math.min(255, Math.round(tile.pixels[i + k])));
+          data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
         data[o + 3] = 255;
       }
-    }
   });
   return { name, data, width, height: SIZE, cell: SIZE, frames: DOOR_CELLS };
 }

@@ -9,6 +9,8 @@
  * - flag === 255: glowing supernatural eyes / hell-cores (encoded with G = 255 so the shader flares with uGlare)
  */
 
+import { Trigo, Vec2 } from '@1pizzateam/spock';
+
 const WRAITH_WIDTH = 32;
 const WRAITH_HEIGHT = 48;
 // frames 0..3 are live poses (idleA, idleB, attack, pain); 4..8 are the 5-frame death; 9..14 are the 6-frame close-range gib burst
@@ -17,6 +19,7 @@ export const MONSTER_FRAMES = WRAITH_FRAMES;
 const WRAITH_FRAME_COUNT = 15;
 const CELL_WIDTH = 48;
 const CELL_HEIGHT = 64;
+const scratchPt = new Vec2();
 
 function grid(width, height) {
   return { width, height, cells: new Uint8Array(width * height) };
@@ -32,26 +35,22 @@ function put(mask, x, y, val = 1) {
 }
 
 function disc(mask, cx, cy, radius, val = 1) {
-  for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++) {
-    for (let x = Math.floor(cx - radius); x <= Math.ceil(cx + radius); x++) {
+  for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++)
+    for (let x = Math.floor(cx - radius); x <= Math.ceil(cx + radius); x++)
       if ((x - cx) ** 2 + (y - cy) ** 2 <= radius * radius)
         put(mask, x, y, val);
-    }
-  }
 }
 
 function ellipse(mask, cx, cy, rx, ry, val = 1) {
-  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
-    for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++)
+    for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++)
       if (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1)
         put(mask, x, y, val);
-    }
-  }
 }
 
 /** A thick line that thins out along its length: a limb, horn, spine, or claw. */
 function stroke(mask, x0, y0, x1, y1, from, to, val = 1) {
-  const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2.2));
+  const steps = Math.max(1, Math.ceil(scratchPt.setScalar(x1 - x0, y1 - y0).getMagnitude() * 2.2));
   for (let i = 0; i <= steps; i++) {
     const k = i / steps;
     disc(mask, x0 + (x1 - x0) * k, y0 + (y1 - y0) * k, from + (to - from) * k, val);
@@ -119,12 +118,10 @@ function drawWraith({ sway, hand, claws, maw, lean }) {
   const faceX = mid + lean * 0.7;
   const rx = 4.6 + maw * 0.8;
   const ry = 5.6 + maw * 2.2;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++)
       if (((x - faceX) / rx) ** 2 + ((y - faceY - maw) / ry) ** 2 <= 1)
         hollow.cells[y * W + x] = 1;
-    }
-  }
   for (const side of [-1, 1]) {
     const ex = Math.round(faceX + side * 2.4 - (side < 0 ? 1 : 0));
     for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1], [side > 0 ? 1 : -1, -1]])
@@ -300,12 +297,10 @@ function drawImp({ stride = 0, reach = 0, jaw = 0, lean = 0, hurt = 0 }) {
 
   // exposed ribcage over torn thoracic cavity
   ellipse(maw, mid, 21, 3.6, 4.2);
-  for (const ry of [17, 20, 23, 25]) {
-    for (let dx = -3; dx <= 3; dx++) {
+  for (const ry of [17, 20, 23, 25])
+    for (let dx = -3; dx <= 3; dx++)
       if (Math.abs(dx) >= 1)
         put(bone, Math.round(mid + dx), ry);
-    }
-  }
   disc(gore, mid, 21, 1.5);
 
   // skull, sweeping ram horns & unhinged fang maw
@@ -402,9 +397,8 @@ function drawBrute({ stride = 0, slam = 0, jaw = 0, lean = 0, hurt = 0 }) {
   ellipse(maw, mid, 28, 4.5, 4.2);
   ellipse(gore, mid - 1, 28, 3.6, 3.2);
   ellipse(gore, mid + 1.5, 29.5, 3.0, 2.4);
-  for (const y of [18, 21, 24, 27, 30]) {
+  for (const y of [18, 21, 24, 27, 30])
     stroke(bone, mid - 4.5, y, mid + 4.5, y, 0.55, 0.55);
-  }
 
   // sunken brutish skull, glaring eyes & bloodied boar tusks
   const headY = 11 - Math.round(slam * 1.5);
@@ -635,7 +629,7 @@ function drawCrawler({ skitter = 0, lunge = 0, mandible = 0, hurt = 0 }) {
   }
 
   // six razor-sharp multi-jointed scythe legs
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 3; i++)
     for (const side of [-1, 1]) {
       const phase = ((i + (side > 0 ? 1 : 0)) % 2 === 0 ? 1 : -1) * skitter;
       const rootX = mid + side * (5.5 + i * 0.8);
@@ -648,7 +642,6 @@ function drawCrawler({ skitter = 0, lunge = 0, mandible = 0, hurt = 0 }) {
       stroke(bone, kneeX, kneeY, tipX, tipY, 1.1, 0.4);
       stroke(gore, kneeX + (tipX - kneeX) * 0.6, kneeY + (tipY - kneeY) * 0.6, tipX, tipY, 0.8, 0.35);
     }
-  }
 
   if (hurt > 0)
     disc(gore, mid, 26 - liftY, 3.6);
@@ -695,7 +688,7 @@ function drawSwarmer({ scurry = 0, bite = 0, hurt = 0 }) {
   disc(gore, mid, headY + 3 + open * 0.5, 1.8);
 
   // four frantic clawed legs & whip tail
-  for (const [i, rx, ry] of [[0, 6.2, 34], [1, 3.8, 36]]) {
+  for (const [i, rx, ry] of [[0, 6.2, 34], [1, 3.8, 36]])
     for (const side of [-1, 1]) {
       const phase = ((i + (side > 0 ? 1 : 0)) % 2 === 0 ? 1 : -1) * scurry;
       const kx = mid + side * (rx + 3.2);
@@ -706,7 +699,6 @@ function drawSwarmer({ scurry = 0, bite = 0, hurt = 0 }) {
       stroke(bone, kx, ky, fx, fy, 1.0, 0.45);
       disc(gore, fx, fy, 0.9);
     }
-  }
   stroke(flesh, mid + 5, 31, mid + 12, 26 + scurry * 2, 1.2, 0.4);
   disc(gore, mid + 12, 26 + scurry * 2, 0.9);
 
@@ -723,7 +715,7 @@ function drawSwarmer({ scurry = 0, bite = 0, hurt = 0 }) {
 function shadeMonster(W, H, { flesh, bone, gore, maw, eyes, char }, kind, mid) {
   const solid = (x, y) => at(flesh, x, y) || at(bone, x, y) || at(gore, x, y) || at(maw, x, y) || at(eyes, x, y) || at(char, x, y);
   const cells = new Uint8Array(W * H * 4);
-  for (let y = 0; y < H; y++) {
+  for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       if (!solid(x, y))
         continue;
@@ -792,7 +784,6 @@ function shadeMonster(W, H, { flesh, bone, gore, maw, eyes, char }, kind, mid) {
       }
       setCell(cells, W, H, x, y, r, g, b, 1);
     }
-  }
   return cells;
 }
 
@@ -904,7 +895,7 @@ function goreDie(cells, { squash, widen, gash, fountain, pool, eyes }, salt) {
   // arterial blood fountain spraying from the ruptured body
   const t = salt * 0.18;
   for (let k = 0; k < fountain; k++) {
-    const angle = -Math.PI * (0.18 + 0.64 * noise(k, 31, salt));
+    const angle = -Trigo.pi * (0.18 + 0.64 * noise(k, 31, salt));
     const speed = 14 + 26 * noise(k, 33, salt);
     const bx = mid + Math.cos(angle) * speed * t;
     const by = woundY + Math.sin(angle) * speed * t + 36 * t * t;
@@ -918,16 +909,13 @@ function goreDie(cells, { squash, widen, gash, fountain, pool, eyes }, salt) {
     const rx = 5 + pool * 9.5;
     const ry = 1.5 + pool * 2.4;
     const py = H - 2;
-    for (let y = Math.floor(py - ry); y <= H - 1; y++) {
-      for (let x = Math.floor(mid - rx); x <= Math.ceil(mid + rx); x++) {
+    for (let y = Math.floor(py - ry); y <= H - 1; y++)
+      for (let x = Math.floor(mid - rx); x <= Math.ceil(mid + rx); x++)
         if (((x - mid) / rx) ** 2 + ((y - py) / ry) ** 2 <= 1)
           setCell(out, W, H, x, y, Math.round(145 + 95 * noise(x, y, salt + 5)), 0, 255, 2);
-      }
-    }
-    for (const dx of [-4, -2, 1, 3]) {
+    for (const dx of [-4, -2, 1, 3])
       if (pool > 0.45)
         setCell(out, W, H, mid + dx, py - 1, 214, 198, 170, 1);
-    }
   }
   return out;
 }
@@ -937,7 +925,7 @@ function embed(cells) {
   const out = new Uint8Array(CELL_WIDTH * CELL_HEIGHT * 4);
   const left = (CELL_WIDTH - WRAITH_WIDTH) / 2;
   const top = CELL_HEIGHT - WRAITH_HEIGHT;
-  for (let y = 0; y < WRAITH_HEIGHT; y++) {
+  for (let y = 0; y < WRAITH_HEIGHT; y++)
     for (let x = 0; x < WRAITH_WIDTH; x++) {
       const from = (y * WRAITH_WIDTH + x) * 4;
       const to = ((y + top) * CELL_WIDTH + x + left) * 4;
@@ -946,7 +934,6 @@ function embed(cells) {
       out[to + 2] = cells[from + 2];
       out[to + 3] = cells[from + 3];
     }
-  }
   return out;
 }
 
@@ -974,7 +961,7 @@ function burst(source, { t, swell = 1, cracks = false, core = 0, dissolve = 0, e
     out[i + 3] = flag;
   };
 
-  for (let y = 0; y < H; y++) {
+  for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const i = (y * W + x) * 4;
       const flag = source[i + 3];
@@ -984,7 +971,7 @@ function burst(source, { t, swell = 1, cracks = false, core = 0, dissolve = 0, e
       const by = Math.floor(y / 5);
       const dx = bx * 5 + 2.5 - cx;
       const dy = by * 5 + 2.5 - cy;
-      const length = Math.hypot(dx, dy) || 1;
+      const length = scratchPt.setScalar(dx, dy).getMagnitude() || 1;
       const speed = 14 + 26 * noise(bx, by, 1);
       const vx = (dx / length) * speed + (noise(bx, by, 2) - 0.5) * 10;
       const vy = (dy / length) * speed - 10 - 12 * noise(bx, by, 3);
@@ -1001,28 +988,25 @@ function burst(source, { t, swell = 1, cracks = false, core = 0, dissolve = 0, e
       else
         putPixel(px, py, source[i], source[i + 1], source[i + 2], 1);
     }
-  }
 
-  if (cracks) {
+  if (cracks)
     for (let k = 0; k < 7; k++) {
-      const angle = (k / 7) * Math.PI * 2 + noise(k, 5, salt) * 0.6;
+      const angle = (k / 7) * Trigo.twopi + noise(k, 5, salt) * 0.6;
       const reach = 8 + noise(k, 6, salt) * 12;
       for (let d = 2; d < reach; d += 0.7)
         putPixel(cx + Math.cos(angle) * d, cy + Math.sin(angle) * d * 1.2, 255, 0, 255, 2);
     }
-  }
 
   if (core > 0) {
     const radius = 3 + 15 * Math.min(1, t * 1.6);
-    for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++) {
+    for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++)
       for (let x = Math.floor(cx - radius); x <= Math.ceil(cx + radius); x++) {
-        const d = Math.hypot(x - cx, (y - cy) * 0.85) / radius;
+        const d = scratchPt.setScalar(x - cx, (y - cy) * 0.85).getMagnitude() / radius;
         if (d <= 1 && noise(x, y, salt + 9) < core * (1.15 - d))
           putPixel(x, y, Math.round(255 * (0.4 + 0.6 * noise(x, y, salt + 3))), 0, 255, 2);
       }
-    }
     for (let k = 0; k < 10 + Math.round(24 * core); k++) {
-      const angle = noise(k, 21, salt) * Math.PI * 2;
+      const angle = noise(k, 21, salt) * Trigo.twopi;
       const speed = 18 + 46 * noise(k, 22, salt);
       const x = cx + Math.cos(angle) * speed * t;
       const y = cy + Math.sin(angle) * speed * t * 0.9 - 14 * t + 45 * t * t * noise(k, 23, salt);
@@ -1037,17 +1021,16 @@ function burst(source, { t, swell = 1, cracks = false, core = 0, dissolve = 0, e
     const poolRx = 10 + 11 * settle;
     const poolRy = 2.4 + 2.8 * settle;
     const poolCy = H - 2.6;
-    for (let y = Math.floor(poolCy - poolRy - 5); y < H; y++) {
+    for (let y = Math.floor(poolCy - poolRy - 5); y < H; y++)
       for (let x = Math.floor(cx - poolRx - 2); x <= Math.ceil(cx + poolRx + 2); x++) {
         const dx = (x - cx) / poolRx;
         const dy = (y - poolCy) / poolRy;
-        const d = Math.hypot(dx, dy);
+        const d = scratchPt.setScalar(dx, dy).getMagnitude();
         if (d <= 1 + 0.22 * noise(x, y, salt + 31)) {
           const shade = d < 0.55 ? 215 : d < 0.82 ? 155 : 105;
           putPixel(x, y, shade, 0, 255, 2);
         }
       }
-    }
     const moundRx = 7 + 6.5 * settle;
     const moundH = 4 + 5.5 * settle;
     for (let y = Math.floor(H - 2 - moundH); y <= H - 2; y++) {
@@ -1102,7 +1085,7 @@ function packAtlas(name, frames) {
   const height = CELL_HEIGHT;
   const data = new Uint8Array(width * height * 4);
   frames.forEach((cells, frame) => {
-    for (let y = 0; y < height; y++) {
+    for (let y = 0; y < height; y++)
       for (let x = 0; x < CELL_WIDTH; x++) {
         const i = (y * CELL_WIDTH + x) * 4;
         const o = (y * width + frame * CELL_WIDTH + x) * 4;
@@ -1112,7 +1095,6 @@ function packAtlas(name, frames) {
         data[o + 2] = flag === 2 ? 255 : cells[i + 2];
         data[o + 3] = flag > 0 ? 255 : 0;
       }
-    }
   });
   return { name, data, width, height, cell: CELL_WIDTH, frames: WRAITH_FRAME_COUNT };
 }
@@ -1132,7 +1114,7 @@ function buildFleshAtlas(name, drawPose, poses, flungPose) {
 export function wraithAtlas() {
   const poses = [
     { sway: 0, hand: [14, 34], claws: 0.5, maw: 0, lean: 0 },
-    { sway: Math.PI, hand: [14, 31], claws: 0.8, maw: 0.1, lean: 0 },
+    { sway: Trigo.pi, hand: [14, 31], claws: 0.8, maw: 0.1, lean: 0 },
     { sway: 1.2, hand: [13, 9], claws: 3.0, maw: 1, lean: 0 },
     { sway: 2.4, hand: [4, 13], claws: 2.6, maw: 0.5, lean: 2 },
   ];

@@ -1,4 +1,4 @@
-import { Rand, Utils, Vec2 } from '@1pizzateam/spock';
+import { Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { dripTime, GIB_VARIANTS } from './bloodsprites.js';
 import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
 
@@ -176,7 +176,7 @@ export class Blood {
       size: gibSize,
       baseSize: gibSize,
       variant: (rng.integer(0, GIB_VARIANTS - 1) + (isLeg ? 2 : 1)) % GIB_VARIANTS,
-      angle: rng.float(0, Math.PI * 2),
+      angle: rng.float(0, Trigo.twopi),
       height: baseHeight,
       baseHeight,
       dissolving,
@@ -336,7 +336,7 @@ export class Blood {
       size,
       baseSize: size,
       variant: (variant >>> 0) % GIB_VARIANTS,
-      angle: this.float(0, Math.PI * 2),
+      angle: this.float(0, Trigo.twopi),
       height: baseHeight,
       baseHeight,
       dissolving,
@@ -381,7 +381,7 @@ export class Blood {
 
   /** The player's view being sprayed. */
   splat(count, scale = 1) {
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < count; i++)
       this.splats.push({
         x: this.float(0.04, 0.96),
         y: this.float(0.04, 0.96),
@@ -391,20 +391,18 @@ export class Blood {
         drip: this.float(60, 210),
         seed: this.rand.integer(1, 2147483647),
       });
-    }
     if (this.splats.length > BLOOD.splats)
       this.splats.splice(0, this.splats.length - BLOOD.splats);
   }
 
   /** True when the point is inside a puddle big enough to soak a shoe. */
   inPool(x, y) {
+    this.pt.setScalar(x, y);
     for (const splat of this.floor) {
       if (splat.size < 5)
         continue;
       const reach = splat.size * 0.75;
-      const dx = x - splat.x;
-      const dy = y - splat.y;
-      if (dx * dx + dy * dy < reach * reach)
+      if (this.pt.getDistance(splat, true) < reach * reach)
         return true;
     }
     return false;
@@ -423,7 +421,7 @@ export class Blood {
     }
     const dx = x - feet.x;
     const dy = y - feet.y;
-    const distance = Math.hypot(dx, dy);
+    const distance = this.pt.setScalar(dx, dy).getMagnitude();
     feet.x = x;
     feet.y = y;
     // a jump means a teleport or a level change, not a step
@@ -439,7 +437,7 @@ export class Blood {
     if (feet.travel < stride)
       return 0;
 
-    const length = Math.hypot(feet.hx, feet.hy) || 1;
+    const length = this.pt.setScalar(feet.hx, feet.hy).getMagnitude() || 1;
     const hx = feet.hx / length;
     const hy = feet.hy / length;
     feet.travel = 0;
@@ -501,20 +499,15 @@ export class Blood {
       const didx = dty * level.width + dtx;
       if (level.diag?.[didx] > 0 && level.heights[didx] > p.z) {
         const df = level.diagInfo(didx);
-        const d0 = (p.x - df.ax) * df.nx + (p.y - df.ay) * df.ny;
-        const d1 = (nx - df.ax) * df.nx + (ny - df.ay) * df.ny;
+        const d0 = df.tri.signedDistanceToHypotenuse(this.pt.setScalar(p.x, p.y));
+        const d1 = df.tri.signedDistanceToHypotenuse(this.pt.setScalar(nx, ny));
         if (d0 >= -1e-4 && d1 <= 1e-4) {
           if (p.z >= 1 && (p.gib || this.rand.float(0, 1) <= 0.65)) {
             const s = p.scale ?? 1;
             const size = (p.gib ? this.float(5.5, 9.5) : this.float(2.0, 5.2)) * s;
-            const cx = (dtx + 0.5) * TILE;
-            const cy = (dty + 0.5) * TILE;
-            const tanX = -df.ny;
-            const tanY = df.nx;
-            const halfSpan = TILE * Math.SQRT1_2 - 2;
-            const along = Utils.clamp((p.x - cx) * tanX + (p.y - cy) * tanY, -halfSpan, halfSpan);
-            const sx = cx + tanX * along;
-            const sy = cy + tanY * along;
+            df.tri.projectOntoHypotenuse(this.pt.setScalar(p.x, p.y), 2, this.pt);
+            const sx = this.pt.x;
+            const sy = this.pt.y;
             if (!this.blocked(sx + df.nx * 0.5, sy + df.ny * 0.5, p.z) && this.blocked(sx - df.nx * 0.5, sy - df.ny * 0.5, p.z))
               this.wallSplat(sx, sy, p.z, df.nx, df.ny, size, level.heights[didx], null);
           }
@@ -593,7 +586,7 @@ export class Blood {
         p.bleedTimer = (p.bleedTimer ?? 0.05) - dt;
         if (p.bleedTimer <= 0) {
           p.bleedTimer = 0.065;
-          if (this.particles.length + spawned.length < BLOOD.particles) {
+          if (this.particles.length + spawned.length < BLOOD.particles)
             spawned.push({
               x: p.x,
               y: p.y,
@@ -608,7 +601,6 @@ export class Blood {
               scale: p.scale ?? 1,
               visualScale: 0.8 * (p.scale ?? 1),
             });
-          }
         }
       }
       const nx = p.x + p.vx * dt;
@@ -671,10 +663,9 @@ export class Blood {
     }
     this.rand = mainRand;
     this.particles.length = keep;
-    for (const drop of spawned) {
+    for (const drop of spawned)
       if (this.particles.length < BLOOD.particles)
         this.particles.push(drop);
-    }
 
     // blood, gibs, and footprints that landed in liquid acid dissolve and disperse over time
     let dissolved = false;
@@ -739,19 +730,17 @@ export class Blood {
 
     // drips run down the walls for a few seconds after a splat lands, and blood on the ceiling lets go of drops
     this.dripping = false;
-    for (const wall of this.walls) {
+    for (const wall of this.walls)
       if (wall.age < wall.dripTime) {
         wall.age += dt;
         this.dripping = true;
       }
-    }
     for (const splat of this.ceiling) {
       const before = splat.age;
       splat.age += dt;
-      for (const at of splat.drops) {
+      for (const at of splat.drops)
         if (before < at && splat.age >= at && this.particles.length < BLOOD.particles)
           this.particles.push({ x: splat.x + ((splat.seed % 7) - 3), y: splat.y + ((splat.seed % 5) - 2), z: CEILING - 1.8, vx: 0, vy: 0, vz: 0, age: 0, life: 2.5, gib: false });
-      }
     }
 
     for (const splat of this.splats)

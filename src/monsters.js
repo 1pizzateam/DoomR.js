@@ -1,4 +1,4 @@
-import { CustomMesh, Mesh, Utils, Vec2, Vec3 } from '@1pizzateam/roostr';
+import { CustomMesh, Mesh, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/roostr';
 
 const scratchPos = new Vec3();
 const scratchRot = new Vec3();
@@ -6,6 +6,11 @@ const scratchScale = new Vec3();
 const scratchNormal = new Vec3();
 const scratchEdgeA = new Vec3();
 const scratchEdgeB = new Vec3();
+const scratchVec2 = new Vec2();
+
+function mag2(x, y) {
+  return scratchVec2.setScalar(x, y).getMagnitude();
+}
 
 function setPos(node, x, y, z) {
   scratchPos.setScalar(x, y, z);
@@ -149,7 +154,7 @@ function drawChestCell(put, type, pal) {
       } else if (type === 'boss') {
         // Pried-open ribcage & blazing chest hell-core
         if (y >= 6 && y <= 26 && dx <= 10) {
-          const distCore = Math.hypot(dx, y - 15.5);
+          const distCore = mag2(dx, y - 15.5);
           if (distCore <= 3.6)
             put(x, y, 255, 255, 190, 255);
           else if (distCore <= 6.2)
@@ -166,7 +171,7 @@ function drawChestCell(put, type, pal) {
         const robe = fold > 0.55 ? pal.flesh[2] : dither ? pal.flesh[1] : pal.flesh[0];
         put(x, y, robe.x, robe.y, robe.z, 1);
         if (y >= 7 && y <= 24 && dx <= 7.5) {
-          if (Math.hypot(dx, y - 15) <= 2.8)
+          if (mag2(dx, y - 15) <= 2.8)
             put(x, y, 205, 26, 255, 2);
           else if (y % 3 === 0 && dx >= 1.5)
             put(x, y, pal.bone[1].x, pal.bone[1].y, pal.bone[1].z, 1);
@@ -182,9 +187,9 @@ function drawChestCell(put, type, pal) {
           put(x, y, pal.hide[1].x, pal.hide[1].y, pal.hide[1].z, 1);
       } else if (type === 'crawler') {
         // Arachnid ventral chitin & weeping gore pustules
-        const p1 = Math.hypot(x - 10, y - 11) <= 3.4;
-        const p2 = Math.hypot(x - 21, y - 19) <= 3.8;
-        const p3 = Math.hypot(x - 15, y - 24) <= 2.8;
+        const p1 = mag2(x - 10, y - 11) <= 3.4;
+        const p2 = mag2(x - 21, y - 19) <= 3.8;
+        const p3 = mag2(x - 15, y - 24) <= 2.8;
         if (p1 || p2 || p3)
           put(x, y, 175 + 65 * noise(x, y, 7), 18, 255, 2);
         else if (y % 5 === 0)
@@ -192,7 +197,7 @@ function drawChestCell(put, type, pal) {
       } else {
         // Imp & Swarmer: torn thoracic cavity, exposed bone ribs & arterial core
         if (y >= 7 && y <= 25 && dx <= 8.5) {
-          if (Math.hypot(dx, y - 16) <= 3.0)
+          if (mag2(dx, y - 16) <= 3.0)
             put(x, y, 195 + 50 * noise(x, y, 9), 20, 255, 2);
           else if (y % 4 === 0 && dx >= 1.5) {
             const rib = dx < 5 ? pal.bone[2] : pal.bone[1];
@@ -244,16 +249,16 @@ function drawFaceCell(put, type, pal) {
       // Glowing supernatural eyes (G = 255)
       let isEye = false;
       if (type === 'crawler' || type === 'swarmer') {
-        const e1 = Math.hypot(dx - 4.5, y - 13) <= 1.8;
-        const e2 = Math.hypot(dx - 8.5, y - 15) <= 1.7;
-        const e3 = Math.hypot(dx - 6.5, y - 10) <= 1.5;
+        const e1 = mag2(dx - 4.5, y - 13) <= 1.8;
+        const e2 = mag2(dx - 8.5, y - 15) <= 1.7;
+        const e3 = mag2(dx - 6.5, y - 10) <= 1.5;
         isEye = e1 || e2 || e3;
       } else if (type === 'boss') {
-        const e1 = Math.hypot(dx - 5.5, y - 14) <= 2.3;
-        const e2 = Math.hypot(dx - 8.2, y - 9.5) <= 1.8;
+        const e1 = mag2(dx - 5.5, y - 14) <= 2.3;
+        const e2 = mag2(dx - 8.2, y - 9.5) <= 1.8;
         isEye = e1 || e2;
       } else
-        isEye = Math.hypot(dx - 6.0, y - 13.5) <= 2.6;
+        isEye = mag2(dx - 6.0, y - 13.5) <= 2.6;
 
       if (isEye) {
         put(x, y, 255, 255, 185, 255);
@@ -295,7 +300,7 @@ function drawJawCell(put, pal) {
           put(x, y, 16, 6, 14, 1);
       } else if (y <= 15 && dx <= 10) {
         // Abyssal throat interior with arterial blood pool
-        if (Math.hypot(dx, y - 11) <= 4.5)
+        if (mag2(dx, y - 11) <= 4.5)
           put(x, y, 180 + 60 * noise(x, y, 11), 18, 255, 2);
         else
           put(x, y, 24, 8, 16, 1);
@@ -448,8 +453,8 @@ export function monsterGoreSkinAtlas(type = 'imp') {
           putJaw(x, y, 155 + Math.round(90 * n), 18, 255, 2);
 
       // 5. Limb & Hide: shotgun/chainsaw craters with exposed white bone splinters
-      const c1 = Math.hypot(x - 11, y - 11);
-      const c2 = Math.hypot(x - 21, y - 20);
+      const c1 = mag2(x - 11, y - 11);
+      const c2 = mag2(x - 21, y - 20);
       if (c1 <= 5.2 || c2 <= 5.6) {
         if (c1 <= 1.6 || c2 <= 1.8) {
           putLimb(x, y, pal.bone[2].x, pal.bone[2].y, pal.bone[2].z, 1);
@@ -1253,11 +1258,11 @@ function approach(view, key, target, rate, dt) {
 
 function approachAngle(view, key, target, rate, dt) {
   const current = view.pose[key] ?? target;
-  let diff = (target - current) % (Math.PI * 2);
-  if (diff > Math.PI)
-    diff -= Math.PI * 2;
-  else if (diff < -Math.PI)
-    diff += Math.PI * 2;
+  let diff = (target - current) % Trigo.twopi;
+  if (diff > Trigo.pi)
+    diff -= Trigo.twopi;
+  else if (diff < -Trigo.pi)
+    diff += Trigo.twopi;
   const next = current + diff * (1 - Math.exp(-rate * dt));
   view.pose[key] = next;
   return next;
@@ -1268,7 +1273,7 @@ function mood(view, enemy, c, windupTime) {
   const idle = enemy.state === 'idle';
   const attack = approach(view, 'attack', enemy.windup > 0 ? 1 - enemy.windup / windupTime : 0, enemy.windup > 0 ? 14 : 24, c.dt);
   const roarTime = enemy.def.roar ?? 0;
-  const roar = roarTime && enemy.roar > 0 ? Math.sin(Math.PI * (1 - enemy.roar / roarTime)) : 0;
+  const roar = roarTime && enemy.roar > 0 ? Math.sin(Trigo.pi * (1 - enemy.roar / roarTime)) : 0;
   const pain = approach(view, 'pain', enemy.hurt > 0 || enemy.pain > 0 ? 1 : 0, 26, c.dt);
   const moving = approach(view, 'moving', idle || enemy.windup > 0 || enemy.roar > 0 ? 0 : 1, 9, c.dt);
   const anger = idle ? 0.25 : Math.max(0.7, attack, roar);
@@ -1403,12 +1408,12 @@ function buildMonster(w, enemy) {
     goreChunks,
     meshes,
     parts,
-    pose: { seed: enemy.phase * 7, yaw: enemy.phase * Math.PI * 2 },
+    pose: { seed: enemy.phase * 7, yaw: enemy.phase * Trigo.twopi },
     lift: cfg.baseLift,
     sx: 1,
     sy: 1,
     sz: 1,
-    yaw: enemy.phase * Math.PI * 2,
+    yaw: enemy.phase * Trigo.twopi,
     pitch: 0,
     roll: 0,
     wasDead: false,
@@ -1466,7 +1471,7 @@ function animateMonster(view, enemy, c) {
       const bt = limbBlastAge / 0.45;
       const ang = (i === 0 ? 0.35 : -0.45) + limbBlastSide * 1.2 + view.pose.seed;
       const dist = bt * 12.5 + 1.8;
-      const arcY = socketBaseY * (1 - bt * 0.65) + Math.sin(bt * Math.PI) * 7.5 * (1 - bt * 0.4);
+      const arcY = socketBaseY * (1 - bt * 0.65) + Math.sin(bt * Trigo.pi) * 7.5 * (1 - bt * 0.4);
       setPos(chunk, limbBlastSide * 2.5 + Math.cos(ang) * dist, Math.max(1.2, arcY), Math.sin(ang) * dist);
       setRot(chunk, bt * 5.2, ang, bt * 4.1);
       setUniformScale(chunk, 1.05 + (i % 2) * 0.25);
@@ -1474,7 +1479,7 @@ function animateMonster(view, enemy, c) {
       chunk.setActive();
       const ang = i * 2.1 + view.pose.seed;
       const dist = (1 - m.pain) * 9.5 + 2.5;
-      setPos(chunk, Math.cos(ang) * dist, pivots.body.y + 4 + Math.sin(m.pain * Math.PI) * 5 - (1 - m.pain) * 4, Math.sin(ang) * dist);
+      setPos(chunk, Math.cos(ang) * dist, pivots.body.y + 4 + Math.sin(m.pain * Trigo.pi) * 5 - (1 - m.pain) * 4, Math.sin(ang) * dist);
       setRot(chunk, (1 - m.pain) * 4.2, ang, (1 - m.pain) * 3.1);
       setUniformScale(chunk, 0.95 + 0.35 * m.pain);
     } else
@@ -1682,13 +1687,13 @@ function launchSeveredPart(view, part, startPos, endPos, spinTarget, t, peakLift
   let y;
   if (t < 0.62) {
     const u = t / 0.62;
-    y = Utils.lerp(startPos.y, endPos.y, u * u) + Math.sin(u * Math.PI) * peakLift;
+    y = Utils.lerp(startPos.y, endPos.y, u * u) + Math.sin(u * Trigo.pi) * peakLift;
   } else if (t < 0.86) {
     const u = (t - 0.62) / 0.24;
-    y = endPos.y + Math.sin(u * Math.PI) * (peakLift * 0.28);
+    y = endPos.y + Math.sin(u * Trigo.pi) * (peakLift * 0.28);
   } else {
     const u = (t - 0.86) / 0.14;
-    y = endPos.y + Math.sin(u * Math.PI) * (peakLift * 0.09);
+    y = endPos.y + Math.sin(u * Trigo.pi) * (peakLift * 0.09);
   }
   setPos(part, x, y, z);
   setRot(part, spinTarget.x * out, spinTarget.y * out, spinTarget.z * out);
@@ -1761,16 +1766,16 @@ function dieMonster(view, enemy) {
     // Stage 1 (0..0.28): Violent hit-shock convulsion, chest arches, shoulders heave
     // Stage 2 (0.28..0.72): Knees buckle, hips drop, torso twists toward the deck
     // Stage 3 (0.72..1.0 + post-mortem < 1.85s): Heavy floor slam + decaying nerve twitches
-    const shock = t < 0.28 ? Math.sin((t / 0.28) * Math.PI) : 0;
+    const shock = t < 0.28 ? Math.sin((t / 0.28) * Trigo.pi) : 0;
     const collapseT = Utils.clamp((t - 0.16) / 0.84, 0, 1);
     const collapseEase = 1 - (1 - collapseT) * (1 - collapseT);
-    const slamBounce = t > 0.72 ? Math.sin(((t - 0.72) / 0.28) * Math.PI) * 1.6 : 0;
+    const slamBounce = t > 0.72 ? Math.sin(((t - 0.72) / 0.28) * Trigo.pi) * 1.6 : 0;
     const twitch = enemy.deadTime < 1.85
       ? Math.exp(-Math.max(0, enemy.deadTime - 0.35) * 2.3) * Math.sin(enemy.deadTime * 44 + view.pose.seed)
       : 0;
 
     const hipY = baseBodyY * (1 - collapseEase * 0.84) + 2.4 * collapseEase + shock * 2.2 + slamBounce;
-    const bodyPitch = shock * 0.38 - collapseEase * Math.PI * 0.47 + twitch * 0.08;
+    const bodyPitch = shock * 0.38 - collapseEase * Trigo.pi * 0.47 + twitch * 0.08;
     const bodyYaw = fallDir * (shock * -0.25 + collapseEase * 0.32);
     const bodyRoll = fallDir * (collapseEase * 0.28 + twitch * 0.1);
     setPos(view.body, fallDir * collapseEase * 1.8, hipY, -collapseEase * 5.2 + shock * 1.4);
@@ -1934,7 +1939,7 @@ function dieMonster(view, enemy) {
     if (i < activeChunks) {
       chunk.setActive();
       const startTime = i < 2 ? 0 : i < 4 ? (enemy.postGibTime1 ?? 0) : (enemy.postGibTime2 ?? 0);
-      const chunkT = Math.min(1, Math.max(0, (enemy.deadTime - startTime) / duration));
+      const chunkT = Utils.clamp((enemy.deadTime - startTime) / duration, 0, 1);
       const ang = i * 1.0472 + view.pose.seed;
       const radius = 14.5 + (i % 3) * 4.0;
       scratchStart.setScalar(Math.cos(ang) * 2.5, baseBodyY * (i < 2 ? 1 : 0.35) + 4 + (i % 2) * 3, Math.sin(ang) * 2.5);

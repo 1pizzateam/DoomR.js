@@ -1,5 +1,8 @@
+import { Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 import { field, mix, plate, rivet, rust, SHADOW, Tile } from './floor.js';
+
+const scratchPt = new Vec2();
 
 /**
  * The skin of an explosive barrel: an orange oil drum, as a pixel-art atlas drawn here in code. The side is 128 x 64
@@ -71,7 +74,7 @@ function drawSide(rnd) {
     t.set(x, 62, SHADOW, 0.6);
   }
   // the rolling hoops: raised rings with a light edge above and a dark one below
-  for (const y of [13, 52]) {
+  for (const y of [13, 52])
     for (let x = 0; x < SIDE.width; x++) {
       t.set(x, y, PAINT_LIGHT, 0.85);
       t.set(x, y + 1, mix(PAINT, PAINT_LIGHT, 0.45));
@@ -79,17 +82,15 @@ function drawSide(rnd) {
       t.set(x, y + 3, PAINT_DARK, 0.95);
       t.set(x, y + 4, SHADOW, 0.5);
     }
-  }
 
   // the hazard band
   const wear = field(rnd, 10);
-  for (let y = 21; y < 32; y++) {
+  for (let y = 21; y < 32; y++)
     for (let x = 0; x < SIDE.width; x++) {
       const stripe = Math.floor((x - y * 1.0 + 256) / 7) % 2 === 0;
       const worn = wear(x, y * 3) > 0.68;
       t.set(x, y, stripe ? mix(BAND_PAINT, PAINT_DARK, worn ? 0.55 : 0.05) : BAND_DARK, 0.97);
     }
-  }
   for (let x = 0; x < SIDE.width; x++) {
     t.set(x, 20, SHADOW, 0.85);
     t.set(x, 32, SHADOW, 0.85);
@@ -101,12 +102,11 @@ function drawSide(rnd) {
   flameLabel(t, 96, 42);
 
   // weld seams, where the sheet meets itself
-  for (const x of [0, 64]) {
+  for (const x of [0, 64])
     for (let y = 5; y < 58; y++) {
       t.set(x, y, PAINT_DARK, 0.9);
       t.set(x + 1, y, PAINT_LIGHT, 0.25);
     }
-  }
   // dents and scrapes
   for (let k = 0; k < 14; k++) {
     const x = Math.floor(rnd() * SIDE.width);
@@ -124,9 +124,9 @@ function drawLid(rnd) {
   paint(t, 0, 0, LID.width, LID.height, rnd, false);
   const cx = 31.5;
   const cy = 31.5;
-  for (let y = 0; y < LID.height; y++) {
+  for (let y = 0; y < LID.height; y++)
     for (let x = 0; x < LID.width; x++) {
-      const d = Math.hypot(x - cx, y - cy);
+      const d = scratchPt.setScalar(x - cx, y - cy).getMagnitude();
       if (d > 29 && d <= 31)
         t.set(x, y, PAINT_LIGHT, 0.9);
       else if (d > 27 && d <= 29)
@@ -136,12 +136,11 @@ function drawLid(rnd) {
       else if (d > 22.6 && d <= 23.6)
         t.set(x, y, PAINT_LIGHT, 0.5);
     }
-  }
   // two bungs
   for (const [bx, by, r] of [[22, 30, 7], [44, 38, 4.5]]) {
-    for (let y = 0; y < LID.height; y++) {
+    for (let y = 0; y < LID.height; y++)
       for (let x = 0; x < LID.width; x++) {
-        const d = Math.hypot(x - bx, y - by);
+        const d = scratchPt.setScalar(x - bx, y - by).getMagnitude();
         if (d <= r - 1.5)
           t.set(x, y, mix(PAINT, SHADOW, 0.35));
         else if (d <= r)
@@ -149,7 +148,6 @@ function drawLid(rnd) {
         else if (d <= r + 1)
           t.set(x, y, SHADOW, 0.8);
       }
-    }
     for (let d = -r + 2; d <= r - 2; d++) {
       t.set(bx + d, by, SHADOW);
       t.set(bx, by + d, SHADOW);
@@ -166,15 +164,14 @@ export function barrelAtlas() {
   const { width, height } = BARREL_ATLAS;
   const data = new Uint8Array(width * height * 4);
   const blit = (tile, x0) => {
-    for (let y = 0; y < tile.height; y++) {
+    for (let y = 0; y < tile.height; y++)
       for (let x = 0; x < tile.width; x++) {
         const i = (y * tile.width + x) * 3;
         const o = (y * width + x0 + x) * 4;
         for (let k = 0; k < 3; k++)
-          data[o + k] = Math.max(0, Math.min(255, Math.round(tile.pixels[i + k])));
+          data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
         data[o + 3] = 255;
       }
-    }
   };
   blit(drawSide(mulberry32(31337)), SIDE.x);
   blit(drawLid(mulberry32(4242)), LID.x);

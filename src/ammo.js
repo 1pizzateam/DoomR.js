@@ -1,3 +1,5 @@
+import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+
 /**
  * The shotgun ammo pickup as a 3D textured mesh:
  * - Drawn procedurally in code as a crisp power-of-two RGBA pixel-art atlas (32 x 32 per cell, 4 cells = 128 x 32):
@@ -83,6 +85,8 @@ const COPPER = [
   [252, 168, 108]
 ];
 
+const scratchPt = new Vec2();
+
 function cellPutter(data, atlasWidth, cell) {
   const S = AMMO_CELL;
   const ox = cell * S;
@@ -163,22 +167,22 @@ function drawShellSideCell(put) {
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
       // Cylindrical highlight wave around the circumference of the shell
-      const wave = Math.sin((x / S) * Math.PI * 2);
+      const wave = Math.sin((x / S) * Trigo.twopi);
       const shade = wave > 0.55 ? 4 : wave > 0.05 ? 3 : wave > -0.5 ? 2 : 1;
-      if (y <= 2) {
+      if (y <= 2)
         // Folded star-crimp mouth bevel
         put(x, y, SHELL_RED[Math.max(1, shade - 1)]);
-      } else if (y < 19) {
+      else if (y < 19) {
         // Ribbed crimson shotgun hull
         const rib = (y & 1) === 0 ? 0 : -1;
-        put(x, y, SHELL_RED[Math.max(0, Math.min(4, shade + rib))]);
-      } else if (y === 19) {
+        put(x, y, SHELL_RED[Utils.clamp(shade + rib, 0, 4)]);
+      } else if (y === 19)
         // Dark seam between plastic hull and brass base
         put(x, y, BRASS[0]);
-      } else {
+      else {
         // High-brass metallic cartridge base with extractor rim at bottom
         const rim = y === 20 || y >= S - 2;
-        put(x, y, BRASS[Math.max(0, Math.min(4, shade + (rim ? 1 : 0)))]);
+        put(x, y, BRASS[Utils.clamp(shade + (rim ? 1 : 0), 0, 4)]);
       }
     }
 }
@@ -191,7 +195,7 @@ function drawShellTopCell(put) {
     for (let x = 0; x < S; x++) {
       const dx = x - cx;
       const dy = y - cy;
-      const d = Math.hypot(dx, dy);
+      const d = scratchPt.setScalar(dx, dy).getMagnitude();
       const angle = Math.atan2(dy, dx);
       if (d > 13.5) {
         put(x, y, STEEL[1]);
@@ -270,20 +274,20 @@ function drawBulletCartridgeSideCell(put) {
   const S = AMMO_CELL;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const wave = Math.sin((x / S) * Math.PI * 2);
+      const wave = Math.sin((x / S) * Trigo.twopi);
       const shade = wave > 0.55 ? 4 : wave > 0.05 ? 3 : wave > -0.5 ? 2 : 1;
       if (y < 10)
         // Copper-jacketed FMJ spire-point bullet tip
-        put(x, y, COPPER[Math.max(0, Math.min(4, shade))]);
+        put(x, y, COPPER[Utils.clamp(shade, 0, 4)]);
       else if (y === 10)
         // Case neck crimp
         put(x, y, BRASS[0]);
       else if (y >= 16 && y <= 20)
         // Dark steel disintegrating belt link
-        put(x, y, STEEL[Math.max(0, Math.min(4, shade - 1))]);
+        put(x, y, STEEL[Utils.clamp(shade - 1, 0, 4)]);
       else
         // Gleaming brass 7.62mm casing
-        put(x, y, BRASS[Math.max(0, Math.min(4, shade))]);
+        put(x, y, BRASS[Utils.clamp(shade, 0, 4)]);
     }
 }
 
@@ -293,7 +297,7 @@ function drawBulletCartridgeTopCell(put) {
   const cy = (S - 1) / 2;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const d = Math.hypot(x - cx, y - cy);
+      const d = scratchPt.setScalar(x - cx, y - cy).getMagnitude();
       if (d > 13.5)
         put(x, y, CRATE_OLIVE[1]);
       else if (d > 9.5)
@@ -359,20 +363,20 @@ function drawRocketSideCell(put) {
   const S = AMMO_CELL;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const wave = Math.sin((x / S) * Math.PI * 2);
+      const wave = Math.sin((x / S) * Trigo.twopi);
       const shade = wave > 0.55 ? 4 : wave > 0.05 ? 3 : wave > -0.5 ? 2 : 1;
       if (y < 6)
         // High-explosive crimson warhead band
-        put(x, y, SHELL_RED[Math.max(0, Math.min(4, shade))]);
+        put(x, y, SHELL_RED[Utils.clamp(shade, 0, 4)]);
       else if (y === 6 || y === 7)
         // Brass fuse collar ring
         put(x, y, BRASS[Math.max(1, shade)]);
       else if (y < 24)
         // Olive-drab rocket motor tube
-        put(x, y, CRATE_OLIVE[Math.max(1, Math.min(5, shade + 1))]);
+        put(x, y, CRATE_OLIVE[Utils.clamp(shade + 1, 1, 5)]);
       else
         // Dark steel exhaust nozzle & stabilizer fin base
-        put(x, y, STEEL[Math.max(0, Math.min(4, shade - 1))]);
+        put(x, y, STEEL[Utils.clamp(shade - 1, 0, 4)]);
     }
 }
 
@@ -382,7 +386,7 @@ function drawRocketTopCell(put) {
   const cy = (S - 1) / 2;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const d = Math.hypot(x - cx, y - cy);
+      const d = scratchPt.setScalar(x - cx, y - cy).getMagnitude();
       if (d > 13)
         put(x, y, STEEL[1]);
       else if (d > 8)
@@ -444,8 +448,8 @@ function pushShellCylinder(vertices, uvs, cx, cz, y0, y1, radius, sides = 8) {
   for (let i = 0; i < sides; i++) {
     const t0 = i / sides;
     const t1 = (i + 1) / sides;
-    const a0 = t0 * Math.PI * 2;
-    const a1 = t1 * Math.PI * 2;
+    const a0 = t0 * Trigo.twopi;
+    const a1 = t1 * Trigo.twopi;
     const x0 = cx + Math.cos(a0) * radius;
     const z0 = cz + Math.sin(a0) * radius;
     const x1 = cx + Math.cos(a1) * radius;
@@ -547,8 +551,8 @@ function pushRocketWarhead(vertices, uvs, cx, cz, yBase, yShoulder, yTip, radius
   for (let i = 0; i < sides; i++) {
     const t0 = i / sides;
     const t1 = (i + 1) / sides;
-    const a0 = t0 * Math.PI * 2;
-    const a1 = t1 * Math.PI * 2;
+    const a0 = t0 * Trigo.twopi;
+    const a1 = t1 * Trigo.twopi;
     const x0 = cx + Math.cos(a0) * radius;
     const z0 = cz + Math.sin(a0) * radius;
     const x1 = cx + Math.cos(a1) * radius;

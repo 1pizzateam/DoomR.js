@@ -1,4 +1,4 @@
-import { Vec2 } from '@1pizzateam/spock';
+import { RightTriangle, Vec2 } from '@1pizzateam/spock';
 
 export const TILE = 64;
 export const EYE = 32;
@@ -17,6 +17,19 @@ export const DIAG_NW = 1;
 export const DIAG_NE = 2;
 export const DIAG_SW = 3;
 export const DIAG_SE = 4;
+
+const DIAG_CORNER = {
+  [DIAG_NW]: 'nw',
+  [DIAG_NE]: 'ne',
+  [DIAG_SW]: 'sw',
+  [DIAG_SE]: 'se',
+};
+
+const tileSize = new Vec2(TILE, TILE);
+const scratchS = new Vec2();
+const scratchA = new Vec2();
+const scratchB = new Vec2();
+const scratchO = new Vec2();
 
 const SOLIDS = {
   '#': { kind: WALL, height: 64 },
@@ -100,6 +113,7 @@ export class Level {
     this.teleporterByTile = new Map();
     this.exits = [];
     this.doors = new Map();
+    this.diagTriangles = new Map();
     this.secrets = [];
 
     this.parse();
@@ -301,6 +315,13 @@ export class Level {
         pad.target = mate.center;
       }
     }
+    for (let y = 0; y < this.rowCount; y++)
+      for (let x = 0; x < this.width; x++) {
+        const idx = y * this.width + x;
+        const diag = this.diag[idx];
+        if (diag)
+          this.diagTriangles.set(idx, new RightTriangle(tileSize, this.center(x, y), DIAG_CORNER[diag]));
+      }
     if (!this.playerStart)
       throw new Error(`${this.name}: no player start`);
   }
@@ -321,25 +342,33 @@ export class Level {
 
   /** Geometry of a diagonal wall triangle at tile `idx`, or null when the tile is not diagonal. */
   diagInfo(idx) {
-    const diag = this.diag[idx];
-    if (!diag)
+    const tri = this.diagTriangles.get(idx);
+    if (!tri)
       return null;
+    const diag = this.diag[idx];
     const x = idx % this.width;
     const y = (idx - x) / this.width;
-    const x0 = x * TILE;
-    const x1 = (x + 1) * TILE;
-    const y0 = y * TILE;
-    const y1 = (y + 1) * TILE;
-    const cx = (x + 0.5) * TILE;
-    const cy = (y + 0.5) * TILE;
-    const s = Math.SQRT1_2;
-    if (diag === DIAG_NW)
-      return { idx, x, y, diag, ax: x0, ay: y1, bx: x1, by: y0, sx: x0, sy: y0, ox: x1, oy: y1, nx: s, ny: s, cx, cy };
-    if (diag === DIAG_NE)
-      return { idx, x, y, diag, ax: x1, ay: y1, bx: x0, by: y0, sx: x1, sy: y0, ox: x0, oy: y1, nx: -s, ny: s, cx, cy };
-    if (diag === DIAG_SW)
-      return { idx, x, y, diag, ax: x0, ay: y0, bx: x1, by: y1, sx: x0, sy: y1, ox: x1, oy: y0, nx: s, ny: -s, cx, cy };
-    return { idx, x, y, diag, ax: x1, ay: y0, bx: x0, by: y1, sx: x1, sy: y1, ox: x0, oy: y0, nx: -s, ny: -s, cx, cy };
+    tri.getVertices(scratchS, scratchA, scratchB);
+    tri.getOppositeCorner(scratchO);
+    return {
+      idx,
+      x,
+      y,
+      diag,
+      tri,
+      ax: scratchA.x,
+      ay: scratchA.y,
+      bx: scratchB.x,
+      by: scratchB.y,
+      sx: scratchS.x,
+      sy: scratchS.y,
+      ox: scratchO.x,
+      oy: scratchO.y,
+      nx: tri.hypNormal.x,
+      ny: tri.hypNormal.y,
+      cx: tri.position.x,
+      cy: tri.position.y,
+    };
   }
 
   /** Effective wall height at a 2D world point (`Vec2`), respecting the open half of diagonal tiles. */
@@ -352,14 +381,10 @@ export class Level {
     const h = this.heights[idx];
     if (!h)
       return 0;
-    const diag = this.diag[idx];
-    if (!diag)
+    const tri = this.diagTriangles.get(idx);
+    if (!tri)
       return h;
-    const dx = pos.x - (tx + 0.5) * TILE;
-    const dy = pos.y - (ty + 0.5) * TILE;
-    const nx = diag === DIAG_NW || diag === DIAG_SW ? 1 : -1;
-    const ny = diag === DIAG_NW || diag === DIAG_NE ? 1 : -1;
-    return dx * nx + dy * ny <= 0 ? h : 0;
+    return tri.isIn(pos) ? h : 0;
   }
 
   buildFaces() {

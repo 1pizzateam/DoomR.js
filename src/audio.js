@@ -8,13 +8,13 @@
  * of it should go to the room reverb. They also run in an OfflineAudioContext, which is
  * how they are checked for silence, clipping and clicks.
  */
-import { Rand, Utils, Vec2 } from '@1pizzateam/spock';
+import { Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { Music } from './music.js';
 
 const clamp = Utils.clamp;
 const rand = Rand.float;
 const scratchDelta = new Vec2();
-const scratchRight = new Vec2();
+const scratchRight = new Vec2(1, 0);
 
 /**
  * Where a sound at (x, y) is heard from a listener at (x, y) looking along `angle`.
@@ -24,7 +24,7 @@ const scratchRight = new Vec2();
 export function spatial(listener, x, y, { reference = 220, range = 1000 } = {}) {
   scratchDelta.setScalar(x - listener.x, y - listener.y);
   const distance = scratchDelta.getMagnitude();
-  scratchRight.setScalar(-Math.sin(listener.angle), Math.cos(listener.angle));
+  scratchRight.setRadian(listener.angle + Trigo.halfpi);
   const side = distance < 1 ? 0 : scratchDelta.dotProduct(scratchRight) / distance;
   // a source right on top of the listener has no direction, so ease the pan in
   const pan = clamp(side * Math.min(1, distance / 70), -1, 1) * 0.9;

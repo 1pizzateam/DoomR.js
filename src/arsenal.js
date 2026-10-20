@@ -19,6 +19,7 @@ export const CHAINSAW_TOOTH_PITCH = 1.6;
 const scratchEdgeA = new Vec3();
 const scratchEdgeB = new Vec3();
 const scratchNormal = new Vec3();
+const scratchPt = new Vec2();
 
 function pushQuad(vertices, normals, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
   scratchEdgeA.setScalar(c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]);
@@ -1120,7 +1121,7 @@ function paintChaingunMuzzle(canvas, cell) {
     for (let x = 0; x < S; x++) {
       const dx = (x - half) / half;
       const dy = (y - half) / half;
-      const r = Math.hypot(dx, dy);
+      const r = scratchPt.setScalar(dx, dy).getMagnitude();
       const hole = r > 0.35 && r < 0.72 && Math.cos(Math.atan2(dy, dx) * 6) > 0.35;
       if (hole || r < 0.18)
         canvas.put(cell, x, y, 16, 18, 22);
@@ -1343,7 +1344,7 @@ export function chaingunPose(
     rotorRot: new Vec3(),
   };
   const clampedSwitch = Utils.clamp(switchOffset, 0, 1);
-  const kick = attacking ? Math.max(0.35, Math.min(1, recoil)) : Math.min(1, recoil * 0.7);
+  const kick = attacking ? Utils.clamp(recoil, 0.35, 1) : Math.min(1, recoil * 0.7);
   const spinning = attacking || spinDown > 0;
 
   const walkSway = Math.sin(bob) * 0.62 * moving;
@@ -1708,7 +1709,7 @@ function paintChainsawBody(canvas, cell) {
       const louver = y >= 6 && y <= 17 && x >= 5 && x <= 19 && y % 3 === 0;
       const hazard = y >= 21 && y <= 27 && x >= 4 && x <= S - 5;
       const stripe = hazard && ((x + y) & 4) === 0;
-      const fuelCap = Math.hypot(x - 24.5, y - 10.5) <= 3.2;
+      const fuelCap = scratchPt.setScalar(x - 24.5, y - 10.5).getMagnitude() <= 3.2;
       if (seam)
         canvas.put(cell, x, y, 36, 26, 12);
       else if (louver)
@@ -1780,7 +1781,7 @@ function paintChainsawChain(canvas, cell) {
     for (let x = 0; x < S; x++) {
       const chisel = y < 8 || x < 6;
       const blood = chisel && ((x + y) % 5 < 2);
-      const rivet = Math.hypot(x - 11, y - 16) <= 2.6 || Math.hypot(x - 22, y - 16) <= 2.6;
+      const rivet = scratchPt.setScalar(x - 11, y - 16).getMagnitude() <= 2.6 || scratchPt.setScalar(x - 22, y - 16).getMagnitude() <= 2.6;
       const baseLink = y >= 8 && y <= 24;
       if (blood)
         canvas.put(cell, x, y, 204, 32, 36);

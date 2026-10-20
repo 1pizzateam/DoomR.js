@@ -191,6 +191,14 @@ const tests = {
     level.wake(warden[0]);
     assert.ok(level.shake > 0, 'the warden waking should shake the floor');
     assert.ok(warden[0].roar > 1, 'and it should roar before it moves');
+    warden[0].roar = 0;
+    warden[0].cooldown = 0;
+    warden[0].los = true;
+    warden[0].losTimer = 10;
+    level.state = 'play';
+    level.player.body.setPosition(new Vec2(warden[0].pos.x + 220, warden[0].pos.y));
+    run(level, 0.8);
+    assert.ok(level.shots.length >= 3, 'the warden fires a fan of fireballs at medium range');
   },
 
   'a wraith is a flat sprite: it wails when it wakes, drifts in, rakes the player and drops no limbs'() {
@@ -1874,12 +1882,11 @@ const tests = {
       let widest = 0;
       for (let y = 0; y < TIP_HEIGHTS[k]; y++) {
         let row = 0;
-        for (let x = 0; x < CELL; x++) {
+        for (let x = 0; x < CELL; x++)
           if (atlas.data[(y * atlas.width + (CELLS.tips + k) * CELL + x) * 4 + 3]) {
             n++;
             row++;
           }
-        }
         widest = Math.max(widest, row);
       }
       assert.ok(n < TIP_HEIGHTS[k] * 4 + 2 && widest <= 7, `tip ${k} is a small point (${n} pixels, ${widest} wide), not a blob`);
@@ -2825,13 +2832,12 @@ const tests = {
       const locks = new Set([...level.doors.values()].map((d) => d.lock).filter(Boolean));
       assert.ok(locks.has('blue') && locks.has('yellow') && locks.has('red'), `level ${i} has blue, yellow, and red locked doors`);
       const keyPickups = new Map();
-      for (const p of level.pickups) {
+      for (const p of level.pickups)
         if (p.type === 'blueKey' || p.type === 'yellowKey' || p.type === 'redKey') {
           const tx = Math.floor(p.pos.x / 64);
           const ty = Math.floor(p.pos.y / 64);
           keyPickups.set(`${tx},${ty}`, p.type === 'redKey' ? 'red' : p.type === 'yellowKey' ? 'yellow' : 'blue');
         }
-      }
       assert.equal(keyPickups.size, 3, `level ${i} has all 3 keycards placed`);
 
       const held = new Set();
@@ -2906,14 +2912,13 @@ const tests = {
       const rowSpan = (y) => {
         let minX = WEAPON_CELL_W;
         let maxX = -1;
-        for (let x = 0; x < WEAPON_CELL_W; x++) {
+        for (let x = 0; x < WEAPON_CELL_W; x++)
           if (wAtlas.data[(y * wAtlas.width + x) * 4 + 3] > 0) {
             if (x < minX)
               minX = x;
             if (x > maxX)
               maxX = x;
           }
-        }
         return maxX >= minX ? maxX - minX + 1 : 0;
       };
       const tipSpan = rowSpan(182);
@@ -4931,27 +4936,25 @@ const tests = {
     game.events.length = 0;
     const attackEvents = new Set(['swing', 'bite', 'rake', 'slam', 'leap', 'fireball', 'wake']);
 
-    for (const enemy of game.enemies) {
+    for (const enemy of game.enemies)
       if (enemy.state !== 'dead') {
         assert.equal(enemy.windup, 0, `${enemy.type} windup cleared on player death`);
         assert.equal(enemy.leap, 0, `${enemy.type} leap cleared on player death`);
         assert.equal(enemy.roar, 0, `${enemy.type} roar cleared on player death`);
       }
-    }
 
     run(game, 2.0);
 
     assert.equal(game.shots.length, 0, 'no fireballs or projectiles are fired after player death');
     for (const ev of game.events)
       assert.ok(!attackEvents.has(ev.type), `no enemy attack or wake event (${ev.type}) emitted after player death`);
-    for (const enemy of game.enemies) {
+    for (const enemy of game.enemies)
       if (enemy.state !== 'dead') {
         assert.equal(enemy.windup, 0, `${enemy.type} never winds up while player is dead`);
         assert.equal(enemy.leap, 0, `${enemy.type} never leaps while player is dead`);
         assert.equal(enemy.body.velocity.x, 0, `${enemy.type} velocity.x is zero while player is dead`);
         assert.equal(enemy.body.velocity.y, 0, `${enemy.type} velocity.y is zero while player is dead`);
       }
-    }
   },
 
   'ammo pickup flash: HUD ammo counter flashes, displays +N badge, and visibly rolls numbers up when picking up ammo'() {
@@ -5186,7 +5189,8 @@ const tests = {
     for (let i = 0; i < 20; i++)
       game.update(1 / 60, input({ forward: 1 }));
     const p = game.player.pos;
-    const signedDist = (p.x - 64) * Math.SQRT1_2 + (p.y - 128) * Math.SQRT1_2;
+    const nwDiag = custom.diagInfo(1 * custom.width + 1);
+    const signedDist = nwDiag.tri.signedDistanceToHypotenuse(p);
     assert.ok(signedDist >= 14 - 1e-4, `player stays outside the diagonal hypotenuse (signedDist=${signedDist})`);
 
     // Bullet holes and blood splats on diagonal wall hypotenuse are recorded and clamped to hypotenuse span
