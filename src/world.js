@@ -90,7 +90,7 @@ varying vec2 vTextureCoord;
 
 const vec3 BACKGROUND = vec3(${BG.map((v) => v.toFixed(5)).join(', ')});
 const vec3 BLOOD = vec3(${COLORS.red.map((v) => v.toFixed(5)).join(', ')});
-const float FULL = ${new Vec3(COLORS.orange).subtract(new Vec3(BG)).getMagnitude().toFixed(5)};
+const float FULL = ${new Vec3(...COLORS.orange).subtract(new Vec3(...BG)).getMagnitude().toFixed(5)};
 
 void main(void) {
   vec4 texel = texture2D(uSampler, vTextureCoord);
@@ -161,7 +161,7 @@ varying vec3 vNormal;
 
 const vec3 BACKGROUND = vec3(${BG.map((v) => v.toFixed(5)).join(', ')});
 const vec3 BLOOD = vec3(${COLORS.red.map((v) => v.toFixed(5)).join(', ')});
-const float FULL = ${new Vec3(COLORS.orange).subtract(new Vec3(BG)).getMagnitude().toFixed(5)};
+const float FULL = ${new Vec3(...COLORS.orange).subtract(new Vec3(...BG)).getMagnitude().toFixed(5)};
 
 ${LIGHT_GLSL}
 void main(void) {

@@ -16,6 +16,9 @@ const alias = localRoostr
 export default defineConfig({
   base: './',
   resolve: { alias },
+  optimizeDeps: {
+    exclude: ['@1pizzateam/groovr', '@1pizzateam/roostr'],
+  },
   server: {
     watch: usePolling ? { usePolling: true, interval: 300 } : undefined,
     fs: { allow: ['..'] },

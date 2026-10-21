@@ -5,16 +5,16 @@ services:
     container_name: doomr
     environment:
       VITE_WATCH_POLLING: "true"
+      ROOSTR_LOCAL: "../RoostR.js"
     ports:
       - "5177:5173"
     volumes:
-      - ./:/usr/src/app
-      - doomr_node_modules:/usr/src/app/node_modules
+      - ./:/usr/src/doomr
+      # the groovr file: dependency resolves to this folder; build it first (dist/)
+      - ../GroovR.js:/usr/src/GroovR.js:ro
+      - ../RoostR.js:/usr/src/RoostR.js:ro
+      - doomr_node_modules:/usr/src/doomr/node_modules
+    command: sh -c "npm i --no-package-lock --loglevel=error --ignore-scripts --no-fund && npm run dev"
 
 volumes:
   doomr_node_modules:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/node_modules
