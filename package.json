@@ -1,6 +1,6 @@
 {
   "name": "doomr",
-  "version": "0.4.2",
+  "version": "0.1.0",
   "description": "A line-art, three-colour shooter demo built on Spock, BumpR, LoopR and RoostR",
   "keywords": [
     "game",
