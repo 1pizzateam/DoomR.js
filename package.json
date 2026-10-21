@@ -29,7 +29,7 @@
     "@1pizzateam/bumpr": "1.1.0",
     "@1pizzateam/groovr": "0.1.0-alpha.1",
     "@1pizzateam/loopr": "2.1.0",
-    "@1pizzateam/roostr": "0.8.0",
+    "@1pizzateam/roostr": "0.8.1",
     "@1pizzateam/spock": "4.4.0"
   },
   "overrides": {
