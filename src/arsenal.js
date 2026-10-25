@@ -1,8 +1,6 @@
-import { Bezier, Mat4x3, Quat, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
+import { Mat4x3, Quat, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 
-function smoothStep(min, max, x) {
-  return Bezier.cubic(0, 0, 1, 1, Utils.clamp(Utils.normalize(x, min, max), 0, 1));
-}
+const smoothStep = Utils.smoothstep;
 
 export const ARSENAL_CELL = 32;
 export const ARSENAL_FRAMES = 4;
@@ -1372,17 +1370,35 @@ function paintRocketBody(canvas, cell) {
   const S = ARSENAL_CELL;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const seam = x < 2 || y < 2 || x >= S - 2 || y >= S - 2;
-      const hazard = y >= 10 && y <= 21 && x >= 6 && x <= S - 7;
-      const stripe = hazard && ((x + y) & 4) === 0;
-      if (stripe)
-        canvas.put(cell, x, y, 224, 178, 38);
-      else if (hazard)
-        canvas.put(cell, x, y, 36, 34, 30);
-      else if (seam)
-        canvas.put(cell, x, y, 44, 52, 36);
-      else
-        canvas.put(cell, x, y, 78, 92, 62);
+      const cyl = Math.sin((x / S) * Trigo.pi);
+      if (y < 20) {
+        // Heavy military olive-drab armored receiver shroud with recessed panel seams & hex rivets
+        const border = x < 2 || x >= S - 2 || y < 2 || y === 19;
+        const fuller = y >= 8 && y <= 11 && x >= 5 && x <= S - 6;
+        const rivet = (x === 4 || x === S - 5) && (y === 4 || y === 15);
+        const grime = ((x * 5 + y * 3) & 3) * 3 - 4;
+        if (border)
+          canvas.put(cell, x, y, 34, 42, 28);
+        else if (rivet)
+          canvas.put(cell, x, y, 148, 158, 136);
+        else if (fuller)
+          canvas.put(cell, x, y, 46, 56, 38);
+        else {
+          const g = Utils.clamp(76 + cyl * 36 + grime, 42, 138);
+          canvas.put(cell, x, y, g * 0.84, g, g * 0.68);
+        }
+      } else {
+        // High-contrast diagonal yellow-and-black backblast hazard collar markings
+        const rim = y === 20 || y >= S - 2;
+        const stripe = ((x + y) & 4) === 0;
+        if (rim)
+          canvas.put(cell, x, y, 38, 44, 34);
+        else if (stripe) {
+          const boost = cyl * 28;
+          canvas.put(cell, x, y, 218 + boost, 172 + boost * 0.8, 34 + boost * 0.3);
+        } else
+          canvas.put(cell, x, y, 28, 30, 28);
+      }
     }
 }
 
@@ -1390,10 +1406,20 @@ function paintRocketTube(canvas, cell) {
   const S = ARSENAL_CELL;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const shade = Math.sin((x / S) * Trigo.pi) * 34;
-      const ring = y < 3 || y >= S - 3 || (y >= 14 && y <= 17);
-      const g = Utils.clamp(68 + shade + (ring ? 22 : 0), 32, 164);
-      canvas.put(cell, x, y, g * 0.86, g, g * 0.72);
+      const cyl = Math.sin((x / S) * Trigo.pi);
+      if (y < 24) {
+        // Cylindrical olive-drab fiberglass/steel launch barrel with specular sheen & reinforcement bands
+        const spec = Math.pow(cyl, 2.4) * 32;
+        const flute = (x & 3) === 0 ? -8 : 0;
+        const ring = y < 3 || y === 11 || y === 12 || y >= 21;
+        const g = Utils.clamp(64 + cyl * 38 + spec + flute + (ring ? 24 : 0), 30, 176);
+        canvas.put(cell, x, y, g * 0.85, g, g * 0.70);
+      } else {
+        // Soot-darkened rifled interior launch bore & venturi exhaust throat
+        const rifling = ((x + y) & 3) === 0 ? -6 : 4;
+        const v = Utils.clamp(22 + cyl * 16 + rifling, 12, 48);
+        canvas.put(cell, x, y, v, v + 2, v + 4);
+      }
     }
 }
 
@@ -1401,8 +1427,11 @@ function paintRocketGrip(canvas, cell) {
   const S = ARSENAL_CELL;
   for (let y = 0; y < 12; y++)
     for (let x = 0; x < S; x++) {
-      const grain = ((x * 3 + y) & 3) * 8;
-      canvas.put(cell, x, y, 92 + grain, 56 + grain * 0.7, 34 + grain * 0.4);
+      const cyl = Math.sin((x / S) * Trigo.pi);
+      const rib = y % 3 === 0 ? -12 : y % 3 === 1 ? 8 : 0;
+      const checkering = ((x + y) & 1) * 6;
+      const base = Utils.clamp(48 + cyl * 28 + rib + checkering, 24, 118);
+      canvas.put(cell, x, y, base + 8, base + 4, base);
     }
   paintWeaponHandSubBands(canvas, cell, 12);
 }
@@ -1411,11 +1440,42 @@ function paintRocketWarhead(canvas, cell) {
   const S = ARSENAL_CELL;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const tip = y < 12;
-      if (tip)
-        canvas.put(cell, x, y, 206, 52, 38);
-      else
-        canvas.put(cell, x, y, 168, 172, 178);
+      const cyl = Math.sin((x / S) * Trigo.pi);
+      const spec = Math.pow(cyl, 2.6) * 42;
+      if (y < 11) {
+        // High-explosive crimson ballistic warhead ogive nose cone
+        const seam = y === 10 ? -28 : 0;
+        const r = Utils.clamp(158 + cyl * 64 + spec + seam, 78, 248);
+        const g = Utils.clamp(32 + cyl * 22 + spec * 0.45, 14, 96);
+        const b = Utils.clamp(26 + cyl * 18 + spec * 0.35, 12, 78);
+        canvas.put(cell, x, y, r, g, b);
+      } else if (y < 16) {
+        // Gleaming machined brass piezoelectric fuze ring & caution band
+        const knurl = (x & 1) === 0 ? 8 : -6;
+        const r = Utils.clamp(168 + cyl * 58 + spec + knurl, 96, 252);
+        const g = Utils.clamp(132 + cyl * 48 + spec * 0.8 + knurl, 72, 218);
+        const b = Utils.clamp(42 + cyl * 24 + spec * 0.4, 20, 108);
+        canvas.put(cell, x, y, r, g, b);
+      } else if (y < 25) {
+        // Hardened gunmetal-steel rocket motor casing & hydraulic piston rod
+        const rivet = y === 18 && (x & 7) === 3 ? 28 : 0;
+        const v = Utils.clamp(112 + cyl * 52 + spec + rivet, 54, 224);
+        canvas.put(cell, x, y, v * 0.96, v, v * 1.04);
+      } else {
+        // Emerald-cyan coated laser rangefinder objective lens & reticle glow
+        const dx = x - 15.5;
+        const dy = y - 28.0;
+        const crosshair = Math.abs(dx) < 1.0 || Math.abs(dy) < 0.8;
+        const glare = dx > -5 && dx < -1 && dy < 0;
+        if (glare)
+          canvas.put(cell, x, y, 188, 252, 238);
+        else if (crosshair)
+          canvas.put(cell, x, y, 92, 242, 198);
+        else {
+          const g = Utils.clamp(84 + cyl * 78, 36, 186);
+          canvas.put(cell, x, y, 18 + cyl * 24, g, g * 0.88 + 24);
+        }
+      }
     }
 }
 
@@ -1437,11 +1497,13 @@ export function rocketLauncherAtlas() {
 
 /**
  * Returns the articulated 3D rocket launcher geometries and joint pivots:
- * - `body`: Heavy olive-drab cylindrical launch tube, armored octagonal shroud with hazard markings,
- *   front blast collar, flared rear venturi exhaust nozzle bell, top carry handle & sighting rail,
- *   side optical targeting scope, twin hydraulic recoil damper cylinders, and front/rear grips.
- * - `warhead`: Articulated 3D crimson-tipped high-explosive rocket warhead with cruciform fins that
- *   launches out of the muzzle on fire and slides forward from the breech during the auto-loader reload cycle.
+ * - `body`: Heavy olive-drab cylindrical launch tube with hollow rifled bore, armored octagonal receiver saddle,
+ *   hazard-striped front blast collar & rear breech collar, multi-station flared rear venturi exhaust nozzle bell,
+ *   top carry handle & Picatinny sighting rail with folding front sight hood, side-mounted laser rangefinder scope,
+ *   twin horizontal hydraulic recoil damper cylinders with chrome piston rods, padded shoulder rest, and dual grips.
+ * - `warhead`: Articulated 3D multi-station ogive high-explosive rocket warhead with brass fuze collar, boat-tail
+ *   motor nozzle, and 4 swept cruciform stabilizer fins that launches out of the muzzle on fire and slides forward
+ *   from the breech during the auto-loader reload cycle.
  * - `hands`: Shared high-detail first-person spec-ops gloved hands, carbon knuckle armor, wrist chronometer,
  *   ripstop cuffs, and sculpted muscular forearms gripping the forward stabilization foregrip and rear trigger grip.
  */
@@ -1449,65 +1511,193 @@ export function rocketLauncherParts() {
   if (cachedRocketLauncherParts)
     return cachedRocketLauncherParts;
 
+  const SHROUD_ARMOR = (m) => remapCellSub(m, ARSENAL_CELLS.body, 0.03, 0.58);
+  const HAZARD_COLLAR = (m) => remapCellSub(m, ARSENAL_CELLS.body, 0.64, 0.96);
+  const LAUNCH_TUBE = (m) => remapCellSub(m, ARSENAL_CELLS.barrel, 0.03, 0.72);
+  const DARK_BORE = (m) => remapCellSub(m, ARSENAL_CELLS.barrel, 0.77, 0.96);
   const GRIP = (m) => remapCellSub(m, ARSENAL_CELLS.grip, 0.02, 0.35);
+  const WARHEAD_TIP = (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.03, 0.31);
+  const WARHEAD_BRASS = (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.36, 0.48);
+  const WARHEAD_BODY = (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.52, 0.76);
+  const SCOPE_OPTIC = (m) => remapCellSub(m, ARSENAL_CELLS.muzzle, 0.80, 0.97);
   const handMats = weaponHandMaterials(ARSENAL_CELLS.grip);
 
+  const tubeY = 1.5;
+
+  // Octagonal armored mid-receiver saddle wrapping the central launch tube (z = -5.2 .. +5.4)
+  const receiverSaddleRings = [
+    octagonalRing(new Vec3(0, tubeY - 0.1, -5.2), new Vec2(3.65, 3.75), new Vec2(0.34, 0.34)),
+    octagonalRing(new Vec3(0, tubeY - 0.1, -4.4), new Vec2(3.92, 4.02), new Vec2(0.32, 0.32)),
+    octagonalRing(new Vec3(0, tubeY - 0.1, 4.6), new Vec2(3.92, 4.02), new Vec2(0.32, 0.32)),
+    octagonalRing(new Vec3(0, tubeY - 0.1, 5.4), new Vec2(3.65, 3.75), new Vec2(0.34, 0.34)),
+  ];
+
+  // Multi-station conical flared rear venturi backblast exhaust nozzle bell (z = -16.2 .. -10.8)
+  const venturiBellRings = [
+    ellipticalRing(new Vec3(0, tubeY, -16.2), new Vec2(5.05, 5.05), 16),
+    ellipticalRing(new Vec3(0, tubeY, -14.8), new Vec2(4.45, 4.45), 16),
+    ellipticalRing(new Vec3(0, tubeY, -13.2), new Vec2(3.65, 3.65), 16),
+    ellipticalRing(new Vec3(0, tubeY, -11.8), new Vec2(3.08, 3.08), 16),
+    ellipticalRing(new Vec3(0, tubeY, -10.8), new Vec2(3.45, 3.45), 16),
+  ];
+
+  // Ruggedized octagonal laser rangefinder / optical targeting scope body (x = 4.65, y = 4.15, z = -0.8 .. +4.8)
+  const scopeBodyRings = [
+    octagonalRing(new Vec3(4.65, 4.15, -0.8), new Vec2(1.48, 1.48), new Vec2(0.30, 0.30)),
+    octagonalRing(new Vec3(4.65, 4.15, 4.8), new Vec2(1.56, 1.56), new Vec2(0.30, 0.30)),
+  ];
+
   const bodyParts = [
-    // 1. Main cylindrical olive-drab launch tube & armored octagonal shroud
+    // 1. Main horizontal cylindrical olive-drab launch tube & dark rifled interior barrel bore (along Z axis)
     {
-      mesh: remapCell(rotateMeshX(cylinderMesh(new Vec2(3.6, 23.0), 12), Trigo.halfpi), ARSENAL_CELLS.barrel),
-      offset: new Vec3(0, 1.5, 0),
+      mesh: LAUNCH_TUBE(cylinderMesh(new Vec2(3.38, 22.2), 16)),
+      offset: new Vec3(0, tubeY, 0.3),
     },
     {
-      mesh: remapCell(boxMesh(new Vec3(7.8, 8.4, 18.6)), ARSENAL_CELLS.barrel),
-      offset: new Vec3(0, 1.5, -0.2),
+      mesh: DARK_BORE(cylinderMesh(new Vec2(2.48, 22.8), 16)),
+      offset: new Vec3(0, tubeY, 0.1),
     },
-    // Front heavy blast collar ring & rear hazard-striped breech collar
+    // Armored octagonal mid-receiver saddle housing
     {
-      mesh: remapCell(boxMesh(new Vec3(9.6, 10.2, 4.2)), ARSENAL_CELLS.body),
-      offset: new Vec3(0, 1.5, 10.2),
+      mesh: SHROUD_ARMOR(loftRingsMesh(receiverSaddleRings, true, false)),
+      offset: new Vec3(0, 0, 0),
     },
+    // Front heavy hollow muzzle blast collar & protective crown lip ring
     {
-      mesh: remapCell(boxMesh(new Vec3(9.4, 10.0, 4.0)), ARSENAL_CELLS.body),
-      offset: new Vec3(0, 1.5, -9.8),
-    },
-    // Flared rear venturi backblast nozzle bell
-    {
-      mesh: GRIP(prismMesh(new Vec3(8.2, 8.6, 3.6), new Vec3(10.6, 11.0, 3.6), new Vec2(0, 0))),
-      offset: new Vec3(0, 1.5, -13.2),
-    },
-    // 2. Twin side hydraulic recoil damper cylinders flanking the launch tube
-    {
-      mesh: GRIP(rotateMeshX(cylinderMesh(new Vec2(0.95, 15.6), 8), Trigo.halfpi)),
-      offset: new Vec3(4.35, 0.2, 0.8),
+      mesh: HAZARD_COLLAR(hollowCylinderMesh(new Vec2(2.52, 4.12), new Vec2(3.0, 16))),
+      offset: new Vec3(0, tubeY, 11.2),
     },
     {
-      mesh: GRIP(rotateMeshX(cylinderMesh(new Vec2(0.95, 15.6), 8), Trigo.halfpi)),
-      offset: new Vec3(-4.35, 0.2, 0.8),
+      mesh: GRIP(hollowCylinderMesh(new Vec2(2.52, 3.85), new Vec2(0.85, 16))),
+      offset: new Vec3(0, tubeY, 13.0),
     },
-    // 3. Top carry handle & sighting rail bridge
+    // Rear hazard-striped breech collar ring
     {
-      mesh: GRIP(boxMesh(new Vec3(1.8, 1.8, 1.6))),
-      offset: new Vec3(0, 6.2, 5.2),
+      mesh: HAZARD_COLLAR(hollowCylinderMesh(new Vec2(2.55, 4.05), new Vec2(2.6, 16))),
+      offset: new Vec3(0, tubeY, -10.0),
     },
+    // Circumferential barrel reinforcement & cooling bands along the launch tube
     {
-      mesh: GRIP(boxMesh(new Vec3(1.8, 1.8, 1.6))),
-      offset: new Vec3(0, 6.2, -3.8),
-    },
-    {
-      mesh: remapCell(boxMesh(new Vec3(2.1, 1.1, 11.2)), ARSENAL_CELLS.body),
-      offset: new Vec3(0, 7.2, 0.7),
-    },
-    // 4. Side-mounted optical rangefinder / targeting scope assembly
-    {
-      mesh: remapCell(boxMesh(new Vec3(3.4, 3.4, 6.2)), ARSENAL_CELLS.body),
-      offset: new Vec3(4.8, 4.5, 2.2),
+      mesh: GRIP(hollowCylinderMesh(new Vec2(3.32, 3.78), new Vec2(1.1, 16))),
+      offset: new Vec3(0, tubeY, 7.6),
     },
     {
-      mesh: GRIP(rotateMeshX(cylinderMesh(new Vec2(1.25, 2.4), 8), Trigo.halfpi)),
-      offset: new Vec3(4.8, 4.5, 6.0),
+      mesh: GRIP(hollowCylinderMesh(new Vec2(3.32, 3.78), new Vec2(1.1, 16))),
+      offset: new Vec3(0, tubeY, -7.2),
     },
-    // 5. Forward vertical stabilization foregrip & rear trigger grip
+    // Flared rear venturi backblast nozzle bell, shock bumper rim & dark exhaust throat
+    {
+      mesh: LAUNCH_TUBE(loftRingsMesh(venturiBellRings, true, true)),
+      offset: new Vec3(0, 0, 0),
+    },
+    {
+      mesh: GRIP(hollowCylinderMesh(new Vec2(3.65, 5.22), new Vec2(1.1, 16))),
+      offset: new Vec3(0, tubeY, -15.95),
+    },
+    {
+      mesh: DARK_BORE(cylinderMesh(new Vec2(3.68, 0.7), 16)),
+      offset: new Vec3(0, tubeY, -15.8),
+    },
+    // 2. Twin horizontal side hydraulic recoil damper cylinders & chrome piston rods flanking the launch tube
+    {
+      mesh: GRIP(cylinderMesh(new Vec2(0.82, 11.4), 10)),
+      offset: new Vec3(4.15, 0.35, -0.5),
+    },
+    {
+      mesh: GRIP(cylinderMesh(new Vec2(0.82, 11.4), 10)),
+      offset: new Vec3(-4.15, 0.35, -0.5),
+    },
+    {
+      mesh: WARHEAD_BODY(cylinderMesh(new Vec2(0.48, 5.0), 10)),
+      offset: new Vec3(4.15, 0.35, 7.3),
+    },
+    {
+      mesh: WARHEAD_BODY(cylinderMesh(new Vec2(0.48, 5.0), 10)),
+      offset: new Vec3(-4.15, 0.35, 7.3),
+    },
+    {
+      mesh: GRIP(boxMesh(new Vec3(1.6, 1.35, 1.15))),
+      offset: new Vec3(3.65, 0.55, 8.8),
+    },
+    {
+      mesh: GRIP(boxMesh(new Vec3(1.6, 1.35, 1.15))),
+      offset: new Vec3(-3.65, 0.55, 8.8),
+    },
+    {
+      mesh: GRIP(boxMesh(new Vec3(1.6, 1.35, 1.15))),
+      offset: new Vec3(3.65, 0.55, -5.4),
+    },
+    {
+      mesh: GRIP(boxMesh(new Vec3(1.6, 1.35, 1.15))),
+      offset: new Vec3(-3.65, 0.55, -5.4),
+    },
+    // 3. Top carry handle, Picatinny sighting rail bridge & front protective iron sight hood
+    {
+      mesh: GRIP(prismMesh(new Vec3(1.55, 1.8, 1.8), new Vec3(1.35, 1.8, 1.4), new Vec2(0, -0.25))),
+      offset: new Vec3(0, 5.8, 4.9),
+    },
+    {
+      mesh: GRIP(prismMesh(new Vec3(1.55, 1.8, 1.8), new Vec3(1.35, 1.8, 1.4), new Vec2(0, 0.25))),
+      offset: new Vec3(0, 5.8, -3.7),
+    },
+    {
+      mesh: SHROUD_ARMOR(boxMesh(new Vec3(1.85, 0.95, 11.0))),
+      offset: new Vec3(0, 6.95, 0.6),
+    },
+    {
+      mesh: GRIP(boxMesh(new Vec3(2.1, 0.9, 1.5))),
+      offset: new Vec3(0, 5.8, 11.2),
+    },
+    {
+      mesh: GRIP(boxMesh(new Vec3(0.34, 1.15, 1.2))),
+      offset: new Vec3(-0.82, 6.65, 11.2),
+    },
+    {
+      mesh: GRIP(boxMesh(new Vec3(0.34, 1.15, 1.2))),
+      offset: new Vec3(0.82, 6.65, 11.2),
+    },
+    {
+      mesh: WARHEAD_TIP(boxMesh(new Vec3(0.28, 0.72, 0.36))),
+      offset: new Vec3(0, 6.5, 11.2),
+    },
+    // 4. Side-mounted optical laser rangefinder / smart-target scope assembly (oriented along Z)
+    {
+      mesh: GRIP(boxMesh(new Vec3(1.8, 1.05, 1.25))),
+      offset: new Vec3(3.55, 3.65, 3.8),
+    },
+    {
+      mesh: GRIP(boxMesh(new Vec3(1.8, 1.05, 1.25))),
+      offset: new Vec3(3.55, 3.65, 0.2),
+    },
+    {
+      mesh: SHROUD_ARMOR(loftRingsMesh(scopeBodyRings, true, false)),
+      offset: new Vec3(0, 0, 0),
+    },
+    {
+      mesh: GRIP(hollowCylinderMesh(new Vec2(0.95, 1.38), new Vec2(1.8, 12))),
+      offset: new Vec3(4.65, 4.15, 5.55),
+    },
+    {
+      mesh: SCOPE_OPTIC(cylinderMesh(new Vec2(0.98, 0.38), 12)),
+      offset: new Vec3(4.65, 4.15, 6.12),
+    },
+    {
+      mesh: GRIP(cylinderMesh(new Vec2(1.12, 1.4), 12)),
+      offset: new Vec3(4.65, 4.15, -1.45),
+    },
+    {
+      mesh: SCOPE_OPTIC(cylinderMesh(new Vec2(0.82, 0.32), 12)),
+      offset: new Vec3(4.65, 4.15, -2.05),
+    },
+    {
+      mesh: WARHEAD_BRASS(boxMesh(new Vec3(0.76, 0.55, 0.76))),
+      offset: new Vec3(4.65, 5.85, 2.0),
+    },
+    // 5. Under-barrel receiver rail, trigger guard, padded shoulder rest, forward foregrip & rear pistol grip
+    {
+      mesh: SHROUD_ARMOR(boxMesh(new Vec3(2.8, 1.65, 13.4))),
+      offset: new Vec3(0, -2.05, -0.3),
+    },
     {
       mesh: GRIP(prismMesh(new Vec3(3.1, 6.2, 3.8), new Vec3(2.8, 6.2, 3.2), new Vec2(0, -0.6))),
       offset: new Vec3(0, -5.0, 4.2),
@@ -1517,32 +1707,70 @@ export function rocketLauncherParts() {
       offset: new Vec3(0, -4.7, -4.8),
     },
     {
-      mesh: GRIP(boxMesh(new Vec3(2.2, 1.2, 3.4))),
-      offset: new Vec3(0, -3.2, -2.2),
+      mesh: GRIP(boxMesh(new Vec3(1.35, 0.55, 2.8))),
+      offset: new Vec3(0, -3.85, -2.35),
+    },
+    {
+      mesh: GRIP(boxMesh(new Vec3(1.35, 1.25, 0.55))),
+      offset: new Vec3(0, -3.2, -1.1),
+    },
+    {
+      mesh: WARHEAD_BRASS(prismMesh(new Vec3(0.55, 1.1, 0.55), new Vec3(0.55, 1.1, 0.45), new Vec2(0, 0.25))),
+      offset: new Vec3(0, -3.1, -2.4),
+    },
+    {
+      mesh: GRIP(prismMesh(new Vec3(3.2, 1.8, 3.8), new Vec3(3.5, 1.8, 4.2), new Vec2(0, 0))),
+      offset: new Vec3(0, -2.35, -8.8),
     },
   ];
 
-  // Articulated 3D high-explosive rocket warhead seated in the front launch tube
+  // Picatinny rail recoil lugs along top carry handle spine
+  for (const rz of [-3.4, -1.8, -0.2, 1.4, 3.0, 4.6])
+    bodyParts.push({
+      mesh: GRIP(boxMesh(new Vec3(1.95, 0.34, 0.55))),
+      offset: new Vec3(0, 7.52, rz),
+    });
+
+  // Articulated 3D high-explosive anti-armor rocket warhead seated in the front launch tube (all stations along Z)
+  const warheadNoseRings = [
+    ellipticalRing(new Vec3(0, 0, 1.85), new Vec2(2.38, 2.38), 12),
+    ellipticalRing(new Vec3(0, 0, 3.15), new Vec2(2.14, 2.14), 12),
+    ellipticalRing(new Vec3(0, 0, 4.45), new Vec2(1.58, 1.58), 12),
+    ellipticalRing(new Vec3(0, 0, 5.55), new Vec2(0.84, 0.84), 12),
+    ellipticalRing(new Vec3(0, 0, 6.25), new Vec2(0.32, 0.32), 12),
+  ];
+  const warheadBodyRings = [
+    ellipticalRing(new Vec3(0, 0, -4.5), new Vec2(1.85, 1.85), 12),
+    ellipticalRing(new Vec3(0, 0, -3.7), new Vec2(1.48, 1.48), 12),
+    ellipticalRing(new Vec3(0, 0, -2.2), new Vec2(1.94, 1.94), 12),
+    ellipticalRing(new Vec3(0, 0, -0.8), new Vec2(2.34, 2.34), 12),
+    ellipticalRing(new Vec3(0, 0, 1.25), new Vec2(2.36, 2.36), 12),
+  ];
+
   const warheadParts = [
     {
-      mesh: remapCell(rotateMeshX(cylinderMesh(new Vec2(2.35, 5.2), 10), Trigo.halfpi), ARSENAL_CELLS.muzzle),
-      offset: new Vec3(0, 0, -1.2),
+      mesh: WARHEAD_BODY(loftRingsMesh(warheadBodyRings, true, true)),
+      offset: new Vec3(0, 0, 0),
     },
     {
-      mesh: remapCell(rotateMeshX(cylinderMesh(new Vec2(2.1, 2.8), 10), Trigo.halfpi), ARSENAL_CELLS.muzzle),
-      offset: new Vec3(0, 0, 2.2),
+      mesh: WARHEAD_BRASS(cylinderMesh(new Vec2(2.42, 0.68), 12)),
+      offset: new Vec3(0, 0, 1.55),
     },
     {
-      mesh: remapCell(prismMesh(new Vec3(2.9, 2.9, 2.4), new Vec3(1.1, 1.1, 2.4), new Vec2(0, 0)), ARSENAL_CELLS.muzzle),
-      offset: new Vec3(0, 0, 4.4),
+      mesh: WARHEAD_TIP(loftRingsMesh(warheadNoseRings, true, true)),
+      offset: new Vec3(0, 0, 0),
     },
     {
-      mesh: GRIP(boxMesh(new Vec3(5.6, 0.45, 2.2))),
-      offset: new Vec3(0, 0, -2.4),
+      mesh: WARHEAD_BRASS(cylinderMesh(new Vec2(0.32, 0.72), 10)),
+      offset: new Vec3(0, 0, 6.52),
     },
     {
-      mesh: GRIP(boxMesh(new Vec3(0.45, 5.6, 2.2))),
-      offset: new Vec3(0, 0, -2.4),
+      mesh: GRIP(boxMesh(new Vec3(5.2, 0.38, 2.4))),
+      offset: new Vec3(0, 0, -3.1),
+    },
+    {
+      mesh: GRIP(boxMesh(new Vec3(0.38, 5.2, 2.4))),
+      offset: new Vec3(0, 0, -3.1),
     },
   ];
 

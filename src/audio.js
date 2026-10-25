@@ -687,6 +687,12 @@ export const RECIPES = {
     arpeggio(ctx, out, t + 0.05, [294, 440, 587, 880], { spacing: 0.055, length: 0.18, gain: 0.16, type: 'triangle' });
     return { duration: 0.52, wet: 0.55 };
   },
+  wind(ctx, out, t, { pitch = 1 } = {}) {
+    noise(ctx, out, t, { duration: 1.15, gain: 0.22, filter: 'bandpass', from: 360 * pitch, to: 620 * pitch, q: 2.8, attack: 0.18 });
+    noise(ctx, out, t + 0.06, { duration: 1.08, gain: 0.17, filter: 'bandpass', from: 740 * pitch, to: 310 * pitch, q: 1.8, attack: 0.22 });
+    tone(ctx, out, t, { type: 'sine', from: 112 * pitch, to: 86 * pitch, duration: 1.05, gain: 0.11, attack: 0.2, vibrato: { rate: 4.5, depth: 10 } });
+    return { duration: 1.2, wet: 0.45 };
+  },
 };
 
 /** Render one recipe offline: used to check that it is audible, does not clip and ends cleanly. */
@@ -748,6 +754,7 @@ const MIN_INTERVAL = {
   powerup: 0.08,
   automap: 0.05,
   teleport: 0.08,
+  wind: 0.35,
 };
 
 /** Which recipes an event plays, and whether it is a sound in the world or one in the player's head. */
@@ -771,6 +778,7 @@ function route(event) {
     case 'powerup': return [{ name: 'powerup', local: true }];
     case 'automap': return [{ name: 'automap', local: true }];
     case 'teleport': return [{ name: 'teleport' }];
+    case 'wind': return [{ name: 'wind', local: true, pitch: true }];
     case 'dry': return [{ name: 'dry', local: true }];
     case 'impact': return [{ name: event.surface === 'door' ? 'impactDoor' : 'impactWall' }];
     case 'flesh': return [{ name: 'flesh' }];
@@ -815,13 +823,14 @@ function readMuted() {
   }
 }
 
-export const LEVEL_MUSIC = ['play', 'metal', 'horror', 'boss'];
+export const LEVEL_MUSIC = ['play', 'metal', 'horror', 'boss', 'gore'];
 
 export const MUSIC_TRACKS = [
   { mode: 'play', label: 'Music: E1M1 Ambient' },
   { mode: 'metal', label: 'Music: E1M2 Industrial Metal' },
   { mode: 'horror', label: 'Music: E1M3 Horror Metal' },
   { mode: 'boss', label: 'Music: E1M4 Boss Finale' },
+  { mode: 'gore', label: 'Music: E1M5 Gore Metal' },
   { mode: 'title', label: 'Music: Intro Theme' },
   { mode: 'off', label: 'Music: Off' },
 ];

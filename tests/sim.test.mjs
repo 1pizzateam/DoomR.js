@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PointLight, Rand, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
 import { BLOOD } from '../src/blood.js';
@@ -11,27 +12,28 @@ import { FACE_CELL_H, FACE_CELL_W, FACE_DEAD_FRAME, FACE_FRAME_COUNT, FACE_POSE_
 import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON_ORDER, WEAPON_SLOTS, WEAPON_TIMES, WEAPONS, arsenalAtlas, weaponAtlas, weaponCellUv, weaponFrame, weaponPlacement } from '../src/weapon.js';
 import { ARSENAL_CELL, ARSENAL_FRAMES, CHAINSAW_TOOTH_PITCH, chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, KNIFE_ATTACKS, knifeAtlas, knifeMesh, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from '../src/arsenal.js';
 import { AMMO_FLASH_DURATION, FIRE_COOLDOWN } from '../src/game.js';
-import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DYNAMIC_LIGHT_ATTENUATION, FIREBALL_LIGHT_COLOR, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, ROCKET_LIGHT_COLOR, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
-import { diagWallFaceQuads, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallFaceQuads } from '../src/wall.js';
+import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DYNAMIC_LIGHT_ATTENUATION, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
+import { diagWallFaceQuads, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallFaceQuads } from '../src/wall.js';
 import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, WALL_FRAGMENT, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
-import { BARREL_ATLAS, barrelAtlas, skinBarrel } from '../src/barrel.js';
-import { EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, explosionAtlas, teleportAtlas } from '../src/explosion.js';
-import { FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, floorAtlas, floorCellFor, floorCellUv, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
-import { LIGHT_GLSL, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT } from '../src/quads.js';
+import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
+import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
+import { CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
+import { LIGHT_GLSL, PARTICLE_FRAGMENT, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT } from '../src/quads.js';
 import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads, screenSplatQuads, bloodAtlas, CELL, cellUv, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallSplatQuad } from '../src/bloodsprites.js';
 import { CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EYE, Level, PILLAR } from '../src/level.js';
-import { Quality } from '../src/quality.js';
+import { Fog } from '../src/fog.js';
 import { MONSTER_SKIN_CELL, MONSTER_SKIN_CELLS, MONSTER_SKIN_FRAMES, MONSTERS, monsterGoreSkinAtlas, monsterMesh, monsterParts, monsterSkinAtlas } from '../src/monsters.js';
 import { MONSTER_ATLASES, MONSTER_FRAMES, WRAITH_FRAMES, wraithAtlas } from '../src/sprites.js';
 import { SHOTS, TitleDirector } from '../src/title.js';
-import { explosionWidth } from '../src/world.js';
+import { EXPLOSION_3D_FRAGMENT, EXPLOSION_3D_VERTEX, explosionWidth, LINE_FRAGMENT, LINE_VERTEX, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, MONSTER_FRAGMENT, marsFogNearFar, registerStaticChunk, SPARK_PARTICLE_FRAGMENT, SPRITE_FRAGMENT, World } from '../src/world.js';
 import { MEDIKIT_CELL, MEDIKIT_CELLS, MEDIKIT_FRAMES, medikitAtlas, medikitMesh } from '../src/medikit.js';
 import { AMMO_CELL, AMMO_CELLS, AMMO_FRAMES, AMMO_TYPES, ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from '../src/ammo.js';
 import { KEYCARD_CELL, KEYCARD_CELLS, KEYCARD_FRAMES, keycardAtlas, keycardMesh } from '../src/keycard.js';
 import { ARMOR_CELL, ARMOR_CELLS, ARMOR_COLORS, ARMOR_FRAMES, ARMOR_TYPES, armorAtlas, armorMesh } from '../src/armor.js';
-import { POWERUP_CELL, POWERUP_CELLS, POWERUP_FRAMES, POWERUP_TYPES, berserkAtlas, berserkMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from '../src/powerups.js';
+import { POWERUP_CELL, POWERUP_CELLS, POWERUP_FRAMES, POWERUP_TYPES, berserkAtlas, berserkMesh, nightvisionAtlas, nightvisionMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from '../src/powerups.js';
 import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.js';
 import { Hud, SCREEN_BLOOD_ALPHA } from '../src/hud.js';
+import { Input } from '../src/input.js';
 
 const idle = { forward: 0, strafe: 0, turn: 0, mouseX: 0, run: false, fire: false, use: false };
 const input = (patch) => ({ ...idle, ...patch });
@@ -2384,6 +2386,24 @@ const tests = {
     run(game, 0.25, idle);
     assert.equal(game.player.crouch, 0, 'releasing crouch returns crouch factor to 0');
     assert.equal(game.player.eye, EYE, 'releasing crouch restores standing eye height');
+
+    // jumping launches the player upward, clears toxic acid tiles without taking damage, and lands back at z = 0
+    const slimeIdx = game.level.slime.findIndex((v) => v === 1);
+    const slimeX = (slimeIdx % game.level.width) * 64 + 32;
+    const slimeY = Math.floor(slimeIdx / game.level.width) * 64 + 32;
+    game.player.body.setPosition(new Vec2(slimeX, slimeY));
+    const hpBefore = game.player.health;
+    game.events.length = 0;
+    game.update(1 / 60, input({ jump: true }));
+    assert.ok(game.player.z > 0 && game.player.eye > EYE, 'jumping raises player z and eye above standing EYE');
+    run(game, 0.28, idle);
+    assert.ok(game.player.z > 15, 'player reaches jump apex mid-air above acid');
+    assert.equal(game.player.slimeTimer, 0, 'airborne player does not accumulate acid burn timer');
+    assert.equal(game.player.health, hpBefore, 'jumping over acid takes no damage');
+    run(game, 0.4, idle);
+    assert.equal(game.player.z, 0, 'gravity brings jumping player back to floor');
+    assert.equal(game.player.eye, EYE, 'landing restores standing eye height');
+    assert.ok(game.events.some((e) => e.type === 'step' && e.who === 'player'), 'landing emits a player footfall sound');
   },
 
   'every level has par time and secret closets, and clearing a level runs the Doom intermission tally and Phobos overworld map'() {
@@ -2650,7 +2670,7 @@ const tests = {
       assert.equal(Math.abs(sBox.vertices[i + 2]), 32, 'secret door Z faces sit flush at ±32 (TILE / 2) with zero recess');
     }
 
-    // every level has slime pools (~), secret push-wall doors (S), and crushing ceiling traps (^)
+    // every level has slime pools (~) and crushing traps (^); indoor base levels have secret push-wall doors (S), while Mars has only the 1 starting-room door
     for (let i = 0; i < LEVELS.length; i++) {
       const g = fresh(i);
       let slimeTiles = 0;
@@ -2659,7 +2679,10 @@ const tests = {
           slimeTiles++;
       const secretDoors = [...g.level.doors.values()].filter((d) => d.secret);
       assert.ok(slimeTiles >= 6, `level ${i} has radioactive slime tiles (${slimeTiles})`);
-      assert.ok(secretDoors.length >= 2, `level ${i} has secret push-wall doors (${secretDoors.length})`);
+      if (g.level.planet === 'mars')
+        assert.equal(g.level.doors.size, 1, 'Mars surface level has only the single starting-room door and zero exterior doors');
+      else
+        assert.ok(secretDoors.length >= 2, `level ${i} has secret push-wall doors (${secretDoors.length})`);
       assert.ok(g.level.crushers.length >= 1, `level ${i} has crushing ceiling traps (${g.level.crushers.length})`);
     }
 
@@ -2825,10 +2848,14 @@ const tests = {
     assert.ok(rectLines.some((r) => r.col[0] > 0.85 && r.col[1] < 0.2), 'automap draws red-locked doors in red');
     assert.ok(rectLines.some((r) => r.col[0] > 0.9 && r.col[1] > 0.5 && r.col[2] < 0.4), 'automap draws yellow-locked doors in orange/yellow');
 
-    // Verify all 3 levels have solvable progressive keycard routing (Start -> Blue Key -> Yellow Key -> Red Key -> Exit)
+    // Verify indoor base levels have solvable progressive keycard routing (Start -> Blue Key -> Yellow Key -> Red Key -> Exit)
     for (let i = 0; i < LEVELS.length; i++) {
       const g = fresh(i);
       const { level } = g;
+      if (level.planet === 'mars') {
+        assert.equal(level.doors.size, 1, 'Mars surface level has only the starting room door and no exterior locked doors');
+        continue;
+      }
       const locks = new Set([...level.doors.values()].map((d) => d.lock).filter(Boolean));
       assert.ok(locks.has('blue') && locks.has('yellow') && locks.has('red'), `level ${i} has blue, yellow, and red locked doors`);
       const keyPickups = new Map();
@@ -3503,29 +3530,32 @@ const tests = {
     assert.equal(game.automap, false, 'closing automap restores 3D weapon viewmodel visibility');
   },
 
-  'procedural level soundtracks (E1M1 Ambient, E1M2 Metal, E1M3 Horror, E1M4 Boss, Intro) and M track cycling'() {
+  'procedural level soundtracks (E1M1 Ambient, E1M2 Metal, E1M3 Horror, E1M4 Boss, E1M5 Gore, Intro) and M track cycling'() {
     const sound = new Sound();
     // By default ('auto'), each level has its own distinct soundtrack
     assert.equal(sound.effectiveMusicMode('play', 0), 'play', 'Level 1 (E1M1) defaults to ambient/spooky play soundtrack');
     assert.equal(sound.effectiveMusicMode('play', 1), 'metal', 'Level 2 (E1M2) defaults to industrial metal soundtrack');
     assert.equal(sound.effectiveMusicMode('play', 2), 'horror', 'Level 3 (E1M3) defaults to horror metal soundtrack');
     assert.equal(sound.effectiveMusicMode('play', 3), 'boss', 'Level 4 (E1M4) defaults to boss finale soundtrack');
+    assert.equal(sound.effectiveMusicMode('play', 4), 'gore', 'Level 5 (E1M5) defaults to gore metal soundtrack');
     assert.equal(sound.effectiveMusicMode('title', 0), 'title', 'title state uses intro theme by default');
 
-    // Pressing M on Level 1 cycles through all 5 tracks + Off:
-    // E1M1 ('play') -> E1M2 ('metal') -> E1M3 ('horror') -> E1M4 ('boss') -> Intro ('title') -> Off ('off') -> E1M1 ('play')
+    // Pressing M on Level 1 cycles through all 6 tracks + Off:
+    // E1M1 ('play') -> E1M2 ('metal') -> E1M3 ('horror') -> E1M4 ('boss') -> E1M5 ('gore') -> Intro ('title') -> Off ('off') -> E1M1 ('play')
     assert.equal(sound.toggleMusic(0), 'Music: E1M2 Industrial Metal', 'first M press on Level 1 switches to E1M2 Industrial Metal');
     assert.equal(sound.effectiveMusicMode('play', 0), 'metal', 'effectiveMusicMode reflects E1M2 override');
     assert.equal(sound.toggleMusic(0), 'Music: E1M3 Horror Metal', 'second M press switches to E1M3 Horror Metal');
     assert.equal(sound.effectiveMusicMode('play', 0), 'horror', 'effectiveMusicMode reflects E1M3 override');
     assert.equal(sound.toggleMusic(0), 'Music: E1M4 Boss Finale', 'third M press switches to E1M4 Boss Finale');
     assert.equal(sound.effectiveMusicMode('play', 0), 'boss', 'effectiveMusicMode reflects E1M4 override');
-    assert.equal(sound.toggleMusic(0), 'Music: Intro Theme', 'fourth M press switches to Intro Theme during gameplay');
+    assert.equal(sound.toggleMusic(0), 'Music: E1M5 Gore Metal', 'fourth M press switches to E1M5 Gore Metal');
+    assert.equal(sound.effectiveMusicMode('play', 0), 'gore', 'effectiveMusicMode reflects E1M5 override');
+    assert.equal(sound.toggleMusic(0), 'Music: Intro Theme', 'fifth M press switches to Intro Theme during gameplay');
     assert.equal(sound.effectiveMusicMode('play', 0), 'title', 'effectiveMusicMode allows listening to Intro Theme in level');
-    assert.equal(sound.toggleMusic(0), 'Music: Off', 'fifth M press switches music Off');
+    assert.equal(sound.toggleMusic(0), 'Music: Off', 'sixth M press switches music Off');
     assert.equal(sound.effectiveMusicMode('play', 0), 'off', 'effectiveMusicMode reflects Off');
     assert.equal(sound.effectiveMusicMode('title', 0), 'off', 'Off preference silences title music too');
-    assert.equal(sound.toggleMusic(0), 'Music: E1M1 Ambient', 'sixth M press wraps around to E1M1 Ambient');
+    assert.equal(sound.toggleMusic(0), 'Music: E1M1 Ambient', 'seventh M press wraps around to E1M1 Ambient');
     assert.equal(sound.effectiveMusicMode('play', 0), 'play', 'effectiveMusicMode reflects E1M1 Ambient');
     assert.equal(sound.effectiveMusicMode('title', 0), 'play', 'explicit track selection overrides title screen music too');
 
@@ -3533,8 +3563,14 @@ const tests = {
     for (const [mode, song] of Object.entries(SONGS))
       assert.deepEqual(validateSong(song), [], `the ${mode} score is a valid GroovR song`);
     const pattern = (mode, id) => SONGS[mode].patterns.find((p) => p.id === `pat-${id}`);
-    assert.equal(pattern('horror', 'guitar-palm').length, 32, 'E1M3 has an eight-bar riff cycle');
-    assert.equal(pattern('horror', 'music-box').notes.length, 20, 'E1M3 music-box lullaby is a four-bar phrase repeated for six bars');
+    assert.equal(pattern('horror', 'guitar-palm').length, 64, 'E1M3 has a sixteen-bar riff cycle');
+    assert.equal(pattern('boss', 'guitar-palm').length, 32, 'E1M4 has an eight-bar riff cycle');
+    assert.equal(pattern('gore', 'guitar-palm').length, 128, 'E1M5 has a thirty-two-bar (128-beat / 512-step) gore metal riff cycle');
+    assert.ok(SONGS.gore.bpm >= 150, 'E1M5 Gore Metal has a fast driving industrial tempo');
+    assert.ok(pattern('gore', 'lead-metal').notes.length >= 90, 'E1M5 centers around a clear, evolving main melody across all 32 bars');
+    assert.ok(pattern('gore', 'growl-gore').notes.length >= 4, 'E1M5 punctuates phrase turnarounds and breakdown rests with monster gore growls');
+    assert.ok(pattern('boss', 'boss-horn').notes.some((n) => n.time >= 16), 'E1M4 has a second-half horn variation in bars 5-8');
+    assert.equal(pattern('horror', 'music-box').notes.length, 59, 'E1M3 music-box lullaby spans both eight-bar halves with detuned variations');
     const boxSemitones = new Set(pattern('horror', 'music-box').notes.map((n) => Math.round(n.pitch - 81)));
     assert.ok(boxSemitones.has(1) && boxSemitones.has(6), 'the lullaby goes wrong on the flat second and the tritone');
     assert.equal(pattern('metal', 'guitar-palm').length, 64, 'E1M2 repeats after sixteen bars');
@@ -3574,6 +3610,13 @@ const tests = {
       detune: mockParam(),
       Q: mockParam(),
       gain: mockParam(),
+      delayTime: mockParam(),
+      pan: mockParam(),
+      threshold: mockParam(),
+      ratio: mockParam(),
+      attack: mockParam(),
+      release: mockParam(),
+      knee: mockParam(),
       buffer: null,
       curve: null,
       oversample: 'none',
@@ -3583,6 +3626,11 @@ const tests = {
       currentTime: 0,
       sampleRate: 100,
       createGain: () => mockNode(),
+      createDelay: () => mockNode(),
+      createChannelMerger: () => mockNode(),
+      createChannelSplitter: () => mockNode(),
+      createStereoPanner: () => mockNode(),
+      createDynamicsCompressor: () => mockNode(),
       createOscillator: () => {
         counts.osc++;
         return mockNode();
@@ -3670,6 +3718,15 @@ const tests = {
       run(14);
       assert.ok(counts.osc > 150, 'E1M4 schedules drop-C doom chords, tritone dread horns and double-kicks');
       assert.ok(counts.sources > 30, 'E1M4 schedules war-march percussion transients');
+      music.setLevel(0);
+      reset();
+
+      // 6. E1M5 Gore Metal
+      music.setLevel(0.24, 'gore');
+      run(16);
+      assert.ok(counts.amps > 0, 'E1M5 routes its industrial gore guitars through the guitar amp');
+      assert.ok(counts.osc > 200, 'E1M5 schedules Hungarian-minor main melody, gallop riffs, sub-bass, and sparse gore growls');
+      assert.ok(counts.sources > 30, 'E1M5 schedules tight industrial drums and cymbal transients');
 
       // Switching to 0 ('off') silences the score
       music.setLevel(0);
@@ -3792,9 +3849,10 @@ const tests = {
     assert.equal(teleMesh.vertices.length, enclosedQuads.length * 18, 'teleporterMachineMesh converts each quad into 2 triangles (18 floats)');
     assert.equal(teleMesh.uvs.length, enclosedQuads.length * 12, 'teleporterMachineMesh converts each quad into 6 UVs (12 floats)');
 
-    // Every level (E1M1..E1M4) has paired teleporter pads
-    assert.equal(LEVELS.length, 4, 'Episode 1 has 4 levels culminating in E1M4 Phobos Anomaly');
+    // Every level (E1M1..E1M5) has paired teleporter pads
+    assert.equal(LEVELS.length, 5, 'Episode 1 has 5 levels including E1M5 Red Planet');
     assert.equal(LEVELS[3].name, 'E1M4 · Phobos Anomaly');
+    assert.equal(LEVELS[4].name, 'E1M5 · Red Planet');
     for (let i = 0; i < LEVELS.length; i++) {
       const g = fresh(i);
       assert.ok(g.level.teleporters.length >= 2, `level ${i} has paired teleporter pads (${g.level.teleporters.length})`);
@@ -4415,6 +4473,17 @@ const tests = {
       assert.ok(part.vertices instanceof Float32Array && part.vertices.length >= 36, `rocketLauncher ${key} has 3D triangle vertices`);
       assert.equal(part.normals.length, part.vertices.length, `rocketLauncher ${key} has matching 3D surface normals`);
       assert.equal(part.uvs.length, (part.vertices.length / 3) * 2, `rocketLauncher ${key} has matching UVs`);
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (let i = 0; i < part.vertices.length; i += 3) {
+        if (part.vertices[i + 1] < minY) minY = part.vertices[i + 1];
+        if (part.vertices[i + 1] > maxY) maxY = part.vertices[i + 1];
+        if (part.vertices[i + 2] < minZ) minZ = part.vertices[i + 2];
+        if (part.vertices[i + 2] > maxZ) maxZ = part.vertices[i + 2];
+      }
+      assert.ok(maxZ - minZ > (maxY - minY) * 1.6, `rocketLauncher ${key} is elongated horizontally along the Z launch axis`);
     }
     assert.ok(rlParts.pivots.warhead instanceof Vec3, 'rocketLauncher warhead pivot is a Vec3');
     const rlCombined = rocketLauncherMesh();
@@ -4762,7 +4831,7 @@ const tests = {
     const floorShellPacks = room1Pickups.filter((p) => p.type === 'ammo');
     const floorBullets = room1Pickups.find((p) => p.type === 'bullets');
     assert.ok(floorShotgun, 'shotgun pickup is on the floor in the first room of Level 1');
-    assert.equal(floorShellPacks.length, 2, 'two shotgun ammo pickups are on the floor in the opening of Level 1');
+    assert.equal(floorShellPacks.length, 3, 'three shotgun ammo pickups are on the floor in the opening of Level 1');
     assert.equal(floorBullets, undefined, 'no chaingun bullet pack in the first room of Level 1');
 
     // Walk over the floor shotgun: unlocks and equips shotgun with ZERO ammo
@@ -4898,9 +4967,24 @@ const tests = {
 
     texts.length = 0;
     game.selectingDifficulty = true;
+    game.setLevel(4);
     hud.render(game);
     assert.ok(texts.some((t) => t.includes('SELECT SKILL LEVEL')), 'difficulty screen renders skill selector header after pressing Enter');
     assert.ok(texts.some((t) => t.includes('▸ [3] ULTRA-VIOLENCE')), 'difficulty screen highlights selected difficulty');
+    assert.ok(texts.some((t) => t.includes('E1M5 · RED PLANET')), 'difficulty screen displays selected mission');
+    assert.equal(hud.levelStepAt(new Vec2(cx - 60, 384 + 105)), -1, 'clicking left half of mission row steps level backward');
+    assert.equal(hud.levelStepAt(new Vec2(cx + 60, 384 + 105)), 1, 'clicking right half of mission row steps level forward');
+    assert.equal(hud.levelStepAt(new Vec2(cx, rowsTop + 10)), 0, 'clicking difficulty rows does not step level');
+
+    // Cycling levels on title screen preserves selected level across TitleDirector loops and loads it on end()
+    const td = new TitleDirector(game);
+    td.update(0.1);
+    assert.equal(game.cycleLevel(1), 0, 'cycling forward from E1M5 wraps to E1M1');
+    assert.equal(game.cycleLevel(-1), 4, 'cycling backward from E1M1 wraps to E1M5');
+    td.begin();
+    assert.equal(game.levelIndex, 4, 'TitleDirector.begin() preserves chosen starting levelIndex');
+    td.end();
+    assert.equal(game.level.name, 'E1M5 · Red Planet', 'TitleDirector.end() loads the selected starting level');
   },
 
   'foes immediately stop attacking, winding up, leaping, and moving when the player dies'() {
@@ -5244,6 +5328,1055 @@ const tests = {
     assert.equal(arenaGame.level.kind[arenaPillarIdx], PILLAR);
     assert.ok(arenaGame.level.arena?.has(arenaPillarIdx), 'half-size wall inside the boss room is included in the roofless arena set');
     assert.equal(arenaGame.blood.hitsCeiling(4.5 * 64, 2.5 * 64), false, 'no ceiling over a half-size wall inside the roofless boss arena');
+
+    // 3. Low cover tiles ('o' / PILLAR) render as 3D UAC futuristic cover crates (256x64 4-cell atlas + multi-part 3D mesh)
+    const cAtlas = crateAtlas();
+    assert.equal(cAtlas.width, CRATE_CELL * CRATE_FRAMES, 'crateAtlas width is 256 (4 x 64 cells)');
+    assert.equal(cAtlas.height, CRATE_CELL, 'crateAtlas height is 64');
+    const cQuads = crateQuads(new Vec3(160, 0, 224), new Vec2(64, 26));
+    assert.ok(cQuads.length >= 80, 'crateQuads builds skid plinth, cargo core, corner bumpers, side bulkheads, lid, locking bars, and lugs');
+    const cMesh = crateMesh(new Vec3(0, 0, 0), new Vec2(64, 26));
+    assert.equal(cMesh.vertices.length, cQuads.length * 18, 'crateMesh converts every quad to 2 triangles');
+    assert.equal(cMesh.uvs.length, cQuads.length * 12, 'crateMesh UVs match triangle vertices');
+  },
+
+  'E1M5 Red Planet: indoor airlock start room opening onto roofless hostile Martian surface with wind and blowing orange dirt'() {
+    const g = fresh(4);
+    const { level } = g;
+    assert.equal(level.name, 'E1M5 · Red Planet');
+    assert.equal(level.planet, 'mars');
+    assert.ok(level.wind.x > 200 && level.wind.y > 0, 'Martian surface has strong crosswind vector');
+
+    // 1. Player spawns inside an enclosed indoor airlock room with a ceiling and overhead light fixture
+    assert.equal(level.isOutdoor(g.player.pos), false, 'player starts indoors inside the airlock room');
+    assert.equal(g.blood.hitsCeiling(g.player.pos.x, g.player.pos.y), true, 'starting room has a solid ceiling overhead');
+    const fixtures = ceilingLightFixtures(level);
+    assert.ok(
+      fixtures.some((f) => level.indoor.has(f.tile.y * level.width + f.tile.x)),
+      'starting airlock room has an overhead ceiling light fixture'
+    );
+    assert.ok(
+      fixtures.every((f) => !level.outdoor.has(f.tile.y * level.width + f.tile.x)),
+      'no ceiling light fixtures float over the roofless Martian exterior'
+    );
+
+    // 2. Opening the starting airlock door leads directly outside onto the roofless Martian surface, with ZERO other doors on the planet
+    assert.equal(level.doors.size, 1, 'E1M5 has only 1 door (the first room door) and no doors outside on the planet');
+    const airlockDoor = level.doors.get(3 * level.width + 6);
+    assert.ok(airlockDoor, 'airlock door exists at (6, 3) on the east wall of the starting room');
+    assert.equal(level.doorTouchesIndoor(airlockDoor.idx), true, 'airlock door borders the indoor starting room');
+    assert.equal(level.isIndoorTile(airlockDoor.idx), true, 'airlock doorway tile is indoor so its side walls use interior bulkhead textures');
+    assert.equal(level.isIndoorTile(3 * level.width + 7), false, 'tile outside the airlock door is outdoor so its walls use Martian rock');
+    const outsidePos = new Vec2(7.5 * 64, 3.5 * 64);
+    assert.equal(level.isOutdoor(outsidePos), true, 'stepping through the airlock door places the player on the outdoor Martian surface');
+    assert.equal(g.blood.hitsCeiling(outsidePos.x, outsidePos.y), false, 'Martian exterior is roofless (open to the orange sky)');
+
+    // 3. Outdoor Martian dirt floor atlas, rock cliff wall atlas, and 3D boulder outcrops replace base floor/walls/crates
+    const dirt = marsDirtAtlas();
+    assert.equal(dirt.width, TILE_PIXELS * FLOOR_CELL_COUNT, 'marsDirtAtlas is 512 px wide (8 cells)');
+    assert.equal(dirt.height, TILE_PIXELS, 'marsDirtAtlas is 64 px tall');
+    assert.ok(MARS_DIRT_FRAGMENT.includes('uSampler'), 'MARS_DIRT_FRAGMENT samples the Martian dirt atlas');
+
+    const rock = marsRockAtlas();
+    assert.equal(rock.width, 64 * WALL_CELL_COUNT, 'marsRockAtlas is 512 px wide (8 cells)');
+    assert.equal(rock.height, 64, 'marsRockAtlas is 64 px tall');
+    // Verify warm iron-oxide orange/red dominance in both dirt and rock atlases (avg R > avg G > avg B)
+    let dirtR = 0;
+    let dirtG = 0;
+    let dirtB = 0;
+    for (let i = 0; i < dirt.data.length; i += 4) {
+      dirtR += dirt.data[i];
+      dirtG += dirt.data[i + 1];
+      dirtB += dirt.data[i + 2];
+    }
+    assert.ok(dirtR > dirtG * 1.5 && dirtG > dirtB * 1.4, 'marsDirtAtlas has orange-red Martian regolith palette');
+    // Every dirt floor cell shares the exact same periodic boundary texels so adjacent floor tiles have zero border discontinuity
+    for (let cell = 1; cell < FLOOR_CELL_COUNT; cell++)
+      for (let i = 0; i < TILE_PIXELS; i++) {
+        const left0 = (i * dirt.width + 0) * 4;
+        const leftC = (i * dirt.width + cell * TILE_PIXELS + 0) * 4;
+        const right0 = (i * dirt.width + (TILE_PIXELS - 1)) * 4;
+        const rightC = (i * dirt.width + cell * TILE_PIXELS + (TILE_PIXELS - 1)) * 4;
+        const top0 = i * 4;
+        const topC = (cell * TILE_PIXELS + i) * 4;
+        const bot0 = ((TILE_PIXELS - 1) * dirt.width + i) * 4;
+        const botC = ((TILE_PIXELS - 1) * dirt.width + cell * TILE_PIXELS + i) * 4;
+        assert.equal(dirt.data[leftC], dirt.data[left0], 'seamless left border across dirt cells');
+        assert.equal(dirt.data[rightC], dirt.data[right0], 'seamless right border across dirt cells');
+        assert.equal(dirt.data[topC], dirt.data[top0], 'seamless top border across dirt cells');
+        assert.equal(dirt.data[botC], dirt.data[bot0], 'seamless bottom border across dirt cells');
+      }
+    assert.ok(MARS_DIRT_FRAGMENT.includes('sampleDirtCell'), 'MARS_DIRT_FRAGMENT blends multiple periodic dirt cells across domain-warped layers');
+
+    let rockR = 0;
+    let rockG = 0;
+    let rockB = 0;
+    let rockMinR = 255;
+    let rockMaxR = 0;
+    for (let i = 0; i < rock.data.length; i += 4) {
+      rockR += rock.data[i];
+      rockG += rock.data[i + 1];
+      rockB += rock.data[i + 2];
+      if (rock.data[i] < rockMinR)
+        rockMinR = rock.data[i];
+      if (rock.data[i] > rockMaxR)
+        rockMaxR = rock.data[i];
+    }
+    assert.ok(rockR > rockG * 1.4 && rockG > rockB * 1.3, 'marsRockAtlas has stratified red-orange canyon rock palette');
+    assert.ok(rockMinR < 40 && rockMaxR > 190, 'marsRockAtlas has high-contrast dark crevices and sunlit ochre ledges');
+    assert.ok(MARS_ROCK_FRAGMENT.includes('sampleRockCell'), 'MARS_ROCK_FRAGMENT blends multiple periodic rock cells across domain-warped layers');
+    // Every rock wall cell shares the exact same periodic boundary texels so adjacent wall tiles never show hard seams
+    for (let cell = 1; cell < WALL_CELL_COUNT; cell++)
+      for (let i = 0; i < TILE_PIXELS; i++) {
+        const left0 = (i * rock.width + 0) * 4;
+        const leftC = (i * rock.width + cell * TILE_PIXELS + 0) * 4;
+        const right0 = (i * rock.width + (TILE_PIXELS - 1)) * 4;
+        const rightC = (i * rock.width + cell * TILE_PIXELS + (TILE_PIXELS - 1)) * 4;
+        assert.equal(rock.data[leftC], rock.data[left0], 'seamless left border across rock cells');
+        assert.equal(rock.data[rightC], rock.data[right0], 'seamless right border across rock cells');
+      }
+
+    const bAtlas = marsBoulderAtlas();
+    assert.equal(bAtlas.width, TILE_PIXELS * MARS_BOULDER_CELL_COUNT, 'marsBoulderAtlas is 256 px wide (4 cells)');
+    assert.equal(bAtlas.height, TILE_PIXELS, 'marsBoulderAtlas is 64 px tall');
+    let bMinR = 255;
+    let bMaxR = 0;
+    for (let i = 0; i < bAtlas.data.length; i += 4) {
+      if (bAtlas.data[i] < bMinR)
+        bMinR = bAtlas.data[i];
+      if (bAtlas.data[i] > bMaxR)
+        bMaxR = bAtlas.data[i];
+    }
+    assert.ok(bMinR < 40 && bMaxR > 190, 'marsBoulderAtlas has high-contrast dark crevices and sunlit ochre highlights');
+    const bQuads = marsBoulderQuads(new Vec3(160, 0, 224), new Vec2(64, 26));
+    assert.equal(bQuads.length, 30, 'marsBoulderQuads builds 6 tapered rock masses (30 quads)');
+    const bMesh = marsBoulderMesh(new Vec3(0, 0, 0), new Vec2(64, 26));
+    assert.equal(bMesh.vertices.length, bQuads.length * 18, 'marsBoulderMesh converts every quad to 2 triangles');
+    assert.equal(bMesh.uvs.length, bQuads.length * 12, 'marsBoulderMesh UVs match triangle vertices');
+
+    // Bullet holes, blood splats, and blood drips on outdoor Martian boulders follow the rock slope instead of floating vertically
+    const boulderIdx = level.kind.findIndex((k, idx) => k === PILLAR && !level.indoor.has(idx));
+    assert.ok(boulderIdx >= 0, 'E1M5 has outdoor Martian boulder tiles');
+    const btx = boulderIdx % level.width;
+    const bty = Math.floor(boulderIdx / level.width);
+    const bcx = (btx + 0.5) * 64;
+    const bSouthY = (bty + 1) * 64;
+    g.blood.holes.length = 0;
+    g.blood.walls.length = 0;
+    const hitH = g.blood.impact(bcx, bSouthY, 0, 1, 16, 'hole');
+    assert.equal(hitH, 16, 'bullet impact on Martian boulder records at hit height');
+    const bHole = g.blood.holes[g.blood.holes.length - 1];
+    assert.equal(bHole.slope, MARS_BOULDER_SLOPE, 'boulder bullet hole carries MARS_BOULDER_SLOPE');
+    const expectedFaceY = (bty + 0.5) * 64 + (32 - MARS_BOULDER_BASE_INSET - MARS_BOULDER_SLOPE * 16);
+    assert.ok(Math.abs(bHole.y - expectedFaceY) < 1e-4, 'boulder bullet hole is recessed onto the sloped rock surface');
+    const hQuad = holeQuad(bHole);
+    assert.ok(hQuad, 'holeQuad produces a valid quad on the sloped boulder');
+    // South face (ny = +1): top corners (indices 2, 3 -> z offset +2, +5, +8, +11) must lean inward (smaller world Z) than bottom corners
+    assert.ok(hQuad.corners[8] < hQuad.corners[2] && hQuad.corners[11] < hQuad.corners[5], 'boulder bullet hole quad tilts inward along the rock slope');
+    const expectedSlope = (hQuad.corners[2] - hQuad.corners[8]) / (hQuad.corners[7] - hQuad.corners[1]);
+    assert.ok(Math.abs(expectedSlope - MARS_BOULDER_SLOPE) < 1e-4, 'boulder bullet hole quad slope matches MARS_BOULDER_SLOPE');
+
+    g.blood.wallSplat(bcx, bSouthY, 18, 0, 1, 5, 26, null);
+    const bSplat = g.blood.walls[g.blood.walls.length - 1];
+    assert.equal(bSplat.slope, MARS_BOULDER_SLOPE, 'boulder blood splat carries MARS_BOULDER_SLOPE');
+    const sQuad = wallSplatQuad(bSplat);
+    assert.ok(sQuad, 'wallSplatQuad produces a valid quad on the sloped boulder');
+    assert.ok(sQuad.corners[8] < sQuad.corners[2], 'boulder blood splat quad tilts inward from bottom to top');
+    const dQuads = wallDripQuads({ ...bSplat, age: 5 });
+    assert.ok(dQuads.length > 0, 'wallDripQuads produces blood drips on the sloped boulder');
+    for (const dq of dQuads)
+      assert.ok(dq.corners[2] >= dq.corners[8], 'every blood drip segment on the boulder slopes outward as it runs down');
+
+    // 3b. Procedural 360° Martian sky panorama (twin moons, hazy sun, distant mountain ranges, and wind-driven dust clouds)
+    const sky = marsSkyAtlas();
+    assert.equal(sky.width, MARS_SKY_WIDTH, 'marsSkyAtlas is 1024 px wide');
+    assert.equal(sky.height, MARS_SKY_HEIGHT, 'marsSkyAtlas is 256 px tall');
+    assert.equal(sky.data.length, MARS_SKY_WIDTH * MARS_SKY_HEIGHT * 4, 'marsSkyAtlas RGBA buffer size');
+    // Zenith row (y = 0) is a deep crimson/rust sky while lower horizon row (y = 255) blends into the Martian fog color [117, 46, 15]
+    const zenithIdx = (0 * sky.width + 400) * 4;
+    const horizonIdx = ((sky.height - 1) * sky.width + 400) * 4;
+    assert.ok(sky.data[zenithIdx] < sky.data[horizonIdx], 'Martian zenith is darker crimson than the dusty lower horizon');
+    assert.equal(sky.data[horizonIdx], 117, 'bottom horizon row matches MARS_SKY_VEC red channel');
+    assert.equal(sky.data[horizonIdx + 1], 46, 'bottom horizon row matches MARS_SKY_VEC green channel');
+    assert.equal(sky.data[horizonIdx + 2], 15, 'bottom horizon row matches MARS_SKY_VEC blue channel');
+    // Pale hazy sun at (224, 60) and twin moons Phobos (632, 92) & Deimos (836, 104) stand out brightly against the upper sky
+    const sunIdx = (60 * sky.width + 224) * 4;
+    const phobosIdx = ((PHOBOS_CENTER.y - 6) * sky.width + (PHOBOS_CENTER.x - 10)) * 4;
+    const deimosIdx = ((DEIMOS_CENTER.y - 2) * sky.width + (DEIMOS_CENTER.x - 4)) * 4;
+    const ambientUpperIdx = (PHOBOS_CENTER.y * sky.width + 440) * 4;
+    assert.ok(sky.data[sunIdx] > 235 && sky.data[sunIdx + 1] > 190, 'pale hazy Martian sun core is bright butterscotch-white');
+    assert.ok(sky.data[phobosIdx] > sky.data[ambientUpperIdx] + 35, 'Phobos moon disc stands out against the rust sky');
+    assert.ok(sky.data[deimosIdx] > sky.data[ambientUpperIdx] + 25, 'Deimos moon disc stands out against the rust sky');
+    const skyNoMoons = marsSkyAtlas({ includeMoons: false });
+    assert.ok(sky.data[phobosIdx] > skyNoMoons.data[phobosIdx] + 35, 'marsSkyAtlas({ includeMoons: false }) omits baked moons so 3D shader moons are never duplicated');
+    // Spherical 3D angular projection: skyPixelDir maps panorama coordinates to unit 3D sphere directions with equal horizontal & vertical angular radii
+    const phobosDirDefault = skyPixelDir(PHOBOS_CENTER);
+    const dirTarget = new Vec3();
+    const phobosDirTargeted = skyPixelDir(PHOBOS_CENTER, dirTarget);
+    assert.equal(phobosDirTargeted, dirTarget, 'skyPixelDir writes into the provided target Vec3');
+    assert.ok(Math.abs(phobosDirDefault.getMagnitude() - 1) < 1e-6, 'skyPixelDir returns a normalized 3D unit vector');
+    assert.ok(phobosDirDefault.equals(phobosDirTargeted), 'skyPixelDir default and target-allocated calls match');
+    const phobosWestDir = skyPixelDir(new Vec2(PHOBOS_CENTER.x - 13, PHOBOS_CENTER.y));
+    const phobosNorthDir = skyPixelDir(new Vec2(PHOBOS_CENTER.x, PHOBOS_CENTER.y - 34));
+    assert.ok(phobosWestDir.getAngle(phobosDirDefault) < PHOBOS_ANGULAR_RADIUS, 'Phobos western limb lies within spherical PHOBOS_ANGULAR_RADIUS');
+    assert.ok(phobosNorthDir.getAngle(phobosDirDefault) < PHOBOS_ANGULAR_RADIUS, 'Phobos northern limb (aspect-corrected dy = -34) lies within spherical PHOBOS_ANGULAR_RADIUS');
+    const phobosNorthIdx = ((PHOBOS_CENTER.y - 30) * sky.width + PHOBOS_CENTER.x) * 4;
+    const ambientNorthIdx = ((PHOBOS_CENTER.y - 30) * sky.width + 440) * 4;
+    assert.ok(sky.data[phobosNorthIdx] > sky.data[ambientNorthIdx] + 25, 'Phobos is aspect-corrected vertically in the atlas so it projects as a 3D sphere rather than a flat ellipse');
+    const deimosDir = skyPixelDir(DEIMOS_CENTER);
+    const deimosNorthDir = skyPixelDir(new Vec2(DEIMOS_CENTER.x, DEIMOS_CENTER.y - 15));
+    assert.ok(deimosNorthDir.getAngle(deimosDir) < DEIMOS_ANGULAR_RADIUS, 'Deimos northern limb lies within spherical DEIMOS_ANGULAR_RADIUS');
+    assert.ok(MARS_SKY_FRAGMENT.includes('evalMoonSphere'), 'MARS_SKY_FRAGMENT evaluates per-fragment 3D ray-sphere shading for Phobos & Deimos');
+    assert.ok(
+      MARS_SKY_FRAGMENT.includes('moonLimbRadius') &&
+      MARS_SKY_FRAGMENT.includes('moonCellularCraters') &&
+      MARS_SKY_FRAGMENT.includes('moonRelief'),
+      'MARS_SKY_FRAGMENT renders organic irregular limb silhouettes, overlapping cellular craters, and 3D normal-perturbed relief'
+    );
+    // Horizontal wrap continuity across x = 0 and x = 1023 on every scanline
+    for (let y = 0; y < sky.height; y++) {
+      const leftIdx = (y * sky.width + 0) * 4;
+      const rightIdx = (y * sky.width + (sky.width - 1)) * 4;
+      assert.ok(Math.abs(sky.data[leftIdx] - sky.data[rightIdx]) <= 4, `seamless horizontal wrap at row ${y} (R)`);
+      assert.ok(Math.abs(sky.data[leftIdx + 1] - sky.data[rightIdx + 1]) <= 4, `seamless horizontal wrap at row ${y} (G)`);
+      assert.ok(Math.abs(sky.data[leftIdx + 2] - sky.data[rightIdx + 2]) <= 4, `seamless horizontal wrap at row ${y} (B)`);
+    }
+    assert.ok(
+      MARS_SKY_FRAGMENT.includes('skyPeriodicNoise') &&
+      MARS_SKY_FRAGMENT.includes('skyPeriodicFbm'),
+      'MARS_SKY_FRAGMENT wraps azimuth noise periodically across u = 0 and u = 1 with zero seam behind the player'
+    );
+    const skyDome = marsSkyMesh(new Vec2(1200, 720));
+    assert.ok(skyDome.vertices.length > 1000 && skyDome.vertices.length % 9 === 0, 'marsSkyMesh builds valid triangle vertices');
+    assert.equal(skyDome.uvs.length, (skyDome.vertices.length / 3) * 2, 'marsSkyMesh UV count matches vertex count');
+    assert.ok(MARS_SKY_VERTEX.includes('vRayDir'), 'MARS_SKY_VERTEX passes view direction ray');
+    assert.ok(MARS_SKY_FRAGMENT.includes('uTime') && MARS_SKY_FRAGMENT.includes('sampleSmoothSky'), 'MARS_SKY_FRAGMENT smooth-samples the panorama and animates drifting dust clouds');
+
+    // 4. Blowing dirt/dust particles swirl across the outdoor Martian surface and never spawn inside the starting airlock
+    assert.ok(g.dust.length >= 160, 'Martian surface is densely populated with blowing orange dirt particles');
+    for (const d of g.dust)
+      assert.equal(level.isOutdoor(new Vec2(d.x, d.y)), true, 'every blowing dirt particle is on the outdoor Martian surface');
+
+    // 4b. Heavy Martian dust-storm fog: clear inside the closed airlock, thickens when the airlock opens, and drops to dense close-range fog outside
+    const fogTarget = new Vec2();
+    const indoorFogDefault = marsFogNearFar(level, g.player.pos);
+    const indoorFogTargeted = marsFogNearFar(level, g.player.pos, fogTarget);
+    assert.equal(indoorFogTargeted, fogTarget, 'marsFogNearFar writes into the pre-allocated target Vec2');
+    assert.ok(indoorFogDefault.equals(MARS_INDOOR_FOG), 'closed starting airlock keeps indoor visibility clear (MARS_INDOOR_FOG)');
+    assert.ok(indoorFogDefault.equals(indoorFogTargeted), 'marsFogNearFar default and targeted calls return identical Vec2 values');
+    const outdoorFog = marsFogNearFar(level, outsidePos, fogTarget);
+    assert.ok(outdoorFog.equals(MARS_OUTDOOR_FOG), 'stepping outside onto the Martian surface applies heavy close-range dust-storm fog (MARS_OUTDOOR_FOG)');
+    assert.ok(MARS_OUTDOOR_FOG.x < 50 && MARS_OUTDOOR_FOG.y <= 300, 'outdoor Martian fog starts within a tile and reaches full dust-storm whiteout within ~4.5 tiles');
+    assert.ok(MARS_DIRT_FRAGMENT.includes('color = mix(color, uFogColor, fade);'), 'MARS_DIRT_FRAGMENT blends 100% into uFogColor at uFogFar');
+    assert.ok(MARS_ROCK_FRAGMENT.includes('color = mix(color, uFogColor, fade);'), 'MARS_ROCK_FRAGMENT blends 100% into uFogColor at uFogFar');
+    assert.ok(
+      MARS_SKY_FRAGMENT.includes('uFogNear') && MARS_SKY_FRAGMENT.includes('uFogFar') && MARS_SKY_FRAGMENT.includes('opticalFog') && MARS_SKY_FRAGMENT.includes('skyFog'),
+      'MARS_SKY_FRAGMENT applies optical path fog (uFogNear/uFogFar) and stormFog across the entire sky dome'
+    );
+
+    // 5. Opening the airlock door or stepping outside triggers howling Martian wind audio,
+    //    pulls fog closer through the doorway, blows airborne blood droplets, and does NOT push/move the player character
+    g.events.length = 0;
+    airlockDoor.open = 1;
+    const doorwayFog = marsFogNearFar(level, g.player.pos, fogTarget);
+    assert.ok(doorwayFog.x < MARS_INDOOR_FOG.x && doorwayFog.y < MARS_INDOOR_FOG.y, 'opening the airlock door pulls Martian dust-storm fog closer even before stepping outside');
+    assert.ok(doorwayFog.x > MARS_OUTDOOR_FOG.x && doorwayFog.y > MARS_OUTDOOR_FOG.y, 'open-airlock indoor fog is intermediate between indoor and full outdoor storm fog');
+    g.windTimer = 0;
+    g.update(1 / 30, input());
+    assert.ok(g.events.some((e) => e.type === 'wind'), 'opening the airlock door lets in the howling Martian wind sound');
+
+    g.player.body.setPosition(outsidePos.clone());
+    const stationaryX = g.player.pos.x;
+    const stationaryY = g.player.pos.y;
+    g.update(0.25, input());
+    assert.equal(g.player.pos.x, stationaryX, 'Martian wind does not push the player character X position');
+    assert.equal(g.player.pos.y, stationaryY, 'Martian wind does not push the player character Y position');
+
+    g.blood.particles.length = 0;
+    g.blood.spray(outsidePos.x, outsidePos.y, 24, 0, 0, 4, { speed: 10, spread: 5, up: 120 });
+    const drop = g.blood.particles[0];
+    const vxBefore = drop.vx;
+    g.blood.update(0.1);
+    assert.ok(drop.vx > vxBefore + 20, 'outdoor blood droplets are blown downwind by the Martian gale');
+  },
+
+  '3D barrel & rocket explosions: volumetric 3D fireball plume, shockwave ring, mushroom smoke lobes, flying 3D shrapnel staves, and persistent ruptured barrel stump'() {
+    // 1. 3D explosion texture atlas (4 cells of 64x64: core, plume, ring, smoke)
+    const expAtlas = explosion3dAtlas();
+    const pow2 = (n) => (n & (n - 1)) === 0;
+    assert.ok(pow2(expAtlas.width) && pow2(expAtlas.height), 'explosion3dAtlas has power-of-two dimensions');
+    assert.equal(expAtlas.width, EXPLOSION_3D_CELL * EXPLOSION_3D_FRAMES, 'explosion3dAtlas width covers 4 cells');
+    assert.equal(expAtlas.height, EXPLOSION_3D_CELL, 'explosion3dAtlas height is 64');
+    // Ring cell has transparent inner/outer edges (y = 0, y = 63) and an opaque incandescent shockwave ridge (y = 32)
+    const ringEdgeIdx = (0 * expAtlas.width + EXPLOSION_3D_CELLS.ring * 64 + 32) * 4;
+    const ringBandIdx = (32 * expAtlas.width + EXPLOSION_3D_CELLS.ring * 64 + 32) * 4;
+    assert.equal(expAtlas.data[ringEdgeIdx + 3], 0, 'shockwave ring cell has transparent inner/outer edges');
+    assert.equal(expAtlas.data[ringBandIdx + 3], 255, 'shockwave ring ridge is opaque');
+    assert.ok(expAtlas.data[ringBandIdx] > 200, 'shockwave ring ridge is incandescent');
+    // Core cell is incandescent white-yellow-orange while smoke cell is dark soot with ember veins
+    let coreLum = 0;
+    let smokeLum = 0;
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        const co = (y * expAtlas.width + EXPLOSION_3D_CELLS.core * 64 + x) * 4;
+        const so = (y * expAtlas.width + EXPLOSION_3D_CELLS.smoke * 64 + x) * 4;
+        coreLum += expAtlas.data[co] + expAtlas.data[co + 1];
+        smokeLum += expAtlas.data[so] + expAtlas.data[so + 1];
+      }
+    }
+    assert.ok(coreLum > smokeLum * 1.35, 'plasma core cell is brighter than the volcanic smoke cell');
+
+    // 2. Single sculpted 3D exploding fireball mesh with smooth per-vertex normals and Vec3 size signature
+    const mesh = explosion3dMesh(new Vec3(1, 1, 1));
+    assert.ok(mesh.vertices.length > 0 && mesh.vertices.length % 9 === 0, '3D explosion mesh has valid triangle vertices');
+    assert.equal(mesh.normals.length, mesh.vertices.length, '3D explosion mesh has matching vertex normals');
+    assert.equal(mesh.uvs.length, (mesh.vertices.length / 3) * 2, '3D explosion mesh has matching UVs');
+    for (let i = 0; i < mesh.normals.length; i += 3) {
+      const len = Math.hypot(mesh.normals[i], mesh.normals[i + 1], mesh.normals[i + 2]);
+      assert.ok(Number.isFinite(len) && Math.abs(len - 1) < 1e-4, 'every 3D explosion vertex normal is a finite unit vector');
+    }
+    // Verify smooth analytical per-vertex normals (triangle vertices have distinct interpolated normals rather than flat identical triangle normals)
+    let smoothNormalsFound = false;
+    for (let i = 0; i < mesh.normals.length; i += 9) {
+      const dx = Math.abs(mesh.normals[i] - mesh.normals[i + 3]);
+      const dy = Math.abs(mesh.normals[i + 1] - mesh.normals[i + 4]);
+      const dz = Math.abs(mesh.normals[i + 2] - mesh.normals[i + 5]);
+      if (dx + dy + dz > 1e-3) {
+        smoothNormalsFound = true;
+        break;
+      }
+    }
+    assert.ok(smoothNormalsFound, '3D explosion mesh computes smooth per-vertex normals rather than flat faceted triangle normals');
+    for (let i = 1; i < mesh.vertices.length; i += 3)
+      assert.ok(mesh.vertices[i] >= -1e-4, '3D explosion mesh sits above the floor plane (y >= 0)');
+    const vertUniforms = [...EXPLOSION_3D_VERTEX.matchAll(/uniform\s+\w+\s+(\w+)\s*;/g)].map((m) => m[1]);
+    const fragUniforms = new Set([...EXPLOSION_3D_FRAGMENT.matchAll(/uniform\s+\w+\s+(\w+)\s*;/g)].map((m) => m[1]));
+    const sharedUniforms = vertUniforms.filter((u) => fragUniforms.has(u));
+    assert.equal(sharedUniforms.length, 0, 'EXPLOSION_3D_VERTEX and EXPLOSION_3D_FRAGMENT share no uniforms that could fail WebGL 1.0 linkProgram precision checks');
+    assert.ok(
+      EXPLOSION_3D_VERTEX.includes('precision mediump float;') &&
+      EXPLOSION_3D_FRAGMENT.includes('precision mediump float;') &&
+      EXPLOSION_3D_VERTEX.includes('aVertexNormal') &&
+      EXPLOSION_3D_VERTEX.includes('uProgress') &&
+      EXPLOSION_3D_FRAGMENT.includes('fbmBillow') &&
+      EXPLOSION_3D_FRAGMENT.includes('evalBlackbody') &&
+      EXPLOSION_3D_FRAGMENT.includes('uDissolve') &&
+      !EXPLOSION_3D_FRAGMENT.includes('pow('),
+      '3D explosion shaders declare matching mediump float precision, displace boiling vertices, evaluate 3D volumetric fbmBillow + blackbody temperature shading, and avoid GLSL ES 1.00 NaN pow(0, y)'
+    );
+
+    // 3. Allocation-free single-mesh 3D explosion pose over normalized progress (0..1) + particle shower
+    const expTarget = createExplosion3dPose();
+    const poseEarly = explosion3dPose(0.06, expTarget);
+    assert.equal(poseEarly, expTarget, 'explosion3dPose writes into the pre-allocated target');
+    assert.ok(poseEarly.pos instanceof Vec3 && poseEarly.scale instanceof Vec3 && poseEarly.color instanceof Vec3, 'explosion3dPose uses Vec3 primitives');
+    assert.ok(poseEarly.heat > 1.0, 'early explosion pose has high internal blackbody heat');
+    const earlyRadius = poseEarly.scale.x;
+    const earlyY = poseEarly.pos.y;
+    const earlyHeat = poseEarly.heat;
+
+    const poseMid = explosion3dPose(0.36);
+    assert.ok(poseMid.scale.x > earlyRadius, '3D exploding mesh expands rapidly outward');
+    assert.ok(poseMid.pos.y > earlyY, '3D exploding mesh rises upward as the fireball ascends');
+
+    // Verify high-density small particle shower (explosionParticleQuads) with strict Vec3 right/up signature
+    const camRight = new Vec3(1, 0, 0);
+    const camUp = new Vec3(0, 1, 0);
+    const earlyQuads = explosionParticleQuads({ type: 'boom', x: 100, y: 200, z: 0, age: 0.08, life: 0.45, radius: 60 }, camRight, camUp);
+    assert.equal(earlyQuads.length, EXPLOSION_PARTICLE_COUNT, 'explosionParticleQuads emits full shower of 88 small spark & cinder particles early in blast');
+    const dotQuad = earlyQuads[0].corners;
+    const dotWidth = Math.hypot(dotQuad[3] - dotQuad[0], dotQuad[4] - dotQuad[1], dotQuad[5] - dotQuad[2]);
+    assert.ok(dotWidth >= 1.0 && dotWidth <= 2.6, `spark dot quad is a true small particle (${dotWidth.toFixed(2)} world units across, matching blood droplet scale)`);
+    assert.ok(SPARK_PARTICLE_FRAGMENT.includes('rSq > 1.0'), 'SPARK_PARTICLE_FRAGMENT clips each quad to a crisp circular/elliptical spark');
+
+    const poseLate = explosion3dPose(0.92, expTarget);
+    assert.ok(poseLate.dissolve > poseMid.dissolve && poseLate.dissolve > 0.75, '3D exploding mesh erodes away in the late smoke phase');
+    assert.ok(poseLate.heat < earlyHeat * 0.25, '3D exploding mesh cools from bright fire into dark charcoal smoke');
+
+    // 4. 3D ruptured barrel stump, charred atlas cell, flying shrapnel staves, and ballistic pose
+    const bAtlas = barrelAtlas();
+    assert.ok(bAtlas.char && bAtlas.char.x === 192 && bAtlas.char.width === 64, 'barrelAtlas includes the 4th 64x64 charred interior/scorch cell');
+    const wreck = barrelWreckMesh(new Vec2(9.5, 26));
+    assert.ok(wreck.vertices.length > 300 && wreck.vertices.length % 9 === 0, 'barrelWreckMesh builds valid 3D triangle geometry');
+    assert.equal(wreck.normals.length, wreck.vertices.length, 'barrelWreckMesh has matching vertex normals');
+    assert.equal(wreck.uvs.length, (wreck.vertices.length / 3) * 2, 'barrelWreckMesh has matching UVs');
+    let hasOuterSkin = false;
+    let hasCharSkin = false;
+    for (let i = 0; i < wreck.uvs.length; i += 2) {
+      if (wreck.uvs[i] < 0.5)
+        hasOuterSkin = true;
+      if (wreck.uvs[i] >= 0.75)
+        hasCharSkin = true;
+    }
+    assert.ok(hasOuterSkin && hasCharSkin, 'barrelWreckMesh maps both outer hazard drum skin and charred interior/scorch cell');
+
+    const shrapnel = barrelShrapnelParts(new Vec2(9.5, 26));
+    assert.ok(shrapnel.lid.vertices.length > 0 && shrapnel.lid.normals.length === shrapnel.lid.vertices.length, 'barrelShrapnelParts builds 3D warped lid mesh');
+    assert.equal(shrapnel.staves.length, BARREL_STAVE_COUNT, 'barrelShrapnelParts builds 5 curved 3D metal staves');
+    for (const stave of shrapnel.staves) {
+      assert.ok(stave.vertices.length > 0 && stave.vertices.length % 9 === 0, 'each barrel stave is a 3D triangle mesh');
+      assert.equal(stave.normals.length, stave.vertices.length, 'each barrel stave has vertex normals');
+    }
+
+    const barrelTarget = createBarrelExplosionPose();
+    const bLaunch = barrelExplosionPose(0.01, 7, barrelTarget);
+    assert.equal(bLaunch, barrelTarget, 'barrelExplosionPose reuses pre-allocated target');
+    const bLaunchLidY = bLaunch.lid.pos.y;
+    const bLaunchStaveR = bLaunch.staves.map((s) => Math.hypot(s.pos.x, s.pos.z));
+
+    const bJolt = barrelExplosionPose(0.09, 7);
+    assert.ok(bJolt.wreckScale.x > 1.1 && bJolt.wreckScale.y < 0.92, 'ruptured barrel stump squashes and bulges outward on detonation');
+
+    const bAir = barrelExplosionPose(0.18, 7);
+    assert.ok(bAir.lid.pos.y > bLaunchLidY + 12, 'warped barrel lid blasts high into the air');
+    for (let i = 0; i < BARREL_STAVE_COUNT; i++)
+      assert.ok(Math.hypot(bAir.staves[i].pos.x, bAir.staves[i].pos.z) > bLaunchStaveR[i] + 5, `stave ${i} launches radially outward`);
+
+    const bRest = barrelExplosionPose(1.5, 7, barrelTarget);
+    assert.ok(Math.abs(bRest.wreckScale.x - 1) < 1e-4 && Math.abs(bRest.wreckScale.y - 1) < 1e-4, 'barrel stump settles to scale (1,1,1)');
+    assert.ok(bRest.lid.pos.y <= 2.5, 'warped barrel lid bounces and settles on the floor');
+    for (let i = 0; i < BARREL_STAVE_COUNT; i++) {
+      assert.ok(bRest.staves[i].pos.y <= 2.5, `stave ${i} settles on the floor`);
+      assert.ok(Math.hypot(bRest.staves[i].pos.x, bRest.staves[i].pos.z) > 15, `stave ${i} rests scattered around the barrel wreck`);
+    }
+
+    // 5. Detonating a barrel in Game tracks barrel.deadTime while keeping its position for persistent 3D wreck rendering
+    const game = fresh();
+    const barrel = game.barrels[0];
+    assert.equal(barrel.deadTime, 0, 'intact barrel starts with deadTime = 0');
+    game.detonate(barrel);
+    assert.equal(barrel.gone, true, 'detonated barrel is marked gone');
+    assert.equal(barrel.deadTime, 0, 'detonated barrel starts deadTime at 0');
+    run(game, 0.5);
+    assert.ok(barrel.deadTime >= 0.48, 'updateBarrels advances deadTime on spent barrels for 3D shrapnel & wreck animation');
+  },
+
+  'Night Vision Goggles (N) provide a 3D binocular pickup, rechargeable battery toggle, and cut through Martian fog'() {
+    // 1. 3D Night Vision Goggles atlas and mesh
+    const nvgAtlas = nightvisionAtlas();
+    assert.equal(nvgAtlas.name, 'nightvision');
+    assert.equal(nvgAtlas.width, POWERUP_CELL * POWERUP_FRAMES);
+    assert.equal(nvgAtlas.height, POWERUP_CELL);
+    let emeraldPixels = 0;
+    for (let i = 0; i < nvgAtlas.data.length; i += 4)
+      if (nvgAtlas.data[i + 3] === 255 && nvgAtlas.data[i + 1] > nvgAtlas.data[i] + 60)
+        emeraldPixels++;
+    assert.ok(emeraldPixels > 60, 'nightvisionAtlas has glowing emerald phosphor objective lenses');
+
+    const nvgGeo = nightvisionMesh();
+    assert.ok(nvgGeo.vertices instanceof Float32Array && nvgGeo.vertices.length >= 7 * 36 * 3, 'nightvisionMesh has 3D housing, twin lens tubes, IR module, and strap');
+    assert.equal(nvgGeo.uvs.length, (nvgGeo.vertices.length / 3) * 2, 'nightvisionMesh has matching UVs');
+
+    // 2. E1M5 spawns Night Vision Goggles right outside the starting airlock door and in the Martian wastes
+    const marsGame = fresh(4);
+    const nvgPickups = marsGame.pickups.filter((p) => p.type === 'nightvision');
+    assert.ok(nvgPickups.length >= 3, `expected >= 3 nightvision pickups on E1M5, got ${nvgPickups.length}`);
+    const airlockNvg = nvgPickups.find((p) => Math.floor(p.pos.x / 64) === 9 && Math.floor(p.pos.y / 64) === 3);
+    assert.ok(airlockNvg, 'E1M5 places Night Vision Goggles right outside the starting airlock door at (9, 3)');
+
+    // 3. Picking up Night Vision Goggles activates night vision, charges battery, and pushes Mars fog far back
+    assert.equal(marsGame.player.hasNightVision, false);
+    assert.equal(marsGame.player.nightVisionActive, false);
+    marsGame.touch({ ref: airlockNvg });
+    assert.equal(airlockNvg.taken, true);
+    assert.equal(marsGame.player.hasNightVision, true);
+    assert.equal(marsGame.player.nightVisionActive, true);
+    assert.equal(marsGame.player.nightVisionBattery, POWERUP_TYPES.nightvision.duration);
+
+    const fogTarget = new Vec2();
+    const outdoorPos = new Vec2(10 * 64 + 32, 3 * 64 + 32);
+    const stormFog = marsFogNearFar(marsGame.level, outdoorPos, fogTarget, false).clone();
+    const nvgFog = marsFogNearFar(marsGame.level, outdoorPos, fogTarget, true);
+    assert.equal(nvgFog, fogTarget, 'marsFogNearFar reuses pre-allocated target Vec2');
+    assert.ok(nvgFog.x > stormFog.x * 10 && nvgFog.y > stormFog.y * 6, `Night Vision cuts through Martian outdoor fog (${stormFog.x}..${stormFog.y} -> ${nvgFog.x}..${nvgFog.y})`);
+    assert.equal(nvgFog.x, MARS_NVG_FOG.x);
+    assert.equal(nvgFog.y, MARS_NVG_FOG.y);
+
+    // 4. Battery drains while active, toggles off with N (input.nightVision), and recharges while inactive
+    run(marsGame, 10);
+    const drained = marsGame.player.nightVisionBattery;
+    assert.ok(drained < POWERUP_TYPES.nightvision.duration - 9 && drained > POWERUP_TYPES.nightvision.duration - 11, `battery drains while active (${drained})`);
+
+    marsGame.update(1 / 60, input({ nightVision: true }));
+    assert.equal(marsGame.player.nightVisionActive, false, 'pressing N toggles Night Vision OFF');
+    assert.equal(marsGame.player.nightVision, 0);
+
+    run(marsGame, 6);
+    assert.ok(marsGame.player.nightVisionBattery > drained + 2, `battery recharges while switched off (${drained} -> ${marsGame.player.nightVisionBattery})`);
+
+    marsGame.update(1 / 60, input({ nightVision: true }));
+    assert.equal(marsGame.player.nightVisionActive, true, 'pressing N toggles Night Vision back ON');
+
+    // 5. Auto-shutoff when battery reaches 0
+    marsGame.player.nightVisionBattery = 0.2;
+    run(marsGame, 0.5);
+    assert.equal(marsGame.player.nightVisionActive, false, 'Night Vision auto-shuts off when battery depletes');
+  },
+
+  'E1M5 fog occlusion, shader early-outs, entity/particle/light distance culling, and minimap fog range'() {
+    // 1. All fragment shaders blend 100% into uFogColor at uFogFar (no 0.9 cap), suppress bloom alpha under fog,
+    // and heavy surface shaders early-return at vDepth >= uFogFar.
+    const allFogShaders = [
+      ['LINE_FRAGMENT', LINE_FRAGMENT],
+      ['SPRITE_FRAGMENT', SPRITE_FRAGMENT],
+      ['MONSTER_FRAGMENT', MONSTER_FRAGMENT],
+      ['EXPLOSION_3D_FRAGMENT', EXPLOSION_3D_FRAGMENT],
+      ['TEXTURED_FRAGMENT', TEXTURED_FRAGMENT],
+      ['SOLID_TEXTURED_FRAGMENT', SOLID_TEXTURED_FRAGMENT],
+      ['PARTICLE_FRAGMENT', PARTICLE_FRAGMENT],
+      ['DOOR_FRAGMENT', DOOR_FRAGMENT],
+      ['WALL_FRAGMENT', WALL_FRAGMENT],
+      ['FLOOR_FRAGMENT', FLOOR_FRAGMENT],
+      ['SLIME_FRAGMENT', SLIME_FRAGMENT],
+      ['TELEPORTER_FRAGMENT', TELEPORTER_FRAGMENT],
+      ['CRATE_FRAGMENT', CRATE_FRAGMENT],
+      ['MARS_DIRT_FRAGMENT', MARS_DIRT_FRAGMENT],
+      ['MARS_ROCK_FRAGMENT', MARS_ROCK_FRAGMENT],
+      ['CEILING_FRAGMENT', CEILING_FRAGMENT],
+    ];
+    for (const [name, src] of allFogShaders) {
+      assert.ok(!src.includes('fade * 0.9'), `${name} does not cap fog at 90%`);
+      assert.ok(src.includes('mix(color, uFogColor,'), `${name} mixes to full uFogColor`);
+    }
+    assert.ok(
+      MONSTER_FRAGMENT.includes('emissive * (1.0 - fogFade) > 0.5'),
+      'MONSTER_FRAGMENT suppresses emissive bloom alpha when occluded by fog'
+    );
+    assert.ok(
+      EXPLOSION_3D_FRAGMENT.includes('localTemp * (1.0 - fogFade) >'),
+      'EXPLOSION_3D_FRAGMENT suppresses explosion bloom alpha when occluded by fog'
+    );
+    const earlyOutSurfaceShaders = [
+      ['DOOR_FRAGMENT', DOOR_FRAGMENT],
+      ['WALL_FRAGMENT', WALL_FRAGMENT],
+      ['FLOOR_FRAGMENT', FLOOR_FRAGMENT],
+      ['SLIME_FRAGMENT', SLIME_FRAGMENT],
+      ['TELEPORTER_FRAGMENT', TELEPORTER_FRAGMENT],
+      ['CRATE_FRAGMENT', CRATE_FRAGMENT],
+      ['MARS_DIRT_FRAGMENT', MARS_DIRT_FRAGMENT],
+      ['MARS_ROCK_FRAGMENT', MARS_ROCK_FRAGMENT],
+      ['CEILING_FRAGMENT', CEILING_FRAGMENT],
+    ];
+    for (const [name, src] of earlyOutSurfaceShaders)
+      assert.ok(src.includes('uHasFog == 1 && vDepth >= uFogFar'), `${name} has fast vDepth >= uFogFar early-out`);
+
+    // 2. Minimap Fog cone range on Mars matches active fog visibility (tight outdoors in sandstorm, wider indoors / with NVG)
+    const marsGame = fresh(4);
+    assert.equal(marsGame.level.planet, 'mars');
+    // Player starts inside the enclosed airlock at (2, 3) facing east (+X)
+    assert.equal(marsGame.level.isOutdoor(marsGame.player.pos), false);
+    assert.equal(marsGame.fogConeRange(), MARS_INDOOR_FOG.y / 64, 'indoor Mars airlock uses indoor fog cone range (15 tiles)');
+
+    // Move player outdoors into an open corridor on Mars with no Night Vision
+    marsGame.player.pos.setScalar(10 * 64 + 32, 3 * 64 + 32);
+    marsGame.player.body.setPosition(marsGame.player.pos);
+    marsGame.player.angle = 0;
+    marsGame.player.nightVisionActive = false;
+    assert.equal(marsGame.level.isOutdoor(marsGame.player.pos), true);
+    const outdoorRange = marsGame.fogConeRange();
+    assert.equal(outdoorRange, MARS_OUTDOOR_FOG.y / 64, 'outdoor Mars dust storm restricts minimap cone range (~4.06 tiles)');
+    marsGame.fog.explored.fill(0);
+    marsGame.fog.exploredCount = 0;
+    marsGame.fog.update(marsGame.player.pos.x, marsGame.player.pos.y, 0, outdoorRange);
+    // Tile (12, 3) is 2 tiles ahead (visible in storm), while tile (17, 3) is 7 tiles ahead (beyond storm fog)
+    assert.equal(marsGame.fog.isVisible(3 * marsGame.level.width + 12), true, 'nearby tile within storm fog is visible on minimap');
+    assert.equal(marsGame.fog.isVisible(3 * marsGame.level.width + 17), false, 'distant tile beyond storm fog is hidden on minimap');
+
+    // Enabling Night Vision Goggles restores long-range minimap sight
+    marsGame.player.hasNightVision = true;
+    marsGame.player.nightVisionActive = true;
+    marsGame.player.nightVisionBattery = 30;
+    assert.equal(marsGame.fogConeRange(), 20, 'Night Vision restores full 20-tile minimap cone range on Mars');
+
+    // 3. Dynamic & ceiling light distance culling via maxRadius
+    const camPos = new Vec3(marsGame.player.pos.x, 28, marsGame.player.pos.y);
+    marsGame.shots.push({
+      kind: 'rocket',
+      pos: new Vec2(marsGame.player.pos.x + 500, marsGame.player.pos.y),
+      age: 0.1,
+      life: 3,
+    });
+    const uncappedLights = collectDynamicLights(marsGame, camPos, 1.0);
+    const fogCappedLights = collectDynamicLights(marsGame, camPos, 1.0, MARS_OUTDOOR_FOG.y + 64);
+    assert.equal(uncappedLights.length, 1, 'distant rocket light is collected when uncapped');
+    assert.equal(fogCappedLights.length, 0, 'distant rocket light beyond fog cull radius is skipped');
+
+    // 4. World.prototype.updateEnemy and syncParticleSprites distance-culling beyond fogNearFar.y
+    let enemyActive = true;
+    let animated = false;
+    const fakeEnemyView = {
+      lastTime: 0,
+      brightness: 1,
+      scale: 1,
+      lift: 0,
+      sx: 1,
+      sy: 1,
+      material: { setDiffuse() {} },
+      root: {
+        setActive() {
+          enemyActive = true;
+        },
+        setInactive() {
+          enemyActive = false;
+        },
+        setPosition() {},
+        setRotation() {},
+        setScale() {},
+      },
+    };
+    const farEnemy = {
+      type: 'imp',
+      state: 'idle',
+      pos: new Vec2(marsGame.player.pos.x + 600, marsGame.player.pos.y),
+      hurt: 0,
+      pain: 0,
+    };
+    const cullDist = MARS_OUTDOOR_FOG.y + 64;
+    const cullDistSq = cullDist * cullDist;
+    // Prime scratchCam2d via syncParticleSprites on a lightweight mock World context
+    const drawnDrops = [];
+    const drawnDust = [];
+    const mockWorld = {
+      cutaway: false,
+      fogNearFar: new Vec2(MARS_OUTDOOR_FOG.x, MARS_OUTDOOR_FOG.y),
+      camera: {
+        position: camPos,
+        target: new Vec3(camPos.x + 1, camPos.y, camPos.z),
+        up: new Vec3(0, 1, 0),
+      },
+      droplets: {
+        begin() {
+          drawnDrops.length = 0;
+          return {
+            quad(corners) {
+              drawnDrops.push(corners);
+              return true;
+            },
+            end() {},
+          };
+        },
+      },
+      dust: {
+        begin() {
+          drawnDust.length = 0;
+          return {
+            quad(corners) {
+              drawnDust.push(corners);
+              return true;
+            },
+            end() {},
+          };
+        },
+      },
+      doorMarks: new Map(),
+    };
+    World.prototype.syncParticleSprites.call(
+      mockWorld,
+      {
+        particles: [
+          { x: camPos.x + 80, y: camPos.z, z: 16, size: 2, age: 0.1, vx: 1 },
+          { x: camPos.x + 500, y: camPos.z, z: 16, size: 2, age: 0.1, vx: 1 },
+        ],
+      },
+      [
+        { x: camPos.x + 100, y: camPos.z, z: 20, size: 2.5, age: 0.2, vx: 10 },
+        { x: camPos.x + 450, y: camPos.z, z: 20, size: 2.5, age: 0.2, vx: 10 },
+      ]
+    );
+    assert.equal(drawnDrops.length, 1, 'syncParticleSprites culls blood droplets beyond fogNearFar.y + 16');
+    assert.equal(drawnDust.length, 1, 'syncParticleSprites culls Martian dust particles beyond fogNearFar.y + 16');
+
+    World.prototype.updateEnemy.call(mockWorld, farEnemy, fakeEnemyView, marsGame.player, 2.5, marsGame, cullDistSq);
+    assert.equal(enemyActive, false, 'updateEnemy deactivates distant enemy mesh beyond fog cull distance');
+    assert.equal(fakeEnemyView.lastTime, 2.5, 'updateEnemy still advances view.lastTime while culled so dt does not spike on re-entry');
+
+    // Door marks are hidden without rebuilding when a distant door is culled
+    let holesShown = true;
+    let splatsShown = true;
+    const doorRef = {};
+    mockWorld.doorMarks.set(doorRef, {
+      holes: { show(v) { holesShown = v; } },
+      splats: { show(v) { splatsShown = v; } },
+    });
+    World.prototype.syncDoorMarks.call(mockWorld, doorRef, marsGame.blood, false);
+    assert.equal(holesShown, false, 'syncDoorMarks hides door bullet holes when door is fog-culled');
+    assert.equal(splatsShown, false, 'syncDoorMarks hides door blood splats when door is fog-culled');
+  },
+
+  'line-of-sight occlusion culling (Fog.canSeeNear) hides entities, particles, and lights behind walls/closed doors and orders wall occluders first'() {
+    // 1. Fog.canSeeNear(pos: Vec2) blocks visibility behind closed doors and walls (even 1 tile behind),
+    //    and immediately reveals the room as soon as a door cracks open.
+    const game = fresh(0);
+    clearEnemies(game);
+    const { level, fog } = game;
+    const door = [...level.doors.values()].find((d) => d.x === 5 && d.y === 3);
+    assert.ok(door, 'E1M1 has a door at (5, 3)');
+
+    // Stand at (3, 3) facing east (+X) toward the closed door at (5, 3)
+    game.player.pos.setScalar(3 * 64 + 32, 3 * 64 + 32);
+    game.player.body.setPosition(game.player.pos);
+    game.player.angle = 0;
+    level.setDoorOpen(door, 0);
+    fog.update(game.player.pos.x, game.player.pos.y, 0);
+
+    const inFrontOfDoor = new Vec2(4 * 64 + 32, 3 * 64 + 32);
+    const onClosedDoor = door.center;
+    const oneTileBehindDoor = new Vec2(6 * 64 + 32, 3 * 64 + 32);
+    const twoTilesBehindDoor = new Vec2(7 * 64 + 32, 3 * 64 + 32);
+
+    assert.equal(fog.canSeeNear(inFrontOfDoor), true, 'tile in front of closed door is visible');
+    assert.equal(fog.canSeeNear(onClosedDoor), true, 'the closed door tile itself is visible');
+    assert.equal(
+      fog.canSeeNear(oneTileBehindDoor),
+      false,
+      'tile immediately behind closed door (6, 3) is occluded even with 1-tile neighbor check because closed door blocks sight'
+    );
+    assert.equal(fog.canSeeNear(twoTilesBehindDoor), false, 'room further behind closed door is occluded');
+
+    // Crack the door open slightly (5%): sight immediately passes through the upper doorway gap so nothing pops in
+    level.setDoorOpen(door, 0.05);
+    fog.update(game.player.pos.x, game.player.pos.y, 0);
+    assert.equal(fog.canSeeNear(oneTileBehindDoor), true, 'cracking the door open 5% immediately makes the tile behind it visible');
+    assert.equal(fog.canSeeNear(twoTilesBehindDoor), true, 'cracking the door open 5% immediately reveals the hall behind it');
+
+    // Close the door again to verify entity, particle, and light occlusion behind it
+    level.setDoorOpen(door, 0);
+    fog.update(game.player.pos.x, game.player.pos.y, 0);
+
+    // 2. Dynamic lights and ceiling lights behind a closed door or wall are culled when fog is provided
+    const camPos = new Vec3(game.player.pos.x, EYE, game.player.pos.y);
+    game.shots.length = 0;
+    game.shots.push({
+      kind: 'rocket',
+      pos: oneTileBehindDoor.clone(),
+      age: 0.1,
+      life: 2,
+    });
+    assert.equal(collectDynamicLights(game, camPos, 1.0, Infinity, null).length, 1, 'rocket light behind door is collected when fog is omitted');
+    assert.equal(collectDynamicLights(game, camPos, 1.0, Infinity, fog).length, 0, 'rocket light behind closed door is occluded when fog is passed');
+
+    const mockScene = { addLight() {}, clearLights() {} };
+    const { pointLights } = createCeilingLights(mockScene, 2);
+    const hiddenFixture = {
+      tile: new Vec2(7, 3),
+      position: new Vec3(7 * 64 + 32, 62, 3 * 64 + 32),
+      phase: 0,
+      flicker: false,
+    };
+    const visibleFixture = {
+      tile: new Vec2(3, 3),
+      position: new Vec3(3 * 64 + 32, 62, 3 * 64 + 32),
+      phase: 0,
+      flicker: false,
+    };
+    game.shots.length = 0;
+    updateCeilingLights(pointLights, [hiddenFixture, visibleFixture], camPos, 1.0, game, Infinity, fog);
+    assert.equal(pointLights[0].position.x, visibleFixture.position.x, 'visible ceiling fixture claims slot 0');
+    assert.equal(pointLights[1].diffuse.x, 0, 'occluded ceiling fixture behind closed door is not assigned to active light slot');
+
+    // 3. updateEnemy and syncParticleSprites cull nearby objects hidden behind a closed door/wall
+    let enemyActive = true;
+    const fakeEnemyView = {
+      lastTime: 0,
+      brightness: 1,
+      scale: 1,
+      lift: 0,
+      sx: 1,
+      sy: 1,
+      material: { setDiffuse() {} },
+      root: {
+        setActive() {
+          enemyActive = true;
+        },
+        setInactive() {
+          enemyActive = false;
+        },
+        setPosition() {},
+        setRotation() {},
+        setScale() {},
+      },
+    };
+    const occludedEnemy = {
+      type: 'imp',
+      state: 'idle',
+      pos: oneTileBehindDoor.clone(),
+      hurt: 0,
+      pain: 0,
+    };
+    const drawnDrops = [];
+    const mockWorld = {
+      cutaway: false,
+      fogNearFar: new Vec2(260, 1500),
+      camera: {
+        position: camPos,
+        target: new Vec3(camPos.x + 1, camPos.y, camPos.z),
+        up: new Vec3(0, 1, 0),
+      },
+      droplets: {
+        begin() {
+          drawnDrops.length = 0;
+          return {
+            quad(corners) {
+              drawnDrops.push(corners);
+              return true;
+            },
+            end() {},
+          };
+        },
+      },
+      dust: null,
+    };
+    World.prototype.syncParticleSprites.call(
+      mockWorld,
+      {
+        particles: [
+          { x: inFrontOfDoor.x, y: inFrontOfDoor.y, z: 16, size: 2, age: 0.1, vx: 1 },
+          { x: oneTileBehindDoor.x, y: oneTileBehindDoor.y, z: 16, size: 2, age: 0.1, vx: 1 },
+        ],
+      },
+      null,
+      fog
+    );
+    assert.equal(drawnDrops.length, 1, 'syncParticleSprites culls blood droplet behind closed door even though it is within distance range');
+
+    World.prototype.updateEnemy.call(mockWorld, occludedEnemy, fakeEnemyView, game.player, 3.0, game, 1500 * 1500, fog);
+    assert.equal(enemyActive, false, 'updateEnemy deactivates nearby enemy occluded behind closed door');
+
+    // 4. World.prototype.buildStatic registers wall occluders before floor/ceiling/crate batches for hardware Early-Z rejection
+    const buildOrder = [];
+    const orderMockWorld = {
+      staticMeshes: [],
+      lightFixtures: [],
+      cutaway: false,
+      track(mesh, bucket) {
+        bucket.push(mesh);
+        buildOrder.push(mesh.name ?? mesh);
+        return mesh;
+      },
+      marsSkyBatch: () => 'sky',
+      wallBatch: (_faces, marsRock) => ({ name: marsRock ? 'outdoorWalls' : 'walls', setInactive() {} }),
+      solid: () => 'solidHide',
+      floorBatch: () => 'floor',
+      marsDirtBatch: () => 'marsDirt',
+      slimeBatch: () => 'slime',
+      teleporterBatch: () => 'teleporter',
+      crateBatch: () => 'crate',
+      marsBoulderBatch: () => 'marsBoulder',
+      ceilingBatch: () => 'ceiling',
+      lightConesBatch: () => 'lightCones',
+    };
+    World.prototype.buildStatic.call(orderMockWorld, level);
+    const wallIdx = buildOrder.indexOf('walls');
+    const solidIdx = buildOrder.indexOf('solidHide');
+    const floorIdx = buildOrder.indexOf('floor');
+    const crateIdx = buildOrder.indexOf('crate');
+    const ceilingIdx = buildOrder.indexOf('ceiling');
+    assert.ok(wallIdx >= 0 && wallIdx < floorIdx, 'walls are registered before floor for Early-Z occlusion');
+    assert.ok(solidIdx >= 0 && solidIdx < floorIdx, 'solid wall blockers are registered before floor for Early-Z occlusion');
+    assert.ok(wallIdx < crateIdx && wallIdx < ceilingIdx, 'walls are registered before crates and ceiling for Early-Z occlusion');
+    assert.ok(orderMockWorld.staticChunks.length > 4, 'static level walls and floors are partitioned into spatial sector chunks for frustum/fog culling');
+    assert.ok(
+      LINE_FRAGMENT.includes(`gl_FragColor = vec4(color, ${SOLID_ALPHA});`),
+      'solid wall hiders write SOLID_ALPHA so post-processing never blooms Mars fog color into glowing yellow'
+    );
+    assert.ok(
+      !LINE_VERTEX.includes('v.z +='),
+      'solid wall hiders stay at true depth behind DOOR_VERTEX wall quads and never z-fight with textured walls'
+    );
+    assert.ok(
+      LIGHT_GLSL.includes('distSq > 160000.0') && LIGHT_GLSL.includes('diff.x + diff.y + diff.z <= 0.001'),
+      'LIGHT_GLSL skips inactive lights and distant lights beyond 400 units before computing sqrt'
+    );
+    assert.ok(
+      MONSTER_FRAGMENT.includes('uHasFog == 1 && vDepth >= uFogFar') &&
+        TEXTURED_FRAGMENT.includes('uHasFog == 1 && vDepth >= uFogFar') &&
+        CEILING_CONE_FRAGMENT.includes('uHasFog == 1 && vDepth >= uFogFar'),
+      'MONSTER_FRAGMENT, TEXTURED_FRAGMENT, and CEILING_CONE_FRAGMENT early-out beyond fog far distance'
+    );
+
+    // 5. Monster gore skin swap uses pre-cached shared WebGLTexture without re-uploading via setTexture
+    let sharedTexCalls = 0;
+    let uploadCalls = 0;
+    const sharedWorld = {
+      gl: { NEAREST: 9728 },
+      scene: { addMesh() {} },
+      material: () => new Material(),
+      sharedTexture: (atlas) => ({ atlas }),
+      monsterPartMesh: () => {
+        const m = new Mesh(null, new CustomMesh());
+        m.setSharedTexture = (tex) => {
+          sharedTexCalls++;
+          m.WebGLTexture = tex;
+        };
+        m.setTexture = () => {
+          uploadCalls++;
+        };
+        return m;
+      },
+    };
+    const testEnemy = {
+      type: 'imp',
+      def: ENEMY_TYPES.imp,
+      hp: ENEMY_TYPES.imp.hp,
+      pos: new Vec2(100, 100),
+      body: { velocity: new Vec2(0, 0) },
+      state: 'chase',
+      walk: 0,
+      phase: 0,
+      windup: 0,
+      roar: 0,
+      hurt: 0,
+      pain: 0,
+      leap: 0,
+      deadTime: 0,
+      gibbed: false,
+      inSlime: false,
+    };
+    const sharedView = MONSTERS.imp.build(sharedWorld, testEnemy);
+    testEnemy.hp = 1;
+    MONSTERS.imp.animate(sharedView, testEnemy, { time: 1.0, dt: 1 / 60, player: { pos: new Vec2(160, 100) } });
+    assert.equal(uploadCalls, 0, 'monster gore skin swap performs zero gl.texImage2D uploads when sharedTexture is cached');
+    assert.equal(sharedTexCalls, 16, 'monster gore skin swap rebinds all 16 sub-meshes to the cached gore WebGLTexture');
+
+    // 6. Level & Fog delegate spatial tile indexing to Spock Grid, and World.registerStaticChunk reads BoundingSphere.center
+    const e1m1 = new Level(LEVELS[0]);
+    assert.ok(e1m1.grid, 'Level initializes a Spock Grid instance');
+    assert.equal(e1m1.grid.getCell(new Vec2(3 * 64 + 10, 2 * 64 + 10)), 2 * e1m1.width + 3, 'Level.grid.getCell resolves tile index');
+    const e1m1Fog = new Fog(e1m1);
+    assert.equal(e1m1Fog.grid, e1m1.grid, 'Fog reuses Level.grid');
+    assert.equal(e1m1Fog.tileIndex(3 * 64 + 10, 2 * 64 + 10), 2 * e1m1.width + 3, 'Fog.tileIndex delegates to Spock Grid');
+
+    const chunks = [];
+    const chunkGeom = new CustomMesh();
+    chunkGeom.setVertices([new Vec3(64, 0, 128), new Vec3(128, 32, 192), new Vec3(64, 32, 128)]);
+    const mockGl = { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, UNSIGNED_SHORT: 5123 };
+    const chunkMesh = new Mesh(mockGl, chunkGeom);
+    registerStaticChunk(chunks, chunkMesh, new Vec2(0, 0), 32);
+    assert.equal(chunks.length, 1, 'registerStaticChunk registers chunk');
+    assert.ok(
+      chunks[0].center.x > 0 && chunks[0].center.y > 0,
+      'registerStaticChunk reads BoundingSphere.center coordinates cleanly'
+    );
+  },
+
+  'LoopR FPS counter: Player.getFPS feeds Hud.fps and renders current FPS on DoomR screen and automap'() {
+    const clock = new Clock();
+    clock.start();
+    const t0 = clock.now ?? 0;
+    clock.computeDelta(t0 + 1000 / 60);
+    clock.tick(t0 + 1000 / 60);
+    assert.equal(Math.round(clock.computeAverageFPS()), 60, 'LoopR Clock computes 60 FPS from a 16.67ms frame');
+
+    const loop = new Player(() => {});
+    assert.equal(loop.getFPS(), 0, 'LoopR Player starts at 0 FPS before frames run');
+
+    const texts = [];
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          setTransform() {},
+          clearRect() {},
+          beginPath() {},
+          moveTo() {},
+          lineTo() {},
+          stroke() {},
+          fillRect() {},
+          fillText(str) {
+            texts.push(str);
+          },
+        };
+      },
+    };
+    const mockOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: {
+        fillRect() {},
+        rectLine() {},
+        line() {},
+        circleLine() {},
+        weapon: { quad() {} },
+        sprites: { quad() {} },
+        face: { quad() {} },
+      },
+    };
+
+    const game = fresh(0);
+    const hud = new Hud(mockCanvas, mockOverlay);
+    hud.resize(1280, 760, 1);
+    hud.fps = clock.computeAverageFPS();
+    hud.render(game);
+    assert.ok(texts.includes('60 FPS'), 'Hud renders current LoopR FPS on the DoomR screen');
+
+    texts.length = 0;
+    hud.toggleAutomap(game);
+    hud.render(game);
+    assert.ok(texts.some((t) => t.includes('FPS 60')), 'Hud automap header telemetry includes current LoopR FPS');
+  },
+
+  'Input uses @dwtechs/ctrltab Keyboard with X for fire and physical key codes across layouts'() {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    globalThis.document = { addEventListener() {}, pointerLockElement: null };
+    globalThis.window = { addEventListener() {} };
+    try {
+      const mockCanvas = { addEventListener() {} };
+      const inp = new Input(mockCanvas);
+
+      // Hold W (87) + Shift (16) -> forward + run
+      globalThis.document.onkeydown({ code: 'KeyW', which: 87, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {} });
+      globalThis.document.onkeydown({ code: 'ShiftLeft', which: 16, shiftKey: true, ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {} });
+      let c = inp.poll();
+      assert.equal(c.forward, 1);
+      assert.equal(c.run, true);
+      inp.endFrame();
+
+      // Press X (88) to fire while strafing right with D (68)
+      globalThis.document.onkeydown({ code: 'KeyX', which: 88, shiftKey: true, ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {} });
+      globalThis.document.onkeydown({ code: 'KeyD', which: 68, shiftKey: true, ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {} });
+      c = inp.poll();
+      assert.equal(c.fire, true);
+      assert.equal(c.strafe, 1);
+      assert.equal(c.forward, 1);
+      inp.endFrame();
+
+      // Release X (88) and D (68) -> fire stops, strafe stops, W keeps moving forward
+      globalThis.document.onkeyup({ code: 'KeyX', which: 88, metaKey: false });
+      globalThis.document.onkeyup({ code: 'KeyD', which: 68, metaKey: false });
+      c = inp.poll();
+      assert.equal(c.fire, false);
+      assert.equal(c.strafe, 0);
+      assert.equal(c.forward, 1);
+      globalThis.document.onkeyup({ code: 'KeyW', which: 87, metaKey: false });
+      inp.endFrame();
+
+      // Physical key layout (AZERTY vs QWERTY): event.code 'KeyA' (which=81 on AZERTY) maps to KeyA (strafe left),
+      // while physical Q ('KeyQ' with which=65 on AZERTY) does not falsely trigger KeyA
+      globalThis.document.onkeydown({ code: 'KeyQ', which: 65, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {} });
+      c = inp.poll();
+      assert.equal(c.strafe, 0, 'physical KeyQ on AZERTY (which=65) does not trigger KeyA strafe');
+      globalThis.document.onkeydown({ code: 'KeyA', which: 81, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {} });
+      c = inp.poll();
+      assert.equal(c.strafe, -1, 'physical KeyA on AZERTY (which=81) triggers KeyA strafe left');
+      globalThis.document.onkeyup({ code: 'KeyA', which: 81, metaKey: false });
+      c = inp.poll();
+      assert.equal(c.strafe, 0, 'releasing physical KeyA stops strafing');
+      inp.endFrame();
+
+      // Weapon selection 1-4 (top row Digit1-4 and Numpad1-4)
+      for (const [digitCode, expectedSlot] of [['Digit1', 1], ['Digit2', 2], ['Digit3', 3], ['Digit4', 4], ['Numpad2', 2]]) {
+        globalThis.document.onkeydown({ code: digitCode, which: 48 + expectedSlot, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {} });
+        c = inp.poll();
+        assert.equal(c.weapon, expectedSlot, `${digitCode} selects weapon slot ${expectedSlot}`);
+        globalThis.document.onkeyup({ code: digitCode, which: 48 + expectedSlot, metaKey: false });
+        inp.endFrame();
+      }
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
   },
 };
 

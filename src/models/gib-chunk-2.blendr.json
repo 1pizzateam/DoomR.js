@@ -1,0 +1,1041 @@
+{
+  "format": "blendr",
+  "version": 1,
+  "id": "gib-chunk-2",
+  "name": "3D Gore Gib #3 (Cracked Jawbone & Teeth)",
+  "category": "props-gibs",
+  "subType": "gib-2",
+  "shader": "solid",
+  "scale": {
+    "x": 1,
+    "y": 1,
+    "z": 1
+  },
+  "spinSpeed": 1.2,
+  "bobAmp": 0.6,
+  "bobBase": 4,
+  "atlas": {
+    "width": 256,
+    "height": 32,
+    "cellSize": 32,
+    "frames": 8,
+    "cells": {
+      "c0": 0,
+      "c1": 1,
+      "c2": 2,
+      "c3": 3
+    },
+    "cellNames": [
+      "0: Chest",
+      "1: Back",
+      "2: Face (G=255 Eyes)",
+      "3: Jaw",
+      "4: Limb",
+      "5: Bone / Horn",
+      "6: Hide / Armor",
+      "7: Gore / Viscera (B=255)"
+    ],
+    "dataBase64": "HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8wFiL/fhAY/zAWIv9OJDT/TiQ0/04kNP9OJDT/fhAY/zAWIv9+EBj/MBYi/34QGP9OJDT/TiQ0/04kNP9OJDT/TiQ0/04kNP9OJDT/TiQ0/zAWIv9+EBj/MBYi/34QGP8wFiL/TiQ0/04kNP9OJDT/TiQ0/34QGP8wFiL/fhAY/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/3RL//xAGDv/QEv//EAYO/xAGDv8QBg7/zRj//80Y///mEv//7BL//xAGDv/HEv//zRj//84S///wEv//EAYO/+oS///sEv//zRj//80Y///PEv//EAYO/98S///XEv//zRj//+sS///NGP//8BL//8kS///jEv//EAYO/9YS//9+EBj/xCQw/8QkMP/EJDD/xCQw/6IYIv9+EBj/ohgi/6AS//+gEv//fhAY/8QkMP/EJDD/xCQw/6AS//+iGCL/oBL//6AS//9+EBj/ohgi/8QkMP/EJDD/xCQw/8QkMP9+EBj/oBL//34QGP+gEv//fhAY/6AS///EJDD/xCQw/+EU///ZFP//4xT//+0U///cFP//3hT//8kU///MFP//xxT//8kU///NFP//4hT//88U///mFP//yBT//+0U///bFP//yBT//+0U///uFP//1xT//9UU///rFP//1BT//9YU///TFP//7xT//+MU///FFP//1xT//+IU///qFP//HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv+gEv//oBL//xwOFv8cDhb/HA4W/xwOFv+gEv//HA4W/6AS//+gEv//HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/6AS//8cDhb/oBL//xwOFv+gEv//HA4W/xwOFv/aEP//4NC0/7wQ///LEP//wxD//+DQtP/g0LT/shD//+DQtP/nEP//fhD//5EQ///AEP//4NC0/+DQtP+6EP//oBD//+YQ///g0LT/iRD//7AQ//+FEP//5xD//5IQ//+uEP//yhD//4QQ///YEP//zxD//6QQ//+BEP//4NC0/xwOFv9WChD/fhAY/1YKEP9+EBj/VgoQ/6IYIv+iGCL/ohgi/1YKEP9+EBj/VgoQ/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/fhAY/1YKEP9+EBj/ohgi/6IYIv+iGCL/fhAY/1YKEP9+EBj/VgoQ/34QGP8cDhb/fhAY/zAWIv9+EBj/MBYi/04kNP9OJDT/TiQ0/zAWIv9+EBj/MBYi/34QGP8wFiL/fhAY/04kNP9OJDT/TiQ0/04kNP9OJDT/TiQ0/zAWIv9+EBj/MBYi/34QGP8wFiL/fhAY/04kNP9OJDT/TiQ0/34QGP8wFiL/fhAY/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi//IS//8QBg7/7xL//xAGDv8QBg7/EAYO/80Y///iEv//9BL///ES///wEv//EAYO/80Y///NGP//zRj//xAGDv8QBg7/xBL///MS///nEv//zRj//+sS//8QBg7/EAYO//QS///mEv//7xL//+kS//8QBg7/EAYO//US//8QBg7/oBL//8QkMP+gEv//xCQw/6IYIv9+EBj/ohgi/6AS//+gEv//oBL//6AS///EJDD/xCQw/8QkMP+iGCL/fhAY/6IYIv9+EBj/oBL//6AS///EJDD/oBL//8QkMP/EJDD/oBL//6AS//+gEv//oBL//6IYIv9+EBj/oBL//8QkMP/cFP//0BT//8oU///HFP//6hT//+EU///kFP//1xT//90U///HFP//yhT//9sU///JFP//1xT//+4U///lFP//4RT//+EU///PFP//xhT//9MU///rFP//3RT//9wU///KFP//3hT//+UU///bFP//4BT//+cU///OFP//0hT//6AS//8wFiL/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ohgi/34QGP+iGCL/fhAY/6IYIv+gEv//xCQw/8QkMP/EJDD/fhAY/6IYIv+gEv//ohgi/34QGP+iGCL/xCQw/8QkMP/EJDD/xCQw/34QGP+gEv//fhAY/6IYIv+gEv//ohgi/8QkMP/EJDD/xCQw/94U///qFP//xxT//9wU///LFP//0hT//+YU///GFP//0BT//80U///PFP//yxT//98U///uFP//5xT//+oU///VFP//2xT//9cU///HFP//yhT//9kU///MFP//zxT//9wU///XFP//6hT//94U///KFP//3BT//9cU///HFP//oBL//zAWIv+gEv//oBL//04kNP8wFiL/TiQ0/zAWIv8cDhb/oBL//04kNP8wFiL/TiQ0/zAWIv9OJDT/oBL//xwOFv8wFiL/TiQ0/zAWIv9OJDT/MBYi/04kNP8wFiL/oBL//zAWIv9OJDT/oBL//04kNP8wFiL/TiQ0/zAWIv/FEP//oxD//90Q//+nEP//jBD//+DQtP+kEP//ghD//60Q///FEP//4NC0/5oQ///BEP//vRD//+DQtP+BEP//hRD//5cQ//+FEP//vhD//74Q///CEP//sRD//98Q///LEP//tRD//+DQtP/dEP//5RD//7IQ///g0LT/5hD//xwOFv+iGCL/ohgi/34QGP9WChD/zBD//xIEDP/kEP//sxD//8QQ///REP//1xD///QQ///GEP//3RD//+DQtP/g0LT/rhD//7oQ///REP//pxD//5gQ///rEP//7RD//7oQ///DEP//EgQM/34QGP9WChD/ohgi/6IYIv8cDhb/MBYi/34QGP8wFiL/fhAY/zAWIv9OJDT/TiQ0/04kNP9OJDT/fhAY/zAWIv9+EBj/MBYi/34QGP/g0LT/4NC0/+DQtP/g0LT/MBYi/34QGP8wFiL/fhAY/zAWIv9OJDT/TiQ0/04kNP9OJDT/fhAY/zAWIv9+EBj/MBYi/34QGP8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv8wFiL/MBYi/9US///0Ev//EAYO/+cS///pEv//zhL//+DQtP/iEv//4NC0/8YS///SEv//1xL///AS///JEv//3BL//xAGDv/IEv//EAYO/+DQtP/SEv//4NC0/xAGDv/oEv//6hL//+DQtP/GEv//4NC0/xAGDv/aEv//yxL//9MS///QEv//xCQw/6AS///EJDD/oBL//6AS//+iGCL/fhAY/6AS//9+EBj/xCQw/8QkMP/EJDD/oBL//6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/8QkMP/EJDD/xCQw/6AS//+gEv//fhAY/6IYIv9+EBj/ohgi/34QGP/EJDD/xCQw/8QkMP/mFP//5BT//8wU///iFP//2BT//9AU///aFP//zRT//+4U///qFP//2hT//9EU///bFP//4BT//8cU///qFP//zhT//9gU///oFP//6BT//9kU///JFP//yRT//94U///SFP//4xT//98U///nFP//xBT//9QU///tFP//5BT//xwOFv+gEv//MBYi/6AS//+gEv//TiQ0/zAWIv+gEv//HA4W/04kNP8wFiL/TiQ0/6AS//9OJDT/MBYi/04kNP8cDhb/TiQ0/zAWIv9OJDT/MBYi/04kNP+gEv//oBL//xwOFv9OJDT/MBYi/04kNP8wFiL/TiQ0/zAWIv9OJDT/sBD//+IQ///fEP//5xD//+EQ///ZEP//1RD//7EQ//+pEP//vRD//5EQ///g0LT/yhD//4gQ//+QEP//shD//7IQ//+fEP//4NC0/9cQ///g0LT/gxD//5IQ//+DEP//gBD//74Q///DEP//jBD//+MQ//+kEP//uxD//4AQ//8cDhb/ohgi/6IYIv9WChD/fhAY/xIEDP/AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/84Q///BEP//sRD//9AQ///AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/88Q//9WChD/fhAY/6IYIv+iGCL/HA4W/34QGP8wFiL/fhAY/zAWIv9+EBj/MBYi/04kNP+1EP//xhD//8YQ///dEP//sxD//6UQ//+bEP//xxD//7kQ//+oEP//yRD//+QQ///NEP//uRD//4wQ///AEP//8BD//9gQ//9OJDT/fhAY/zAWIv9+EBj/MBYi/34QGP8wFiL/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP/sEv//5BL//xAGDv8QBg7/EAYO/xAGDv/0Ev//wBL//88S///OEv//4RL//78S//+0Ev//rBL//88S///EEv//thL//9ES///nEv//1BL//8QS//+fEv//yhL///ES///dEv//vxL//9AS///fEv//EAYO/xAGDv8QBg7/EAYO/6AS//+gEv//xCQw/34QGP+iGCL/fhAY/6AS//9+EBj/ohgi/8QkMP+gEv//xCQw/8QkMP9+EBj/ohgi/34QGP+iGCL/fhAY/6AS///EJDD/xCQw/8QkMP+iGCL/oBL//6IYIv9+EBj/ohgi/34QGP/EJDD/xCQw/8QkMP/EJDD/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+gEv//oBL//04kNP8wFiL/TiQ0/zAWIv+gEv//MBYi/xwOFv8wFiL/oBL//zAWIv9OJDT/MBYi/04kNP8wFiL/HA4W/zAWIv+gEv//MBYi/04kNP8wFiL/TiQ0/6AS//8cDhb/MBYi/04kNP8wFiL/TiQ0/zAWIv9OJDT/MBYi/7YQ///g0LT/shD//7EQ///BEP//lRD//+DQtP+oEP//xhD//+DQtP/g0LT/5hD//7sQ///g0LT/uBD//88Q///FEP//ixD//9AQ//+9EP//qhD//5QQ//+3EP//pBD//+DQtP+IEP//vxD//5sQ//+HEP//rRD//8AQ///kEP//HA4W/6IYIv+iGCL/fhAY/9oQ//8SBAz/9xD//5cQ///MEP//oRD//9EQ//+3EP//khD//9YQ//+UEP//4NC0/+DQtP/rEP//yxD///kQ///pEP//2RD//8UQ///TEP//lxD//9IQ///oEP//2BD//1YKEP+iGCL/ohgi/xwOFv9OJDT/fhAY/zAWIv9+EBj/MBYi/34QGP9OJDT/TiQ0/8UQ//+YEP//yhD//68Q//+IEP//0BD//+DQtP/g0LT/4NC0/+DQtP/DEP//9BD//+MQ///SEP//vhD//8wQ//9OJDT/TiQ0/zAWIv9+EBj/MBYi/34QGP8wFiL/TiQ0/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP/VEP//fhAY/9IQ//9+EBj/5xD//8oQ///0EP//5hD//6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/9BL//8kS//8QBg7/3BL//9kS//8QBg7/8xL//6AS///NEv//qRL//9IS//+8Ev//nBL//9cS//+eEv//1BL//68S///oEv//zBL///QS///mEv//2BL//8gS///TEv//oBL//9MS///mEv//1xL//9QS///MEv//EAYO/+oS//+gEv//xCQw/34QGP+iGCL/fhAY/6IYIv+gEv//ohgi/8QkMP/EJDD/zBD//7IQ//+NEP//ohgi/34QGP+iGCL/fhAY/6AS///EJDD/oBL//6AS///EJDD/fhAY/6IYIv9+EBj/ohgi/6AS//+iGCL/xCQw/8QkMP/EJDD/oBL//5qKcv+ainL/mopy/5qKcv+ainL/mopy/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/mopy/5qKcv+ainL/mopy/5qKcv+ainL/oBL//04kNP8wFiL/TiQ0/zAWIv9OJDT/oBL//04kNP8cDhb/TiQ0/8wQ//+yEP//jRD//04kNP8wFiL/TiQ0/xwOFv+gEv//MBYi/6AS//+gEv//TiQ0/zAWIv9OJDT/HA4W/04kNP+gEv//TiQ0/zAWIv9OJDT/MBYi/6AS//9+EP//lRD//6EQ//+CEP//hBD//9UQ//+YEP//hBD//4AQ//+dEP//sBD//4UQ//+1EP//4NC0/+DQtP/g0LT/gBD//+DQtP+REP//nBD//5gQ//+7EP//rhD//7YQ//+yEP//vRD//+AQ///g0LT/lRD//5EQ///eEP//jxD//xwOFv+iGCL/ohgi/6IYIv9+EBj/txD//xIEDP/vEP//2hD//5sQ///JEP//xxD//6kQ///yEP//zhD//+DQtP/g0LT/oRD//64Q///6EP//6RD//6AQ///LEP//6BD//58Q///REP//EgQM/1YKEP+iGCL/ohgi/6IYIv8cDhb/TiQ0/04kNP9+EBj/MBYi/34QGP8wFiL/fhAY/+oQ///TEP//kRD//8IQ///AEP//oRD//+0Q///HEP//9BD//6kQ//+YEP//phD///UQ///jEP//lxD//8QQ///iEP//TiQ0/zAWIv9+EBj/MBYi/34QGP8wFiL/TiQ0/04kNP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/8cQ//+iGCL/7hD//80Q///0EP//ohgi/34QGP+iGCL/9RD//+YQ//9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/xAGDv8QBg7/4hL//xAGDv8QBg7/EAYO/6MS///sEv//2RL//6QS///LEv//yRL//7AS///uEv//zxL///QS//+2Ev//qRL//7QS///1Ev//5hL//6gS///NEv//5hL//6cS///SEv//4NC0/xAGDv8QBg7/EAYO/xAGDv8QBg7/xCQw/8QkMP+gEv//fhAY/6IYIv9+EBj/ohgi/6AS///VEP//lhD//8QQ///CEP//pBD//+0Q///JEP//oBL//6IYIv9+EBj/xCQw/6AS//+gEv//fhAY/6IYIv+gEv//ohgi/34QGP+iGCL/xCQw/8QkMP/EJDD/xCQw/34QGP+ainL/mopy/5qKcv+ainL/mopy/5qKcv/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/5qKcv+ainL/mopy/5qKcv+ainL/mopy/xwOFv8wFiL/oBL//zAWIv9OJDT/MBYi/04kNP+gEv//1RD//5YQ///EEP//whD//6QQ///tEP//yRD//6AS//8cDhb/MBYi/04kNP+gEv//oBL//zAWIv9OJDT/oBL//xwOFv8wFiL/TiQ0/zAWIv9OJDT/MBYi/04kNP8wFiL/lxD//5oQ//+FEP//vxD//+DQtP/MEP//wBD//+DQtP/MEP//ixD//7YQ//++EP//jhD//4UQ///XEP//4hD//4wQ//+YEP//whD//6sQ//+uEP//sRD//4oQ//+FEP//hRD//8gQ///g0LT/shD//90Q///bEP//2hD//6wQ//8cDhb/ohgi/6IYIv+iGCL/VgoQ/xIEDP/eEP//7hD//8oQ///1EP//vhD//+IQ///cEP//9xD//9YQ///CEP//8xD//8sQ///BEP//xBD//+cQ//+jEP//7RD//7kQ//+iEP//9hD//xIEDP9+EBj/ohgi/6IYIv+iGCL/HA4W/04kNP9OJDT/MBYi/34QGP8wFiL/fhAY/zAWIv/oEP//wxD///AQ//+2EP//3BD//9UQ///yEP//zxD//7oQ///uEP//xBD//7kQ//+9EP//4RD//5oQ///nEP//TiQ0/zAWIv9+EBj/MBYi/34QGP8wFiL/fhAY/04kNP9OJDT/fhAY/6IYIv9+EBj/ohgi/34QGP+8Ev//3xL//+wS///QEv//8RL//8cS///jEv//3hL///IQ///UEP//whD//+8Q///KEP//wRD//8wS///nEv//sxL//+sS///DEv//shL///IS//+1Ev//ohgi/34QGP+iGCL/fhAY/6IYIv9WChD/fhAY/1YKEP/yEv//VgoQ/34QGP/dEv//6hL//8wS///xEv//wRL//+ES///bEv//8hL//9YS///FEv//7xL//80S///EEv//xxL//+US//+qEv//6hL//70S//+qEv//8RL//1YKEP9+EBj/VgoQ/34QGP9WChD/fhAY/8QkMP/EJDD/fhAY/6AS//9+EBj/ohgi/34QGP/pEP//xRD///AQ//+5EP//3RD//9cQ///yEP//0RD//70Q//+gEv//xCQw/8QkMP/EJDD/oBL//6IYIv+gEv//ohgi/34QGP+gEv//fhAY/8QkMP/EJDD/xCQw/8QkMP+iGCL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP+ainL/mopy/5qKcv+ainL/mopy/5qKcv8cDhb/HA4W/xwOFv+gEv//HA4W/xwOFv8cDhb/6RD//8UQ///wEP//uRD//90Q///XEP//8hD//9EQ//+9EP//oBL//xwOFv8cDhb/HA4W/6AS//8cDhb/oBL//xwOFv8cDhb/oBL//xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/6QQ///HEP//5xD//8QQ//+OEP//gxD//+gQ//+SEP//jRD//8gQ///AEP//iBD//40Q//+kEP//zRD//68Q///g0LT/4NC0/8kQ//+HEP//khD//7EQ///lEP//uhD//5wQ///WEP//gRD//8QQ///XEP//kRD//44Q///NEP//HA4W/1YKEP+iGCL/ohgi/70Q//8SBAz/wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP+3EP//4NC0/+DQtP/EEP//wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/tEP//wxD//6IYIv+iGCL/fhAY/xwOFv9OJDT/TiQ0/04kNP8wFiL/fhAY/zAWIv9+EBj/MBYi/04kNP+YEP//qRD///QQ//+YEP//wxD//+DQtP/g0LT/4NC0/+DQtP+jEP//hxD//+UQ//+vEP//kxD//04kNP9+EBj/MBYi/34QGP8wFiL/fhAY/04kNP9OJDT/TiQ0/6IYIv9+EBj/ohgi/34QGP8SBg7/tRL//7sS//+mEv//vhL//7IS//++Ev//9BL//7ES///KEP//ohgi/9gQ///VEP//xBD//6IYIv+lEv//6RL//8IS//+uEv//pxL//7QS///SEv//6xL//xIGDv+iGCL/fhAY/6IYIv9+EBj/1BL//9ES//9+EBj/VgoQ/34QGP9WChD/sxL//5wS//+3Ev//qRL//7cS///0Ev//qRL//8wS//+8Ev//2hL//9cS///HEv//shL//5sS///oEv//vBL//6US//+eEv//rBL//80S///qEv//VgoQ/34QGP9WChD/fhAY/1YKEP/EJDD/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/jRD//60Q//+cEP//rBD///QQ//+cEP//xhD//7IQ///VEP//ohgi/8QkMP/EJDD/xCQw/6AS//9+EBj/ohgi/34QGP+iGCL/fhAY/6AS///EJDD/xCQw/8QkMP+iGCL/fhAY/5qKcv+ainL/mopy/5qKcv+ainL/mopy/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/mopy/5qKcv+ainL/mopy/5qKcv+ainL/HA4W/zAWIv9OJDT/MBYi/04kNP8wFiL/TiQ0/40Q//+tEP//nBD//6wQ///0EP//nBD//8YQ//+yEP//1RD//xwOFv8wFiL/TiQ0/zAWIv+gEv//MBYi/04kNP8wFiL/HA4W/zAWIv+gEv//MBYi/04kNP8wFiL/TiQ0/zAWIv/lEP//hxD//+AQ///g0LT/zBD//98Q///XEP//sxD//5AQ///lEP//qhD//74Q///UEP//gRD//4EQ///UEP//4NC0/6cQ///hEP//rhD//94Q///iEP//iBD//6QQ///QEP//yBD//74Q///g0LT/xRD//+AQ///g0LT/hhD//xwOFv9+EBj/ohgi/6IYIv+iGCL/4xD//xIEDP+hEP//yxD//84Q///BEP//phD//+QQ///lEP//wBD//+DQtP/g0LT/6RD//+8Q//+kEP//zxD//8gQ//+eEP//9xD//8oQ///nEP//wRD//6IYIv+iGCL/ohgi/1YKEP8cDhb/TiQ0/04kNP9OJDT/fhAY/zAWIv9+EBj/MBYi/34QGP/DEP//xxD//7kQ//+cEP//3hD//98Q//+5EP//khD//68Q///jEP//6RD//5sQ///IEP//wRD//5UQ///yEP//whD//34QGP8wFiL/fhAY/zAWIv9OJDT/TiQ0/04kNP9+EBj/ohgi/34QGP+iGCL/EgYO/+QS//+nEv//sRL//9ES///TEv//yhL//7US///kEv//4hD//8EQ//+iGCL/fhAY/+UQ///rEP//tBL//9QS///PEv//rxL///MS///QEv//5xL//8kS//8SBg7/fhAY/6IYIv9+EBj/ohgi/+AS//9+EBj/7RL//34QGP/cEv//4RL//54S//+oEv//zBL//88S///EEv//rRL//+IS///jEv//xBL//6QS//+8Ev//5hL//+sS//+sEv//0BL//8oS//+mEv//8xL//8wS///lEv//VgoQ/34QGP9WChD/fhAY/+oS//9+EBj/xCQw/6IYIv+gEv//ohgi/34QGP+gEv//jxD//5wQ///GEP//yRD//+DQtP/g0LT/4NC0/+AQ//+7EP//lxD//7IQ//+gEv//oBL//8QkMP9+EBj/ohgi/34QGP+gEv//fhAY/6AS///EJDD/xCQw/8QkMP/EJDD/oBL//6IYIv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/xwOFv9OJDT/oBL//04kNP8wFiL/oBL//48Q//+cEP//xhD//8kQ///g0LT/4NC0/+DQtP/gEP//uxD//5cQ//+yEP//oBL//6AS//9OJDT/MBYi/04kNP8wFiL/oBL//xwOFv+gEv//MBYi/04kNP8wFiL/TiQ0/6AS//9OJDT/zBD//4IQ//+zEP//nxD//40Q///oEP//jxD//4QQ//+8EP//mRD//+QQ//+WEP//yBD//6MQ///g0LT/mxD//6MQ//+IEP//hRD//50Q//+/EP//oxD//7IQ//++EP//thD//+gQ///g0LT/4NC0/4EQ//+zEP//rBD//6AQ//8cDhb/VgoQ/6IYIv+iGCL/ohgi//IQ//++EP//5xD//7UQ///eEP//wBD//7AQ//+6EP//yhD//8EQ//+0EP//zBD//9AQ//+5EP//vBD//7YQ//+0EP//2BD//5kQ//+cEP//EgQM/+cQ//+iGCL/ohgi/6IYIv9+EBj/HA4W/04kNP9OJDT/TiQ0/04kNP9+EBj/MBYi/34QGP/hEP//fhAY/9gQ//+5EP//pxD//7IQ///DEP//uRD//6wQ///FEP//yRD//7AQ//+0EP//rhD//6sQ///REP//MBYi/34QGP8wFiL/fhAY/zAWIv9OJDT/TiQ0/04kNP9OJDT/ohgi/34QGP+iGCL/fhAY/xIGDv/vEv//xxL//+cS///BEv//4BL//8kS//+8Ev//xRL//8oQ///BEP//fhAY/8sQ///PEP//ohgi/8YS///BEv//vxL//9sS//+rEv//rRL//6US///nEv//EgYO/6IYIv9+EBj/ohgi/34QGP/hEv//8hL//34QGP9WChD/fhAY/+4S///BEv//5RL//7oS///dEv//xBL//7US//+/Ev//zBL//8QS//+5Ev//zhL//9ES//+9Ev//wBL//7sS//+5Ev//2BL//6IS//+kEv//mxL//+US///iEv//fhAY/+cS//9+EBj/3RL//6AS//+gEv//ohgi/34QGP+iGCL/oBL//7kQ///iEP//sBD//9kQ///g0LT/4NC0/+DQtP/FEP//vBD//68Q///HEP//xCQw/8QkMP/EJDD/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/oBL//6AS///EJDD/oBL//6IYIv9+EBj/mopy/5qKcv+ainL/mopy/5qKcv+ainL/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP+ainL/mopy/5qKcv+ainL/mopy/5qKcv+gEv//oBL//04kNP8wFiL/TiQ0/6AS//+5EP//4hD//7AQ///ZEP//4NC0/+DQtP/g0LT/xRD//7wQ//+vEP//xxD//zAWIv9OJDT/MBYi/04kNP8wFiL/TiQ0/zAWIv8cDhb/MBYi/6AS//+gEv//TiQ0/6AS//9OJDT/MBYi/9cQ//+XEP//0hD//40Q///MEP//zxD//+QQ//+VEP//4NC0/6IQ///SEP//4NC0/5AQ///bEP//mBD//78Q//+UEP//4NC0/70Q///NEP//2BD//8EQ///TEP//4NC0/7EQ///OEP//oBD//7QQ//+YEP//iBD//+MQ//+REP//HA4W/34QGP9WChD/ohgi/+oQ//+9EP//7hD//5wQ//+xEP//9hD//+wQ//+xEP//4xD//+YQ///tEP//4NC0/+DQtP+dEP//1BD//9sQ///kEP//7RD//9oQ///DEP//zBD//8UQ///1EP//2xD//6IYIv9+EBj/VgoQ/xwOFv8wFiL/TiQ0/04kNP9OJDT/MBYi/34QGP8wFiL/fhAY/zAWIv/wEP//5xD//6kQ///dEP//4BD//+DQtP/g0LT/4NC0/+DQtP/NEP//1BD//94Q///nEP//0xD//7sQ///EEP//fhAY/zAWIv9+EBj/TiQ0/04kNP9OJDT/fhAY/34QGP+iGCL/fhAY/6IYIv8SBg7/xxL//+wS//+tEv//vRL//xIECv8SBAr/vRL//+MS///jEP//6RD//6IYIv/ZEP//ohgi/9MQ///dEv//EgQK/xIECv8SBAr/yxL//9IS///NEv//8RL//xIGDv9+EBj/ohgi/34QGP+iGCL/VgoQ/34QGP9WChD/5BL//+cS//9+EBj/6xL//6QS//+2Ev//8RL//+kS//+3Ev//4RL//+QS///qEv//tBL//9sS//+lEv//1BL//9oS///iEv//6hL//9kS///GEv//zRL//8gS///xEv//2xL//1YKEP9+EBj/3xL//34QGP9+EBj/ohgi/34QGP+gEv//oBL//6IYIv/pEP//lxD//6wQ///xEP//4NC0/+DQtP/g0LT/4RD//+gQ//+pEP//1hD//8QkMP/EJDD/xCQw/6AS//+gEv//fhAY/6IYIv9+EBj/xCQw/6AS///EJDD/xCQw/6IYIv9+EBj/ohgi/5qKcv+ainL/mopy/5qKcv+ainL/mopy/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/mopy/5qKcv+ainL/mopy/5qKcv+ainL/HA4W/04kNP8wFiL/oBL//6AS//9OJDT/6RD//5cQ//+sEP//8RD//+DQtP/g0LT/4NC0/+EQ///oEP//qRD//9YQ//9OJDT/MBYi/04kNP+gEv//oBL//zAWIv9OJDT/HA4W/04kNP+gEv//TiQ0/zAWIv9OJDT/MBYi/04kNP+kEP//yBD//44Q///kEP//4RD//64Q///lEP//4NC0/5EQ//+wEP//wxD//+DQtP+HEP//kxD//7oQ///cEP//4BD//8kQ///TEP//kRD//6cQ///KEP//qhD//9cQ//+jEP//wxD//7QQ///YEP//ihD//4YQ//+yEP//nhD//xwOFv9WChD/fhAY/6IYIv+iGCL/EgQM/8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/2xD//+DQtP/g0LT/kRD//8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/4BD//6IYIv+iGCL/VgoQ/34QGP8cDhb/fhAY/04kNP9OJDT/TiQ0/04kNP8wFiL/fhAY/90Q//+3EP//uhD//6UQ///YEP//uRD//5cQ///UEP//4RD//9AQ//+HEP//vxD//8QQ//+6EP//uhD//+AQ///cEP//6hD//zAWIv9+EBj/TiQ0/04kNP9OJDT/TiQ0/zAWIv+iGCL/fhAY/6IYIv9+EBj/EgYO/7gS//+2Ev//4xL//8gS///KEv//uxL//xIECv/KEv//fhAY/9kQ///kEP//1RD//34QGP/GEP//0RL//8oS///KEv//EgQK/xIECv/tEv//tRL//+ES//8SBg7/ohgi/34QGP+iGCL/fhAY/+ES///JEv//fhAY//ES///VEv//VgoQ/64S///hEv//whL//8US//+0Ev//3hL//8QS//+oEv//2hL//+US///XEv//mxL//8kS///NEv//xRL//8US///kEv//4RL//+wS//+sEv//3xL//+gS//9+EBj/6xL//34QGP9WChD/oBL//34QGP+iGCL/oBL//6IYIv9+EBj/xCQw/94Q//+6EP//vRD//6kQ///aEP//vBD//5sQ///WEP//4hD//8QkMP/EJDD/xCQw/34QGP+iGCL/fhAY/6AS//9+EBj/oBL//8QkMP/EJDD/oBL//8QkMP+gEv//ohgi/34QGP+ainL/mopy/5qKcv+ainL/mopy/5qKcv/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/5qKcv+ainL/mopy/5qKcv+ainL/mopy/6AS//8wFiL/TiQ0/6AS//9OJDT/MBYi/04kNP/eEP//uhD//70Q//+pEP//2hD//7wQ//+bEP//1hD//+IQ//8cDhb/MBYi/04kNP8wFiL/TiQ0/zAWIv+gEv//MBYi/6AS//8wFiL/TiQ0/6AS//9OJDT/oBL//04kNP8wFiL/phD//4sQ///hEP//jRD//5kQ//+zEP//5hD//+DQtP+jEP//rxD//6sQ///g0LT/ghD//5EQ//+dEP//qRD//+DQtP/g0LT/gxD//8MQ//+fEP//lRD//7QQ///g0LT/oRD//70Q///ZEP//4NC0/+gQ///g0LT/tBD//+cQ//8cDhb/fhAY/1YKEP9+EBj/ohgi/78Q//+4EP//yBD//70Q//+3EP//5xD//70Q///3EP//7RD///EQ///PEP//2BD//9gQ//+aEP//uBD//90Q///0EP//5BD//9cQ//+mEP//3hD//9sQ//+iGCL/VgoQ/34QGP9WChD/HA4W/zAWIv9+EBj/TiQ0/04kNP9OJDT/TiQ0/zAWIv/AEP//tRD//68Q///hEP//tRD///IQ///nEP//6xD//8gQ///REP//0RD//5EQ//+vEP//1xD//+8Q///dEP//0BD//zAWIv9+EBj/TiQ0/04kNP9OJDT/TiQ0/zAWIv9+EBj/fhAY/6IYIv9+EBj/ohgi/xIGDv/IEv//whL//88S///HEv//whL//xIECv/HEv//8xL//+kQ///tEP//zhD//9YQ///WEP//fhAY/8IS//8SBAr/EgQK/xIECv8SBAr/tRL//+AS///dEv//EgYO/34QGP+iGCL/fhAY/6IYIv/gEv//fhAY/+8S//9+EBj/VgoQ/34QGP+8Ev//yhL//8ES//+8Ev//5RL//8ES///yEv//6hL//+0S///QEv//2BL//9cS//+jEv//vBL//9wS///wEv//4hL//9cS//+tEv//3RL//9sS//9+EBj/VgoQ/9QS//9WChD/fhAY/34QGP+iGCL/oBL//6IYIv9+EBj/xCQw/8QkMP/DEP//uBD//7IQ///iEP//uBD///IQ///oEP//7BD//8oQ///EJDD/xCQw/8QkMP+iGCL/fhAY/6AS//+gEv//ohgi/34QGP/EJDD/xCQw/8QkMP9+EBj/ohgi/34QGP+iGCL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP+ainL/mopy/5qKcv+ainL/mopy/5qKcv8cDhb/TiQ0/6AS//9OJDT/MBYi/04kNP8wFiL/wxD//7gQ//+yEP//4hD//7gQ///yEP//6BD//+wQ///KEP//HA4W/04kNP8wFiL/TiQ0/zAWIv+gEv//oBL//04kNP8cDhb/TiQ0/zAWIv9OJDT/MBYi/04kNP8wFiL/TiQ0/98Q///g0LT/mxD//+DQtP9/EP//oxD//5YQ///MEP//qhD//+QQ//9+EP//0BD//6cQ///REP//oBD//88Q//+kEP//pBD//6UQ///g0LT/zBD//60Q///FEP//3BD//+cQ//+lEP//4NC0/4EQ//+IEP//4NC0/6oQ//+HEP//HA4W/1YKEP9+EBj/VgoQ/84Q///kEP//1BD//6oQ///CEP//kRD///EQ//+kEP//7xD//6sQ///SEP//4NC0/+DQtP+sEP//mxD///EQ///aEP//xBD//8sQ///QEP//7hD//+AQ//8SBAz/EgQM/34QGP9WChD/fhAY/xwOFv9+EBj/MBYi/34QGP9OJDT/TiQ0/04kNP9+EBj/MBYi/7sQ//+HEP//7BD//5oQ///pEP//ohD//+DQtP/g0LT/4NC0/+DQtP+SEP//7BD//9QQ//+8EP//wxD//8kQ///oEP//MBYi/04kNP9OJDT/TiQ0/zAWIv9+EBj/MBYi/6IYIv9+EBj/ohgi/34QGP8SBg7/5BL//9gS//+4Ev//yxL//6US//8SBAr/sxL//+wS//9+EBj/0RD//+AQ///tEP//fhAY/6IYIv/uEv//EgQK/8wS///REv//1RL//+wS///hEv//wRL//xIGDv+iGCL/fhAY/6IYIv9+EBj/fhAY/1YKEP/pEv//VgoQ/9AS///iEv//1BL//7AS///FEv//mxL//+0S//+rEv//6xL//7ES///TEv//4RL//+0S//+yEv//pBL//+0S///aEv//xxL//8wS///REv//6hL//98S//9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP+iGCL/fhAY/6AS//9+EBj/ohgi/6AS///EJDD/xCQw/70Q//+MEP//7BD//58Q///qEP//phD//80Q///EJDD/oBL//8QkMP+iGCL/7BD//9UQ//+/EP//xhD//8sQ//+gEv//xCQw/8QkMP/EJDD/ohgi/34QGP+iGCL/fhAY/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/HA4W/zAWIv+gEv//MBYi/04kNP+gEv//TiQ0/zAWIv+9EP//jBD//+wQ//+fEP//6hD//6YQ///NEP//MBYi/6AS//8wFiL/TiQ0/+wQ///VEP//vxD//8YQ///LEP//oBL//zAWIv9OJDT/MBYi/04kNP8wFiL/TiQ0/zAWIv/BEP//lxD//+DQtP/g0LT/5hD//8UQ///g0LT/4NC0/+DQtP+eEP//uxD//5QQ//+IEP//2xD//+DQtP/QEP//yhD//9kQ///FEP//4BD//+AQ///jEP//jRD//4gQ//+EEP//4NC0/80Q///hEP//uhD//+DQtP/AEP//qhD//xwOFv9+EBj/VgoQ/34QGP+iGCL/EgQM/+IQ//+tEP//lhD//6gQ//+0EP//zBD//54Q//+sEP//yhD//+DQtP/g0LT/zRD//9QQ///kEP//5xD//7gQ//+4EP//tBD//5QQ//8SBAz/EgQM/6IYIv9WChD/fhAY/1YKEP8cDhb/MBYi/34QGP8wFiL/TiQ0/04kNP9OJDT/TiQ0/34QGP8wFiL/nxD//6wQ///EEP//lRD//6MQ///CEP//1xD//48Q///GEP//zRD//94Q///hEP//sBD//7AQ//9+EBj/MBYi/04kNP9OJDT/TiQ0/04kNP9+EBj/MBYi/34QGP9+EBj/ohgi/34QGP+iGCL/EgYO/6YS///jEv//uxL//6kS//+2Ev//wBL//9IS//+vEv//ohgi/8kQ///bEP//fhAY/80Q///SEP//5BL//+cS///DEv//wxL//8AS//+nEv//qRL//7MS//8SBg7/fhAY/6IYIv9+EBj/ohgi/90S//9+EBj/VgoQ/34QGP9WChD/fhAY/+AS//+zEv//nxL//64S//+5Ev//zRL//6YS//+yEv//zBL//90S//+iEv//zxL//9QS///iEv//5RL//70S//+8Ev//uRL//54S//+fEv//VgoQ/34QGP9WChD/fhAY/1YKEP/lEv//fhAY/6IYIv9+EBj/ohgi/34QGP/EJDD/xCQw/8QkMP9+EBj/ohgi/68Q///HEP//mRD//6IYIv/EJDD/xCQw/8QkMP/EJDD/zxD//98Q///iEP//sxD//7MQ//+vEP//jxD//8QkMP/EJDD/xCQw/34QGP+iGCL/fhAY/6AS//+ainL/mopy/5qKcv+ainL/mopy/5qKcv/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/5qKcv+ainL/mopy/5qKcv+ainL/mopy/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv+vEP//xxD//5kQ//8cDhb/HA4W/xwOFv8cDhb/HA4W/88Q///fEP//4hD//7MQ//+zEP//rxD//48Q//8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv+gEv//4NC0/5YQ//+1EP//rhD//+DQtP/ZEP//gBD//+DQtP/PEP//2xD//7QQ//+6EP//4NC0/7YQ///NEP//yBD//+DQtP/g0LT/4NC0/+DQtP+vEP//zxD//+DQtP/WEP//kRD//34Q//+oEP//yRD//+DQtP/gEP//4RD//4AQ//8cDhb/VgoQ/34QGP9WChD/fhAY/98Q///AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/7oQ///qEP//5xD//5EQ///AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/xIEDP9WChD/fhAY/1YKEP9+EBj/HA4W/34QGP8wFiL/fhAY/zAWIv9OJDT/TiQ0/04kNP/PEP//2hD//7gQ///JEP//wxD//8MQ//+PEP//sRD//+QQ///hEP//hxD//5gQ//+bEP//2RD//+IQ///EEP//MBYi/34QGP9OJDT/TiQ0/04kNP9+EBj/MBYi/34QGP8wFiL/ohgi/34QGP+iGCL/fhAY/xIGDv/gEv//yBL//9oS///hEv//yRL//9US///REv//0RL//34QGP+7EP//5xD//+QQ//8SBg7/ohgi/7QS///hEv//5xL//9ES//+3Ev//pRL//6US//+uEv//EgYO/6IYIv9+EBj/ohgi/34QGP9+EBj/yRL//34QGP/YEv//8RL//94S///CEv//1hL//98S///DEv//0RL//8wS///MEv//ohL//74S///nEv//5RL//5sS//+pEv//rBL//94S///mEv//zRL//68S//+bEv//mxL//34QGP/aEv//8BL//9AS//9+EBj/9RL//6IYIv9+EBj/ohgi/34QGP+gEv//xCQw/8QkMP/EJDD/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/xCQw/6AS//+gEv//jBD//5wQ//+fEP//2hD//+MQ///GEP//pBD//4wQ//+MEP//xCQw/34QGP+gEv//fhAY/6IYIv+gEv//mopy/5qKcv+ainL/mopy/5qKcv+ainL/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP+ainL/mopy/5qKcv+ainL/mopy/5qKcv8cDhb/MBYi/04kNP8wFiL/oBL//zAWIv9OJDT/MBYi/xwOFv8wFiL/TiQ0/zAWIv9OJDT/MBYi/04kNP+gEv//oBL//4wQ//+cEP//nxD//9oQ///jEP//xhD//6QQ//+MEP//jBD//04kNP8wFiL/oBL//zAWIv9OJDT/oBL//7YQ//+/EP//lBD//9cQ///XEP//sxD//7cQ///lEP//4RD//60Q///NEP//ohD//6gQ///g0LT/0BD//4AQ//+EEP//mBD//5AQ//+rEP//4xD//30Q//+REP//ohD//80Q//+uEP//zRD//5MQ//+nEP//4NC0/+DQtP+gEP//HA4W/34QGP9WChD/fhAY/9MQ//8SBAz/2BD//7oQ//+WEP//2xD//+sQ///xEP//khD//90Q//+xEP//4NC0/+DQtP/YEP//rhD//8MQ///GEP//vBD///IQ//+5EP//3hD//+sQ///iEP//9hD//1YKEP9+EBj/VgoQ/xwOFv8wFiL/fhAY/zAWIv9+EBj/TiQ0/04kNP9OJDT/TiQ0/zAWIv/UEP//5RD//+sQ//+IEP//1xD//+DQtP/g0LT/4NC0/+DQtP+lEP//uxD//74Q//+0EP//7BD//34QGP/YEP//TiQ0/04kNP9OJDT/MBYi/34QGP8wFiL/fhAY/34QGP+iGCL/fhAY/6IYIv8SBg7/tRL//9sS///EEv//qRL//90S///pEv//7hL//6YS///bEP//EgYO/xIGDv/lEP//1hD//34QGP/LEv//zRL//8YS///vEv//xBL//+AS///qEv//4xL//xIGDv9+EBj/ohgi/34QGP+iGCL/2BL//34QGP9WChD/8hL//9QS//9+EBj/2BL//74S//+fEv//2hL//+gS///tEv//nBL//9wS//+2Ev//rhL//+YS///YEv//tBL//8YS///IEv//wBL//+4S//++Ev//3RL//+gS///gEv//8hL//1YKEP9+EBj/VgoQ//QS//9+EBj/ohgi/34QGP+gEv//xCQw/8QkMP/EJDD/xCQw/34QGP+iGCL/oBL//6AS//9+EBj/xCQw/8QkMP/EJDD/4xD//9MQ//+pEP//vhD//8EQ//+3EP//7RD//7QQ///ZEP//5hD//90Q//+gEv//fhAY/6IYIv9+EBj/oBL//5qKcv+ainL/mopy/5qKcv+ainL/mopy/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/mopy/5qKcv+ainL/mopy/5qKcv+ainL/HA4W/04kNP8wFiL/oBL//zAWIv9OJDT/MBYi/04kNP8cDhb/TiQ0/6AS//+gEv//MBYi/04kNP8wFiL/TiQ0/+MQ///TEP//qRD//74Q///BEP//txD//+0Q//+0EP//2RD//+YQ///dEP//oBL//zAWIv9OJDT/MBYi/6AS//+zEP//pxD//9kQ///CEP//nhD//44Q///FEP//qhD//9sQ//+VEP//whD//8MQ//+XEP//yxD//8oQ//+IEP//tBD//+DQtP/g0LT/zBD//80Q///ZEP//oxD//6cQ///g0LT/hRD//5gQ//+7EP//jBD//9YQ///SEP//kxD//xwOFv9WChD/fhAY/1YKEP9+EBj/zRD//70Q///PEP//4BD//88Q///iEP//+hD//9wQ//+7EP//sRD//+DQtP/g0LT/6xD//94Q///uEP//pxD//6cQ///LEP//rhD//+MQ///zEP//+hD//1YKEP9+EBj/VgoQ/34QGP8cDhb/fhAY/zAWIv9+EBj/MBYi/34QGP9OJDT/TiQ0/8gQ///aEP//yBD//9wQ///1EP//1hD//7MQ//+pEP//6xD//4cQ///lEP//2BD//+kQ//+eEP//nhD//8QQ//8wFiL/3RD//04kNP9OJDT/MBYi/34QGP8wFiL/fhAY/zAWIv+iGCL/fhAY/6IYIv9+EBj/ohgi/9MS///GEv//1RL//+IS///UEv//4xL///US///eEv//vBD//xIGDv/sEP//EgYO/+cQ///cEP//7BL//7US//+2Ev//0RL//7sS///jEv//8BL///US//9+EBj/ohgi/34QGP+iGCL/fhAY/80S///gEv//1RL//1YKEP/oEv//zhL//8ES///REv//3xL//9AS///hEv//9RL//9wS//+/Ev//txL//+0S//+bEv//6BL//90S///rEv//rhL//64S///NEv//tBL//+ES///vEv//9RL//1YKEP/jEv//3RL//+AS///aEv//ohgi/34QGP+iGCL/xCQw/6AS///EJDD/xCQw/34QGP+iGCL/fhAY/6IYIv+gEv//ohgi/8QkMP/EJDD/oBL//4wQ///mEP//2RD//+kQ///g0LT/4NC0/+DQtP+pEP//3hD//+4Q///1EP//fhAY/6AS//9+EBj/ohgi/34QGP+ainL/mopy/5qKcv+ainL/mopy/5qKcv/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/5qKcv+ainL/mopy/5qKcv+ainL/mopy/xwOFv8wFiL/TiQ0/zAWIv+gEv//MBYi/04kNP8wFiL/HA4W/zAWIv9OJDT/oBL//04kNP8wFiL/TiQ0/6AS//+MEP//5hD//9kQ///pEP//4NC0/+DQtP/g0LT/qRD//94Q///uEP//9RD//zAWIv+gEv//MBYi/04kNP8wFiL/mxD//60Q///FEP//sBD//9sQ///EEP//xhD//9kQ//+yEP//zxD//68Q//+BEP//tBD//4UQ//+CEP//nhD//80Q//+uEP//4BD//+AQ///g0LT/hRD//8sQ//+fEP//pxD//6IQ//+AEP//0BD//6UQ//+aEP//wBD//44Q//8cDhb/ohgi/1YKEP9+EBj/VgoQ/8UQ///FEP//2xD///MQ///MEP//wxD//6wQ///TEP//nBD//+UQ///1EP//nRD//74Q//+uEP//7RD//+0Q///cEP//pBD//9kQ///BEP//4RD//8MQ//9+EBj/VgoQ/34QGP+iGCL/HA4W/zAWIv9+EBj/MBYi/34QGP8wFiL/TiQ0/04kNP/UEP//7hD//8QQ//+7EP//oxD//8wQ//+SEP//3xD///AQ//+TEP//thD//6UQ///oEP//5xD//9YQ//+bEP//0hD//7kQ//9OJDT/TiQ0/34QGP8wFiL/fhAY/zAWIv9+EBj/fhAY/6IYIv9+EBj/ohgi/34QGP/MEv//zRL//90S///wEv//0hL//8sS//+6Ev//1xL//6IYIv/iEP//8BD//xIGDv++EP//fhAY/+sS///rEv//3hL//7MS///cEv//yhL//+IS///LEv//ohgi/34QGP+iGCL/fhAY/6IYIv9WChD/5RL//1YKEP/tEv//zhL//34QGP/IEv//2hL//+8S///NEv//xhL//7IS///TEv//pBL//+MS///xEv//pRL//8ES//+0Ev//6hL//+oS///cEv//qxL//9gS///EEv//4BL//1YKEP9+EBj/VgoQ/+ES//9WChD/fhAY/34QGP+gEv//fhAY/6AS///EJDD/xCQw/8QkMP+iGCL/oBL//6IYIv9+EBj/ohgi/34QGP/EJDD/oBL//6AS//+YEP//uRD//6kQ///oEP//4NC0/+DQtP/g0LT/1BD//7wQ///cEP//vhD//6IYIv9+EBj/oBL//34QGP+iGCL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv8cDhb/oBL//zAWIv+gEv//MBYi/04kNP8wFiL/TiQ0/6AS//9OJDT/MBYi/04kNP8wFiL/TiQ0/6AS//+gEv//mBD//7kQ//+pEP//6BD//+DQtP/g0LT/4NC0/9QQ//+8EP//3BD//74Q//9OJDT/MBYi/6AS//8wFiL/TiQ0/4YQ///EEP//qhD//48Q///PEP//yxD//8cQ//+wEP//hhD//9sQ//+5EP//xRD//64Q///cEP//ihD//+cQ//+NEP//3xD//4gQ///TEP//2RD//54Q///hEP//4NC0/9QQ//+BEP//uRD//60Q//+XEP//zhD//+DQtP/g0LT/HA4W/6IYIv9+EBj/VgoQ/+kQ///pEP//wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/qEP//4NC0/+DQtP+XEP//wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/NEP//6RD//34QGP9WChD/ohgi/xwOFv9OJDT/MBYi/34QGP8wFiL/fhAY/zAWIv9OJDT/TiQ0/04kNP/sEP//uBD//6gQ//+yEP//4xD//+DQtP/g0LT/4NC0/+DQtP/BEP//xxD//8oQ//+yEP//pxD//78Q//9OJDT/TiQ0/34QGP8wFiL/fhAY/zAWIv9+EBj/TiQ0/6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/7kW//+5Fv//fhAY/7sQ///lEP//5xD//xIGDv8SBg7/EgYO/8gQ///NEP//0BD//7kW//+5Fv//fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/zhL//1YKEP/gEv//zRL//+cS///mEv//7RL//5wS//+yEv//7RL//8MS//+2Ev//vhL//+YS///nEv//mxL//6ES//+hEv//yhL//88S///SEv//vxL//7US///JEv//sxL//7QS///PEv//5hL//80S///gEv//7BL//1YKEP+iGCL/fhAY/6IYIv/EJDD/oBL//6AS//+gEv//fhAY/6IYIv+gEv//ohgi/34QGP/EJDD/oBL//6AS///EJDD/kxD//5IQ///DEP//yRD//+DQtP/g0LT/4NC0/8IQ//+oEP//qhD//8gQ//+gEv//ohgi/34QGP+gEv//fhAY/5qKcv+ainL/mopy/5qKcv+ainL/mopy/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/mopy/5qKcv+ainL/mopy/5qKcv+ainL/HA4W/zAWIv9OJDT/MBYi/6AS//+gEv//oBL//zAWIv8cDhb/oBL//04kNP8wFiL/TiQ0/6AS//+gEv//MBYi/5MQ//+SEP//wxD//8kQ///g0LT/4NC0/+DQtP/CEP//qBD//6oQ///IEP//oBL//04kNP8wFiL/oBL//zAWIv+UEP//txD//5wQ///XEP//0xD//9AQ//+xEP//4NC0/+AQ//9+EP//uRD//7EQ///g0LT/uxD//5MQ//+AEP//2RD//8IQ///WEP//mhD//7QQ//+iEP//4BD//7UQ//+LEP//yRD//8YQ//+jEP//0xD//+cQ//+gEP//fhD//xwOFv+iGCL/ohgi/34QGP9WChD/yhD//xIEDP+6EP//7hD//+QQ//+vEP//uBD//54Q//+UEP//8xD//+DQtP/g0LT/lxD//5wQ///UEP//lhD//94Q///0EP//+RD//7oQ///LEP//vxD//34QGP9WChD/ohgi/6IYIv8cDhb/TiQ0/34QGP8wFiL/fhAY/zAWIv9+EBj/MBYi/04kNP/oEP//3hD//6YQ//+wEP//lBD//4oQ///uEP//8xD//6wQ//+NEP//khD//80Q//+MEP//1xD//+8Q///0EP//TiQ0/34QGP8wFiL/fhAY/zAWIv9+EBj/MBYi/04kNP9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+5Fv//uRb//6IYIv9+EBj/ohgi/+8Q///0EP//EgYO/xIGDv9+EBj/0xD//34QGP+5Fv//uRb//6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/9MS///YEv//VgoQ/34QGP9WChD/zBL//7gS//++Ev//6xL//+IS//+1Ev//vRL//6YS//+eEv//7xL///QS//+5Ev//oBL//6QS///UEv//nxL//90S///wEv//9BL//74S///MEv//VgoQ/34QGP/nEv//fhAY/+oS///tEv//fhAY/6IYIv/EJDD/xCQw/8QkMP/EJDD/fhAY/6IYIv+gEv//oBL//34QGP+iGCL/xCQw/8QkMP+gEv//oBL//68Q//+SEP//lxD//88Q//+REP//2RD//+8Q///0EP//tRD//8YQ//+6EP//ohgi/6AS//+iGCL/oBL//6AS//+ainL/mopy/5qKcv+ainL/mopy/5qKcv/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/5qKcv+ainL/mopy/5qKcv+ainL/mopy/xwOFv9OJDT/MBYi/04kNP8wFiL/TiQ0/zAWIv9OJDT/oBL//6AS//8wFiL/TiQ0/zAWIv9OJDT/oBL//6AS//+vEP//khD//5cQ///PEP//kRD//9kQ///vEP//9BD//7UQ///GEP//uhD//04kNP+gEv//TiQ0/6AS//+gEv//1BD//7YQ///VEP//0RD//80Q//9+EP//0BD//+DQtP/EEP//vxD//5gQ///bEP//rhD//6cQ///g0LT/2xD//4UQ///JEP//4NC0/+DQtP/dEP//rxD//5QQ//+YEP//4NC0/4EQ//+QEP//kBD//8IQ///FEP//4NC0/90Q//8cDhb/ohgi/6IYIv9WChD/fhAY/xIEDP/XEP//nhD//8UQ//+lEP//9hD//50Q///LEP//ohD//6MQ//+YEP//+BD//6kQ///aEP//8hD//7AQ///CEP//qxD//9IQ//+bEP//8RD///QQ//9WChD/fhAY/6IYIv+iGCL/HA4W/04kNP9OJDT/fhAY/zAWIv9+EBj/MBYi/34QGP9OJDT/vRD//5wQ///xEP//kxD//8QQ//+ZEP//mRD//44Q///zEP//oBD//9QQ///tEP//qBD//7oQ//+iEP//yxD//04kNP8wFiL/fhAY/zAWIv9+EBj/MBYi/04kNP9OJDT/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/uRb//7kW//9+EBj/yhD//34QGP+iGCL/fhAY//MQ//9+EBj/2BD//+4Q//+iGCL/uRb//7kW//9+EBj/ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/6IYIv9+EBj/xCQw/6AS///EJDD/xCQw/6IYIv9+EBj/ohgi/34QGP+gEv//fhAY/8QkMP/EJDD/xCQw/34QGP+gEv//pBD//9UQ///tEP//qxD//70Q//+mEP//zRD//5YQ///sEP//oBL//34QGP+iGCL/fhAY/6AS///EJDD/mopy/5qKcv+ainL/mopy/5qKcv+ainL/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP+ainL/mopy/5qKcv+ainL/mopy/5qKcv8cDhb/MBYi/04kNP+gEv//TiQ0/zAWIv9OJDT/MBYi/xwOFv8wFiL/oBL//zAWIv9OJDT/MBYi/04kNP8wFiL/oBL//6QQ///VEP//7RD//6sQ//+9EP//phD//80Q//+WEP//7BD//6AS//8wFiL/TiQ0/zAWIv+gEv//MBYi/5YQ//+9EP//sBD//+DQtP/MEP//4NC0/6gQ///dEP//sxD//+DQtP+pEP//0xD//+MQ//+aEP//4NC0/90Q//+qEP//4NC0/7cQ//+cEP//hRD//5AQ///g0LT/whD//+DQtP+6EP//2BD//38Q///REP//4NC0/9sQ//+bEP//HA4W/6IYIv+iGCL/fhAY/xIEDP/3EP//5RD//+8Q//+nEP//wxD//6sQ//+YEP//oxD//+QQ//++EP//4NC0/+DQtP/zEP//oRD//64Q//+UEP//pxD//6cQ//+WEP//3hD///gQ//8SBAz/9RD//1YKEP+iGCL/ohgi/xwOFv9OJDT/TiQ0/zAWIv9+EBj/MBYi/34QGP8wFiL/6RD//04kNP+7EP//oxD//44Q//+aEP//3hD//+DQtP/g0LT/4NC0/+DQtP+YEP//phD//4sQ//+eEP//nhD//04kNP/YEP//fhAY/zAWIv9+EBj/MBYi/34QGP9OJDT/TiQ0/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/fhAY/7kW//+5Fv//ohgi/34QGP/hEP//vhD//80Q///ZEP//7xD//34QGP+iGCL/fhAY/7kW//+5Fv//ohgi/34QGP+iGCL/fhAY/6IYIv9+EBj/ohgi/34QGP+iGCL/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9+EBj/oBL//6AS///EJDD/xCQw/6AS//+gEv//oBL//34QGP+iGCL/fhAY/8QkMP/EJDD/oBL//8QkMP+iGCL/fhAY/6AS//+cEP//qRD//48Q//+iEP//ohD//5EQ///ZEP//oBL//34QGP+gEv//oBL//6IYIv+gEv//xCQw/5qKcv+ainL/mopy/5qKcv+ainL/mopy/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/wLCU/+DQtP/AsJT/4NC0/8CwlP/g0LT/mopy/5qKcv+ainL/mopy/5qKcv+ainL/HA4W/6AS//+gEv//HA4W/xwOFv+gEv//oBL//6AS//8cDhb/HA4W/xwOFv8cDhb/HA4W/6AS//8cDhb/HA4W/xwOFv+gEv//nBD//6kQ//+PEP//ohD//6IQ//+REP//2RD//6AS//8cDhb/oBL//6AS//8cDhb/oBL//xwOFv/CEP//5hD//+DQtP/iEP//vxD//4wQ//+hEP//0xD//+QQ//+CEP//4NC0/6IQ//+HEP//qxD//4wQ//+kEP//pBD//4QQ///mEP//rhD//8kQ///GEP//0BD//4cQ///g0LT/wBD//7wQ//+rEP//4RD//+UQ//+3EP//sxD//xwOFv+iGCL/ohgi/6IYIv9+EBj/3RD//8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/+hD//+DQtP/g0LT/xRD//8CwlP/AsJT/wLCU/8CwlP/AsJT/wLCU/8CwlP/AsJT/EgQM/1YKEP+iGCL/ohgi/6IYIv8cDhb/TiQ0/04kNP9OJDT/MBYi/34QGP8wFiL/fhAY/zAWIv/zEP//8BD//+IQ///YEP//0RD//+oQ///1EP//hxD//5gQ//+9EP//9BD//9sQ///REP//0RD//6QQ//9OJDT/yBD//zAWIv9+EBj/MBYi/34QGP9OJDT/TiQ0/04kNP8QBg7/EAYO/xAGDv8QBg7/EAYO/+DQtP/g0LT/4NC0/xAGDv8QBg7/EAYO/9wQ///WEP//7BD///UQ//8QBg7/EAYO/8UQ///0EP//3xD//9YQ//8QBg7/EAYO/+DQtP/g0LT/4NC0/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/MBYi/6AS//8wFiL/MBYi/zAWIv8wFiL/MBYi/zAWIv+gEv//oBL//6AS//8wFiL/MBYi/6AS//+gEv//MBYi/zAWIv8wFiL/oBL//9wQ///TEP//0hD//6gQ//+tEP//MBYi/zAWIv8wFiL/MBYi/6AS//8wFiL/MBYi/6AS//+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/5qKcv+ainL/mopy/xwOFv+gEv//TiQ0/zAWIv9OJDT/MBYi/04kNP8wFiL/oBL//6AS//+gEv//MBYi/04kNP+gEv//oBL//zAWIv8cDhb/MBYi/6AS///cEP//0xD//9IQ//+oEP//rRD//xwOFv8wFiL/TiQ0/zAWIv+gEv//MBYi/04kNP+gEv//4NC0/8gQ//+4EP//nRD//+AQ///g0LT/3BD//5cQ//+rEP//4BD//4EQ//+kEP//xxD//7cQ//+EEP//jxD//+DQtP+SEP//uRD//4cQ//+BEP//4NC0/9wQ//+uEP//hxD//+DQtP+gEP//xhD//4kQ///YEP//tBD//8EQ//8cDhb/ohgi/6IYIv+iGCL/VgoQ//UQ///rEP//zhD//5cQ//+XEP//zBD//6EQ//+4EP//mhD//5MQ///lEP//6xD//+QQ///UEP//mxD///EQ//+zEP//6RD//74Q///WEP//EgQM/xIEDP9+EBj/ohgi/6IYIv+iGCL/HA4W/04kNP9OJDT/TiQ0/34QGP8wFiL/fhAY/zAWIv/HEP//MBYi/40Q///FEP//mBD//7AQ//+REP//iRD//98Q///lEP//3hD//80Q//+REP//6xD//6oQ///jEP//thD//88Q//9+EBj/MBYi/34QGP8wFiL/TiQ0/04kNP9OJDT/EAYO/xAGDv8QBg7/EAYO/xAGDv/g0LT/4NC0/+DQtP8QBg7/EAYO/xAGDv/g0LT/4NC0/+DQtP8QBg7/4hD//+cQ///hEP//0hD//+DQtP/tEP//EAYO/xAGDv/g0LT/4NC0/+DQtP8QBg7/EAYO/xAGDv8QBg7/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MBYi/04kNP9OJDT/TiQ0/04kNP9+EBj/MBYi/34QGP8wFiL/fhAY/04kNP9OJDT/TiQ0/04kNP/g0LT/4NC0/+DQtP/g0LT/TiQ0/04kNP9OJDT/TiQ0/zAWIv9+EBj/MBYi/34QGP8wFiL/TiQ0/04kNP9OJDT/TiQ0/34QGP8QBg7/EAYO/xAGDv8QBg7/EAYO/+DQtP/g0LT/4NC0/xAGDv8QBg7/EAYO/+DQtP/hEP//3xD//xAGDv/EEP//1BD//+DQtP/pEP//8hD//+QQ//8QBg7/EAYO/+DQtP/g0LT/4NC0/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/1YKEP9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/thb//6AS//+2Fv//MBYi/7YW//8wFiL/thb//zAWIv+2Fv//MBYi/7YW//8wFiL/oBL//zAWIv+2Fv//MBYi/7YW//8wFiL/oBL//6AS//+gEv//oBL//6AS//8wFiL/thb//zAWIv+2Fv//MBYi/7YW//8wFiL/thb//zAWIv/ZFP//2xT//9oU///OFP//zBT//90U///ZFP//zxT//8kU///NFP//5hT//+0U///MFP//0BT///AU///uFP//1BT//8UU///iFP//6xT//94U///oFP//yBT//98U///fFP//zRT//94U///pFP//8BT//+YU///rFP//0xT//xwOFv+gEv//MBYi/04kNP8wFiL/TiQ0/zAWIv9OJDT/HA4W/04kNP8wFiL/TiQ0/6AS//9OJDT/MBYi/04kNP8cDhb/TiQ0/6AS//+gEv//oBL//6AS//+gEv//TiQ0/xwOFv9OJDT/MBYi/04kNP8wFiL/TiQ0/zAWIv9OJDT/lBD//94Q///lEP//uhD//5EQ//+ZEP//0xD//4cQ//+5EP//vRD//48Q///KEP//txD//5cQ//+NEP//4NC0/4EQ//+bEP//qxD//5cQ///g0LT/khD//9QQ//+4EP//mRD//+DQtP/OEP//gBD//9EQ///KEP//xhD//7EQ//8cDhb/VgoQ/6IYIv+iGCL/ohgi/1YKEP9+EBj/VgoQ/34QGP9WChD/ohgi/6IYIv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/6IYIv+iGCL/fhAY/1YKEP9+EBj/VgoQ/34QGP+iGCL/ohgi/6IYIv9+EBj/HA4W/34QGP8wFiL/TiQ0/04kNP9OJDT/MBYi/34QGP8wFiL/fhAY/zAWIv9+EBj/TiQ0/04kNP9OJDT/4NC0/+DQtP/g0LT/4NC0/04kNP9OJDT/TiQ0/zAWIv9+EBj/MBYi/34QGP8wFiL/fhAY/04kNP9OJDT/TiQ0/34QGP8wFiL/EAYO/xAGDv8QBg7/EAYO/xAGDv/IGP//yBj//8gY//8QBg7/EAYO/xAGDv/IGP//yBj//8gY//8QBg7/EAYO/xAGDv/IGP//yBj//8gY//8QBg7/EAYO/xAGDv/IGP//yBj//8gY//8QBg7/EAYO/xAGDv8QBg7/EAYO/xAGDv9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/6AS//+2Fv//MBYi/7YW//8wFiL/thb//6AS//+gEv//MBYi/6AS//8wFiL/thb//zAWIv+2Fv//oBL//6AS//8wFiL/thb//6AS//+2Fv//MBYi/7YW//8wFiL/thb//6AS//+2Fv//MBYi/7YW//+gEv//oBL//6AS//+2Fv//yxT//90U///TFP//zhT//9EU///nFP//5hT//8cU///qFP//zhT//8cU///fFP//2hT//9UU///RFP//zBT//9wU///TFP//yhT//+sU///aFP//0BT//84U///kFP//2BT//8sU///nFP//zBT//9kU///TFP//6BT//8MU//+gEv//MBYi/04kNP8wFiL/TiQ0/zAWIv+gEv//oBL//xwOFv+gEv//TiQ0/zAWIv9OJDT/MBYi/6AS//+gEv//HA4W/zAWIv+gEv//MBYi/04kNP8wFiL/TiQ0/zAWIv+gEv//MBYi/04kNP8wFiL/oBL//6AS//+gEv//MBYi/6kQ//+gEP//4xD//5oQ//+xEP//2RD//+gQ///OEP//whD//+IQ//+QEP//yxD//8oQ//++EP//kxD//4MQ//+5EP//4BD//+QQ//+JEP//oRD//58Q///LEP//4hD//4gQ///aEP//whD//9gQ//+YEP//vRD//9AQ///REP//HA4W/34QGP9WChD/ohgi/6IYIv+iGCL/VgoQ/34QGP9WChD/fhAY/6IYIv+iGCL/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv+iGCL/ohgi/1YKEP9+EBj/VgoQ/34QGP+iGCL/ohgi/6IYIv9+EBj/VgoQ/xwOFv8wFiL/fhAY/04kNP9OJDT/TiQ0/04kNP8wFiL/fhAY/zAWIv9+EBj/MBYi/04kNP9OJDT/TiQ0/04kNP9+EBj/MBYi/04kNP9OJDT/TiQ0/04kNP9+EBj/MBYi/34QGP8wFiL/fhAY/04kNP9OJDT/TiQ0/04kNP8wFiL/fhAY/xAGDv8QBg7/EAYO/xAGDv8QBg7/yBj//8gY///IGP//EAYO/xAGDv8QBg7/yBj//8gY///IGP//EAYO/xAGDv8QBg7/yBj//8gY///IGP//EAYO/xAGDv8QBg7/yBj//8gY///IGP//EAYO/xAGDv8QBg7/EAYO/xAGDv8QBg7/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/VgoQ/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP+2Fv//MBYi/7YW//8wFiL/thb//zAWIv+2Fv//MBYi/7YW//+gEv//thb//zAWIv+2Fv//MBYi/7YW//8wFiL/oBL//6AS//+2Fv//MBYi/6AS//+gEv//thb//zAWIv+2Fv//MBYi/7YW//8wFiL/thb//zAWIv+gEv//MBYi/8wU///NFP//3BT//9kU///uFP//3BT//84U///rFP//5RT//+8U///oFP//zBT//88U///WFP//0BT//9QU///YFP//3hT//+YU///jFP//xRT//9UU///jFP//1BT//+YU///SFP//xhT//9YU///qFP//1RT//88U///ZFP//HA4W/04kNP8wFiL/TiQ0/zAWIv9OJDT/MBYi/04kNP8cDhb/oBL//zAWIv9OJDT/MBYi/04kNP8wFiL/TiQ0/6AS//+gEv//MBYi/04kNP+gEv//oBL//zAWIv9OJDT/HA4W/04kNP8wFiL/TiQ0/zAWIv9OJDT/oBL//04kNP/g0LT/xhD//+EQ///CEP//iBD//5AQ//+FEP//5hD//7cQ///REP//3RD//58Q//+xEP//hxD//6QQ///fEP//qRD//5QQ///GEP//vRD//5wQ//+3EP//zBD//+AQ///g0LT/3BD//8kQ//+aEP//ohD//9YQ///GEP//gRD//xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/HA4W/xwOFv8cDhb/fhAY/zAWIv9+EBj/TiQ0/04kNP9OJDT/fhAY/zAWIv9+EBj/MBYi/34QGP8wFiL/TiQ0/04kNP9OJDT/MBYi/34QGP9OJDT/TiQ0/04kNP9+EBj/MBYi/34QGP8wFiL/fhAY/zAWIv9OJDT/TiQ0/04kNP8wFiL/fhAY/zAWIv8QBg7/EAYO/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/xAGDv8QBg7/EAYO/34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/rBL//1YKEP9+EBj/rBL//34QGP9WChD/fhAY/1YKEP9+EBj/VgoQ/34QGP9WChD/oBL//7YW//8wFiL/thb//zAWIv+2Fv//oBL//6AS//8wFiL/thb//zAWIv+2Fv//MBYi/7YW//+gEv//oBL//zAWIv+2Fv//MBYi/7YW//8wFiL/thb//zAWIv+gEv//MBYi/7YW//8wFiL/thb//6AS//+2Fv//MBYi/7YW///GFP//xBT//9UU///tFP//0xT//94U///RFP//xRT//9oU///pFP//zRT//+sU///bFP//4BT//+QU///eFP//xxT//8gU///tFP//zhT//80U///sFP//4xT//94U///VFP//0xT//8cU///bFP//1xT//8oU///lFP//8BT//6AS//8wFiL/TiQ0/zAWIv9OJDT/MBYi/6AS//+gEv//HA4W/zAWIv9OJDT/MBYi/04kNP8wFiL/oBL//6AS//8cDhb/MBYi/04kNP8wFiL/TiQ0/zAWIv9OJDT/oBL//xwOFv8wFiL/TiQ0/zAWIv+gEv//MBYi/04kNP8wFiL/uBD//9MQ//+YEP//yhD//4AQ//+PEP//4NC0/+DQtP/YEP//jhD//+MQ//+REP//fhD//8YQ///ZEP//4NC0/5gQ//+UEP//4xD//+cQ///bEP//3BD//4oQ///FEP//1RD//8QQ///AEP//5xD//8sQ//+7EP//5hD//+EQ//8="
+  },
+  "nodes": [
+    {
+      "id": "root",
+      "name": "3D Gore Gib #3 (Cracked Jawbone & Teeth) Root",
+      "parent": null,
+      "visible": true,
+      "pivot": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "scale": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primitives": []
+    },
+    {
+      "id": "body",
+      "name": "3D Gore Gib #3 (Cracked Jawbone & Teeth)",
+      "parent": "root",
+      "visible": true,
+      "pivot": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "scale": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primitives": []
+    }
+  ],
+  "animations": [
+    {
+      "id": "pickup-spin",
+      "name": "World Pickup Spin & Hover",
+      "duration": 2,
+      "loop": true,
+      "tracks": {
+        "root": {
+          "position": [
+            {
+              "time": 0,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.375,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.625,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.875,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.125,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.375,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.5,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.625,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.75,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.875,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 2,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            }
+          ],
+          "rotation": [
+            {
+              "time": 0,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.375,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.625,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.875,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.125,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.375,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.5,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.625,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.75,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.875,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 2,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            }
+          ],
+          "scale": [
+            {
+              "time": 0,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.375,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.625,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.875,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.125,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.375,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.5,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.625,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.75,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.875,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 2,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            }
+          ]
+        },
+        "body": {
+          "position": [
+            {
+              "time": 0,
+              "value": {
+                "x": 0,
+                "y": 4,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": {
+                "x": 0,
+                "y": 4.219763517451629,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": {
+                "x": 0,
+                "y": 4.408983256014,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.375,
+              "value": {
+                "x": 0,
+                "y": 4.541360556459457,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": {
+                "x": 0,
+                "y": 4.598496991962433,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.625,
+              "value": {
+                "x": 0,
+                "y": 4.5724514689658164,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": {
+                "x": 0,
+                "y": 4.466843918132753,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.875,
+              "value": {
+                "x": 0,
+                "y": 4.296352179166053,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1,
+              "value": {
+                "x": 0,
+                "y": 4.08467200483592,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.125,
+              "value": {
+                "x": 0,
+                "y": 3.861223712558787,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": {
+                "x": 0,
+                "y": 3.657063208754594,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.375,
+              "value": {
+                "x": 0,
+                "y": 3.5005656912652077,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.5,
+              "value": {
+                "x": 0,
+                "y": 3.413481929400942,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.625,
+              "value": {
+                "x": 0,
+                "y": 3.407915238571335,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.75,
+              "value": {
+                "x": 0,
+                "y": 3.4846393039440446,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.875,
+              "value": {
+                "x": 0,
+                "y": 3.632990650000461,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 2,
+              "value": {
+                "x": 0,
+                "y": 3.8323507010806446,
+                "z": 0
+              },
+              "easing": "linear"
+            }
+          ],
+          "rotation": [
+            {
+              "time": 0,
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": {
+                "x": 0,
+                "y": 0.15,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": {
+                "x": 0,
+                "y": 0.3,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.375,
+              "value": {
+                "x": 0,
+                "y": 0.44999999999999996,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": {
+                "x": 0,
+                "y": 0.6,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.625,
+              "value": {
+                "x": 0,
+                "y": 0.75,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": {
+                "x": 0,
+                "y": 0.8999999999999999,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.875,
+              "value": {
+                "x": 0,
+                "y": 1.05,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1,
+              "value": {
+                "x": 0,
+                "y": 1.2,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.125,
+              "value": {
+                "x": 0,
+                "y": 1.3499999999999999,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": {
+                "x": 0,
+                "y": 1.5,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.375,
+              "value": {
+                "x": 0,
+                "y": 1.65,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.5,
+              "value": {
+                "x": 0,
+                "y": 1.7999999999999998,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.625,
+              "value": {
+                "x": 0,
+                "y": 1.95,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.75,
+              "value": {
+                "x": 0,
+                "y": 2.1,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.875,
+              "value": {
+                "x": 0,
+                "y": 2.25,
+                "z": 0
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 2,
+              "value": {
+                "x": 0,
+                "y": 2.4,
+                "z": 0
+              },
+              "easing": "linear"
+            }
+          ],
+          "scale": [
+            {
+              "time": 0,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.125,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.25,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.375,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.5,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.625,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.75,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 0.875,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.125,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.25,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.375,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.5,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.625,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.75,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 1.875,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            },
+            {
+              "time": 2,
+              "value": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "easing": "linear"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "family": "gibs"
+}

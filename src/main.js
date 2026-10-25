@@ -1,10 +1,9 @@
-import { Player } from '@1pizzateam/loopr';
+import { Player, Quality } from '@1pizzateam/loopr';
 import { Time } from '@1pizzateam/spock';
 import { Game } from './game.js';
 import { Hud } from './hud.js';
 import { Sound } from './audio.js';
 import { Input } from './input.js';
-import { Quality } from './quality.js';
 import { TitleDirector } from './title.js';
 import { World } from './world.js';
 
@@ -17,6 +16,12 @@ const WORLD_RATIO_CAP = 1.5;
 // the HUD canvas is on top, so it receives the mouse and keyboard
 const input = new Input(hudCanvas);
 const game = new Game();
+const urlLevel = new URLSearchParams(window.location.search).get('level');
+if (urlLevel) {
+  const m = urlLevel.match(/(\d+)/);
+  if (m)
+    game.setLevel(Number(m[1]) - 1);
+}
 const sound = new Sound();
 const quality = new Quality();
 const title = new TitleDirector(game);
@@ -82,11 +87,17 @@ function control(dt) {
     if (input.took('KeyG'))
       hud.toggleAutomapGrid();
   }
-  if (input.took('KeyN'))
+  if (input.took('KeyB') || (input.took('KeyN') && !(game.state === 'play' && game.player?.hasNightVision)))
     game.say(sound.toggleMute() ? 'Sound off' : 'Sound on', 1.5);
   if (input.took('F3')) {
     showDiagnostics = !showDiagnostics;
     hud.diagnostics = '';
+  }
+  if (game.state === 'play' || game.state === 'paused') {
+    if (input.took('BracketLeft'))
+      game.cycleLevel(-1);
+    if (input.took('BracketRight'))
+      game.cycleLevel(1);
   }
 
   switch (game.state) {
@@ -107,6 +118,10 @@ function control(dt) {
         game.cycleDifficulty(-1);
       if (input.took('ArrowDown') || input.took('KeyS'))
         game.cycleDifficulty(1);
+      if (input.took('ArrowLeft') || input.took('KeyA') || input.took('BracketLeft'))
+        game.cycleLevel(-1);
+      if (input.took('ArrowRight') || input.took('KeyD') || input.took('BracketRight'))
+        game.cycleLevel(1);
       if (input.took('Digit1'))
         game.setDifficulty(0);
       if (input.took('Digit2'))
@@ -119,6 +134,13 @@ function control(dt) {
         const hovered = hud.difficultyAt(input.mousePos);
         if (hovered)
           game.setDifficulty(hovered);
+      }
+      if (input.took('Click') && !unlockedThisFrame) {
+        const levelStep = hud.levelStepAt(input.mousePos);
+        if (levelStep !== 0) {
+          game.cycleLevel(levelStep);
+          break;
+        }
       }
       if (confirmed() && !unlockedThisFrame) {
         const clickedDiff = hud.difficultyAt(input.mousePos);
@@ -176,8 +198,9 @@ function hearGame() {
 const loop = new Player((dt) => {
   if (!document.hidden && quality.update(dt) !== null)
     resize();
+  const fps = loop.getFPS();
+  hud.fps = fps;
   if (showDiagnostics) {
-    const fps = loop.getFPS();
     const ms = fps > 0 ? Time.fpsToMillisec(fps) : 0;
     hud.diagnostics = `${Math.round(fps)} fps  ${ms.toFixed(1)} ms  ${world.width}x${world.height} (${Math.round(quality.scale * 100)}%)  glow 1/${world.glowDivisor}`;
   }

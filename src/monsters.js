@@ -13,23 +13,19 @@ function mag2(x, y) {
 }
 
 function setPos(node, x, y, z) {
-  scratchPos.setScalar(x, y, z);
-  node.setPosition(scratchPos);
+  node.setPosition(scratchPos.setScalar(x, y, z));
 }
 
 function setRot(node, x, y, z) {
-  scratchRot.setScalar(x, y, z);
-  node.setRotation(scratchRot);
+  node.setRotation(scratchRot.setScalar(x, y, z));
 }
 
 function setScale(node, x, y, z) {
-  scratchScale.setScalar(x, y, z);
-  node.setScale(scratchScale);
+  node.setScale(scratchScale.setScalar(x, y, z));
 }
 
 function setUniformScale(node, s) {
-  scratchScale.setScalar(s, s, s);
-  node.setScale(scratchScale);
+  node.setScale(scratchScale.setScalar(s, s, s));
 }
 
 /**
@@ -1251,19 +1247,13 @@ function toCustomMesh(part) {
 
 /** Eases `view.pose[key]` towards a target, frame-rate independent: fast when the rate is high. */
 function approach(view, key, target, rate, dt) {
-  const value = view.pose[key] ?? 0;
-  view.pose[key] = value + (target - value) * (1 - Math.exp(-rate * dt));
+  view.pose[key] = Utils.damp(view.pose[key] ?? 0, target, rate, dt);
   return view.pose[key];
 }
 
 function approachAngle(view, key, target, rate, dt) {
   const current = view.pose[key] ?? target;
-  let diff = (target - current) % Trigo.twopi;
-  if (diff > Trigo.pi)
-    diff -= Trigo.twopi;
-  else if (diff < -Trigo.pi)
-    diff += Trigo.twopi;
-  const next = current + diff * (1 - Math.exp(-rate * dt));
+  const next = Trigo.lerpRadian(current, target, 1 - Math.exp(-rate * dt));
   view.pose[key] = next;
   return next;
 }
@@ -1294,11 +1284,14 @@ function setMonsterGoreSkin(view, goreActive) {
     return;
   view.goreSkin = goreActive;
   const atlas = goreActive ? monsterGoreSkinAtlas(view.type) : monsterSkinAtlas(view.type);
-  const texSize = new Vec2(atlas.width, atlas.height);
+  const shared = typeof view.world?.sharedTexture === 'function' ? view.world.sharedTexture(atlas) : null;
+  const texSize = shared ? null : new Vec2(atlas.width, atlas.height);
   for (let i = 0; i < view.meshes.length; i++) {
     const mesh = view.meshes[i];
     mesh.activeAtlas = atlas;
-    if (view.gl && typeof mesh.setTexture === 'function')
+    if (shared && typeof mesh.setSharedTexture === 'function')
+      mesh.setSharedTexture(shared);
+    else if (view.gl && typeof mesh.setTexture === 'function')
       mesh.setTexture(atlas.data, {
         size: texSize,
         magFilter: view.gl.NEAREST,
@@ -1334,6 +1327,7 @@ function resetLimbTransforms(view) {
     view.goreChunks[i].setInactive();
   view.goreViscera.setInactive();
   view.gorePool.setInactive();
+  view.deadSettledKey = null;
   setMonsterGoreSkin(view, false);
 }
 
@@ -1341,6 +1335,9 @@ function buildMonster(w, enemy) {
   const type = enemy.type;
   const cfg = CONFIGS[type];
   const atlas = monsterSkinAtlas(type);
+  w.sharedTexture?.(atlas);
+  if (type !== 'wraith')
+    w.sharedTexture?.(monsterGoreSkinAtlas(type));
   const parts = monsterParts(type);
   const material = w.material('orange');
 
@@ -1390,6 +1387,7 @@ function buildMonster(w, enemy) {
   w.scene.addMesh(root);
 
   return {
+    world: w,
     gl: w.gl,
     material,
     scale: cfg.scale,
@@ -1417,6 +1415,12 @@ function buildMonster(w, enemy) {
     pitch: 0,
     roll: 0,
     wasDead: false,
+    deadSettled: false,
+    settledBurst: false,
+    settledHits: -1,
+    settledX: Number.NaN,
+    settledY: Number.NaN,
+    settledYaw: Number.NaN,
     goreSkin: false,
     dismemberMode: -1,
     type,
@@ -1424,6 +1428,7 @@ function buildMonster(w, enemy) {
 }
 
 function animateMonster(view, enemy, c) {
+  view.deadSettled = false;
   if (view.wasDead) {
     view.wasDead = false;
     resetLimbTransforms(view);
@@ -1506,14 +1511,12 @@ function animateMonster(view, enemy, c) {
   // World-space facing yaw: face movement vector when prowling, or lock onto the player when attacking/chasing
   let targetYaw = view.pose.yaw ?? 0;
   const vel = enemy.body?.velocity;
-  const speedSq = vel ? vel.x * vel.x + vel.y * vel.y : 0;
+  const speedSq = vel ? vel.getMagnitude(true) : 0;
   if (leaping && enemy.leapDir)
     targetYaw = Math.atan2(enemy.leapDir.x, enemy.leapDir.y);
   else if (c.player?.pos && (enemy.windup > 0 || enemy.roar > 0 || enemy.los || speedSq < 25)) {
-    const dx = c.player.pos.x - enemy.pos.x;
-    const dz = c.player.pos.y - enemy.pos.y;
-    if (dx * dx + dz * dz > 1)
-      targetYaw = Math.atan2(dx, dz);
+    if (c.player.pos.getDistance(enemy.pos, true) > 1)
+      targetYaw = Math.atan2(c.player.pos.x - enemy.pos.x, c.player.pos.y - enemy.pos.y);
   } else if (vel && speedSq >= 25)
     targetYaw = Math.atan2(vel.x, vel.y);
   view.yaw = approachAngle(view, 'yaw', targetYaw, m.idle ? 4 : 11, c.dt);
@@ -1703,6 +1706,28 @@ function dieMonster(view, enemy) {
   view.wasDead = true;
   const burst = Boolean(enemy.gibbed);
   const duration = burst ? BURST_DURATION : DEATH_DURATION;
+  const postGibMax = Math.max(0, enemy.postGibTime1 ?? 0, enemy.postGibTime2 ?? 0);
+  const settled = !enemy.inSlime && enemy.deadTime >= 1.9 && enemy.deadTime - postGibMax >= duration;
+  const hits = enemy.postGibHits ?? 0;
+  if (
+    settled &&
+    view.deadSettled &&
+    view.settledBurst === burst &&
+    view.settledHits === hits &&
+    view.settledX === enemy.pos.x &&
+    view.settledY === enemy.pos.y &&
+    view.settledYaw === view.yaw
+  )
+    return;
+  view.deadSettled = settled;
+  if (settled) {
+    view.settledBurst = burst;
+    view.settledHits = hits;
+    view.settledX = enemy.pos.x;
+    view.settledY = enemy.pos.y;
+    view.settledYaw = view.yaw;
+  }
+
   const t = Math.min(1, enemy.deadTime / duration);
   const ease = 1 - (1 - t) * (1 - t);
   const goreFactor = Math.sqrt(enemy.def?.gore ?? 1);

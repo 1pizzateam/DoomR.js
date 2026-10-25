@@ -1,7 +1,7 @@
 import { Grid, Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { Physics, Raycast, Scene } from '@1pizzateam/bumpr';
 import { Blood, makeFeet } from './blood.js';
-import { Fog } from './fog.js';
+import { CONE_RANGE, Fog, marsFogNearFar } from './fog.js';
 import { CEILING, CROUCH_EYE, DOOR, EYE, Level, TILE } from './level.js';
 import { LEVELS } from './levels.js';
 import { WEAPON_SLOTS, WEAPONS } from './weapon.js';
@@ -73,6 +73,8 @@ const PLAYER_CROUCH = 95;
 const PLAYER_WALK = 160;
 const PLAYER_RUN = 235;
 const CROUCH_SPEED = 10;
+const JUMP_VELOCITY = 135;
+const JUMP_GRAVITY = 460;
 // the head bob advances 9 rad/s at walking pace and the camera dips twice per 2π of it, so one stride is π of bob
 const PLAYER_STRIDE = (PLAYER_WALK * Trigo.pi) / 9;
 const FOOTFALL = (3 * Trigo.pi) / 4; // bob phase where sin(2 * bob), the camera height, is at its lowest
@@ -147,6 +149,32 @@ export class Game {
     return this.setDifficulty(DIFFICULTY_ORDER[nextIdx]);
   }
 
+  setLevel(index) {
+    const next = Utils.clamp(Math.floor(index), 0, LEVELS.length - 1);
+    const changed = this.levelIndex !== next;
+    this.levelIndex = next;
+    this.customLevelDef = null;
+    if (changed && !this.cam) {
+      this.load(this.levelIndex);
+      this.say(this.level.name, 2);
+    }
+    return this.levelIndex;
+  }
+
+  cycleLevel(delta = 1) {
+    const nextIdx = (this.levelIndex + delta + LEVELS.length) % LEVELS.length;
+    return this.setLevel(nextIdx);
+  }
+
+  /** Active minimap sight-cone range in tiles, matching 3D fog visibility on Mars. */
+  fogConeRange() {
+    if (this.level?.planet !== 'mars')
+      return CONE_RANGE;
+    const nvg = Boolean(this.player?.nightVisionActive && (this.player?.nightVisionBattery ?? 0) > 0);
+    marsFogNearFar(this.level, this.player.pos, this.scratch, nvg);
+    return Math.min(CONE_RANGE, this.scratch.y / TILE);
+  }
+
   reinforcementPos(spawnPos, slot = 0, target = new Vec2()) {
     const tx = Math.floor(spawnPos.x / TILE);
     const ty = Math.floor(spawnPos.y / TILE);
@@ -212,9 +240,12 @@ export class Game {
     this.scene.setPositionCorrection(1);
     this.rand = Rand.create(7 + seedIndex * 101);
     this.limbRand = Rand.create(77 + seedIndex * 101);
+    this.weatherRand = Rand.create(313 + seedIndex * 101);
     this.blood.reset(this.level, this.rand);
     this.events.length = 0;
     this.heartbeat = 0;
+    this.windTimer = 0;
+    this.dust = [];
     this.enemies = [];
     this.pickups = [];
     this.barrels = [];
@@ -232,7 +263,7 @@ export class Game {
     this.addWalls();
     this.addPlayer(carry);
     this.fog = new Fog(this.level);
-    this.fog.update(this.player.pos.x, this.player.pos.y, this.player.angle);
+    this.fog.update(this.player.pos.x, this.player.pos.y, this.player.angle, this.fogConeRange());
     const diff = this.difficultyDef;
     let nonBossIndex = 0;
     for (const spawn of this.level.enemies) {
@@ -258,6 +289,8 @@ export class Game {
     for (const spawn of this.level.pickups)
       this.addPickup(spawn.type, spawn.pos, true);
     this.totalEnemies = this.enemies.length;
+    if (this.level.planet === 'mars')
+      this.seedMarsDust();
     this.totalItems = this.level.pickups.length;
     this.totalSecrets = this.level.secrets.length;
     this.say(this.level.name, 3);
@@ -287,6 +320,9 @@ export class Game {
     p.keys.blue = true;
     p.keys.yellow = true;
     p.keys.red = true;
+    p.hasNightVision = true;
+    p.nightVisionBattery = POWERUP_TYPES.nightvision.duration;
+    p.nightVision = p.nightVisionActive ? p.nightVisionBattery : 0;
     if (p.weapon === 'knife')
       p.weapon = 'shotgun';
     this.say('IDKFA · Full Arsenal & Keycards Granted', 2.5);
@@ -312,6 +348,7 @@ export class Game {
       rockets: this.player.rockets,
       weapons: { ...this.player.weapons },
       weapon: this.player.weapon,
+      hasNightVision: Boolean(this.player.hasNightVision),
     });
     this.state = 'play';
   }
@@ -524,6 +561,8 @@ export class Game {
       bob: 0,
       moving: 0,
       crouch: 0,
+      z: 0,
+      vz: 0,
       eye: EYE,
       hitMarker: 0,
       deadTime: 0,
@@ -532,6 +571,10 @@ export class Game {
       berserk: false,
       berserkTimer: 0,
       radSuit: 0,
+      hasNightVision: Boolean(carry.hasNightVision),
+      nightVisionActive: false,
+      nightVisionBattery: carry.hasNightVision ? POWERUP_TYPES.nightvision.duration : 0,
+      nightVision: 0,
       soulFlash: 0,
       teleFlash: 0,
       ammoFlash: { shells: 0, bullets: 0, rockets: 0 },
@@ -729,7 +772,7 @@ export class Game {
 
   addBarrel(pos) {
     const body = makeBody(pos, BARREL.radius, { type: 'static', category: CAT.BARREL, mask: CAT.PLAYER | CAT.ENEMY | CAT.SHOT });
-    const barrel = { kind: 'barrel', body, pos: body.position, hp: BARREL.hp, fuse: -1, gone: false, phase: this.rand.float(0, 6) };
+    const barrel = { kind: 'barrel', body, pos: body.position, hp: BARREL.hp, fuse: -1, gone: false, deadTime: 0, phase: this.rand.float(0, 6) };
     body.ref = barrel;
     this.scene.addBody(body);
     this.barrels.push(barrel);
@@ -746,7 +789,11 @@ export class Game {
 
   updateBarrels(dt) {
     for (const barrel of this.barrels) {
-      if (barrel.gone || barrel.fuse < 0)
+      if (barrel.gone) {
+        barrel.deadTime = (barrel.deadTime ?? 0) + dt;
+        continue;
+      }
+      if (barrel.fuse < 0)
         continue;
       barrel.fuse -= dt;
       if (barrel.fuse <= 0)
@@ -757,6 +804,7 @@ export class Game {
   /** The blast hurts whatever it reaches in the open, less the further away it is, and sets off nearby barrels. */
   detonate(barrel) {
     barrel.gone = true;
+    barrel.deadTime = 0;
     this.scene.removeBody(barrel.body);
     const { x, y } = barrel.pos;
     const reaches = (target) => this.scene.hasLineOfSight(barrel.pos, target, { mask: CAT.WALL });
@@ -942,6 +990,21 @@ export class Game {
       this.emit('powerup', null, { kind: 'radsuit' });
       return;
     }
+    if (ref.type === 'nightvision') {
+      const { duration } = POWERUP_TYPES.nightvision;
+      if (player.hasNightVision && player.nightVisionActive && (player.nightVisionBattery ?? 0) >= duration - 2)
+        return;
+      player.hasNightVision = true;
+      player.nightVisionBattery = duration;
+      player.nightVisionActive = true;
+      player.nightVision = duration;
+      ref.taken = true;
+      if (ref.initial)
+        this.itemsPicked = Math.min(this.totalItems, this.itemsPicked + 1);
+      this.say('Night Vision Goggles! (Press N to toggle)', 2.5);
+      this.emit('powerup', null, { kind: 'nightvision' });
+      return;
+    }
     if (ref.type === 'health' && player.health < MAX_HEALTH) {
       player.health = Math.min(MAX_HEALTH, player.health + 25);
       this.say('Health +25');
@@ -1021,9 +1084,13 @@ export class Game {
     this.kills++;
     this.scene.removeBody(enemy.body);
     this.emit('die', enemy.pos, { kind: enemy.type });
-    const away = Math.atan2(enemy.pos.y - this.player.pos.y, enemy.pos.x - this.player.pos.x);
-    const dirX = Math.cos(away);
-    const dirY = Math.sin(away);
+    this.toPlayer.subVectors(enemy.pos, this.player.pos);
+    if (this.toPlayer.getMagnitude(true) > 0)
+      this.toPlayer.normalize();
+    else
+      this.toPlayer.setScalar(1, 0);
+    const dirX = this.toPlayer.x;
+    const dirY = this.toPlayer.y;
     enemy.deathDirX = dirX;
     enemy.deathDirY = dirY;
     enemy.deathFountain = 0.08;
@@ -1171,8 +1238,12 @@ export class Game {
       const overkill = enemy.hp <= -Math.max(4, enemy.def.hp * 0.45) || enemy.volley >= Math.max(9, enemy.def.hp * 1.35);
       if (enemy.type !== 'boss' && !close && !overkill)
         continue;
-      const away = Math.atan2(enemy.pos.y - this.player.pos.y, enemy.pos.x - this.player.pos.x);
-      this.gibEnemy(enemy, Math.cos(away), Math.sin(away));
+      this.toPlayer.subVectors(enemy.pos, this.player.pos);
+      if (this.toPlayer.getMagnitude(true) > 0)
+        this.toPlayer.normalize();
+      else
+        this.toPlayer.setScalar(1, 0);
+      this.gibEnemy(enemy, this.toPlayer.x, this.toPlayer.y);
     }
   }
 
@@ -1214,10 +1285,11 @@ export class Game {
 
   hitCorpseAlongRay(end, dirX, dirY, radiusPad, forceGib = false) {
     const { player } = this;
+    this.velocity.setScalar(dirX, dirY);
     for (const corpse of this.enemies) {
       if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
         continue;
-      if ((corpse.pos.x - player.pos.x) * dirX + (corpse.pos.y - player.pos.y) * dirY <= 0)
+      if (this.toPlayer.subVectors(corpse.pos, player.pos).dotProduct(this.velocity) <= 0)
         continue;
       if (Raycast.sweepCircleCircle(player.pos, end, radiusPad, corpse.pos, corpse.def.radius)) {
         this.mutilateCorpse(corpse, dirX, dirY, forceGib);
@@ -1504,10 +1576,10 @@ export class Game {
   actorNear(point, distance, enemyDistance = distance) {
     if (this.scene.queryCircleFirst(point, Math.max(0, distance - PLAYER_RADIUS), { mask: CAT.PLAYER }))
       return true;
-    for (const body of this.scene.queryCircle(point, enemyDistance, { mask: CAT.ENEMY }))
-      if (body.ref?.state !== 'dead' && body.position.getDistance(point) < enemyDistance)
-        return true;
-    return false;
+    return Boolean(this.scene.queryCircleFirst(point, enemyDistance, {
+      mask: CAT.ENEMY,
+      filter: (body) => body.ref?.state !== 'dead' && body.position.getDistance(point) < enemyDistance,
+    }));
   }
 
   updateDoors(dt) {
@@ -1953,8 +2025,25 @@ export class Game {
     player.hurt = Math.max(0, player.hurt - dt);
     player.hitMarker = Math.max(0, player.hitMarker - dt);
 
-    player.crouch = Utils.clamp(player.crouch + (input.crouch ? dt * CROUCH_SPEED : -dt * CROUCH_SPEED), 0, 1);
-    player.eye = Utils.lerp(EYE, CROUCH_EYE, player.crouch);
+    const wasAirborne = (player.z ?? 0) > 0;
+    if (input.jump && !wasAirborne) {
+      player.vz = JUMP_VELOCITY;
+      player.crouch = 0;
+    }
+    if ((player.z ?? 0) > 0 || (player.vz ?? 0) > 0) {
+      player.z = (player.z ?? 0) + (player.vz ?? 0) * dt;
+      player.vz = (player.vz ?? 0) - JUMP_GRAVITY * dt;
+      if (player.z <= 0) {
+        player.z = 0;
+        player.vz = 0;
+      }
+    }
+    const airborne = (player.z ?? 0) > 0;
+
+    player.crouch = airborne
+      ? Math.max(0, player.crouch - dt * CROUCH_SPEED)
+      : Utils.clamp(player.crouch + (input.crouch ? dt * CROUCH_SPEED : -dt * CROUCH_SPEED), 0, 1);
+    player.eye = Utils.lerp(EYE, CROUCH_EYE, player.crouch) + (player.z ?? 0);
 
     const topSpeed = input.run ? PLAYER_RUN : PLAYER_WALK;
     const speed = Utils.lerp(topSpeed, PLAYER_CROUCH, player.crouch);
@@ -1968,16 +2057,18 @@ export class Game {
       move.normalize();
     move.scale(speed);
     player.body.setVelocity(move);
-    player.moving = Utils.clamp(move.getMagnitude() / PLAYER_WALK, 0, 1.5);
+    player.moving = airborne ? 0 : Utils.clamp(move.getMagnitude() / PLAYER_WALK, 0, 1.5);
     const before = player.bob;
     player.bob += dt * player.moving * 9;
     // the head is lowest once per stride; that is when the foot lands
     const landed = (bob) => Math.floor((bob - FOOTFALL) / Trigo.pi);
-    if (this.state === 'play' && landed(player.bob) > landed(before))
+    if (this.state === 'play' && ((wasAirborne && !airborne) || (!airborne && landed(player.bob) > landed(before))))
       this.emit('step', null, { wet: player.feet.blood > 0.08, who: 'player' });
 
     if (input.weapon)
       this.selectWeapon(input.weapon);
+    if (input.nightVision)
+      this.toggleNightVision();
     if (input.use)
       this.use();
     player.triggerHeld = Boolean(input.fire);
@@ -2002,7 +2093,7 @@ export class Game {
   /** The player leaves bloody footprints after walking through blood. Monsters only take steps, which are heard. */
   trackFootprints() {
     const { player } = this;
-    if (this.state === 'play') {
+    if (this.state === 'play' && (player.z ?? 0) <= 0) {
       for (const enemy of this.enemies)
         if (enemy.state === 'dead' && enemy.body.overlapsCircle(player.pos, PLAYER_RADIUS))
           player.feet.blood = 1;
@@ -2041,18 +2132,51 @@ export class Game {
     });
   }
 
+  toggleNightVision() {
+    const player = this.player;
+    if (!player?.hasNightVision)
+      return false;
+    const { minToggleBattery } = POWERUP_TYPES.nightvision;
+    if (player.nightVisionActive) {
+      player.nightVisionActive = false;
+      player.nightVision = 0;
+      this.say('Night Vision OFF · Recharging', 1.2);
+      return true;
+    }
+    if ((player.nightVisionBattery ?? 0) < minToggleBattery) {
+      this.say('Night Vision battery low', 1.2);
+      return false;
+    }
+    player.nightVisionActive = true;
+    player.nightVision = player.nightVisionBattery;
+    this.say('Night Vision ON', 1.2);
+    return true;
+  }
+
   updateHazards(dt) {
     const { player } = this;
     player.radFlash = Math.max(0, (player.radFlash ?? 0) - dt);
     player.soulFlash = Math.max(0, (player.soulFlash ?? 0) - dt);
     player.berserkTimer = Math.max(0, (player.berserkTimer ?? 0) - dt);
     player.radSuit = Math.max(0, (player.radSuit ?? 0) - dt);
+    if (player.hasNightVision) {
+      const { duration, rechargeRate } = POWERUP_TYPES.nightvision;
+      if (player.nightVisionActive) {
+        player.nightVisionBattery = Math.max(0, (player.nightVisionBattery ?? 0) - dt);
+        if (player.nightVisionBattery <= 0) {
+          player.nightVisionActive = false;
+          this.say('Night Vision battery depleted', 1.5);
+        }
+      } else
+        player.nightVisionBattery = Math.min(duration, (player.nightVisionBattery ?? 0) + dt * rechargeRate);
+      player.nightVision = player.nightVisionActive ? player.nightVisionBattery : 0;
+    }
     if (player.ammoFlash) {
       player.ammoFlash.shells = Math.max(0, (player.ammoFlash.shells ?? 0) - dt);
       player.ammoFlash.bullets = Math.max(0, (player.ammoFlash.bullets ?? 0) - dt);
       player.ammoFlash.rockets = Math.max(0, (player.ammoFlash.rockets ?? 0) - dt);
     }
-    if (this.state === 'play' && this.level.slimeAt(player.pos.x, player.pos.y)) {
+    if (this.state === 'play' && (player.z ?? 0) <= 0 && this.level.slimeAt(player.pos.x, player.pos.y)) {
       if ((player.radSuit ?? 0) > 0)
         player.slimeTimer = 0;
       else {
@@ -2170,11 +2294,95 @@ export class Game {
     }
   }
 
+  seedMarsDust() {
+    const { level, weatherRand } = this;
+    if (level.planet !== 'mars' || !level.outdoor)
+      return;
+    const center = this.player ? this.player.pos : level.playerStart;
+    for (let i = 0; i < 240; i++) {
+      const p = this.spawnDustParticle(center, weatherRand);
+      if (p)
+        this.dust.push(p);
+    }
+  }
+
+  spawnDustParticle(center, rng = this.weatherRand) {
+    const { level } = this;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const x = center.x + rng.float(-520, 520);
+      const y = center.y + rng.float(-520, 520);
+      this.scratch.setScalar(x, y);
+      if (!level.isOutdoor(this.scratch))
+        continue;
+      const scale = rng.float(0.65, 1.75);
+      return {
+        x,
+        y,
+        z: rng.float(2, 60),
+        vx: level.wind.x * rng.float(0.75, 1.35) + rng.float(-35, 35),
+        vy: level.wind.y * rng.float(0.75, 1.35) + rng.float(-35, 35),
+        vz: rng.float(-18, 22),
+        age: rng.float(0, 1.2),
+        life: rng.float(1.4, 2.8),
+        gib: false,
+        scale,
+        visualScale: scale,
+      };
+    }
+    return null;
+  }
+
+  updateMarsWeather(dt) {
+    const { level, player, weatherRand } = this;
+    if (level.planet !== 'mars' || !level.outdoor || !player)
+      return;
+    const center = player.pos;
+    let keep = 0;
+    for (let i = 0; i < this.dust.length; i++) {
+      const d = this.dust[i];
+      d.age += dt;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.z += (d.vz + Math.sin(this.time * 5 + i) * 14) * dt;
+      if (d.z < 2) {
+        d.z = 2;
+        d.vz = Math.abs(d.vz) * 0.6 + 8;
+      } else if (d.z > 62) {
+        d.z = 62;
+        d.vz = -Math.abs(d.vz) * 0.6;
+      }
+      this.scratch.setScalar(d.x, d.y);
+      if (d.age < d.life && this.scratch.getDistance(center, true) < 580 * 580 && level.isOutdoor(this.scratch))
+        this.dust[keep++] = d;
+    }
+    this.dust.length = keep;
+    while (this.dust.length < 240) {
+      const spawned = this.spawnDustParticle(center, weatherRand);
+      if (!spawned)
+        break;
+      this.dust.push(spawned);
+    }
+    let airlockOpen = false;
+    for (const door of level.doors.values())
+      if (door.open > 0.05 && level.doorTouchesIndoor(door.idx)) {
+        airlockOpen = true;
+        break;
+      }
+    if (this.state === 'play' && (level.isOutdoor(player.pos) || airlockOpen)) {
+      this.windTimer -= dt;
+      if (this.windTimer <= 0) {
+        this.emit('wind');
+        this.windTimer = 0.85;
+      }
+    }
+  }
+
   update(dt, input) {
     this.time += dt;
     this.shake = Math.max(0, this.shake - dt * 1.6);
     this.message.age += dt;
     this.blood.update(dt);
+    this.updateMarsWeather(dt);
     for (const effect of this.effects)
       effect.age += dt;
     this.effects = this.effects.filter((effect) => effect.age < effect.life);
@@ -2211,7 +2419,7 @@ export class Game {
     this.cleanup();
     this.trackFootprints();
     if (this.state === 'play')
-      this.fog.update(this.player.pos.x, this.player.pos.y, this.player.angle);
+      this.fog.update(this.player.pos.x, this.player.pos.y, this.player.angle, this.fogConeRange());
 
     if (this.state === 'play') {
       const secretIdx = this.level.secretAt(this.player.pos.x, this.player.pos.y);

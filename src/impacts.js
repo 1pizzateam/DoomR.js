@@ -408,7 +408,7 @@ export function impactCellUv(cell) {
  * hangs in the air past a corner or above a low wall. Null when nothing of it is left on the face.
  * (nx, ny) is the face normal in the game plane, z the height of the hit.
  */
-export function holeQuad({ x, y, z, nx, ny, top, seed, kind = 'hole', lo = -Infinity, hi = Infinity }) {
+export function holeQuad({ x, y, z, nx, ny, top, seed, kind = 'hole', lo = -Infinity, hi = Infinity, slope = 0 }) {
   const rnd = mulberry32(seed);
   const cell = kind === 'slash'
     ? IMPACT_CELLS.slash + Math.floor(rnd() * SLASH_VARIANTS)
@@ -422,7 +422,10 @@ export function holeQuad({ x, y, z, nx, ny, top, seed, kind = 'hole', lo = -Infi
     return null;
   const tx = -ny;
   const ty = nx;
-  const at = (u, v) => [x + tx * u + nx * 0.25, z + v, y + ty * u + ny * 0.25];
+  const at = (u, v) => {
+    const n = 0.25 - slope * v;
+    return [x + tx * u + nx * n, z + v, y + ty * u + ny * n];
+  };
   const [a0, b0, a1, b1] = impactCellUv(cell);
   const share = (v, from, to) => (v - from) / (to - from);
   return {

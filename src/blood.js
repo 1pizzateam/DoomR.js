@@ -1,5 +1,6 @@
 import { Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { dripTime, GIB_VARIANTS } from './bloodsprites.js';
+import { MARS_BOULDER_BASE_INSET, MARS_BOULDER_SLOPE } from './floor.js';
 import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
 
 export const BLOOD = {
@@ -48,6 +49,7 @@ export class Blood {
     this.ceiling = [];
     // true while some splat on a wall still has a drip running down it, so the renderer redraws them every frame
     this.dripping = false;
+    this.hasDissolving = false;
     this.holes = [];
     this.prints = [];
     this.splats = [];
@@ -168,6 +170,8 @@ export class Blood {
     const gx = x + dirX * 10;
     const gy = y + dirY * 10;
     const dissolving = Boolean(this.level?.slimeAt?.(gx, gy));
+    if (dissolving)
+      this.hasDissolving = true;
     const gibSize = 2.9 * sizeScale;
     const baseHeight = 0.36 + (this.gibs.length % 5) * 0.01;
     this.gibs.push({
@@ -186,6 +190,31 @@ export class Blood {
     if (this.gibs.length > BLOOD.gibs)
       this.gibs.shift();
     this.version++;
+  }
+
+  isBoulderTile(idx) {
+    const { level } = this;
+    return Boolean(level && level.planet === 'mars' && level.kind[idx] === PILLAR && !level.indoor?.has(idx));
+  }
+
+  boulderPlacement(wx, wy, x, y, z, nx, ny, top, halfExtent) {
+    const cx = (wx + 0.5) * TILE;
+    const cy = (wy + 0.5) * TILE;
+    const tanX = -ny;
+    const tanY = nx;
+    const rawAlong = (x - cx) * tanX + (y - cy) * tanY;
+    const halfW = TILE * 0.5 - (MARS_BOULDER_BASE_INSET + MARS_BOULDER_SLOPE * z);
+    const zTop = Math.min(top - 0.6, z + halfExtent);
+    const topHalfW = TILE * 0.5 - (MARS_BOULDER_BASE_INSET + MARS_BOULDER_SLOPE * zTop);
+    const margin = Math.min(2, topHalfW * 0.25);
+    const along = Utils.clamp(rawAlong * (halfW / (TILE * 0.5)), -topHalfW + margin, topHalfW - margin);
+    return {
+      x: cx + nx * halfW + tanX * along,
+      y: cy + ny * halfW + tanY * along,
+      lo: -topHalfW - along,
+      hi: topHalfW - along,
+      slope: MARS_BOULDER_SLOPE,
+    };
   }
 
   /**
@@ -212,7 +241,13 @@ export class Blood {
     const height = z < top - 0.5 ? z : this.float(top * 0.3, top - 1.5);
     let px = x;
     let py = y;
-    if (isDiag) {
+    let span;
+    if (!isDiag && this.isBoulderTile(idx)) {
+      const boulder = this.boulderPlacement(tx, ty, x, y, height, nx, ny, top, 8);
+      px = boulder.x;
+      py = boulder.y;
+      span = { lo: boulder.lo, hi: boulder.hi, slope: boulder.slope };
+    } else if (isDiag) {
       const cx = (tx + 0.5) * TILE;
       const cy = (ty + 0.5) * TILE;
       const tanX = -ny;
@@ -220,10 +255,12 @@ export class Blood {
       const along = (x - cx) * tanX + (y - cy) * tanY;
       px = cx + tanX * along;
       py = cy + tanY * along;
+      span = this.faceSpan(px, py, nx, ny, door);
     } else {
       // the face lies on a tile boundary: snap to it so every hole shares the wall's plane
       px = nx ? Math.round(x / TILE) * TILE : x;
       py = ny ? Math.round(y / TILE) * TILE : y;
+      span = this.faceSpan(px, py, nx, ny, door);
     }
     // a door slides: its holes are kept in the door's own height, so they travel with it
     const hole = {
@@ -233,7 +270,7 @@ export class Blood {
       nx,
       ny,
       top: door ? level.baseHeight[idx] : top,
-      ...this.faceSpan(px, py, nx, ny, door),
+      ...span,
       door,
       kind,
       seed: this.rand.integer(1, 2147483647),
@@ -315,6 +352,8 @@ export class Blood {
 
   floorSplat(x, y, size) {
     const dissolving = Boolean(this.level?.slimeAt?.(x, y));
+    if (dissolving)
+      this.hasDissolving = true;
     const seed = this.rand.integer(1, 2147483647);
     this.floor.push(
       dissolving
@@ -329,6 +368,8 @@ export class Blood {
   /** Deposit a chunk of meat, bone, skull, or organ on the floor; on acid it dissolves away. */
   floorGib(x, y, size = this.float(2.0, 3.4), variant = this.rand.integer(0, GIB_VARIANTS - 1)) {
     const dissolving = Boolean(this.level?.slimeAt?.(x, y));
+    if (dissolving)
+      this.hasDissolving = true;
     const baseHeight = 0.36 + (this.gibs.length % 5) * 0.01;
     this.gibs.push({
       x,
@@ -350,9 +391,22 @@ export class Blood {
 
   /** Splat on a wall face. (nx, ny) is the face's normal in the game plane, top the wall's height. */
   wallSplat(x, y, z, nx, ny, size, top, door = null) {
-    const span = this.faceSpan(x, y, nx, ny, door);
+    const isDiag = Math.abs(nx) > 0.1 && Math.abs(ny) > 0.1;
+    const wx = Math.floor((x - nx * 0.5) / TILE);
+    const wy = Math.floor((y - ny * 0.5) / TILE);
+    const idx = this.level?.inBounds(wx, wy) ? wy * this.level.width + wx : -1;
+    let px = x;
+    let py = y;
+    let span;
+    if (!isDiag && idx >= 0 && this.isBoulderTile(idx)) {
+      const boulder = this.boulderPlacement(wx, wy, x, y, z, nx, ny, top, size * 1.6);
+      px = boulder.x;
+      py = boulder.y;
+      span = { lo: boulder.lo, hi: boulder.hi, slope: boulder.slope };
+    } else
+      span = this.faceSpan(x, y, nx, ny, door);
     const seed = this.rand.integer(1, 2147483647);
-    this.walls.push({ x, y, z, nx, ny, size, top, door, ...span, seed, age: 0, dripTime: dripTime(seed, size) });
+    this.walls.push({ x: px, y: py, z, nx, ny, size, top, door, ...span, seed, age: 0, dripTime: dripTime(seed, size) });
     // blood on a door rides with it, like a hole, and each door keeps only so many
     if (door) {
       const own = this.walls.filter((w) => w.door === door);
@@ -453,6 +507,8 @@ export class Blood {
     const px = x - hy * offset;
     const py = y + hx * offset;
     const dissolving = Boolean(this.level?.slimeAt?.(px, py));
+    if (dissolving)
+      this.hasDissolving = true;
     this.prints.push({
       x: px,
       y: py,
@@ -581,6 +637,10 @@ export class Blood {
       this.rand = p.sever ? this.severRand : mainRand;
       p.age += dt;
       p.vz -= g * dt;
+      if (this.level?.planet === 'mars' && this.level.outdoor?.has(Math.floor(p.y / TILE) * this.level.width + Math.floor(p.x / TILE))) {
+        p.vx += this.level.wind.x * dt * 1.6;
+        p.vy += this.level.wind.y * dt * 1.6;
+      }
       // flying gibs bleed a trail of arterial droplets in mid-air
       if (p.gib && p.age < 1.2) {
         p.bleedTimer = (p.bleedTimer ?? 0.05) - dt;
@@ -668,65 +728,74 @@ export class Blood {
         this.particles.push(drop);
 
     // blood, gibs, and footprints that landed in liquid acid dissolve and disperse over time
-    let dissolved = false;
-    let keepFloor = 0;
-    for (const splat of this.floor) {
-      if (!splat.dissolving) {
-        this.floor[keepFloor++] = splat;
-        continue;
+    if (this.hasDissolving) {
+      let dissolved = false;
+      let stillDissolving = false;
+      let keepFloor = 0;
+      for (const splat of this.floor) {
+        if (!splat.dissolving) {
+          this.floor[keepFloor++] = splat;
+          continue;
+        }
+        splat.age += dt;
+        dissolved = true;
+        if (splat.age >= splat.life)
+          continue;
+        const t = splat.age / splat.life;
+        splat.size = splat.baseSize * (1 - t * t);
+        splat.height = 0.28 - t * 0.24;
+        splat.x += Math.sin(splat.seed + splat.age * 1.8) * dt * 1.8;
+        splat.y += Math.cos(splat.seed * 0.7 + splat.age * 1.5) * dt * 1.8;
+        if (splat.size > 0.2) {
+          this.floor[keepFloor++] = splat;
+          stillDissolving = true;
+        }
       }
-      splat.age += dt;
-      dissolved = true;
-      if (splat.age >= splat.life)
-        continue;
-      const t = splat.age / splat.life;
-      splat.size = splat.baseSize * (1 - t * t);
-      splat.height = 0.28 - t * 0.24;
-      splat.x += Math.sin(splat.seed + splat.age * 1.8) * dt * 1.8;
-      splat.y += Math.cos(splat.seed * 0.7 + splat.age * 1.5) * dt * 1.8;
-      if (splat.size > 0.2)
-        this.floor[keepFloor++] = splat;
-    }
-    this.floor.length = keepFloor;
+      this.floor.length = keepFloor;
 
-    let keepGibs = 0;
-    for (const gib of this.gibs) {
-      if (!gib.dissolving) {
-        this.gibs[keepGibs++] = gib;
-        continue;
+      let keepGibs = 0;
+      for (const gib of this.gibs) {
+        if (!gib.dissolving) {
+          this.gibs[keepGibs++] = gib;
+          continue;
+        }
+        gib.age += dt;
+        dissolved = true;
+        if (gib.age >= gib.life)
+          continue;
+        const t = gib.age / gib.life;
+        gib.size = gib.baseSize * (1 - t * t);
+        gib.height = gib.baseHeight - t * 0.32;
+        gib.angle += dt * 0.35;
+        if (gib.size > 0.2) {
+          this.gibs[keepGibs++] = gib;
+          stillDissolving = true;
+        }
       }
-      gib.age += dt;
-      dissolved = true;
-      if (gib.age >= gib.life)
-        continue;
-      const t = gib.age / gib.life;
-      gib.size = gib.baseSize * (1 - t * t);
-      gib.height = gib.baseHeight - t * 0.32;
-      gib.angle += dt * 0.35;
-      if (gib.size > 0.2)
-        this.gibs[keepGibs++] = gib;
-    }
-    this.gibs.length = keepGibs;
+      this.gibs.length = keepGibs;
 
-    let keepPrints = 0;
-    for (const print of this.prints) {
-      if (!print.dissolving) {
+      let keepPrints = 0;
+      for (const print of this.prints) {
+        if (!print.dissolving) {
+          this.prints[keepPrints++] = print;
+          continue;
+        }
+        print.age += dt;
+        dissolved = true;
+        if (print.age >= print.life)
+          continue;
+        const t = print.age / print.life;
+        print.scale = print.baseScale * (1 - t * 0.75);
+        print.strength = print.baseStrength * (1 - t);
         this.prints[keepPrints++] = print;
-        continue;
+        stillDissolving = true;
       }
-      print.age += dt;
-      dissolved = true;
-      if (print.age >= print.life)
-        continue;
-      const t = print.age / print.life;
-      print.scale = print.baseScale * (1 - t * 0.75);
-      print.strength = print.baseStrength * (1 - t);
-      this.prints[keepPrints++] = print;
-    }
-    this.prints.length = keepPrints;
+      this.prints.length = keepPrints;
+      this.hasDissolving = stillDissolving;
 
-    if (dissolved)
-      this.version++;
+      if (dissolved)
+        this.version++;
+    }
 
     // drips run down the walls for a few seconds after a splat lands, and blood on the ceiling lets go of drops
     this.dripping = false;

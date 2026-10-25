@@ -23,6 +23,7 @@ export const POWERUP_TYPES = {
   soulsphere: { bonus: 100, maxHealth: 200 },
   berserk: { healTo: 100, multiplier: 4, tintDuration: 20 },
   radsuit: { duration: 45 },
+  nightvision: { duration: 45, rechargeRate: 0.45, minToggleBattery: 2 },
 };
 
 const SOUL_PALETTE = [
@@ -367,6 +368,107 @@ export function radsuitAtlas() {
   return { name: 'radsuit', data, width, height, cell: POWERUP_CELL, frames: POWERUP_FRAMES };
 }
 
+const NVG_HOUSING = [
+  [12, 16, 18],
+  [22, 28, 32],
+  [36, 46, 52],
+  [58, 72, 80],
+  [92, 112, 122],
+];
+
+const NVG_PHOSPHOR = [
+  [8, 48, 22],
+  [16, 98, 44],
+  [28, 164, 72],
+  [56, 228, 112],
+  [136, 255, 176],
+  [224, 255, 236],
+];
+
+function drawNightvisionFront(put) {
+  const S = POWERUP_CELL;
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const border = x <= 1 || x >= S - 2 || y <= 1 || y >= S - 2;
+      if (border) {
+        put(x, y, NVG_HOUSING[0]);
+        continue;
+      }
+      // Twin binocular objective lenses centered at (9.5, 16.5) and (22.5, 16.5)
+      const dl = scratchPt.setScalar(x - 9.5, y - 16.5).getMagnitude();
+      const dr = scratchPt.setScalar(x - 22.5, y - 16.5).getMagnitude();
+      const d = Math.min(dl, dr);
+      const isLeft = dl < dr;
+      const lx = isLeft ? x - 9.5 : x - 22.5;
+      const ly = y - 16.5;
+      if (d < 5.6) {
+        const spec = lx < -1.2 && ly < -1.2 && d < 3.6;
+        const idx = spec
+          ? 5
+          : Math.min(4, Math.max(0, Math.round((1 - d / 5.6) * 4)));
+        put(x, y, NVG_PHOSPHOR[idx]);
+        continue;
+      }
+      if (d < 7.2) {
+        put(x, y, ly < 0 ? NVG_HOUSING[4] : NVG_HOUSING[1]);
+        continue;
+      }
+      // Center bridge & top IR emitter LED
+      if (x >= 14 && x <= 17 && y >= 7 && y <= 10) {
+        put(x, y, NVG_PHOSPHOR[4]);
+        continue;
+      }
+      const bevel = y < 6 ? 3 : y > S - 6 ? 1 : 2;
+      put(x, y, NVG_HOUSING[bevel]);
+    }
+}
+
+function drawNightvisionSide(put) {
+  const S = POWERUP_CELL;
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const rib = x % 4 === 0 && y >= 6 && y <= S - 7;
+      const strap = y >= 13 && y <= 18;
+      const shade = rib ? 3 : strap ? 1 : 2;
+      put(x, y, NVG_HOUSING[shade]);
+    }
+}
+
+function drawNightvisionTop(put) {
+  const S = POWERUP_CELL;
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const led = x >= 13 && x <= 18 && y >= 13 && y <= 18;
+      if (led) {
+        put(x, y, NVG_PHOSPHOR[3]);
+        continue;
+      }
+      const seam = x === 15 || x === 16 || y === 6 || y === S - 7;
+      put(x, y, NVG_HOUSING[seam ? 1 : 3]);
+    }
+}
+
+function drawNightvisionTrim(put) {
+  const S = POWERUP_CELL;
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const stripe = y >= 12 && y <= 19 && (x + y) % 4 === 0;
+      put(x, y, stripe ? NVG_PHOSPHOR[2] : NVG_HOUSING[((x + y) & 1) === 0 ? 1 : 0]);
+    }
+}
+
+/** Returns the 128x32 power-of-two RGBA pixel-art atlas for the Night Vision Goggles pickup. */
+export function nightvisionAtlas() {
+  const width = POWERUP_CELL * POWERUP_FRAMES;
+  const height = POWERUP_CELL;
+  const data = new Uint8Array(width * height * 4);
+  drawNightvisionFront(cellPutter(data, width, POWERUP_CELLS.front));
+  drawNightvisionSide(cellPutter(data, width, POWERUP_CELLS.side));
+  drawNightvisionTop(cellPutter(data, width, POWERUP_CELLS.top));
+  drawNightvisionTrim(cellPutter(data, width, POWERUP_CELLS.trim));
+  return { name: 'nightvision', data, width, height, cell: POWERUP_CELL, frames: POWERUP_FRAMES };
+}
+
 // ---- 3D Geometry Builders --------------------------------------------------
 
 function pushBox(vertices, uvs, x0, y0, z0, x1, y1, z1, faces) {
@@ -539,6 +641,53 @@ export function radsuitMesh() {
     top: POWERUP_CELLS.top,
     bottom: POWERUP_CELLS.trim,
   });
+
+  return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
+}
+
+/**
+ * Builds the 3D Night Vision Goggles geometry: tactical brow housing, twin protruding
+ * phosphor objective barrels, top IR illuminator module, and wrap-around head strap.
+ */
+export function nightvisionMesh() {
+  const vertices = [];
+  const uvs = [];
+  const bodyFaces = {
+    front: POWERUP_CELLS.front,
+    back: POWERUP_CELLS.side,
+    left: POWERUP_CELLS.side,
+    right: POWERUP_CELLS.side,
+    top: POWERUP_CELLS.top,
+    bottom: POWERUP_CELLS.trim,
+  };
+  const lensFaces = {
+    front: POWERUP_CELLS.front,
+    back: POWERUP_CELLS.side,
+    left: POWERUP_CELLS.side,
+    right: POWERUP_CELLS.side,
+    top: POWERUP_CELLS.side,
+    bottom: POWERUP_CELLS.side,
+  };
+  const strapFaces = {
+    front: POWERUP_CELLS.trim,
+    back: POWERUP_CELLS.trim,
+    left: POWERUP_CELLS.trim,
+    right: POWERUP_CELLS.trim,
+    top: POWERUP_CELLS.trim,
+    bottom: POWERUP_CELLS.trim,
+  };
+
+  // 1. Tactical visor brow housing
+  pushBox(vertices, uvs, -7.8, 6.5, -1.2, 7.8, 13.5, 3.6, bodyFaces);
+  // 2. Twin forward-protruding binocular image-intensifier tubes
+  pushBox(vertices, uvs, -6.8, 7.2, 3.6, -1.4, 12.6, 8.6, lensFaces);
+  pushBox(vertices, uvs, 1.4, 7.2, 3.6, 6.8, 12.6, 8.6, lensFaces);
+  // 3. Top IR illuminator bridge module
+  pushBox(vertices, uvs, -2.4, 13.5, 0.2, 2.4, 15.6, 5.2, bodyFaces);
+  // 4. Wrap-around tactical head strap & rear counterweight battery pack
+  pushBox(vertices, uvs, -8.2, 8.2, -7.2, -6.6, 11.8, -1.2, strapFaces);
+  pushBox(vertices, uvs, 6.6, 8.2, -7.2, 8.2, 11.8, -1.2, strapFaces);
+  pushBox(vertices, uvs, -6.6, 7.6, -8.4, 6.6, 12.4, -6.2, strapFaces);
 
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }

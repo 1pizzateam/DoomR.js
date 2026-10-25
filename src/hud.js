@@ -41,7 +41,12 @@ export class Hud {
     this.automapZoom = 1;
     this.automapFollow = true;
     this.automapGrid = true;
+    this.fps = 0;
     this.diagnostics = '';
+    this.lastHudTextKey = '';
+    this.skipCanvasText = false;
+    this.lastFont = '';
+    this.lastAlign = '';
   }
 
   toggleAutomap(game) {
@@ -67,18 +72,49 @@ export class Hud {
     this.height = cssHeight;
     this.canvas.width = Math.round(cssWidth * ratio);
     this.canvas.height = Math.round(cssHeight * ratio);
+    this.lastHudTextKey = '';
+    this.lastFont = '';
+    this.lastAlign = '';
+  }
+
+  computeHudTextKey(game, showAutomap) {
+    if (game.state !== 'playing' || showAutomap)
+      return '';
+    if (game.message && game.message.age < game.message.life)
+      return '';
+    const p = game.player;
+    if ((p.ammoFlash?.bullets ?? 0) > 0 || (p.ammoFlash?.shells ?? 0) > 0 || (p.ammoFlash?.rockets ?? 0) > 0)
+      return '';
+    const radKey = (p.radSuit ?? 0) > 0 ? `${Math.ceil(p.radSuit)}:${p.radSuit > 5 || Math.floor(p.radSuit * 4) % 2 === 0 ? 1 : 0}` : '0';
+    const bat = p.nightVisionBattery ?? 0;
+    const nvgActive = Boolean(p.nightVisionActive && bat > 0);
+    const nvgKey = p.hasNightVision
+      ? `${Math.round((bat / 45) * 100)}:${nvgActive ? 1 : 0}:${!nvgActive || bat > 5 || Math.floor(bat * 4) % 2 === 0 ? 1 : 0}`
+      : '0';
+    const w = p.weapons;
+    const wMask = (w?.chainsaw || w?.knife ? 1 : 0) | (w?.shotgun ? 2 : 0) | (w?.chaingun ? 4 : 0) | (w?.rocket ? 8 : 0);
+    return `${this.width}|${this.height}|${this.ratio}|${Math.round(this.fps)}|${this.diagnostics}|${Math.ceil(p.health)}|${Math.max(0, Math.ceil(p.armor ?? 0))}|${p.armorType ?? ''}|${p.weapon ?? 'shotgun'}|${wMask}|${p.berserk ? 1 : 0}|${radKey}|${nvgKey}|${p.bullets ?? 0}|${p.shells ?? 0}|${p.rockets ?? 0}|${game.kills}|${game.totalEnemies}`;
   }
 
   render(game) {
     const { ctx, width, height } = this;
-    // reapplied every frame: the browser can reset canvas state behind our back
-    ctx.setTransform(this.ratio, 0, 0, this.ratio, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    this.overlay.clear();
     const showAutomap = this.automap && game.state !== 'title' && game.state !== 'cleared';
     game.automap = showAutomap;
+    const isBrowserCanvas = typeof HTMLCanvasElement !== 'undefined' && this.canvas instanceof HTMLCanvasElement;
+    const hudTextKey = isBrowserCanvas ? this.computeHudTextKey(game, showAutomap) : '';
+    const skipText = Boolean(hudTextKey && hudTextKey === this.lastHudTextKey);
+    this.skipCanvasText = skipText;
+    if (!skipText) {
+      this.lastHudTextKey = hudTextKey;
+      // reapplied when redrawing text: the browser can reset canvas state behind our back
+      ctx.setTransform(this.ratio, 0, 0, this.ratio, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      this.lastFont = '';
+      this.lastAlign = '';
+    }
+    this.overlay.clear();
     if (!showAutomap)
       this.drawWeapon(game);
     this.drawBlood(game);
@@ -90,6 +126,9 @@ export class Hud {
     this.drawOverlay(game);
     if (this.diagnostics)
       this.text(this.diagnostics, 28, 26, GREEN, { size: 11, alpha: 0.8, glow: 0 });
+    else if (!showAutomap)
+      this.text(`${Math.round(this.fps)} FPS`, 28, 26, GREEN, { size: 12, alpha: 0.8 });
+    this.skipCanvasText = false;
   }
 
   /** A polyline in the glowing layer: it goes through the same neon pass as the 3D world. */
@@ -101,12 +140,11 @@ export class Hud {
   canvasLine(points, color, alpha = 1, width = 1.5, glow = 8) {
     const { ctx } = this;
     ctx.beginPath();
-    for (let i = 0; i < points.length; i += 2) {
+    for (let i = 0; i < points.length; i += 2)
       if (i === 0)
         ctx.moveTo(points[i], points[i + 1]);
       else
         ctx.lineTo(points[i], points[i + 1]);
-    }
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = COLORS[color];
     ctx.lineWidth = width;
@@ -118,15 +156,28 @@ export class Hud {
   }
 
   text(text, x, y, color, { size = 14, align = 'left', alpha = 1, weight = 600, glow = 6 } = {}) {
+    if (this.skipCanvasText)
+      return;
     const { ctx } = this;
-    ctx.font = `${weight} ${size}px ${FONT}`;
-    ctx.textAlign = align;
+    const font = `${weight} ${size}px ${FONT}`;
+    if (this.lastFont !== font) {
+      ctx.font = font;
+      this.lastFont = font;
+    }
+    if (this.lastAlign !== align) {
+      ctx.textAlign = align;
+      this.lastAlign = align;
+    }
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = COLORS[color];
-    ctx.shadowColor = COLORS[color];
-    ctx.shadowBlur = glow;
+    const col = COLORS[color];
+    ctx.fillStyle = col;
+    if (glow > 0) {
+      ctx.shadowColor = col;
+      ctx.shadowBlur = glow;
+    }
     ctx.fillText(text, x, y);
-    ctx.shadowBlur = 0;
+    if (glow > 0)
+      ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
 
@@ -262,6 +313,14 @@ export class Hud {
       }
     }
 
+    if (player.nightVisionActive && (player.nightVisionBattery ?? 0) > 0) {
+      const blink = player.nightVisionBattery > 5 || Math.floor(player.nightVisionBattery * 4) % 2 === 0;
+      if (blink) {
+        const a = Math.min(0.72, 0.32 + (player.nightVisionBattery / 45) * 0.35);
+        this.line([12, 12, width - 12, 12, width - 12, height - 12, 12, height - 12, 12, 12], GREEN, a);
+      }
+    }
+
     if ((player.soulFlash ?? 0) > 0) {
       const a = Math.min(1, player.soulFlash / 0.5);
       for (let i = 0; i < 3; i++) {
@@ -297,12 +356,12 @@ export class Hud {
     }
   }
 
-  /** Active supercharge powerup badges (BERSERK 4x melee & RAD SUIT countdown). */
+  /** Active supercharge powerup badges (BERSERK 4x melee, RAD SUIT countdown & NVG battery). */
   drawPowerups(x, base, player) {
     let offset = 0;
     if (player.berserk) {
-      this.text('BERSERK', x, base - 16, RED, { size: 11, weight: 700, alpha: 0.95 });
-      offset = 14;
+      this.text('BERSERK', x, base - 24 + offset, RED, { size: 11, weight: 700, alpha: 0.95 });
+      offset += 14;
     }
     if ((player.radSuit ?? 0) > 0) {
       const blink = player.radSuit > 5 || Math.floor(player.radSuit * 4) % 2 === 0;
@@ -310,6 +369,18 @@ export class Hud {
         size: 11,
         weight: 700,
         alpha: blink ? 0.95 : 0.3,
+      });
+      offset += 14;
+    }
+    if (player.hasNightVision) {
+      const bat = player.nightVisionBattery ?? 0;
+      const pct = Math.min(100, Math.max(0, Math.round((bat / 45) * 100)));
+      const active = Boolean(player.nightVisionActive && bat > 0);
+      const blink = !active || bat > 5 || Math.floor(bat * 4) % 2 === 0;
+      this.text(`NVG ${pct}%`, x, base - 24 + offset, active ? GREEN : BLUE, {
+        size: 11,
+        weight: 700,
+        alpha: active ? (blink ? 0.95 : 0.3) : 0.72,
       });
     }
   }
@@ -506,25 +577,35 @@ export class Hud {
 
     // fog of war: only tiles that have been seen are drawn, and the ones in view right now are brighter
     const fog = game.fog;
-    for (let y = 0; y < level.rowCount; y++)
+    const exploredArr = fog.explored;
+    const visibleArr = fog.visible;
+    const kindArr = level.kind;
+    const heightsArr = level.heights;
+    const halfS = s * 0.5 - 0.5;
+    const boxS = Math.max(1, s - 1);
+    for (let y = 0; y < level.rowCount; y++) {
+      const rowOffset = y * level.width;
+      const rowY = oy + y * s;
       for (let x = 0; x < level.width; x++) {
-        const idx = y * level.width + x;
-        if (!fog.isExplored(idx))
+        const idx = rowOffset + x;
+        if (exploredArr ? exploredArr[idx] !== 1 : !fog.isExplored(idx))
           continue;
-        const visible = fog.isVisible(idx);
-        if (!level.kind[idx] || level.heights[idx] <= 0) {
+        const visible = visibleArr ? visibleArr[idx] === 1 : fog.isVisible(idx);
+        const colX = ox + x * s;
+        const k = kindArr[idx];
+        if (!k || heightsArr[idx] <= 0) {
           if (level.teleporter?.[idx] === 1) {
-            layer.rectLine(ox + x * s + 0.5, oy + y * s + 0.5, Math.max(1, s - 1), Math.max(1, s - 1), RGB[GREEN], visible ? 0.95 : 0.65);
+            layer.rectLine(colX + 0.5, rowY + 0.5, boxS, boxS, RGB[GREEN], visible ? 0.95 : 0.65);
             continue;
           }
           const isSlime = level.slime?.[idx] === 1;
           const col = isSlime ? (visible ? SLIME_VISIBLE : SLIME_SEEN) : (visible ? FLOOR_VISIBLE : FLOOR_SEEN);
-          layer.fillRect(ox + x * s + s / 2 - 0.5, oy + y * s + s / 2 - 0.5, isSlime ? 1.5 : 1, isSlime ? 1.5 : 1, col);
+          layer.fillRect(colX + halfS, rowY + halfS, isSlime ? 1.5 : 1, isSlime ? 1.5 : 1, col);
           continue;
         }
-        const doorObj = level.doors.get(idx);
+        const doorObj = k === DOOR ? level.doors.get(idx) : null;
         const hiddenSecret = doorObj?.secret && !doorObj.revealed;
-        const door = (level.kind[idx] === DOOR && !hiddenSecret) || level.kind[idx] === EXIT;
+        const door = (k === DOOR && !hiddenSecret) || k === EXIT;
         const doorCol = doorObj?.lock === 'red'
           ? RGB[RED]
           : doorObj?.lock === 'yellow'
@@ -543,8 +624,9 @@ export class Hud {
           layer.line([sx, sy, ax, ay, bx, by, sx, sy], RGB[BLUE], visible ? 0.9 : 0.35);
           continue;
         }
-        layer.rectLine(ox + x * s + 0.5, oy + y * s + 0.5, s - 1, s - 1, door ? doorCol : RGB[BLUE], door ? (visible ? 1 : 0.55) : (visible ? 0.9 : 0.35));
+        layer.rectLine(colX + 0.5, rowY + 0.5, s - 1, s - 1, door ? doorCol : RGB[BLUE], door ? (visible ? 1 : 0.55) : (visible ? 0.9 : 0.35));
       }
+    }
 
     // enemies only show while they are in view: the map is not a radar
     for (const enemy of game.enemies) {
@@ -665,7 +747,7 @@ export class Hud {
           continue;
         }
 
-        const doorObj = level.doors.get(idx);
+        const doorObj = kind === DOOR ? level.doors.get(idx) : null;
         const hiddenSecret = doorObj?.secret && !doorObj.revealed;
         if (kind === EXIT) {
           layer.rectLine(tx + 1, ty + 1, s - 2, s - 2, RGB[GREEN], 0.95);
@@ -715,9 +797,14 @@ export class Hud {
           const nIdx = ny * level.width + nx;
           if (level.diag?.[nIdx] > 0 && !level.hasCardinalFace?.(nIdx, dir ^ 2))
             return true;
-          const nDoor = level.doors.get(nIdx);
-          const nHidden = nDoor?.secret && !nDoor.revealed;
-          return !level.kind[nIdx] || level.heights[nIdx] < CEILING || (level.kind[nIdx] === DOOR && !nHidden) || level.kind[nIdx] === EXIT;
+          const nKind = level.kind[nIdx];
+          if (!nKind || level.heights[nIdx] < CEILING || nKind === EXIT)
+            return true;
+          if (nKind === DOOR) {
+            const nDoor = level.doors.get(nIdx);
+            return !(nDoor?.secret && !nDoor.revealed);
+          }
+          return false;
         };
 
         if (level.diag?.[idx] > 0) {
@@ -784,7 +871,7 @@ export class Hud {
           continue;
         const kind = item.type ?? item.kind;
         const isKey = kind === 'redKey' || kind === 'yellowKey' || kind === 'blueKey';
-        const isMajor = isKey || kind === 'soulsphere' || kind === 'berserk' || kind === 'radsuit' || kind === 'megaArmor' || kind === 'shotgun' || kind === 'chaingun' || kind === 'rocketLauncher';
+        const isMajor = isKey || kind === 'soulsphere' || kind === 'berserk' || kind === 'radsuit' || kind === 'nightvision' || kind === 'megaArmor' || kind === 'shotgun' || kind === 'chaingun' || kind === 'rocketLauncher';
         if (!isMajor)
           continue;
         const col = kind === 'redKey' || kind === 'berserk'
@@ -851,7 +938,7 @@ export class Hud {
     const totalSec = Math.floor(game.stats?.time ?? 0);
     const mins = String(Math.floor(totalSec / 60)).padStart(2, '0');
     const secs = String(totalSec % 60).padStart(2, '0');
-    const statsText = `KILLS ${game.kills ?? 0}/${game.totalEnemies ?? 0}   ITEMS ${game.itemsPicked ?? 0}/${game.totalItems ?? 0}   SECRETS ${game.secretsFound ?? 0}/${game.totalSecrets ?? 0}   TIME ${mins}:${secs}`;
+    const statsText = `KILLS ${game.kills ?? 0}/${game.totalEnemies ?? 0}   ITEMS ${game.itemsPicked ?? 0}/${game.totalItems ?? 0}   SECRETS ${game.secretsFound ?? 0}/${game.totalSecrets ?? 0}   TIME ${mins}:${secs}   FPS ${Math.round(this.fps)}`;
     this.text(statsText, x1 - 14, y0 + 20, ORANGE, { size: 12, align: 'right', weight: 700, glow: 6 });
 
     // footer legend & tactical controls
@@ -949,12 +1036,13 @@ export class Hud {
     this.text(nextBanner, cx, y0 + 268, inter.done ? GREEN : BLUE, { size: 13, align: 'center', weight: 700, alpha: inter.done ? 0.95 : 0.75 });
 
     const mapY = y0 + 342;
-    const span = Math.min(220, w * 0.36);
+    const span = Math.min(230, w * 0.38);
     const nodes = [
       { x: cx - span, y: mapY + 10, code: 'E1M1', label: 'HANGAR' },
-      { x: cx - span * 0.33, y: mapY - 14, code: 'E1M2', label: 'NUCLEAR PLANT' },
-      { x: cx + span * 0.33, y: mapY + 8, code: 'E1M3', label: 'TOXIN REFINERY' },
-      { x: cx + span, y: mapY - 10, code: 'E1M4', label: 'PHOBOS ANOMALY' },
+      { x: cx - span * 0.5, y: mapY - 14, code: 'E1M2', label: 'NUCLEAR PLANT' },
+      { x: cx, y: mapY + 8, code: 'E1M3', label: 'TOXIN REFINERY' },
+      { x: cx + span * 0.5, y: mapY - 12, code: 'E1M4', label: 'PHOBOS ANOMALY' },
+      { x: cx + span, y: mapY + 10, code: 'E1M5', label: 'RED PLANET' },
     ];
 
     // subtle Phobos crater ridge lines behind the facilities
@@ -987,10 +1075,14 @@ export class Hud {
         // E1M3 Toxin Refinery tanks + pipes
         this.canvasLine([n.x - 18, n.y - 6, n.x - 6, n.y - 13, n.x + 6, n.y - 6, n.x + 6, n.y + 8, n.x - 6, n.y + 14, n.x - 18, n.y + 8, n.x - 18, n.y - 6], col, alpha, 1.5, 6);
         this.canvasLine([n.x + 6, n.y - 4, n.x + 18, n.y - 4, n.x + 18, n.y + 10, n.x + 6, n.y + 10], col, alpha, 1.5, 6);
-      } else {
+      } else if (i === 3) {
         // E1M4 Phobos Anomaly star sanctum + portal ring
         this.canvasLine([n.x, n.y - 15, n.x + 15, n.y, n.x, n.y + 15, n.x - 15, n.y, n.x, n.y - 15], col, alpha, 1.5, 6);
         this.canvasLine([n.x - 11, n.y - 11, n.x + 11, n.y - 11, n.x + 11, n.y + 11, n.x - 11, n.y + 11, n.x - 11, n.y - 11], col, alpha * 0.85, 1.2, 4);
+      } else {
+        // E1M5 Red Planet Martian canyon ridge & howling dust storm
+        this.canvasLine([n.x - 18, n.y + 12, n.x - 11, n.y - 10, n.x - 2, n.y + 2, n.x + 8, n.y - 13, n.x + 18, n.y + 12, n.x - 18, n.y + 12], col, alpha, 1.5, 6);
+        this.canvasLine([n.x - 16, n.y - 6, n.x + 16, n.y - 6], col, alpha * 0.75, 1.2, 4);
       }
       this.text(`${n.code} · ${n.label}`, n.x, n.y + 28, col, { size: 9, align: 'center', alpha: alpha + 0.1, glow: 4 });
 
@@ -1030,6 +1122,16 @@ export class Hud {
     return DIFFICULTY_ORDER[idx];
   }
 
+  levelStepAt(pos) {
+    const cx = this.width / 2;
+    const cy = this.height / 2;
+    const boxW = Utils.clamp(this.width - 48, 280, 390);
+    const boxX = cx - boxW / 2;
+    if (pos.x < boxX || pos.x > boxX + boxW || pos.y < cy + 88 || pos.y > cy + 124)
+      return 0;
+    return pos.x < cx ? -1 : 1;
+  }
+
   drawOverlay(game) {
     const { ctx, width, height } = this;
     const state = game.state;
@@ -1049,12 +1151,12 @@ export class Hud {
         this.text('DOOMR', cx, cy - 60, BLUE, { size: Math.min(110, width / 7), align: 'center', weight: 800, glow: 22 });
         this.text('Rip and tear', cx, cy - 20, GREEN, { size: 15, align: 'center', alpha: 0.9 });
         this.text('click or press ENTER to start', cx, cy + 56, ORANGE, { size: 16, align: 'center', alpha: 0.5 + blink * 0.5 });
-        const keys = ['W A S D  move', 'mouse / ← →  turn', 'click / SPACE  fire     1-5  weapons', 'E  open doors', 'SHIFT  run     ALT / CMD  crouch', 'TAB  automap     M  music     N  sound     ESC  pause'];
+        const keys = ['W A S D  move     mouse / ← →  turn', 'click / X / OPT / CTRL  fire     1-4  weapons', 'SPACE  jump     C  crouch     SHIFT  run', 'E  open doors     [ / ]  switch level', 'TAB  automap     N  night vision     M  music     ESC  pause'];
         keys.forEach((k, i) => this.text(k, cx, cy + 100 + i * 20, BLUE, { size: 12, align: 'center', alpha: 0.75, glow: 3 }));
       } else {
         this.text('DOOMR', cx, cy - 116, BLUE, { size: Math.min(84, width / 8), align: 'center', weight: 800, glow: 22 });
         const boxW = Utils.clamp(width - 48, 280, 390);
-        const boxH = 160;
+        const boxH = 196;
         const boxX = cx - boxW / 2;
         const boxY = cy - 72;
         const rowsTop = cy - 42;
@@ -1088,8 +1190,11 @@ export class Hud {
           });
         }
         const activeDef = DIFFICULTIES[currentDiff] ?? DIFFICULTIES.normal;
-        this.text(activeDef.desc, cx, boxY + boxH - 10, GREEN, { size: 11, align: 'center', alpha: 0.9, glow: 4 });
-        this.text('↑/↓ or 1-4 select skill  ·  click or press ENTER to begin  ·  ESC back', cx, cy + 120, ORANGE, { size: 14, align: 'center', alpha: 0.5 + blink * 0.5 });
+        this.text(activeDef.desc, cx, boxY + 150, GREEN, { size: 11, align: 'center', alpha: 0.9, glow: 4 });
+        this.canvasLine([boxX + 18, boxY + 160, boxX + boxW - 18, boxY + 160], BLUE, 0.25, 1, 2);
+        const levelDef = LEVELS[game.levelIndex] ?? LEVELS[0];
+        this.text(`MISSION:  ◂  ${levelDef.name.toUpperCase()}  ▸`, cx, boxY + 181, ORANGE, { size: 13, align: 'center', weight: 800, glow: 8 });
+        this.text('←/→ select mission  ·  ↑/↓ or 1-4 select skill  ·  click or press ENTER to begin  ·  ESC back', cx, cy + 148, ORANGE, { size: 14, align: 'center', alpha: 0.5 + blink * 0.5 });
       }
     } else if (state === 'paused') {
       dim(0.6);

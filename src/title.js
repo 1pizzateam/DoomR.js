@@ -1,4 +1,4 @@
-import { Bezier, Utils, Vec2 } from '@1pizzateam/spock';
+import { Utils, Vec2 } from '@1pizzateam/spock';
 
 /**
  * The title screen's film: a loop of slow camera shots through the real first level, with its monsters breathing
@@ -39,7 +39,9 @@ export class TitleDirector {
   /** Reloads the level and starts the film from the first shot. */
   begin() {
     const { game } = this;
+    const savedIndex = game.levelIndex;
     game.load(0);
+    game.levelIndex = savedIndex;
     game.addBarrel(BARREL_AT.clone());
     this.barrel = game.barrels[game.barrels.length - 1];
     this.dirty = true;
@@ -88,7 +90,7 @@ export class TitleDirector {
         game.updateEnemy(enemy, dt);
 
     const u = Utils.clamp(this.t / shot.duration, 0, 1);
-    const e = u * 0.6 + Bezier.cubic(0, 0, 1, 1, u) * 0.4; // mostly steady, easing slightly at both ends
+    const e = u * 0.6 + Utils.smoothstep(0, 1, u) * 0.4; // mostly steady, easing slightly at both ends
     const sway = Math.sin(game.time * 0.8 + this.shot) * 1.4;
     game.cam = {
       x: mix(shot.from[0], shot.to[0], e),

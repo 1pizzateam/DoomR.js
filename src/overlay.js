@@ -86,19 +86,56 @@ class SpriteBuffer {
   }
 
   /** A quad from (x0, y0) to (x1, y1), y down, showing the texture rectangle [u0, v0, u1, v1]. */
-  quad(x0, y0, x1, y1, [u0, v0, u1, v1], bright) {
+  quad(x0, y0, x1, y1, uv, bright) {
     if (this.count + 6 > this.capacity)
       return;
-    // v1 is the top of the picture, which is the top of the quad
-    const corners = [[x0, y1, u0, v0], [x1, y1, u1, v0], [x1, y0, u1, v1], [x0, y1, u0, v0], [x1, y0, u1, v1], [x0, y0, u0, v1]];
-    for (const [x, y, u, v] of corners) {
-      const i = this.count++;
-      this.positions[i * 2] = x;
-      this.positions[i * 2 + 1] = y;
-      this.brights[i * 3] = bright;
-      this.uvs[i * 2] = u;
-      this.uvs[i * 2 + 1] = v;
-    }
+    const u0 = uv[0];
+    const v0 = uv[1];
+    const u1 = uv[2];
+    const v1 = uv[3];
+    const { positions, brights, uvs } = this;
+    let i = this.count;
+    let p = i * 2;
+    let b = i * 3;
+    // v1 is the top of the picture, which is the top of the quad:
+    // (x0, y1, u0, v0), (x1, y1, u1, v0), (x1, y0, u1, v1), (x0, y1, u0, v0), (x1, y0, u1, v1), (x0, y0, u0, v1)
+    positions[p] = x0;
+    positions[p + 1] = y1;
+    uvs[p] = u0;
+    uvs[p + 1] = v0;
+    brights[b] = bright;
+
+    positions[p + 2] = x1;
+    positions[p + 3] = y1;
+    uvs[p + 2] = u1;
+    uvs[p + 3] = v0;
+    brights[b + 3] = bright;
+
+    positions[p + 4] = x1;
+    positions[p + 5] = y0;
+    uvs[p + 4] = u1;
+    uvs[p + 5] = v1;
+    brights[b + 6] = bright;
+
+    positions[p + 6] = x0;
+    positions[p + 7] = y1;
+    uvs[p + 6] = u0;
+    uvs[p + 7] = v0;
+    brights[b + 9] = bright;
+
+    positions[p + 8] = x1;
+    positions[p + 9] = y0;
+    uvs[p + 8] = u1;
+    uvs[p + 9] = v1;
+    brights[b + 12] = bright;
+
+    positions[p + 10] = x0;
+    positions[p + 11] = y0;
+    uvs[p + 10] = u0;
+    uvs[p + 11] = v1;
+    brights[b + 15] = bright;
+
+    this.count = i + 6;
   }
 
   upload() {

@@ -12,7 +12,7 @@
  * Frames are 192 x 256 pixels side by side in one atlas.
  */
 
-import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { NumArray, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 
 const scratchVec2 = new Vec2();
 function mag2(x, y) {
@@ -339,7 +339,7 @@ class Art {
   circle(cx, cy, r, color) {
     for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++)
       for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++)
-        if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r)
+        if (scratchVec2.setScalar(x - cx, y - cy).getMagnitude(true) <= r * r)
           this.put(x, y, color);
   }
 
@@ -358,8 +358,8 @@ class Art {
       return hit;
     };
     const ys = points.map((p) => p[1]);
-    const top = Math.floor(Math.min(...ys));
-    const bottom = Math.ceil(Math.max(...ys));
+    const top = Math.floor(NumArray.min(ys));
+    const bottom = Math.ceil(NumArray.max(ys));
     for (let y = top; y <= bottom; y++) {
       const row = [];
       for (let x = 0; x < W; x++)
@@ -923,9 +923,7 @@ function applyFlashLight(a, cx, cy, strength) {
  * Angular flame lobe helper: returns 0..1 peak centered at `targetAngle` with half-width `width`.
  */
 function flameSpike(angle, targetAngle, width, sharpness = 1.25) {
-  let diff = Math.abs(angle - targetAngle);
-  if (diff > Trigo.pi)
-    diff = Trigo.twopi - diff;
+  const diff = Math.abs(Trigo.normalizeRadian(angle - targetAngle));
   if (diff >= width)
     return 0;
   return (1 - diff / width) ** sharpness;

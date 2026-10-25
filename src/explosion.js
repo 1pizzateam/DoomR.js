@@ -1,4 +1,4 @@
-import { Bezier, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 
 /**
  * The explosion of a barrel as a 2D sprite animation: a ground-deflected flash and horizontal shockwave, a boiling
@@ -28,7 +28,7 @@ function hash(x, y, salt) {
   return ((Math.imul(h, 1274126177) >>> 0) % 4096) / 4096;
 }
 
-const smooth = (a, b, x) => Bezier.cubic(0, 0, 1, 1, Utils.clamp(Utils.normalize(x, a, b), 0, 1));
+const smooth = Utils.smoothstep;
 
 /** The picture of the ground explosion at `t`, 0 at the flash and 1 when only a little smoke is left; RGBA, 64 x 64. */
 function drawFrame(t) {
@@ -122,7 +122,7 @@ function drawFrame(t) {
     const ringY = Math.min(floorY - 3, 7 + 34 * prog);
     const fade = 1 - prog;
     for (let k = 0; k <= 180; k += 2) {
-      const a = (k * Trigo.pi) / 180;
+      const a = Trigo.degreeToRadian(k);
       if (hash(k, 3, 7) > 0.35 + fade * 0.6)
         continue;
       put(cx + Math.cos(a) * ringX, floorY - Math.sin(a) * ringY, fade > 0.5 ? WHITE : YELLOW);
@@ -349,4 +349,547 @@ export function teleportAtlas() {
         data.set(picture.subarray((y * EXPLOSION_CELL + x) * 4, (y * EXPLOSION_CELL + x) * 4 + 4), (y * width + frame * EXPLOSION_CELL + x) * 4);
   }
   return { name: 'teleport', data, width, height, cell: EXPLOSION_CELL, frames: EXPLOSION_FRAMES };
+}
+
+// =====================================================================================================================
+// 3D VOLUMETRIC EXPLOSION (SINGLE 3D EXPLODING FIREBALL MESH + PARTICLE SHOWER)
+// =====================================================================================================================
+
+export const EXPLOSION_3D_CELL = 64;
+export const EXPLOSION_3D_FRAMES = 4;
+export const EXPLOSION_3D_CELLS = {
+  core: 0,
+  plume: 1,
+  ring: 2,
+  smoke: 3,
+};
+
+const scratchNormal = new Vec3();
+
+function valueNoise2d(x, y, seed) {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = x - ix;
+  const fy = y - iy;
+  const ux = Utils.smoothstep(0, 1, fx);
+  const uy = Utils.smoothstep(0, 1, fy);
+  const n00 = hash(ix, iy, seed);
+  const n10 = hash(ix + 1, iy, seed);
+  const n01 = hash(ix, iy + 1, seed);
+  const n11 = hash(ix + 1, iy + 1, seed);
+  return Utils.lerp(Utils.lerp(n00, n10, ux), Utils.lerp(n01, n11, ux), uy);
+}
+
+function fbm2d(u, v, seed) {
+  // Periodic in u (0..1 wraps seamlessly around 3D cylinders/spheres)
+  const a = u * Trigo.twopi;
+  const cx = Math.cos(a);
+  const sx = Math.sin(a);
+  let sum = 0;
+  let amp = 0.5;
+  let freq = 2.2;
+  for (let oct = 0; oct < 4; oct++) {
+    const nx = (cx + 1.5) * freq;
+    const ny = (sx + 1.5) * freq + v * freq * 1.6;
+    sum += valueNoise2d(nx, ny, seed + oct * 19) * amp;
+    freq *= 2.05;
+    amp *= 0.5;
+  }
+  return sum / 0.9375;
+}
+
+function sampleBlackbodyRgb(heat, target) {
+  const h = Utils.clamp(heat, 0, 1.25);
+  if (h >= 0.92) {
+    const k = Utils.clamp((h - 0.92) / 0.33, 0, 1);
+    target[0] = Utils.lerp(255, 255, k);
+    target[1] = Utils.lerp(228, 253, k);
+    target[2] = Utils.lerp(112, 238, k);
+  } else if (h >= 0.66) {
+    const k = (h - 0.66) / 0.26;
+    target[0] = Utils.lerp(255, 255, k);
+    target[1] = Utils.lerp(132, 228, k);
+    target[2] = Utils.lerp(24, 112, k);
+  } else if (h >= 0.4) {
+    const k = (h - 0.4) / 0.26;
+    target[0] = Utils.lerp(196, 255, k);
+    target[1] = Utils.lerp(36, 132, k);
+    target[2] = Utils.lerp(12, 24, k);
+  } else if (h >= 0.18) {
+    const k = (h - 0.18) / 0.22;
+    target[0] = Utils.lerp(68, 196, k);
+    target[1] = Utils.lerp(24, 36, k);
+    target[2] = Utils.lerp(22, 12, k);
+  } else {
+    const k = h / 0.18;
+    target[0] = Utils.lerp(28, 68, k);
+    target[1] = Utils.lerp(24, 24, k);
+    target[2] = Utils.lerp(26, 22, k);
+  }
+  return target;
+}
+
+function draw3dCell(data, width, cellIndex, fn) {
+  const S = EXPLOSION_3D_CELL;
+  const x0 = cellIndex * S;
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const rgba = fn(x, y, S);
+      if (!rgba)
+        continue;
+      const o = (y * width + x0 + x) * 4;
+      data[o] = Utils.clamp(Math.round(rgba[0]), 0, 255);
+      data[o + 1] = Utils.clamp(Math.round(rgba[1]), 0, 255);
+      data[o + 2] = Utils.clamp(Math.round(rgba[2]), 0, 255);
+      data[o + 3] = Utils.clamp(Math.round(rgba[3] ?? 255), 0, 255);
+    }
+}
+
+/**
+ * Power-of-two 256 x 64 smooth continuous RGBA pyrotechnic atlas for the 3D volumetric explosion meshes:
+ * - Cell 0 (`core`): High-temperature cellular plasma & branching magma veins for the detonation core.
+ * - Cell 1 (`plume`): Multi-octave cauliflower convection billows with glowing internal magma fissures.
+ * - Cell 2 (`ring`): Smooth supersonic shockwave pressure band with Mach streaks and soft transparent edges.
+ * - Cell 3 (`smoke`): Dense turbulent charcoal soot domes with deep glowing ember crevices.
+ */
+export function explosion3dAtlas() {
+  const width = EXPLOSION_3D_CELL * EXPLOSION_3D_FRAMES;
+  const height = EXPLOSION_3D_CELL;
+  const data = new Uint8Array(width * height * 4);
+  const rgb = [0, 0, 0];
+
+  // Cell 0: Continuous incandescent cellular fireball core
+  draw3dCell(data, width, EXPLOSION_3D_CELLS.core, (x, y, S) => {
+    const u = x / S;
+    const v = y / S;
+    const fbm = fbm2d(u, v, 101);
+    const ridges = 1 - Math.abs(fbm * 2 - 1);
+    const wave =
+      0.64 +
+      0.24 * fbm +
+      0.24 * (ridges * ridges) +
+      0.12 * Math.sin(u * Trigo.twopi * 3 + Math.cos(v * Trigo.pi * 4));
+    sampleBlackbodyRgb(wave, rgb);
+    return [rgb[0], rgb[1], rgb[2], 255];
+  });
+
+  // Cell 1: Boiling mushroom cloud plume (rounded cauliflower domes + incandescent crevices)
+  draw3dCell(data, width, EXPLOSION_3D_CELLS.plume, (x, y, S) => {
+    const u = x / S;
+    const v = y / S;
+    const fbm = fbm2d(u, v, 137);
+    const detail = fbm2d((u + 0.37) % 1, v * 1.4, 173);
+    const billow = Math.min(1, Math.abs(fbm * 2 - 1) * 2.2);
+    const crevice = Math.pow(1 - billow, 2.2);
+    const heat = Utils.clamp(0.32 + 0.56 * crevice + 0.24 * detail - v * 0.1, 0.12, 1.15);
+    sampleBlackbodyRgb(heat, rgb);
+    return [rgb[0], rgb[1], rgb[2], 255];
+  });
+
+  // Cell 2: Ground shockwave ring (v = 0 is inner edge, v = 0.5 is blazing shock ridge, v = 1 is outer ragged tip)
+  draw3dCell(data, width, EXPLOSION_3D_CELLS.ring, (x, y, S) => {
+    const v = y / (S - 1);
+    const u = x / S;
+    const fbm = fbm2d(u, v, 211);
+    const streak = 0.08 * Math.sin(u * Trigo.twopi * 10) + 0.09 * (fbm - 0.5);
+    const dist = Math.abs(v - (0.5 + streak));
+    const band = 1 - dist * 2.55;
+    if (band <= 0.06)
+      return null;
+    const heat = Utils.clamp(Math.pow(band, 0.75) * 1.18, 0.25, 1.22);
+    sampleBlackbodyRgb(heat, rgb);
+    return [rgb[0], rgb[1], rgb[2], 255];
+  });
+
+  // Cell 3: Rolling volcanic smoke lobe with deep glowing ember fissures
+  draw3dCell(data, width, EXPLOSION_3D_CELLS.smoke, (x, y, S) => {
+    const u = x / S;
+    const v = y / S;
+    const fbm = fbm2d(u, v, 263);
+    const sub = fbm2d((u + 0.51) % 1, v * 1.3, 293);
+    const dome = Math.min(1, Math.abs(fbm * 2 - 1) * 2.4);
+    const fissure = Math.pow(1 - dome, 3.2);
+    const heat = Utils.clamp(0.08 + 0.56 * fissure + 0.14 * sub, 0.04, 0.96);
+    sampleBlackbodyRgb(heat, rgb);
+    return [rgb[0], rgb[1], rgb[2], 255];
+  });
+
+  return {
+    name: 'explosion3d',
+    data,
+    width,
+    height,
+    cell: EXPLOSION_3D_CELL,
+    frames: EXPLOSION_3D_FRAMES,
+    cells: EXPLOSION_3D_CELLS,
+  };
+}
+
+function cellUvBounds(cell) {
+  const step = 1 / EXPLOSION_3D_FRAMES;
+  const pad = 1.5 / (EXPLOSION_3D_CELL * EXPLOSION_3D_FRAMES);
+  return [cell * step + pad, (cell + 1) * step - pad];
+}
+
+function evalSurfaceVertex(uFrac, vFrac, evalPt, centerY = 0) {
+  const p = evalPt(uFrac, vFrac);
+  const epsU = 1 / 64;
+  const epsV = 1 / 64;
+  const vMid = Utils.clamp(vFrac, epsV, 1 - epsV);
+  const pu1 = evalPt((uFrac + epsU) % 1, vMid);
+  const pu0 = evalPt((uFrac - epsU + 1) % 1, vMid);
+  const vHi = Math.min(1, vFrac + epsV);
+  const vLo = Math.max(0, vFrac - epsV);
+  const pv1 = evalPt(uFrac, vHi);
+  const pv0 = evalPt(uFrac, vLo);
+
+  const tx = pu1[0] - pu0[0];
+  const ty = pu1[1] - pu0[1];
+  const tz = pu1[2] - pu0[2];
+  const bx = pv1[0] - pv0[0];
+  const by = pv1[1] - pv0[1];
+  const bz = pv1[2] - pv0[2];
+
+  // Outward normal: cross(tangentV, tangentU) oriented outward from (0, centerY, 0)
+  scratchNormal.setScalar(
+    by * tz - bz * ty,
+    bz * tx - bx * tz,
+    bx * ty - by * tx
+  );
+  if (scratchNormal.getMagnitude(true) > 1e-8) {
+    scratchNormal.normalize();
+    const dy = p[1] - centerY;
+    if (scratchNormal.x * p[0] + scratchNormal.y * dy + scratchNormal.z * p[2] < 0)
+      scratchNormal.scale(-1);
+  } else
+    scratchNormal.setScalar(0, 1, 0);
+
+  return {
+    p,
+    n: [scratchNormal.x, scratchNormal.y, scratchNormal.z],
+  };
+}
+
+function pushSmoothTri(vertices, normals, uvs, v0, v1, v2, uv0, uv1, uv2) {
+  vertices.push(v0.p[0], v0.p[1], v0.p[2], v1.p[0], v1.p[1], v1.p[2], v2.p[0], v2.p[1], v2.p[2]);
+  normals.push(v0.n[0], v0.n[1], v0.n[2], v1.n[0], v1.n[1], v1.n[2], v2.n[0], v2.n[1], v2.n[2]);
+  uvs.push(uv0[0], uv0[1], uv1[0], uv1[1], uv2[0], uv2[1]);
+}
+
+function pushSmoothQuad(vertices, normals, uvs, v00, v10, v11, v01, u0, tv0, u1, tv1) {
+  pushSmoothTri(vertices, normals, uvs, v00, v01, v11, [u0, tv0], [u0, tv1], [u1, tv1]);
+  pushSmoothTri(vertices, normals, uvs, v00, v11, v10, [u0, tv0], [u1, tv1], [u1, tv0]);
+}
+
+function buildParametricMesh(radialSegs, rings, cell, evalPt, centerY = 0) {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+  const [cu0, cu1] = cellUvBounds(cell);
+  const vPad = 1.5 / EXPLOSION_3D_CELL;
+
+  const grid = [];
+  for (let r = 0; r <= rings; r++) {
+    const vFrac = r / rings;
+    const row = [];
+    for (let s = 0; s <= radialSegs; s++) {
+      const uFrac = (s % radialSegs) / radialSegs;
+      row.push(evalSurfaceVertex(uFrac, vFrac, evalPt, centerY));
+    }
+    grid.push(row);
+  }
+
+  for (let r = 0; r < rings; r++) {
+    const tv0 = Utils.lerp(1 - vPad, vPad, r / rings);
+    const tv1 = Utils.lerp(1 - vPad, vPad, (r + 1) / rings);
+    for (let s = 0; s < radialSegs; s++) {
+      const u0 = Utils.lerp(cu0, cu1, s / radialSegs);
+      const u1 = Utils.lerp(cu0, cu1, (s + 1) / radialSegs);
+      pushSmoothQuad(
+        vertices,
+        normals,
+        uvs,
+        grid[r][s],
+        grid[r][s + 1],
+        grid[r + 1][s + 1],
+        grid[r + 1][s],
+        u0,
+        tv0,
+        u1,
+        tv1
+      );
+    }
+  }
+
+  return {
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  };
+}
+
+function buildLumpyDome(rx, ry, rz, radialSegs, rings, cell, phaseSalt) {
+  return buildParametricMesh(
+    radialSegs,
+    rings,
+    cell,
+    (uFrac, vFrac) => {
+      const elev = vFrac * Trigo.halfpi;
+      const azim = uFrac * Trigo.twopi;
+      const cosE = Math.cos(elev);
+      const sinE = Math.sin(elev);
+      const billow =
+        1 +
+        0.16 * Math.sin(azim * 3 + elev * 3.2 + phaseSalt) * cosE +
+        0.11 * Math.cos(azim * 5 - elev * 4.1 + phaseSalt * 1.7) * cosE +
+        0.06 * Math.sin(azim * 8 + elev * 5.0 - phaseSalt * 0.9) * cosE;
+      const x = Math.cos(azim) * cosE * rx * billow;
+      const y = sinE * ry * (1 + 0.1 * Math.sin(elev * 3 + phaseSalt) * cosE);
+      const z = Math.sin(azim) * cosE * rz * billow;
+      return [x, y, z];
+    },
+    0
+  );
+}
+
+/**
+ * Builds the single sculpted 3D exploding fireball dome mesh normalized to `size` (`Vec3`),
+ * with smooth analytical per-vertex normals and floor-anchored base (`y >= 0`).
+ */
+export function explosion3dMesh(size = new Vec3(1, 1, 1)) {
+  return buildLumpyDome(size.x, size.y, size.z, 28, 16, EXPLOSION_3D_CELLS.plume, 0.7);
+}
+
+/** Pre-allocates a reusable pose structure for `explosion3dPose`. */
+export function createExplosion3dPose() {
+  return {
+    progress: 0,
+    pos: new Vec3(),
+    rot: new Vec3(),
+    scale: new Vec3(1, 1, 1),
+    color: new Vec3(1, 1, 1),
+    heat: 1,
+    dissolve: 0,
+    phase: 0.7,
+    active: true,
+  };
+}
+
+function setHeatColor(targetVec, heat) {
+  // Maps normalized heat (1.08 = warm golden-orange flash -> 0.85 = amber -> 0.55 = orange -> 0.3 = crimson -> 0.0 = dark smoke)
+  if (heat >= 0.85) {
+    const k = Utils.clamp((heat - 0.85) / 0.35, 0, 1);
+    targetVec.setScalar(
+      Utils.lerp(1.02, 1.08, k),
+      Utils.lerp(0.76, 0.92, k),
+      Utils.lerp(0.28, 0.52, k)
+    );
+  } else if (heat >= 0.52) {
+    const k = (heat - 0.52) / 0.33;
+    targetVec.setScalar(
+      Utils.lerp(0.96, 1.02, k),
+      Utils.lerp(0.46, 0.76, k),
+      Utils.lerp(0.14, 0.28, k)
+    );
+  } else if (heat >= 0.25) {
+    const k = (heat - 0.25) / 0.27;
+    targetVec.setScalar(
+      Utils.lerp(0.52, 0.96, k),
+      Utils.lerp(0.22, 0.46, k),
+      Utils.lerp(0.18, 0.14, k)
+    );
+  } else {
+    const k = Utils.clamp(heat / 0.25, 0, 1);
+    targetVec.setScalar(
+      Utils.lerp(0.22, 0.52, k),
+      Utils.lerp(0.18, 0.22, k),
+      Utils.lerp(0.2, 0.18, k)
+    );
+  }
+}
+
+/**
+ * Evaluates the single 3D exploding mesh animation at normalized lifetime `progress` (`0..1`),
+ * writing transform, thermal energy (`heat`), color, and 3D erosion threshold (`dissolve`) into `target` with zero allocations.
+ */
+export function explosion3dPose(progress, target = createExplosion3dPose()) {
+  const t = Utils.clamp(progress, 0, 1);
+  target.progress = t;
+  const flash = Math.max(0, 1 - t / 0.14);
+  const grow = 1 - Math.pow(1 - Math.min(1, t / 0.34), 2.4);
+  const rise = Math.pow(Utils.clamp((t - 0.04) / 0.92, 0, 1), 0.78);
+  const cool = smooth(0.12, 0.86, t);
+  const dissolve = smooth(0.56, 1.0, t) * 0.94;
+
+  const radius = 0.42 + 0.68 * grow + 0.14 * flash + 0.12 * rise;
+  const height = 0.38 + 0.62 * grow + 0.12 * flash + 0.22 * rise;
+  const lift = 0.18 * rise;
+  const heat = 1.08 - cool * 0.94;
+
+  target.pos.setScalar(0, lift, 0);
+  target.rot.setScalar(0, t * 0.45, 0);
+  target.scale.setScalar(radius, height, radius);
+  target.heat = heat;
+  setHeatColor(target.color, heat);
+  target.dissolve = dissolve;
+  target.phase = 0.7;
+  target.active = t < 0.995;
+
+  return target;
+}
+
+export const EXPLOSION_PARTICLE_COUNT = 88;
+
+/**
+ * Generates a high-density shower of small camera-facing spark & cinder particles (`1.0..2.4` world units across,
+ * matching blood droplet particle scale) and velocity-aligned spark needles around a `boom` explosion effect.
+ *
+ * Strictly accepts `@1pizzateam/spock` `Vec3` instances for camera `right` and `up` axes.
+ */
+export function explosionParticleQuads(effect, right, up) {
+  const age = effect.age ?? 0;
+  const life = effect.life ?? 0.45;
+  const t = Utils.clamp(age / Math.max(0.001, life), 0, 1);
+  if (t >= 0.995)
+    return [];
+
+  const radius = (effect.radius ?? 60) * (effect.scale ?? 1);
+  const cx = effect.x ?? 0;
+  const cy = effect.y ?? 0;
+  const baseZ = Math.max(0, effect.z ?? 0);
+  const rx = right.x;
+  const ry = right.y;
+  const rz = right.z;
+  const ux = up.x;
+  const uy = up.y;
+  const uz = up.z;
+
+  const quads = [];
+  for (let i = 0; i < EXPLOSION_PARTICLE_COUNT; i++) {
+    // 0..43: crisp pinpoint spark dots (half = 0.55..1.10 world units -> 1.1..2.2 units diameter)
+    // 44..67: fast radial velocity-aligned spark needles (halfWidth = 0.42..0.72, halfLen = 1.8..4.0 world units)
+    // 68..87: tumbling hot ember cinders & buoyant updraft sparks (half = 0.65..1.20 world units)
+    const kind = i < 44 ? 0 : i < 68 ? 1 : 2;
+    const lifeEnd = 0.58 + 0.41 * hash(i, 3, 809);
+    if (t >= lifeEnd)
+      continue;
+    const pt = t / lifeEnd;
+
+    const azim = (i / EXPLOSION_PARTICLE_COUNT) * Trigo.twopi * 2.39996 + (hash(i, 7, 811) - 0.5) * 0.35;
+    const cosA = Math.cos(azim);
+    const sinA = Math.sin(azim);
+    const r0 = (0.08 + 0.34 * hash(i, 11, 821)) * radius;
+    const vRad = (1.15 + 1.85 * hash(i, 13, 823)) * radius;
+    const vUp = (0.72 + 1.38 * hash(i, 17, 827)) * radius;
+    const grav = (3.4 + 2.4 * hash(i, 19, 829)) * radius;
+    const y0 = baseZ + (0.06 + 0.46 * hash(i, 23, 839)) * radius;
+    const floorY = 0.8 + 0.6 * hash(i, 29, 853);
+
+    const vImpact = Math.sqrt(vUp * vUp + 2 * grav * Math.max(0, y0 - floorY));
+    const tHit = (vUp + vImpact) / grav;
+
+    let worldY;
+    let radialDist;
+    let velRad;
+    let velY;
+    if (t <= tHit) {
+      worldY = y0 + vUp * t - 0.5 * grav * t * t;
+      radialDist = r0 + vRad * t;
+      velRad = vRad;
+      velY = vUp - grav * t;
+    } else {
+      const dt1 = t - tHit;
+      const vBounce1 = vImpact * (0.44 + 0.18 * hash(i, 31, 857));
+      const tBounce1 = (2 * vBounce1) / grav;
+      if (dt1 <= tBounce1) {
+        worldY = floorY + vBounce1 * dt1 - 0.5 * grav * dt1 * dt1;
+        velY = vBounce1 - grav * dt1;
+      } else {
+        const dt2 = dt1 - tBounce1;
+        const vBounce2 = vBounce1 * 0.45;
+        const tBounce2 = (2 * vBounce2) / grav;
+        if (dt2 <= tBounce2) {
+          worldY = floorY + vBounce2 * dt2 - 0.5 * grav * dt2 * dt2;
+          velY = vBounce2 - grav * dt2;
+        } else {
+          worldY = floorY;
+          velY = 0;
+        }
+      }
+      const drag = 2.2;
+      radialDist = r0 + vRad * tHit + vRad * 0.72 * (1 - Math.exp(-dt1 * drag)) / drag;
+      velRad = vRad * 0.72 * Math.exp(-dt1 * drag);
+    }
+
+    const swirlAz = kind === 2 ? (hash(i, 37, 859) - 0.5) * 1.4 * t : 0;
+    const curAz = azim + swirlAz;
+    const cAz = Math.cos(curAz);
+    const sAz = Math.sin(curAz);
+    const px = cx + cAz * radialDist;
+    const pz = cy + sAz * radialDist;
+    const py = worldY;
+
+    // Encode quantized heat slot (1..24) in the integer part of u so the fragment shader shades white-hot -> gold -> orange -> ember
+    const rawHeat = (kind === 1 ? 1.48 : kind === 0 ? 1.38 : 1.22) * (1 - 0.72 * Math.pow(pt, 1.35));
+    const slot = Math.max(1, Math.min(24, Math.round(rawHeat * 16)));
+    const uv = [slot + 0.02, 0.02, slot + 0.98, 0.98];
+
+    if (kind === 1) {
+      // Velocity-aligned fine spark needle: stretches along 3D velocity vector with a razor-thin camera-facing width
+      const vx = cosA * velRad;
+      const vz = sinA * velRad;
+      const vy = velY;
+      const speed = Math.hypot(vx, vy, vz) || 1;
+      const dirX = vx / speed;
+      const dirY = vy / speed;
+      const dirZ = vz / speed;
+      const halfLen = (1.7 + 2.3 * hash(i, 41, 863)) * (1 - 0.45 * pt);
+      const halfW = (0.42 + 0.3 * hash(i, 43, 877)) * (1 - 0.3 * pt);
+      const axX = dirX * halfLen;
+      const axY = dirY * halfLen;
+      const axZ = dirZ * halfLen;
+      // Perpendicular width axis in the camera plane
+      let wx = dirY * uz - dirZ * uy + rx * 0.35;
+      let wy = dirZ * ux - dirX * uz + ry * 0.35;
+      let wz = dirX * uy - dirY * ux + rz * 0.35;
+      const wLen = Math.hypot(wx, wy, wz) || 1;
+      wx = (wx / wLen) * halfW;
+      wy = (wy / wLen) * halfW;
+      wz = (wz / wLen) * halfW;
+      quads.push({
+        corners: [
+          px - axX - wx, py - axY - wy, pz - axZ - wz,
+          px + axX - wx, py + axY - wy, pz + axZ - wz,
+          px + axX + wx, py + axY + wy, pz + axZ + wz,
+          px - axX + wx, py - axY + wy, pz - axZ + wz,
+        ],
+        uv,
+      });
+    } else {
+      // Small camera-facing spark dot or tumbling cinder speck (half = 0.55..1.18 world units -> 1.1..2.35 units diameter)
+      const baseHalf = kind === 0
+        ? 0.55 + 0.52 * hash(i, 47, 881)
+        : 0.68 + 0.5 * hash(i, 53, 883);
+      const half = baseHalf * (1 - 0.38 * pt * pt);
+      const spin = t * (10 + 8 * hash(i, 59, 887)) + i * 1.1;
+      const c = Math.cos(spin) * half;
+      const s = Math.sin(spin) * half;
+      const axX = rx * c - ux * s;
+      const axY = ry * c - uy * s;
+      const axZ = rz * c - uz * s;
+      const ayX = rx * s + ux * c;
+      const ayY = ry * s + uy * c;
+      const ayZ = rz * s + uz * c;
+      quads.push({
+        corners: [
+          px - axX - ayX, py - axY - ayY, pz - axZ - ayZ,
+          px + axX - ayX, py + axY - ayY, pz + axZ - ayZ,
+          px + axX + ayX, py + axY + ayY, pz + axZ + ayZ,
+          px - axX + ayX, py - axY + ayY, pz - axZ + ayZ,
+        ],
+        uv,
+      });
+    }
+  }
+  return quads;
 }

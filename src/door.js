@@ -330,22 +330,33 @@ ${LIGHT_GLSL}
 void main(void) {
   if (vHeight < -0.01)
     discard;
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
+    return;
+  }
   vec3 steel = texture2D(uSampler, vTextureCoord).rgb;
   vec3 color = steel;
-
-  // small patches scattered over the door, thicker low down where water ran
-  float spots = noise(vSurface / ${scale.toFixed(1)} + 3.0) * 0.6 + noise(vSurface / ${(scale * 0.43).toFixed(1)} + 17.0) * 0.4;
-  float low = 1.0 - smoothstep(0.0, 40.0, vSurface.y);
-  float area = smoothstep(${(threshold).toFixed(2)} - low * 0.06, ${(threshold + 0.1).toFixed(2)} - low * 0.06, spots);
-  float near = 1.0 - smoothstep(260.0, 820.0, vDepth);
-  vec2 texel = floor(vSurface);
-  float grain = noise(texel / 3.0) * 0.6 + noise(texel / 1.3 + 40.0) * 0.4;
-  float amount = area * mix(0.8, 0.3 + grain * 0.9, near);
   // the lights and the hazard stripes stay as they are
   float peak = max(steel.r, max(steel.g, steel.b));
   float lit = max(max(smoothstep(0.06, 0.2, steel.b - steel.r), smoothstep(0.06, 0.2, steel.g - steel.r)), smoothstep(0.68, 0.85, peak));
   float hazard = smoothstep(0.1, 0.2, steel.r - steel.b);
-  amount *= (1.0 - lit) * (1.0 - hazard * 0.6);
+  float amount = 0.0;
+  if (lit < 0.95) {
+    // small patches scattered over the door, thicker low down where water ran
+    float spots = noise(vSurface / ${scale.toFixed(1)} + 3.0) * 0.6 + noise(vSurface / ${(scale * 0.43).toFixed(1)} + 17.0) * 0.4;
+    if (spots > ${(threshold - 0.06).toFixed(2)}) {
+      float low = 1.0 - smoothstep(0.0, 40.0, vSurface.y);
+      float area = smoothstep(${(threshold).toFixed(2)} - low * 0.06, ${(threshold + 0.1).toFixed(2)} - low * 0.06, spots);
+      float near = 1.0 - smoothstep(220.0, 620.0, vDepth);
+      amount = area * 0.8;
+      if (near > 0.01 && area > 0.25) {
+        vec2 texel = floor(vSurface);
+        float grain = noise(texel / 3.0) * 0.6 + noise(texel / 1.3 + 40.0) * 0.4;
+        amount = area * mix(0.8, 0.3 + grain * 0.9, near);
+      }
+      amount *= (1.0 - lit) * (1.0 - hazard * 0.6);
+    }
+  }
 
   if (amount > 0.3) {
     vec3 paint = (amount > 0.9 ? RUST_BRIGHT : (amount > 0.6 ? RUST : RUST_DARK)) * 0.62;
@@ -354,7 +365,7 @@ void main(void) {
   color *= uMaterialDiffuse * surfaceLight(vWorldPos, lit);
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade * 0.9);
+    color = mix(color, uFogColor, fade);
   }
   gl_FragColor = vec4(color, ${SOLID_ALPHA});
 }

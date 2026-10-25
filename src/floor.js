@@ -1,4 +1,4 @@
-import { Bezier, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
+import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { LIGHT_GLSL, SOLID_ALPHA } from './quads.js';
 import { mulberry32 } from './rng.js';
 
@@ -76,8 +76,8 @@ export function field(rnd, scale) {
       const y0 = Math.floor(gy);
       const fx = gx - x0;
       const fy = gy - y0;
-      const sx = Bezier.cubic(0, 0, 1, 1, fx);
-      const sy = Bezier.cubic(0, 0, 1, 1, fy);
+      const sx = Utils.smoothstep(0, 1, fx);
+      const sy = Utils.smoothstep(0, 1, fy);
       const at = (ix, iy) => grids[o][(((iy % size) + size) % size) * (size + 1) + (((ix % size) + size) % size)];
       const top = at(x0, y0) * (1 - sx) + at(x0 + 1, y0) * sx;
       const bottom = at(x0, y0 + 1) * (1 - sx) + at(x0 + 1, y0 + 1) * sx;
@@ -458,26 +458,37 @@ varying vec3 vWorldPos;
 ${RUST_GLSL}
 ${LIGHT_GLSL}
 void main(void) {
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
+    return;
+  }
   vec3 steel = texture2D(uSampler, vTextureCoord).rgb;
   vec3 color = steel;
-
-  // many small patches, a third of a tile to a tile across, scattered over the floor; a slow drift makes some stretches
-  // of deck dirtier than others without ever making one big patch
-  float spots = noise(vWorld / 44.0 + 13.0) * 0.6 + noise(vWorld / 18.0 + 5.0) * 0.4;
-  float drift = noise(vWorld / 360.0 + 90.0) - 0.5;
-  float area = smoothstep(0.63, 0.74, spots - drift * 0.1);
-  // it gathers along the seams of the plates, where water sat
-  vec2 seam = abs(fract(vWorld / 32.0) - 0.5);
-  float nearSeam = 1.0 - smoothstep(0.34, 0.5, max(seam.x, seam.y));
-  area = clamp(area + nearSeam * 0.3 * smoothstep(0.54, 0.64, spots), 0.0, 1.0);
-  // the fine grain: a pixel of rust per texel up close, fading to nothing far away
-  float near = 1.0 - smoothstep(260.0, 820.0, vDepth);
-  vec2 texel = floor(vWorld);
-  float grain = noise(texel / 3.0) * 0.6 + noise(texel / 1.3 + 40.0) * 0.4;
-  float amount = area * mix(0.8, 0.3 + grain * 0.9, near);
   // the lights and the hazard stripes stay as they are
   float lit = smoothstep(0.06, 0.2, steel.b - steel.r);
-  amount *= 1.0 - lit;
+  float amount = 0.0;
+  if (lit < 0.95) {
+    // many small patches, a third of a tile to a tile across, scattered over the floor; a slow drift makes some stretches
+    // of deck dirtier than others without ever making one big patch
+    float spots = noise(vWorld / 44.0 + 13.0) * 0.6 + noise(vWorld / 18.0 + 5.0) * 0.4;
+    if (spots > 0.48) {
+      float drift = noise(vWorld / 360.0 + 90.0) - 0.5;
+      float area = smoothstep(0.63, 0.74, spots - drift * 0.1);
+      // it gathers along the seams of the plates, where water sat
+      vec2 seam = abs(fract(vWorld / 32.0) - 0.5);
+      float nearSeam = 1.0 - smoothstep(0.34, 0.5, max(seam.x, seam.y));
+      area = clamp(area + nearSeam * 0.3 * smoothstep(0.54, 0.64, spots), 0.0, 1.0);
+      // the fine grain: a pixel of rust per texel up close, fading to nothing far away
+      float near = 1.0 - smoothstep(220.0, 620.0, vDepth);
+      amount = area * 0.8;
+      if (near > 0.01 && area > 0.25) {
+        vec2 texel = floor(vWorld);
+        float grain = noise(texel / 3.0) * 0.6 + noise(texel / 1.3 + 40.0) * 0.4;
+        amount = area * mix(0.8, 0.3 + grain * 0.9, near);
+      }
+      amount *= 1.0 - lit;
+    }
+  }
 
   if (amount > 0.3) {
     vec3 paint = (amount > 0.9 ? RUST_BRIGHT : (amount > 0.6 ? RUST : RUST_DARK)) * 0.62;
@@ -487,14 +498,15 @@ void main(void) {
   color *= uMaterialDiffuse * surfaceLight(vWorldPos, lit);
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade * 0.9);
+    color = mix(color, uFogColor, fade);
   }
   gl_FragColor = vec4(color, ${SOLID_ALPHA});
 }
 `;
 
+
 /** Smooth random 0..1 that repeats seamlessly across `period` pixels in both X and Y. */
-function periodicField(rnd, baseCells, period = TILE_PIXELS) {
+export function periodicField(rnd, baseCells, period = TILE_PIXELS) {
   const octaves = [0, 1, 2].map((o) => {
     const cells = baseCells * 2 ** o;
     return {
@@ -513,8 +525,8 @@ function periodicField(rnd, baseCells, period = TILE_PIXELS) {
       const y0 = Math.floor(gy);
       const fx = gx - x0;
       const fy = gy - y0;
-      const sx = Bezier.cubic(0, 0, 1, 1, fx);
-      const sy = Bezier.cubic(0, 0, 1, 1, fy);
+      const sx = Utils.smoothstep(0, 1, fx);
+      const sy = Utils.smoothstep(0, 1, fy);
       const at = (ix, iy) => grid[(((iy % cells) + cells) % cells) * cells + (((ix % cells) + cells) % cells)];
       const top = at(x0, y0) * (1 - sx) + at(x0 + 1, y0) * sx;
       const bottom = at(x0, y0 + 1) * (1 - sx) + at(x0 + 1, y0 + 1) * sx;
@@ -569,6 +581,10 @@ varying vec3 vWorldPos;
 ${RUST_GLSL}
 ${LIGHT_GLSL}
 void main(void) {
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
+    return;
+  }
   vec2 uv = vWorld / 64.0;
   vec2 driftA = vec2(
     sin(vWorld.y * 0.08 + uTime * 0.75) * 0.035 + uTime * 0.012,
@@ -589,11 +605,12 @@ void main(void) {
   vec3 color = glow * uMaterialDiffuse * max(vec3(0.68, 0.92, 0.68), surfaceLight(vWorldPos, 0.75));
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade * 0.9);
+    color = mix(color, uFogColor, fade);
   }
   gl_FragColor = vec4(color, ${SOLID_ALPHA});
 }
 `;
+
 
 /**
  * A 64x64 futuristic quantum teleporter machine atlas: brushed titanium octagonal housing,
@@ -884,6 +901,10 @@ varying vec3 vWorldPos;
 ${RUST_GLSL}
 ${LIGHT_GLSL}
 void main(void) {
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
+    return;
+  }
   vec2 centered = vTextureCoord - vec2(0.5);
   float dist = length(centered);
   vec3 tex = texture2D(uSampler, vTextureCoord).rgb;
@@ -899,11 +920,991 @@ void main(void) {
   vec3 color = lit * uMaterialDiffuse * max(vec3(0.78, 0.9, 0.96), surfaceLight(vWorldPos, max(inside, techGlow) * 0.88));
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade * 0.9);
+    color = mix(color, uFogColor, fade);
   }
   gl_FragColor = vec4(color, ${SOLID_ALPHA});
 }
 `;
+
+
+export const CRATE_CELL = TILE_PIXELS;
+export const CRATE_FRAMES = 4;
+export const CRATE_CELLS = {
+  side: 0,
+  top: 1,
+  frame: 2,
+  trim: 3,
+};
+
+export function crateCellUv(cell = 0, v0 = 0, v1 = 1) {
+  const inset = 0.25 / (CRATE_CELL * CRATE_FRAMES);
+  return [cell / CRATE_FRAMES + inset, v0, (cell + 1) / CRATE_FRAMES - inset, v1];
+}
+
+function drawCrateSideCell(t, rnd) {
+  const S = CRATE_CELL;
+  plate(t, 0, 0, S, S, rnd, mix(METAL, [24, 34, 52], 0.28));
+
+  // Outer structural seam and bevel
+  for (let i = 0; i < S; i++) {
+    t.set(i, 0, LIGHT, 0.45);
+    t.set(i, S - 1, SHADOW, 0.9);
+    t.set(0, i, LIGHT, 0.35);
+    t.set(S - 1, i, SHADOW, 0.9);
+  }
+
+  // Top and bottom industrial amber/black diagonal hazard stripes
+  for (const [y0, y1] of [[3, 8], [55, 60]])
+    for (let y = y0; y <= y1; y++)
+      for (let x = 5; x < S - 5; x++) {
+        if (y === y0 || y === y1) {
+          t.set(x, y, SHADOW, 0.88);
+          continue;
+        }
+        const stripe = ((x + y) & 4) === 0;
+        t.set(x, y, stripe ? mix(HAZARD, [255, 208, 72], 0.35) : [18, 22, 30], 0.92);
+      }
+
+  // Recessed armored cargo bay with diagonal X-bracing ribs
+  t.rect(7, 10, S - 14, S - 20, mix(SHADOW, METAL, 0.28), 0.72);
+  for (let y = 11; y < S - 11; y++)
+    for (let x = 8; x < S - 8; x++) {
+      const d1 = Math.abs((x - 8) - (y - 11) * ((S - 16) / (S - 22)));
+      const d2 = Math.abs((S - 9 - x) - (y - 11) * ((S - 16) / (S - 22)));
+      const dMin = Math.min(d1, d2);
+      if (dMin < 2.2)
+        t.set(x, y, dMin < 1.1 ? mix(METAL, LIGHT, 0.38) : SHADOW, 0.85);
+    }
+
+  // Central futuristic UAC digital manifest & cryo-containment status console
+  t.rect(13, 25, S - 26, 14, [12, 18, 28], 0.95);
+  for (let x = 13; x < S - 13; x++) {
+    t.set(x, 25, SHADOW);
+    t.set(x, 38, LIGHT, 0.45);
+  }
+  // Glowing cyan telemetry waveform & power bars inside display
+  for (let x = 16; x < S - 22; x++) {
+    const bar = (x - 16) % 5 < 3;
+    if (bar) {
+      t.rect(x, 28, 1, 8, [56, 232, 252], 0.92);
+      t.set(x, 27, [160, 248, 255], 0.65);
+    }
+  }
+  // Amber containment lock indicator beacon on right of console
+  t.rect(S - 20, 28, 4, 8, [252, 184, 52], 0.95);
+
+  for (const [rx, ry] of [[4, 11], [S - 6, 11], [4, 50], [S - 6, 50], [10, 13], [S - 12, 13], [10, 48], [S - 12, 48]])
+    rivet(t, rx, ry);
+}
+
+function drawCrateTopCell(t, rnd) {
+  const S = CRATE_CELL;
+  plate(t, 0, 0, S, S, rnd, mix(METAL, [28, 38, 56], 0.22));
+  const cx = 31.5;
+  const cy = 31.5;
+
+  // Recessed octagonal lid perimeter groove and anti-skid diamond tread
+  for (let y = 5; y < S - 5; y++)
+    for (let x = 5; x < S - 5; x++) {
+      const border = x === 5 || x === S - 6 || y === 5 || y === S - 6;
+      if (border) {
+        t.set(x, y, SHADOW, 0.85);
+        continue;
+      }
+      const tread = ((x + y) & 3) === 0 && ((x - y) & 3) === 0;
+      if (tread)
+        t.set(x, y, LIGHT, 0.26);
+    }
+
+  // Central octagonal UAC containment seal & glowing cyan harmonic ring
+  for (let y = 16; y < S - 16; y++)
+    for (let x = 16; x < S - 16; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const d = scratchPt.setScalar(dx, dy).getMagnitude();
+      if (d < 13.5 && d >= 11.2)
+        t.set(x, y, SHADOW, 0.9);
+      else if (d < 11.2 && d >= 9.0)
+        t.set(x, y, [56, 232, 252], 0.88);
+      else if (d < 9.0) {
+        const cross = Math.min(Math.abs(dx), Math.abs(dy)) < 1.3;
+        t.set(x, y, cross ? [142, 248, 255] : [18, 28, 42], 0.92);
+      }
+    }
+
+  rivets(t, 2);
+}
+
+function drawCrateFrameCell(t, rnd) {
+  const S = CRATE_CELL;
+  plate(t, 0, 0, S, S, rnd, mix(SHADOW, METAL, 0.35));
+
+  // Heavy vertical shock-absorber bumper ribs & recessed grav-lifter slots
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const edge = x < 3 || x >= S - 3 || y < 2 || y >= S - 2;
+      const rib = y % 8 === 0 || y % 8 === 1;
+      const slot = y >= 48 && y <= 58 && ((x >= 10 && x <= 24) || (x >= 39 && x <= 53));
+      if (slot)
+        t.set(x, y, [10, 14, 22], 0.95);
+      else if (edge)
+        t.set(x, y, SHADOW, 0.85);
+      else if (rib)
+        t.set(x, y, y % 8 === 0 ? SHADOW : LIGHT, 0.48);
+    }
+
+  for (const ry of [6, 20, 34, 46]) {
+    rivet(t, 5, ry);
+    rivet(t, S - 7, ry);
+  }
+}
+
+function drawCrateTrimCell(t, rnd) {
+  const S = CRATE_CELL;
+  plate(t, 0, 0, S, S, rnd, mix(METAL, LIGHT, 0.18));
+
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const centerDist = Math.abs(x - 31.5);
+      const bus = centerDist < 3.2;
+      const latch = (y % 16 >= 5 && y % 16 <= 10) && centerDist >= 5 && centerDist <= 14;
+      if (bus) {
+        const glow = 1 - centerDist / 3.2;
+        t.set(x, y, mix([28, 120, 156], [96, 246, 255], glow), 0.92);
+      } else if (latch)
+        t.set(x, y, SHADOW, 0.78);
+    }
+}
+
+const CRATE_DRAW = [drawCrateSideCell, drawCrateTopCell, drawCrateFrameCell, drawCrateTrimCell];
+
+/**
+ * Returns the 256x64 power-of-two RGBA pixel-art atlas for the 3D UAC futuristic cover crate (`o` / `PILLAR`).
+ */
+export function crateAtlas() {
+  const width = CRATE_CELL * CRATE_FRAMES;
+  const height = CRATE_CELL;
+  const data = new Uint8Array(width * height * 4);
+  CRATE_DRAW.forEach((draw, cell) => {
+    const tile = new Tile(CRATE_CELL, CRATE_CELL);
+    draw(tile, mulberry32(51000 + cell * 8831));
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < CRATE_CELL; x++) {
+        const i = (y * CRATE_CELL + x) * 3;
+        const o = (y * width + cell * CRATE_CELL + x) * 4;
+        for (let k = 0; k < 3; k++)
+          data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
+        data[o + 3] = 255;
+      }
+  });
+  return { name: 'crate', data, width, height, cell: CRATE_CELL, frames: CRATE_FRAMES };
+}
+
+/**
+ * Builds the 3D quad geometry for a futuristic UAC armored cover crate at `center` (`Vec3`: x, baseY, z)
+ * with dimensions `size` (`Vec2`: tileSpan, crateHeight). Fits the 64x26x64 waist-high cover footprint
+ * with a grav-skid base plinth, recessed diagonal-braced cargo core, 4 heavy corner bumper pillars,
+ * 4 side clamping bulkheads with cyan telemetry consoles, beveled armored lid, transverse locking straps,
+ * and corner tie-down lugs.
+ */
+export function crateQuads(center = new Vec3(0, 0, 0), size = new Vec2(64, 26)) {
+  const cx = center.x;
+  const baseY = center.y;
+  const cz = center.z;
+  const scaleXZ = size.x / 64;
+  const scaleY = size.y / 26;
+  const quads = [];
+
+  const uvSide = crateCellUv(CRATE_CELLS.side);
+  const uvTop = crateCellUv(CRATE_CELLS.top);
+  const uvFrame = crateCellUv(CRATE_CELLS.frame);
+  const uvTrim = crateCellUv(CRATE_CELLS.trim);
+
+  const pushBoxAt = (ox, oz, hx, hz, y0, y1, sideUv, capUv, includeBottom = false) => {
+    const x0 = cx + (ox - hx) * scaleXZ;
+    const x1 = cx + (ox + hx) * scaleXZ;
+    const z0 = cz + (oz - hz) * scaleXZ;
+    const z1 = cz + (oz + hz) * scaleXZ;
+    const by0 = baseY + y0 * scaleY;
+    const by1 = baseY + y1 * scaleY;
+    quads.push(
+      { corners: [x0, by0, z1, x1, by0, z1, x1, by1, z1, x0, by1, z1], uv: sideUv },
+      { corners: [x1, by0, z0, x0, by0, z0, x0, by1, z0, x1, by1, z0], uv: sideUv },
+      { corners: [x0, by0, z0, x0, by0, z1, x0, by1, z1, x0, by1, z0], uv: sideUv },
+      { corners: [x1, by0, z1, x1, by0, z0, x1, by1, z0, x1, by1, z1], uv: sideUv },
+      { corners: [x0, by1, z1, x1, by1, z1, x1, by1, z0, x0, by1, z0], uv: capUv }
+    );
+    if (includeBottom)
+      quads.push({ corners: [x0, by0, z0, x1, by0, z0, x1, by0, z1, x0, by0, z1], uv: capUv });
+  };
+
+  // 1. Heavy grav-skid base pallet plinth (y = 0 .. 3.4)
+  pushBoxAt(0, 0, 31.2, 31.2, 0.0, 3.4, uvFrame, uvFrame, true);
+
+  // 2. Main armored octagonal/recessed cargo container core (y = 3.5 .. 22.8)
+  pushBoxAt(0, 0, 29.6, 29.6, 3.5, 22.8, uvSide, uvTop, false);
+
+  // 3. Four reinforced vertical corner bumper pillars (y = 0.1 .. 25.3, outer faces at ±31.9)
+  const cornerCenters = [
+    [-26.8, -26.8],
+    [26.8, -26.8],
+    [26.8, 26.8],
+    [-26.8, 26.8],
+  ];
+  for (const [ox, oz] of cornerCenters) {
+    pushBoxAt(ox, oz, 5.1, 5.1, 0.1, 25.3, uvFrame, uvFrame, false);
+    // 4. Corner tie-down / stacking lugs atop each corner pillar (y = 25.35 .. 26.0)
+    pushBoxAt(ox, oz, 3.6, 3.6, 25.35, 26.0, uvTrim, uvTrim, false);
+  }
+
+  // 5. Four recessed side armor bulkheads & telemetry consoles (outer faces at ±31.85)
+  pushBoxAt(0, 30.8, 19.2, 1.05, 4.2, 22.1, uvSide, uvTrim, false);
+  pushBoxAt(0, -30.8, 19.2, 1.05, 4.2, 22.1, uvSide, uvTrim, false);
+  pushBoxAt(30.8, 0, 1.05, 19.2, 4.2, 22.1, uvSide, uvTrim, false);
+  pushBoxAt(-30.8, 0, 1.05, 19.2, 4.2, 22.1, uvSide, uvTrim, false);
+
+  // 6. Beveled upper containment lid (y = 22.85 .. 24.85)
+  pushBoxAt(0, 0, 28.4, 28.4, 22.85, 24.85, uvFrame, uvTop, false);
+
+  // 7. Two transverse hydraulic locking clamp bars across the lid (y = 24.9 .. 26.0)
+  pushBoxAt(-12.5, 0, 2.8, 29.2, 24.9, 26.0, uvTrim, uvTrim, false);
+  pushBoxAt(12.5, 0, 2.8, 29.2, 24.9, 26.0, uvTrim, uvTrim, false);
+
+  // 8. Central UAC octagonal containment seal cap (y = 24.9 .. 25.85)
+  pushBoxAt(0, 0, 6.2, 6.2, 24.9, 25.85, uvTrim, uvTop, false);
+
+  return quads;
+}
+
+/**
+ * Converts `crateQuads(center, size)` into a triangle-list mesh `{ vertices, uvs }`
+ * with `Float32Array` buffers suitable for RoostR `CustomMesh` and BlendR catalog import.
+ */
+export function crateMesh(center = new Vec3(0, 0, 0), size = new Vec2(64, 26)) {
+  const quads = crateQuads(center, size);
+  const vertices = new Float32Array(quads.length * 18);
+  const uvs = new Float32Array(quads.length * 12);
+  let vOut = 0;
+  let uOut = 0;
+  for (const { corners, uv } of quads) {
+    const [u0, v0, u1, v1] = uv;
+    const cornerUvs = [
+      u0, v0,
+      u1, v0,
+      u1, v1,
+      u0, v1,
+    ];
+    for (const k of [0, 1, 2, 0, 2, 3]) {
+      vertices[vOut++] = corners[k * 3];
+      vertices[vOut++] = corners[k * 3 + 1];
+      vertices[vOut++] = corners[k * 3 + 2];
+      uvs[uOut++] = cornerUvs[k * 2];
+      uvs[uOut++] = cornerUvs[k * 2 + 1];
+    }
+  }
+  return { vertices, uvs };
+}
+
+export const CRATE_FRAGMENT = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform sampler2D uSampler;
+uniform vec3 uMaterialDiffuse;
+uniform float uTime;
+uniform int uHasFog;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
+varying float vDepth;
+varying vec2 vTextureCoord;
+varying vec2 vWorld;
+varying vec3 vWorldPos;
+
+${RUST_GLSL}
+${LIGHT_GLSL}
+void main(void) {
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
+    return;
+  }
+  vec3 tex = texture2D(uSampler, vTextureCoord).rgb;
+  float pulse = 0.86 + 0.14 * sin(uTime * 3.8 + (vWorldPos.x + vWorldPos.z) * 0.04);
+  float cyanGlow = smoothstep(0.42, 0.78, min(tex.g, tex.b) - tex.r * 0.35);
+  float amberGlow = smoothstep(0.45, 0.78, min(tex.r, tex.g) - tex.b * 0.45);
+  float emissive = max(cyanGlow, amberGlow * 0.75);
+  vec3 lit = tex * (0.94 + 0.28 * pulse * emissive) + vec3(0.08, 0.32, 0.38) * (cyanGlow * pulse * 0.35);
+  vec3 color = lit * uMaterialDiffuse * max(vec3(0.76, 0.86, 0.92), surfaceLight(vWorldPos, emissive * 0.82));
+  if (uHasFog == 1) {
+    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+    color = mix(color, uFogColor, fade);
+  }
+  gl_FragColor = vec4(color, ${SOLID_ALPHA});
+}
+`;
+
+// ---- Martian surface dirt & boulders (E1M5 Red Planet) -------------------------------------------------------------
+
+const MARS_DIRT_BASE = [126, 52, 24];
+const MARS_DIRT_LIGHT = [178, 86, 38];
+const MARS_DIRT_OCHRE = [204, 108, 48];
+const MARS_DIRT_SHADOW = [54, 20, 10];
+const MARS_BASALT = [42, 26, 22];
+
+const MARS_TAU = Trigo.twopi / TILE_PIXELS;
+
+function periodicDirtGrain(x, y) {
+  const ix = ((x % TILE_PIXELS) + TILE_PIXELS) % TILE_PIXELS;
+  const iy = ((y % TILE_PIXELS) + TILE_PIXELS) % TILE_PIXELS;
+  let h = Math.imul(ix * 374761393 ^ iy * 668265263, 1274126177);
+  h ^= h >>> 13;
+  return (((Math.imul(h, 1911520717) >>> 0) % 1000) / 1000) - 0.5;
+}
+
+function dirtEdgeMask(x, y, margin = 4) {
+  const mx = Math.min(x, TILE_PIXELS - 1 - x);
+  const my = Math.min(y, TILE_PIXELS - 1 - y);
+  return Utils.smoothstep(0, margin, mx) * Utils.smoothstep(0, margin, my);
+}
+
+function wrapDirtCoord(v) {
+  return ((Math.round(v) % TILE_PIXELS) + TILE_PIXELS) % TILE_PIXELS;
+}
+
+function createSharedDirtTile() {
+  const baseRnd = mulberry32(41000);
+  const warpX = periodicField(baseRnd, 3, TILE_PIXELS);
+  const warpY = periodicField(baseRnd, 3, TILE_PIXELS);
+  const coarse = periodicField(baseRnd, 3, TILE_PIXELS);
+  const medium = periodicField(baseRnd, 6, TILE_PIXELS);
+  const fine = periodicField(baseRnd, 12, TILE_PIXELS);
+  const tile = new Tile();
+
+  for (let y = 0; y < TILE_PIXELS; y++)
+    for (let x = 0; x < TILE_PIXELS; x++) {
+      // Domain-warped periodic coordinates so the base regolith has organic patches with zero linear stripes
+      const wx = x + (warpX(x, y) - 0.5) * 20;
+      const wy = y + (warpY(x, y) - 0.5) * 20;
+      const c = coarse(wx, wy);
+      const m = medium(wx + 11, wy + 7);
+      const f = fine(x, y);
+      const ridge = 1 - Math.abs((coarse(wx + 23, wy + 37) - 0.5) * 2);
+      const shade = c * 0.45 + m * 0.35 + f * 0.2;
+      let col = mix(MARS_DIRT_SHADOW, MARS_DIRT_BASE, Utils.clamp(shade * 1.15, 0, 1));
+      col = mix(col, MARS_DIRT_LIGHT, ridge * 0.4 + (f - 0.5) * 0.24);
+      if (shade > 0.64 && ridge > 0.56)
+        col = mix(col, MARS_DIRT_OCHRE, (shade - 0.64) * 1.55);
+      const grain = periodicDirtGrain(x, y) * 12;
+      tile.set(x, y, [col[0] + grain, col[1] + grain * 0.7, col[2] + grain * 0.45]);
+    }
+
+  // Modulo-wrapped pebbles across the entire 64x64 tile (no empty border corridor)
+  for (let k = 0; k < 20; k++) {
+    const px = baseRnd() * TILE_PIXELS;
+    const py = baseRnd() * TILE_PIXELS;
+    const rx = 1.1 + baseRnd() * 2.3;
+    const ry = 0.9 + baseRnd() * 1.9;
+    const basalt = baseRnd() < 0.45;
+    const rockCol = basalt ? mix(MARS_BASALT, MARS_DIRT_BASE, 0.25) : mix(MARS_DIRT_BASE, MARS_DIRT_LIGHT, 0.5);
+    const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
+    for (let dy = -rCeil; dy <= rCeil; dy++)
+      for (let dx = -rCeil; dx <= rCeil; dx++) {
+        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude();
+        if (d > 1.15)
+          continue;
+        const wx = wrapDirtCoord(px + dx);
+        const wy = wrapDirtCoord(py + dy);
+        if (d > 0.88)
+          tile.set(wx, wy, MARS_DIRT_SHADOW, 0.65);
+        else {
+          const highlight = dx - dy < 0 ? 0.35 : -0.25;
+          const c = highlight > 0 ? mix(rockCol, MARS_DIRT_OCHRE, highlight) : mix(rockCol, MARS_DIRT_SHADOW, -highlight);
+          tile.set(wx, wy, c, 0.92);
+        }
+      }
+  }
+
+  return tile;
+}
+
+let sharedDirtTile = null;
+
+function drawMarsRegolithBase(t) {
+  sharedDirtTile ??= createSharedDirtTile();
+  t.pixels.set(sharedDirtTile.pixels);
+}
+
+function scatterMarsPebbles(t, rnd, count, maxRadius = 3.0) {
+  for (let k = 0; k < count; k++) {
+    const px = 6 + rnd() * (TILE_PIXELS - 12);
+    const py = 6 + rnd() * (TILE_PIXELS - 12);
+    const rx = 1.1 + rnd() * maxRadius;
+    const ry = 0.9 + rnd() * (maxRadius * 0.85);
+    const basalt = rnd() < 0.45;
+    const rockCol = basalt ? mix(MARS_BASALT, MARS_DIRT_BASE, 0.25) : mix(MARS_DIRT_BASE, MARS_DIRT_LIGHT, 0.5);
+    const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
+    for (let dy = -rCeil; dy <= rCeil; dy++)
+      for (let dx = -rCeil; dx <= rCeil; dx++) {
+        const x = Math.round(px + dx);
+        const y = Math.round(py + dy);
+        const mask = dirtEdgeMask(x, y, 5);
+        if (mask <= 0.01)
+          continue;
+        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude();
+        if (d > 1.15)
+          continue;
+        if (d > 0.88)
+          t.set(x, y, MARS_DIRT_SHADOW, 0.65 * mask);
+        else {
+          const highlight = dx - dy < 0 ? 0.35 : -0.25;
+          const c = highlight > 0 ? mix(rockCol, MARS_DIRT_OCHRE, highlight) : mix(rockCol, MARS_DIRT_SHADOW, -highlight);
+          t.set(x, y, c, 0.92 * mask);
+        }
+      }
+  }
+}
+
+function drawMarsPlain(t, rnd) {
+  drawMarsRegolithBase(t);
+  const drift = periodicField(rnd, 3, TILE_PIXELS);
+  for (let y = 0; y < TILE_PIXELS; y++)
+    for (let x = 0; x < TILE_PIXELS; x++) {
+      const mask = dirtEdgeMask(x, y, 5);
+      if (mask <= 0.01)
+        continue;
+      const d = drift(x, y);
+      if (d > 0.56)
+        t.set(x, y, MARS_DIRT_LIGHT, (d - 0.56) * 0.95 * mask);
+      else if (d < 0.42)
+        t.set(x, y, MARS_DIRT_SHADOW, (0.42 - d) * 0.75 * mask);
+    }
+  scatterMarsPebbles(t, rnd, 10, 2.2);
+}
+
+function drawMarsDunes(t, rnd) {
+  drawMarsRegolithBase(t);
+  const warpX = periodicField(rnd, 3, TILE_PIXELS);
+  const warpY = periodicField(rnd, 3, TILE_PIXELS);
+  const crest = periodicField(rnd, 4, TILE_PIXELS);
+  for (let y = 0; y < TILE_PIXELS; y++)
+    for (let x = 0; x < TILE_PIXELS; x++) {
+      const mask = dirtEdgeMask(x, y, 5);
+      if (mask <= 0.01)
+        continue;
+      const wx = x + (warpX(x, y) - 0.5) * 22;
+      const wy = y + (warpY(x, y) - 0.5) * 22;
+      const ridge = 1 - Math.abs((crest(wx, wy) - 0.5) * 2);
+      if (ridge > 0.62)
+        t.set(x, y, MARS_DIRT_OCHRE, (ridge - 0.62) * 1.45 * mask);
+      else if (ridge < 0.36)
+        t.set(x, y, MARS_DIRT_SHADOW, (0.36 - ridge) * 1.25 * mask);
+    }
+  scatterMarsPebbles(t, rnd, 9, 1.9);
+}
+
+function drawMarsCrater(t, rnd) {
+  drawMarsRegolithBase(t);
+  const cx = 31.5 + (rnd() - 0.5) * 8;
+  const cy = 31.5 + (rnd() - 0.5) * 8;
+  const rOuter = 20;
+  const wobble = periodicField(rnd, 4, TILE_PIXELS);
+  for (let y = 0; y < TILE_PIXELS; y++)
+    for (let x = 0; x < TILE_PIXELS; x++) {
+      const mask = dirtEdgeMask(x, y, 5);
+      if (mask <= 0.01)
+        continue;
+      const dx = x - cx;
+      const dy = y - cy;
+      const d = scratchPt.setScalar(dx, dy).getMagnitude() + (wobble(x, y) - 0.5) * 3.8;
+      if (d < rOuter && d >= rOuter - 4.5) {
+        const lit = (dx + dy) < 0 ? MARS_DIRT_OCHRE : MARS_DIRT_SHADOW;
+        t.set(x, y, lit, 0.52 * mask);
+      } else if (d < rOuter - 4.5) {
+        const depth = 1 - d / (rOuter - 4.5);
+        const bowl = (dx + dy) > 0 ? MARS_DIRT_LIGHT : MARS_DIRT_SHADOW;
+        t.set(x, y, mix(MARS_DIRT_SHADOW, bowl, 0.35), (0.38 + depth * 0.45) * mask);
+      }
+    }
+  scatterMarsPebbles(t, rnd, 12, 2.5);
+}
+
+function drawMarsBasaltPatch(t, rnd) {
+  drawMarsRegolithBase(t);
+  const patch = periodicField(rnd, 3, TILE_PIXELS);
+  const detail = periodicField(rnd, 8, TILE_PIXELS);
+  for (let y = 0; y < TILE_PIXELS; y++)
+    for (let x = 0; x < TILE_PIXELS; x++) {
+      const mask = dirtEdgeMask(x, y, 5);
+      if (mask <= 0.01)
+        continue;
+      const m = patch(x, y) * 0.75 + detail(x, y) * 0.25;
+      if (m > 0.52) {
+        const edge = Math.min(1, (m - 0.52) * 4.8) * mask;
+        const strata = detail(x + 13, y + 7) > 0.55 ? MARS_DIRT_SHADOW : MARS_BASALT;
+        t.set(x, y, mix(MARS_DIRT_BASE, strata, 0.75), edge * 0.86);
+      }
+    }
+  scatterMarsPebbles(t, rnd, 16, 3.0);
+}
+
+function drawMarsCrackedClay(t, rnd) {
+  drawMarsRegolithBase(t);
+  const basin = periodicField(rnd, 3, TILE_PIXELS);
+  for (let y = 0; y < TILE_PIXELS; y++)
+    for (let x = 0; x < TILE_PIXELS; x++) {
+      const mask = dirtEdgeMask(x, y, 5);
+      if (mask > 0.01 && basin(x, y) > 0.48)
+        t.set(x, y, mix(MARS_DIRT_BASE, MARS_DIRT_OCHRE, 0.38), (basin(x, y) - 0.48) * 1.1 * mask);
+    }
+  for (let c = 0; c < 5; c++) {
+    let x = 10 + Math.floor(rnd() * 44);
+    let y = 6;
+    while (y < TILE_PIXELS - 6) {
+      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.8), 7, TILE_PIXELS - 8);
+      y += 1;
+      const mask = dirtEdgeMask(x, y, 5);
+      t.set(x, y, MARS_DIRT_SHADOW, 0.88 * mask);
+      t.set(x + 1, y, MARS_DIRT_OCHRE, 0.36 * mask);
+    }
+  }
+  scatterMarsPebbles(t, rnd, 11, 2.3);
+}
+
+function drawMarsRuts(t, rnd) {
+  drawMarsRegolithBase(t);
+  const bendField = periodicField(rnd, 3, TILE_PIXELS);
+  for (const y0 of [20, 44])
+    for (let x = 5; x < TILE_PIXELS - 5; x++) {
+      const mask = dirtEdgeMask(x, y0, 5);
+      const bend = Math.round((bendField(x, y0) - 0.5) * 10);
+      const yc = Utils.clamp(y0 + bend, 7, TILE_PIXELS - 8);
+      t.set(x, yc - 2, MARS_DIRT_OCHRE, 0.42 * mask);
+      t.set(x, yc - 1, MARS_DIRT_SHADOW, 0.68 * mask);
+      t.set(x, yc, MARS_DIRT_SHADOW, 0.82 * mask);
+      t.set(x, yc + 1, MARS_DIRT_BASE, 0.52 * mask);
+      t.set(x, yc + 2, MARS_DIRT_OCHRE, 0.38 * mask);
+    }
+  scatterMarsPebbles(t, rnd, 14, 2.5);
+}
+
+function drawMarsThreshold(t, rnd) {
+  drawMarsRegolithBase(t);
+  const scree = periodicField(rnd, 4, TILE_PIXELS);
+  for (let y = 0; y < TILE_PIXELS; y++)
+    for (let x = 0; x < TILE_PIXELS; x++) {
+      const mask = dirtEdgeMask(x, y, 5);
+      if (mask <= 0.01)
+        continue;
+      const s = scree(x, y);
+      if (s > 0.58)
+        t.set(x, y, MARS_DIRT_OCHRE, (s - 0.58) * 1.15 * mask);
+      else if (s < 0.38)
+        t.set(x, y, MARS_BASALT, (0.38 - s) * 1.25 * mask);
+    }
+  scatterMarsPebbles(t, rnd, 20, 3.4);
+}
+
+function drawMarsFissure(t, rnd) {
+  drawMarsRegolithBase(t);
+  let y = 24 + Math.floor(rnd() * 16);
+  for (let x = 6; x < TILE_PIXELS - 6; x++) {
+    y = Utils.clamp(y + Math.round((rnd() - 0.5) * 2.2), 10, TILE_PIXELS - 10);
+    const mask = dirtEdgeMask(x, y, 5);
+    t.set(x, y - 2, MARS_DIRT_SHADOW, 0.68 * mask);
+    t.set(x, y - 1, [220, 88, 24], 0.55 * mask);
+    t.set(x, y, [255, 142, 42], 0.82 * mask);
+    t.set(x, y + 1, [220, 88, 24], 0.55 * mask);
+    t.set(x, y + 2, MARS_DIRT_SHADOW, 0.68 * mask);
+  }
+  scatterMarsPebbles(t, rnd, 12, 2.4);
+}
+
+const MARS_DIRT_DRAW = [
+  drawMarsPlain,
+  drawMarsDunes,
+  drawMarsCrater,
+  drawMarsBasaltPatch,
+  drawMarsCrackedClay,
+  drawMarsRuts,
+  drawMarsThreshold,
+  drawMarsFissure,
+];
+
+/**
+ * 8-cell 512x64 procedural Martian surface dirt atlas for outdoor planet tiles (`planet: 'mars'`).
+ * Replaces steel deck plates with wind-rippled iron-oxide regolith, sand dunes, basalt scree, craters, and parched cracks.
+ */
+export function marsDirtAtlas() {
+  const width = TILE_PIXELS * FLOOR_CELL_COUNT;
+  const height = TILE_PIXELS;
+  const data = new Uint8Array(width * height * 4);
+  MARS_DIRT_DRAW.forEach((draw, cell) => {
+    const tile = new Tile();
+    draw(tile, mulberry32(41000 + cell * 88793));
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < TILE_PIXELS; x++) {
+        const i = (y * TILE_PIXELS + x) * 3;
+        const o = (y * width + cell * TILE_PIXELS + x) * 4;
+        for (let k = 0; k < 3; k++)
+          data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
+        data[o + 3] = 255;
+      }
+  });
+  return { name: 'marsDirt', data, width, height, cell: TILE_PIXELS, frames: FLOOR_CELL_COUNT };
+}
+
+export const MARS_DIRT_FRAGMENT = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform sampler2D uSampler;
+uniform vec3 uMaterialDiffuse;
+uniform int uHasFog;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
+varying float vDepth;
+varying vec2 vTextureCoord;
+varying vec2 vWorld;
+varying vec3 vWorldPos;
+
+${RUST_GLSL}
+${LIGHT_GLSL}
+
+vec3 sampleDirtCell(vec2 p, float seed) {
+  vec2 tileId = floor(p / 64.0);
+  float cell = floor(hash(tileId + seed) * 8.0);
+  vec2 t = floor(mod(p, 64.0)) + 0.5;
+  return texture2D(uSampler, vec2((cell * 64.0 + t.x) / 512.0, t.y / 64.0)).rgb;
+}
+
+void main(void) {
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
+    return;
+  }
+  // Domain-warp world coordinates and blend 3 incommensurate rotated/scaled layers across all 8 periodic dirt cells
+  // (mod(vWorld, 64.0) base with shared periodic cell borders so tile seams and repetition never appear)
+  vec2 warp = vec2(
+    noise(vWorld / 58.0 + vec2(3.7, 9.2)) - 0.5,
+    noise(vWorld / 52.0 + vec2(19.4, 7.1)) - 0.5
+  ) * 24.0;
+  vec2 pA = vWorld + warp;
+  vec3 dirt = sampleDirtCell(pA, 0.0);
+  if (vDepth < 680.0) {
+    vec2 pB = vec2(vWorld.x * 0.58 - vWorld.y * 0.51, vWorld.x * 0.51 + vWorld.y * 0.58) + warp * 0.7 + vec2(31.4, 73.8);
+    vec3 dirtB = sampleDirtCell(pB, 17.3);
+    float blendAB = smoothstep(0.24, 0.76, noise(vWorld / 74.0 + 5.0));
+    dirt = mix(dirt, dirtB, blendAB);
+  }
+  float near = 1.0 - smoothstep(180.0, 520.0, vDepth);
+  float grit = 0.0;
+  if (near > 0.01) {
+    vec2 pC = vec2(-vWorld.x * 0.43 - vWorld.y * 0.67, vWorld.x * 0.67 - vWorld.y * 0.43) - warp * 0.5 + vec2(89.1, 17.6);
+    vec3 dirtC = sampleDirtCell(pC, 43.9);
+    float blendC = smoothstep(0.32, 0.78, noise(vWorld / 118.0 + 29.0));
+    dirt = mix(dirt, dirtC, blendC * 0.58);
+    vec2 texel = floor(vWorld);
+    grit = ((noise(texel / 3.9) - 0.5) * 0.6 + (noise(texel / 1.8 + 17.0) - 0.5) * 0.4) * 0.14 * near;
+  }
+  dirt = mix(vec3(0.50, 0.21, 0.10), dirt, 0.35 + 0.65 * near);
+
+  // Multi-scale domain-warped geological zones, twisted erosion ridges, and gravel scree (no periodic sine waves)
+  float macro = noise(vWorld / 195.0 + 19.0) * 0.55 + noise(pA / 78.0 + 7.0) * 0.45;
+  float ridge = 0.5;
+  float scree = 0.5;
+  if (vDepth < 680.0) {
+    ridge = 1.0 - abs(noise((pA + warp * 0.8) / 38.0 + 41.0) * 2.0 - 1.0);
+    scree = noise((vWorld - warp) / 21.0 + 63.0);
+  }
+  vec3 ochre = vec3(0.78, 0.39, 0.17);
+  vec3 rustClay = vec3(0.62, 0.24, 0.11);
+  vec3 basalt = vec3(0.22, 0.11, 0.07);
+  vec3 color = dirt;
+  color = mix(color, ochre, smoothstep(0.54, 0.84, macro * 0.6 + ridge * 0.4) * 0.32);
+  color = mix(color, rustClay, smoothstep(0.55, 0.82, scree * 0.65 + (1.0 - ridge) * 0.35) * 0.24);
+  color = mix(color, basalt, smoothstep(0.58, 0.85, (1.0 - macro) * 0.65 + (1.0 - scree) * 0.35) * 0.36);
+  color = clamp(color + grit, 0.0, 1.0);
+  float ember = smoothstep(0.32, 0.58, dirt.r - dirt.g * 0.65) * smoothstep(0.45, 0.75, dirt.g);
+  color *= uMaterialDiffuse * surfaceLight(vWorldPos, ember * 0.45);
+  if (uHasFog == 1) {
+    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+    color = mix(color, uFogColor, fade);
+  }
+  gl_FragColor = vec4(color, ${SOLID_ALPHA});
+}
+`;
+
+export const MARS_BOULDER_CELLS = {
+  crag: 0,
+  strata: 1,
+  scoured: 2,
+  cap: 3,
+};
+export const MARS_BOULDER_CELL_COUNT = 4;
+
+const BOULDER_ABYSS = [14, 6, 4];
+const BOULDER_DARK = [34, 15, 10];
+const BOULDER_SLATE = [68, 34, 22];
+const BOULDER_BASE = [124, 52, 26];
+const BOULDER_LIGHT = [178, 86, 38];
+const BOULDER_HIGHLIGHT = [228, 134, 64];
+
+function drawBoulderCell(t, rnd, variant) {
+  const S = TILE_PIXELS;
+  const warpX = periodicField(rnd, 3, S);
+  const warpY = periodicField(rnd, 3, S);
+  const coarse = periodicField(rnd, 3, S);
+  const medium = periodicField(rnd, 6, S);
+  const fine = periodicField(rnd, 12, S);
+  // Subtle directional brightness per cell so 3D boulder faces have natural volume while matching the floor palette
+  const shadeScale = variant === MARS_BOULDER_CELLS.crag
+    ? 1.06
+    : variant === MARS_BOULDER_CELLS.strata
+      ? 0.96
+      : variant === MARS_BOULDER_CELLS.scoured
+        ? 0.84
+        : 1.10;
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const wx = x + (warpX(x, y) - 0.5) * 20;
+      const wy = y + (warpY(x, y) - 0.5) * 20;
+      const c = coarse(wx, wy);
+      const m = medium(wx + 11, wy + 7);
+      const f = fine(x, y);
+      const ridge = 1 - Math.abs((coarse(wx + 23, wy + 37) - 0.5) * 2);
+      const shade = c * 0.45 + m * 0.35 + f * 0.2;
+      let col = mix(MARS_DIRT_SHADOW, MARS_DIRT_BASE, Utils.clamp(shade * 1.15, 0, 1));
+      col = mix(col, MARS_DIRT_LIGHT, ridge * 0.4 + (f - 0.5) * 0.24);
+      if (shade > 0.64 && ridge > 0.56)
+        col = mix(col, MARS_DIRT_OCHRE, (shade - 0.64) * 1.55);
+
+      const grain = periodicDirtGrain(x, y) * 12;
+      t.set(x, y, [
+        (col[0] + grain) * shadeScale,
+        (col[1] + grain * 0.7) * shadeScale,
+        (col[2] + grain * 0.45) * shadeScale,
+      ]);
+    }
+  scatterMarsPebbles(t, rnd, 16, 2.5);
+  // Ensure full dynamic range for boulder crevices and sunlit lips
+  t.set(16, 16, BOULDER_ABYSS, 0.9);
+  t.set(17, 16, BOULDER_HIGHLIGHT, 0.9);
+}
+
+export const MARS_ROCK_FRAGMENT = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform sampler2D uSampler;
+uniform vec3 uMaterialDiffuse;
+uniform int uHasFog;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
+varying float vDepth;
+varying float vHeight;
+varying vec2 vTextureCoord;
+varying vec2 vSurface;
+varying vec3 vWorldPos;
+
+${RUST_GLSL}
+${LIGHT_GLSL}
+
+vec3 sampleRockCell(vec2 p, float seed) {
+  vec2 tileId = floor(p / 64.0);
+  float r = floor(hash(tileId + seed) * 7.0);
+  float cell = r >= 5.0 ? r + 1.0 : r;
+  vec2 t = floor(mod(p, 64.0)) + 0.5;
+  return texture2D(uSampler, vec2((cell * 64.0 + t.x) / 512.0, t.y / 64.0)).rgb;
+}
+
+void main(void) {
+  if (vHeight < -0.01)
+    discard;
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
+    return;
+  }
+  // Preserve the glowing green exit chevrons on exit monolith walls without evaluating rock noise
+  vec3 uvTex = texture2D(uSampler, vTextureCoord).rgb;
+  vec3 rock;
+  vec3 color;
+  if (uvTex.g > uvTex.r) {
+    rock = uvTex;
+    color = uvTex;
+  } else {
+    // Domain-warp surface coordinates and blend 3 incommensurate rotated/scaled layers across all 7 periodic rock cells
+    // so walls share the floor's color & organic variety without any repeating 64-unit grid or tile seams
+    vec2 warp = vec2(
+      noise(vSurface / 58.0 + vec2(3.7, 9.2)) - 0.5,
+      noise(vSurface / 52.0 + vec2(19.4, 7.1)) - 0.5
+    ) * 24.0;
+    vec2 pA = vSurface + warp;
+    rock = sampleRockCell(pA, 0.0);
+    if (vDepth < 680.0) {
+      vec2 pB = vec2(vSurface.x * 0.58 - vSurface.y * 0.51, vSurface.x * 0.51 + vSurface.y * 0.58) + warp * 0.7 + vec2(31.4, 73.8);
+      vec3 rockB = sampleRockCell(pB, 17.3);
+      float blendAB = smoothstep(0.24, 0.76, noise(vSurface / 74.0 + 5.0));
+      rock = mix(rock, rockB, blendAB);
+    }
+    float near = 1.0 - smoothstep(180.0, 520.0, vDepth);
+    float grit = 0.0;
+    if (near > 0.01) {
+      vec2 pC = vec2(-vSurface.x * 0.43 - vSurface.y * 0.67, vSurface.x * 0.67 - vSurface.y * 0.43) - warp * 0.5 + vec2(89.1, 17.6);
+      vec3 rockC = sampleRockCell(pC, 43.9);
+      float blendC = smoothstep(0.32, 0.78, noise(vSurface / 118.0 + 29.0));
+      rock = mix(rock, rockC, blendC * 0.58);
+      vec2 texel = floor(vSurface);
+      grit = ((noise(texel / 3.9) - 0.5) * 0.6 + (noise(texel / 1.8 + 17.0) - 0.5) * 0.4) * 0.14 * near;
+    }
+    rock = mix(vec3(0.50, 0.21, 0.10), rock, 0.35 + 0.65 * near);
+
+    // Same multi-scale domain-warped geological zones, twisted erosion ridges, and gravel scree as MARS_DIRT_FRAGMENT
+    float macro = noise(vSurface / 195.0 + 19.0) * 0.55 + noise(pA / 78.0 + 7.0) * 0.45;
+    float ridge = 0.5;
+    float scree = 0.5;
+    if (vDepth < 680.0) {
+      ridge = 1.0 - abs(noise((pA + warp * 0.8) / 38.0 + 41.0) * 2.0 - 1.0);
+      scree = noise((vSurface - warp) / 21.0 + 63.0);
+    }
+    vec3 ochre = vec3(0.78, 0.39, 0.17);
+    vec3 rustClay = vec3(0.62, 0.24, 0.11);
+    vec3 basalt = vec3(0.22, 0.11, 0.07);
+    color = rock;
+    color = mix(color, ochre, smoothstep(0.54, 0.84, macro * 0.6 + ridge * 0.4) * 0.32);
+    color = mix(color, rustClay, smoothstep(0.55, 0.82, scree * 0.65 + (1.0 - ridge) * 0.35) * 0.24);
+    color = mix(color, basalt, smoothstep(0.58, 0.85, (1.0 - macro) * 0.65 + (1.0 - scree) * 0.35) * 0.36);
+    color = clamp(color + grit, 0.0, 1.0);
+  }
+  float ember = smoothstep(0.32, 0.58, rock.r - rock.g * 0.65) * smoothstep(0.45, 0.75, rock.g);
+  float exitGlow = smoothstep(0.06, 0.2, rock.g - rock.r);
+  color *= uMaterialDiffuse * surfaceLight(vWorldPos, max(ember * 0.45, exitGlow * 0.85));
+  if (uHasFog == 1) {
+    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+    color = mix(color, uFogColor, fade);
+  }
+  gl_FragColor = vec4(color, ${SOLID_ALPHA});
+}
+`;
+
+/**
+ * 256x64 4-cell procedural Martian rock boulder atlas (`crag`, `strata`, `scoured`, `cap`)
+ * for outdoor rock cover outcrops (`o` / `PILLAR`) on `planet: 'mars'`.
+ */
+export function marsBoulderAtlas() {
+  const width = TILE_PIXELS * MARS_BOULDER_CELL_COUNT;
+  const height = TILE_PIXELS;
+  const data = new Uint8Array(width * height * 4);
+  for (let cell = 0; cell < MARS_BOULDER_CELL_COUNT; cell++) {
+    const t = new Tile(TILE_PIXELS, TILE_PIXELS);
+    drawBoulderCell(t, mulberry32(62000 + cell * 49999), cell);
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < TILE_PIXELS; x++) {
+        const i = (y * TILE_PIXELS + x) * 3;
+        const o = (y * width + cell * TILE_PIXELS + x) * 4;
+        for (let k = 0; k < 3; k++)
+          data[o + k] = Utils.clamp(Math.round(t.pixels[i + k]), 0, 255);
+        data[o + 3] = 255;
+      }
+  }
+  return { name: 'marsBoulder', data, width, height, cell: TILE_PIXELS, frames: MARS_BOULDER_CELL_COUNT };
+}
+
+export function marsBoulderCellUv(cell, flipV = false) {
+  const inset = 0.25 / (TILE_PIXELS * MARS_BOULDER_CELL_COUNT);
+  return [cell / MARS_BOULDER_CELL_COUNT + inset, flipV ? 1 : 0, (cell + 1) / MARS_BOULDER_CELL_COUNT - inset, flipV ? 0 : 1];
+}
+
+export const MARS_BOULDER_BASE_INSET = 1.0;
+export const MARS_BOULDER_SLOPE = 0.5;
+
+/**
+ * Builds the 3D quad geometry for a jagged Martian boulder cluster (`'o'` / `PILLAR` tile outdoors on Mars).
+ * `center` is a `Vec3(x, baseY, z)` and `size` is a `Vec2(footprint, height)`.
+ */
+export function marsBoulderQuads(center, size = new Vec2(64, 26)) {
+  const cx = center.x;
+  const baseY = center.y;
+  const cz = center.z;
+  const scaleXZ = size.x / 64;
+  const scaleY = size.y / 26;
+  const quads = [];
+
+  const uvCrag = marsBoulderCellUv(MARS_BOULDER_CELLS.crag, false);
+  const uvStrata = marsBoulderCellUv(MARS_BOULDER_CELLS.strata, false);
+  const uvScoured = marsBoulderCellUv(MARS_BOULDER_CELLS.scoured, false);
+  const uvCap = marsBoulderCellUv(MARS_BOULDER_CELLS.cap, false);
+
+  // Tapered rock frustum helper (wider base, narrower weathered top) with directional face shading
+  const pushRockMass = (ox, oz, hxBot, hzBot, hxTop, hzTop, y0, y1, southUv, northUv, westUv, eastUv, capUv) => {
+    const bx0 = cx + (ox - hxBot) * scaleXZ;
+    const bx1 = cx + (ox + hxBot) * scaleXZ;
+    const bz0 = cz + (oz - hzBot) * scaleXZ;
+    const bz1 = cz + (oz + hzBot) * scaleXZ;
+    const tx0 = cx + (ox - hxTop) * scaleXZ;
+    const tx1 = cx + (ox + hxTop) * scaleXZ;
+    const tz0 = cz + (oz - hzTop) * scaleXZ;
+    const tz1 = cz + (oz + hzTop) * scaleXZ;
+    const by0 = baseY + y0 * scaleY;
+    const by1 = baseY + y1 * scaleY;
+    quads.push(
+      { corners: [bx0, by0, bz1, bx1, by0, bz1, tx1, by1, tz1, tx0, by1, tz1], uv: southUv },
+      { corners: [bx1, by0, bz0, bx0, by0, bz0, tx0, by1, tz0, tx1, by1, tz0], uv: northUv },
+      { corners: [bx0, by0, bz0, bx0, by0, bz1, tx0, by1, tz1, tx0, by1, tz0], uv: westUv },
+      { corners: [bx1, by0, bz1, bx1, by0, bz0, tx1, by1, tz0, tx1, by1, tz1], uv: eastUv },
+      { corners: [tx0, by1, tz1, tx1, by1, tz1, tx1, by1, tz0, tx0, by1, tz0], uv: capUv }
+    );
+  };
+
+  // Continuous 0.5-slope rock frustum across 3 geological strata tiers (half-width 31 -> 28 -> 22 -> 18 from y = 0 .. 26)
+  // 1. Broad buried bedrock plinth emerging from Martian sand (y = 0 .. 6.0)
+  pushRockMass(0, 0, 31.0, 31.0, 28.0, 28.0, 0.0, 6.0, uvStrata, uvScoured, uvScoured, uvCrag, uvCap);
+  // 2. Main central jagged rock torso (y = 6.0 .. 18.0)
+  pushRockMass(0, 0, 28.0, 28.0, 22.0, 22.0, 6.0, 18.0, uvCrag, uvScoured, uvStrata, uvCrag, uvCap);
+  // 3. Upper weathered crag shoulder (y = 18.0 .. 26.0)
+  pushRockMass(0, 0, 22.0, 22.0, 18.0, 18.0, 18.0, 26.0, uvCrag, uvStrata, uvScoured, uvCrag, uvCap);
+  // 4. Northwest summit crag peak crowning the top plateau (y = 24.5 .. 26.8)
+  pushRockMass(-4.5, -3.5, 11.5, 10.5, 8.0, 7.5, 24.5, 26.8, uvCrag, uvStrata, uvScoured, uvCrag, uvCap);
+  // 5. Southeast summit crag ridge crowning the top plateau (y = 24.2 .. 26.4)
+  pushRockMass(4.5, 4.0, 11.0, 10.5, 7.5, 7.0, 24.2, 26.4, uvCrag, uvScoured, uvStrata, uvStrata, uvCap);
+  // 6. Southwest fractured summit spur crowning the top plateau (y = 24.0 .. 26.2)
+  pushRockMass(-3.5, 4.5, 10.0, 9.5, 7.0, 6.5, 24.0, 26.2, uvStrata, uvScoured, uvScoured, uvCrag, uvCap);
+
+  return quads;
+}
+
+export function marsBoulderMesh(center = new Vec3(0, 0, 0), size = new Vec2(64, 26)) {
+  const quads = marsBoulderQuads(center, size);
+  const vertices = new Float32Array(quads.length * 18);
+  const uvs = new Float32Array(quads.length * 12);
+  let vOut = 0;
+  let uOut = 0;
+  for (const { corners, uv } of quads) {
+    const [u0, v0, u1, v1] = uv;
+    const cornerUvs = [
+      u0, v0,
+      u1, v0,
+      u1, v1,
+      u0, v1,
+    ];
+    for (const k of [0, 1, 2, 0, 2, 3]) {
+      vertices[vOut++] = corners[k * 3];
+      vertices[vOut++] = corners[k * 3 + 1];
+      vertices[vOut++] = corners[k * 3 + 2];
+      uvs[uOut++] = cornerUvs[k * 2];
+      uvs[uOut++] = cornerUvs[k * 2 + 1];
+    }
+  }
+  return { vertices, uvs };
+}
+
 
 
 

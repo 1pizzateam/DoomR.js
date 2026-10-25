@@ -3,13 +3,14 @@ import ambient from './songs/e1m1-ambient.groovr.json' with { type: 'json' };
 import metal from './songs/e1m2-industrial-metal.groovr.json' with { type: 'json' };
 import horror from './songs/e1m3-horror-metal.groovr.json' with { type: 'json' };
 import boss from './songs/e1m4-boss-finale.groovr.json' with { type: 'json' };
+import gore from './songs/e1m5-gore-metal.groovr.json' with { type: 'json' };
 import title from './songs/intro-theme.groovr.json' with { type: 'json' };
 
 /**
  * The soundtrack. Every score is a GroovR song made in the Cadenza editor, played by the GroovR engine:
  * no audio files, everything is synthesised live like the rest of the sound.
  */
-export const SONGS = { play: ambient, metal, horror, boss, title };
+export const SONGS = { play: ambient, metal, horror, boss, gore, title };
 
 export const FADE_OUT = 0.25;
 export const FADE_IN = 0.25;

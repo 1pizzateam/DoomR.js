@@ -1,4 +1,4 @@
-import { CustomMesh, Material, Mesh, Vec2, Vec3, BoundingBox } from '@1pizzateam/roostr';
+import { Material, Mesh, QuadBatch as RoostrQuadBatch, Vec2, Vec3 } from '@1pizzateam/roostr';
 
 // A textured quad batch is drawn with this: the texture is multiplied by the material colour, pixels with no alpha are
 // dropped, and the quads are pulled a little towards the camera so they win depth ties against the faces they lie on.
@@ -27,18 +27,29 @@ vec3 surfaceLight(vec3 worldPos, float emissive) {
   for (int i = 0; i < 8; i++) {
     if (i >= uNbLights)
       break;
+    vec3 diff = uLightDiffuse[i];
+    if (diff.x + diff.y + diff.z <= 0.001)
+      continue;
     vec3 delta = uLightPosition[i] - worldPos;
+    if (delta.x * delta.x + delta.z * delta.z > 160000.0)
+      continue;
     float isCeilingFixture = step(54.0, uLightPosition[i].y);
     float onCeiling = step(58.0, worldPos.y) * isCeilingFixture;
     float verticalSpan = mix(delta.y, 62.0, onCeiling);
-    float dist = length(vec3(delta.x, verticalSpan, delta.z));
+    vec3 lightVec = vec3(delta.x, verticalSpan, delta.z);
+    float distSq = dot(lightVec, lightVec);
+    if (distSq > 160000.0)
+      continue;
     vec3 att = uLightAttenuation[i];
+    if (att.z > 0.001 && distSq >= 18225.0)
+      continue;
+    float dist = sqrt(distSq);
     float shortRange = step(0.001, att.z);
     float rangeCutoff = mix(1.0, 1.0 - smoothstep(75.0, 135.0, dist), shortRange);
-    float attenuation = rangeCutoff / max(att.x + att.y * dist + att.z * dist * dist, 0.0001);
+    float attenuation = rangeCutoff / max(att.x + att.y * dist + att.z * distSq, 0.0001);
     float downward = clamp((uLightPosition[i].y - worldPos.y) / max(dist, 1.0), 0.0, 1.0);
     float spread = mix(1.05, 0.5 + 0.75 * downward * downward, isCeilingFixture);
-    total += uLightDiffuse[i] * (attenuation * spread);
+    total += diff * (attenuation * spread);
   }
   return mix(min(total, vec3(2.5)), max(total, vec3(1.35)), clamp(emissive, 0.0, 1.0));
 }
@@ -80,10 +91,14 @@ void main(void) {
   vec4 texel = texture2D(uSampler, vTextureCoord);
   if (texel.a < 0.5)
     discard;
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA.toFixed(1)});
+    return;
+  }
   vec3 color = texel.rgb * uMaterialDiffuse;
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade * 0.9);
+    color = mix(color, uFogColor, fade);
   }
   gl_FragColor = vec4(color, ${SOLID_ALPHA.toFixed(1)});
 }
@@ -107,10 +122,14 @@ void main(void) {
   vec4 texel = texture2D(uSampler, vTextureCoord);
   if (texel.a < 0.5)
     discard;
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA.toFixed(1)});
+    return;
+  }
   vec3 color = texel.rgb * uMaterialDiffuse * surfaceLight(vWorldPos, 0.0);
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade * 0.9);
+    color = mix(color, uFogColor, fade);
   }
   gl_FragColor = vec4(color, ${SOLID_ALPHA.toFixed(1)});
 }
@@ -154,11 +173,15 @@ void main(void) {
   vec4 texel = texture2D(uSampler, vTextureCoord);
   if (texel.a < 0.5)
     discard;
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA.toFixed(1)});
+    return;
+  }
   vec3 lit = mix(vec3(1.12), surfaceLight(vWorldPos, 0.85), 0.35);
   vec3 color = texel.rgb * uMaterialDiffuse * lit;
   if (uHasFog == 1) {
     float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade * 0.9);
+    color = mix(color, uFogColor, fade);
   }
   gl_FragColor = vec4(color, ${SOLID_ALPHA.toFixed(1)});
 }
@@ -173,76 +196,17 @@ void main(void) {
  * The arrays live in the mesh itself, so after a lost GPU context RoostR rebuilds the buffers (and the texture,
  * which it owns) from them, with what was last filled.
  */
-export class QuadBatch extends Mesh {
-  constructor(gl, { capacity, atlas, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, vertex = TEXTURED_VERTEX, fragment = SOLID_TEXTURED_FRAGMENT }) {
-    const geometry = new CustomMesh();
-    geometry.vertices = new Float32Array(capacity * 18);
-    geometry.uvs = new Float32Array(capacity * 12);
-    geometry.setPrimitive('TRIANGLES');
-    super(gl, geometry);
-    this.capacity = capacity;
-    this.used = 0;
-    this.bounds = new BoundingBox();
-    this.scratchPoint = new Vec3();
-    this.addProgram(vertex, fragment, material);
-    this.setTexture(atlas.data, { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions });
-    this.setInactive();
-  }
-
-  begin() {
-    this.used = 0;
-    this.bounds.makeEmpty();
-    return this;
-  }
-
-  /** Adds a quad: corners are 12 numbers (bottom-left, bottom-right, top-right, top-left); false when the batch is full. */
-  quad(corners, [u0, v0, u1, v1]) {
-    if (this.used >= this.capacity)
-      return false;
-    const { vertices, uvs } = this;
-    let v = this.used * 18;
-    let t = this.used * 12;
-    for (const corner of [0, 1, 2, 0, 2, 3]) {
-      const i = corner * 3;
-      vertices[v++] = corners[i];
-      vertices[v++] = corners[i + 1];
-      vertices[v++] = corners[i + 2];
-      uvs[t++] = corner === 1 || corner === 2 ? u1 : u0;
-      uvs[t++] = corner >= 2 ? v1 : v0;
-      this.measure(corners[i], corners[i + 1], corners[i + 2]);
-    }
-    this.used++;
-    return true;
-  }
-
-  measure(x, y, z) {
-    this.bounds.expandByPoint(this.scratchPoint.setScalar(x, y, z));
-  }
-
-  /** Sends what was filled to the GPU. An empty batch is not drawn. */
-  end() {
-    const { context: gl } = this;
-    this.subMeshes[0].count = this.used * 6;
-    if (!this.used) {
-      this.setInactive();
-      return this;
-    }
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.vertices.subarray(0, this.used * 18));
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.uvs.subarray(0, this.used * 12));
-    // frustum culling needs the size of what is in the buffer now, which RoostR cannot know
-    this.setLocalBounds(this.bounds);
-    this.setActive();
-    return this;
-  }
-
-  /** Hides the batch without losing what is in it, e.g. while its door is sunk into the floor. */
-  show(visible) {
-    if (visible && this.used)
-      this.setActive();
-    else
-      this.setInactive();
+export class QuadBatch extends RoostrQuadBatch {
+  constructor(gl, { capacity, atlas, sharedTexture = null, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, vertex = TEXTURED_VERTEX, fragment = SOLID_TEXTURED_FRAGMENT }) {
+    super(gl, {
+      capacity,
+      vertexShader: vertex,
+      fragmentShader: fragment,
+      material,
+      sharedTexture,
+      texture: sharedTexture ? undefined : atlas?.data,
+      textureOptions: sharedTexture ? undefined : { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions },
+    });
   }
 }
 
@@ -250,9 +214,12 @@ export class QuadBatch extends Mesh {
  * A mesh of any geometry with a texture on it, drawn like the batches above: the picture times the material colour,
  * clear pixels dropped, fog applied. The geometry needs texture coordinates.
  */
-export function texturedMesh(gl, geometry, { atlas, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, fragment = SOLID_TEXTURED_FRAGMENT }) {
+export function texturedMesh(gl, geometry, { atlas, sharedTexture = null, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, fragment = SOLID_TEXTURED_FRAGMENT }) {
   const mesh = new Mesh(gl, geometry);
   mesh.addProgram(TEXTURED_VERTEX, fragment, material);
-  mesh.setTexture(atlas.data, { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions });
+  if (sharedTexture && typeof mesh.setSharedTexture === 'function')
+    mesh.setSharedTexture(sharedTexture);
+  else
+    mesh.setTexture(atlas.data, { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions });
   return mesh;
 }

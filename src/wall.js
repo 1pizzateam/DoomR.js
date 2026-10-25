@@ -1,6 +1,8 @@
-import { Utils } from '@1pizzateam/spock';
+import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
-import { GLOW, LIGHT, METAL, mix, plate, rivet, SHADOW, Tile } from './floor.js';
+import { field, GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile } from './floor.js';
+
+const scratchPt = new Vec2();
 
 /**
  * The walls of an old space base: riveted steel bulkhead panels, vents, pipe runs, light strips, a console and the
@@ -196,6 +198,327 @@ export function wallAtlas() {
       }
   });
   return { name: 'wall', data, width, height: SIZE, cell: SIZE, frames: WALL_CELL_COUNT };
+}
+
+// ---- Martian rock cliff walls (E1M5 Red Planet) --------------------------------------------------------------------
+
+const ROCK_ABYSS = [28, 11, 6];
+const ROCK_DARK = [54, 20, 10];
+const ROCK_BASALT = [42, 26, 22];
+const ROCK_BASE = [126, 52, 24];
+const ROCK_LIGHT = [178, 86, 38];
+const ROCK_OCHRE = [204, 108, 48];
+
+const TAU = Trigo.twopi / SIZE;
+
+function periodicGrain(x, y) {
+  const ix = ((x % SIZE) + SIZE) % SIZE;
+  const iy = ((y % SIZE) + SIZE) % SIZE;
+  let h = Math.imul(ix * 374761393 ^ iy * 668265263, 1274126177);
+  h ^= h >>> 13;
+  return (((Math.imul(h, 1911520717) >>> 0) % 1000) / 1000) - 0.5;
+}
+
+/** Smooth 0..1 mask that is 0 at all four tile borders (`x = 0, 63`, `y = 0, 63`) and 1 in the tile interior. */
+function edgeMask(x, y, margin = 4) {
+  const mx = Math.min(x, SIZE - 1 - x);
+  const my = Math.min(y, SIZE - 1 - y);
+  return Utils.smoothstep(0, margin, mx) * Utils.smoothstep(0, margin, my);
+}
+
+function wrapCoord(v) {
+  return ((Math.round(v) % SIZE) + SIZE) % SIZE;
+}
+
+function createSharedRockTile() {
+  const baseRnd = mulberry32(51000);
+  const warpX = periodicField(baseRnd, 3, SIZE);
+  const warpY = periodicField(baseRnd, 3, SIZE);
+  const coarse = periodicField(baseRnd, 3, SIZE);
+  const medium = periodicField(baseRnd, 6, SIZE);
+  const fine = periodicField(baseRnd, 12, SIZE);
+  const tile = new Tile(SIZE, SIZE);
+
+  for (let y = 0; y < SIZE; y++)
+    for (let x = 0; x < SIZE; x++) {
+      // Domain-warped periodic coordinates matching the floor regolith (no linear sine stripes)
+      const wx = x + (warpX(x, y) - 0.5) * 20;
+      const wy = y + (warpY(x, y) - 0.5) * 20;
+      const c = coarse(wx, wy);
+      const m = medium(wx + 11, wy + 7);
+      const f = fine(x, y);
+      const ridge = 1 - Math.abs((coarse(wx + 23, wy + 37) - 0.5) * 2);
+      const shade = c * 0.45 + m * 0.35 + f * 0.2;
+      let col = mix(ROCK_DARK, ROCK_BASE, Utils.clamp(shade * 1.15, 0, 1));
+      col = mix(col, ROCK_LIGHT, ridge * 0.4 + (f - 0.5) * 0.24);
+      if (shade > 0.64 && ridge > 0.56)
+        col = mix(col, ROCK_OCHRE, (shade - 0.64) * 1.55);
+
+      const grain = periodicGrain(x, y) * 12;
+      tile.set(x, y, [col[0] + grain, col[1] + grain * 0.7, col[2] + grain * 0.45]);
+    }
+
+  // Modulo-wrapped regolith pebbles & stones matching the floor density and shading
+  for (let k = 0; k < 22; k++) {
+    const px = baseRnd() * SIZE;
+    const py = baseRnd() * SIZE;
+    const rx = 1.1 + baseRnd() * 2.4;
+    const ry = 0.9 + baseRnd() * 2.0;
+    const basalt = baseRnd() < 0.45;
+    const rockCol = basalt ? mix(ROCK_BASALT, ROCK_BASE, 0.25) : mix(ROCK_BASE, ROCK_LIGHT, 0.5);
+    const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
+    for (let dy = -rCeil; dy <= rCeil; dy++)
+      for (let dx = -rCeil; dx <= rCeil; dx++) {
+        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude();
+        if (d > 1.15)
+          continue;
+        const wx = wrapCoord(px + dx);
+        const wy = wrapCoord(py + dy);
+        if (d > 0.88)
+          tile.set(wx, wy, k === 0 ? ROCK_ABYSS : ROCK_DARK, 0.65);
+        else {
+          const highlight = dx - dy < 0 ? 0.35 : -0.25;
+          const c = highlight > 0 ? mix(rockCol, ROCK_OCHRE, highlight) : mix(rockCol, ROCK_DARK, -highlight);
+          tile.set(wx, wy, c, 0.92);
+        }
+      }
+  }
+
+  return tile;
+}
+
+let sharedRockTile = null;
+
+function rockCliffBase(t) {
+  sharedRockTile ??= createSharedRockTile();
+  t.pixels.set(sharedRockTile.pixels);
+}
+
+function scatterRockNodules(t, rnd, count, maxRadius = 3.4) {
+  for (let k = 0; k < count; k++) {
+    const px = 6 + rnd() * (SIZE - 12);
+    const py = 6 + rnd() * (SIZE - 12);
+    const rx = 1.3 + rnd() * maxRadius;
+    const ry = 1.0 + rnd() * (maxRadius * 0.8);
+    const basalt = rnd() < 0.48;
+    const rockCol = basalt ? mix(ROCK_BASALT, ROCK_BASE, 0.3) : mix(ROCK_BASE, ROCK_LIGHT, 0.55);
+    const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
+    for (let dy = -rCeil; dy <= rCeil; dy++)
+      for (let dx = -rCeil; dx <= rCeil; dx++) {
+        const x = Math.round(px + dx);
+        const y = Math.round(py + dy);
+        const mask = edgeMask(x, y, 5);
+        if (mask <= 0.01)
+          continue;
+        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude();
+        if (d > 1.15)
+          continue;
+        if (d > 0.86)
+          t.set(x, y, ROCK_ABYSS, 0.72 * mask);
+        else {
+          const highlight = dx - dy < 0 ? 0.42 : -0.32;
+          const c = highlight > 0 ? mix(rockCol, ROCK_OCHRE, highlight) : mix(rockCol, ROCK_DARK, -highlight);
+          t.set(x, y, c, 0.88 * mask);
+        }
+      }
+  }
+}
+
+function carveRockCracks(t, rnd, count) {
+  for (let k = 0; k < count; k++) {
+    let x = 8 + Math.floor(rnd() * (SIZE - 16));
+    let y = 6 + Math.floor(rnd() * 6);
+    const maxY = SIZE - 6 - Math.floor(rnd() * 6);
+    while (y < maxY) {
+      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.6), 7, SIZE - 8);
+      y += 1;
+      const mask = edgeMask(x, y, 5);
+      if (mask <= 0.02)
+        continue;
+      t.set(x, y, ROCK_ABYSS, 0.85 * mask);
+      t.set(x - 1, y, ROCK_DARK, 0.58 * mask);
+      t.set(x + 1, y, ROCK_OCHRE, 0.5 * mask);
+    }
+  }
+}
+
+function drawRockPlain(t, rnd) {
+  rockCliffBase(t);
+  const drift = periodicField(rnd, 3, SIZE);
+  for (let y = 0; y < SIZE; y++)
+    for (let x = 0; x < SIZE; x++) {
+      const mask = edgeMask(x, y, 5);
+      if (mask <= 0.01)
+        continue;
+      const d = drift(x, y);
+      if (d > 0.56)
+        t.set(x, y, ROCK_LIGHT, (d - 0.56) * 0.95 * mask);
+      else if (d < 0.42)
+        t.set(x, y, ROCK_DARK, (0.42 - d) * 0.75 * mask);
+    }
+  scatterRockNodules(t, rnd, 9, 2.4);
+}
+
+function drawRockFissures(t, rnd) {
+  rockCliffBase(t);
+  const warpX = periodicField(rnd, 3, SIZE);
+  const warpY = periodicField(rnd, 3, SIZE);
+  const strata = periodicField(rnd, 4, SIZE);
+  for (let y = 0; y < SIZE; y++)
+    for (let x = 0; x < SIZE; x++) {
+      const mask = edgeMask(x, y, 5);
+      if (mask <= 0.01)
+        continue;
+      const wx = x + (warpX(x, y) - 0.5) * 22;
+      const wy = y + (warpY(x, y) - 0.5) * 22;
+      const ridge = 1 - Math.abs((strata(wx, wy) - 0.5) * 2);
+      if (ridge > 0.64)
+        t.set(x, y, ROCK_OCHRE, (ridge - 0.64) * 1.45 * mask);
+      else if (ridge < 0.35)
+        t.set(x, y, ROCK_DARK, (0.35 - ridge) * 1.35 * mask);
+    }
+  scatterRockNodules(t, rnd, 10, 2.6);
+}
+
+function drawRockColumns(t, rnd) {
+  rockCliffBase(t);
+  const patch = periodicField(rnd, 3, SIZE);
+  const detail = periodicField(rnd, 8, SIZE);
+  for (let y = 0; y < SIZE; y++)
+    for (let x = 0; x < SIZE; x++) {
+      const mask = edgeMask(x, y, 5);
+      if (mask <= 0.01)
+        continue;
+      const p = patch(x, y) * 0.75 + detail(x, y) * 0.25;
+      if (p > 0.52) {
+        const edge = Math.min(1, (p - 0.52) * 4.6) * mask;
+        const vein = detail(x + 13, y + 7) > 0.62 ? ROCK_OCHRE : detail(x + 5, y + 19) < 0.38 ? ROCK_DARK : ROCK_BASALT;
+        t.set(x, y, mix(ROCK_BASE, vein, 0.74), edge * 0.82);
+      }
+    }
+  scatterRockNodules(t, rnd, 14, 3.0);
+}
+
+function drawRockMagmaVeins(t, rnd) {
+  rockCliffBase(t);
+  carveRockCracks(t, rnd, 3);
+  for (const xStart of [20, 44]) {
+    let x = xStart;
+    for (let y = 6; y < 58; y++) {
+      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.0), 8, SIZE - 8);
+      const mask = edgeMask(x, y, 5);
+      t.set(x - 2, y, ROCK_DARK, 0.7 * mask);
+      t.set(x + 2, y, ROCK_DARK, 0.7 * mask);
+      t.set(x - 1, y, [210, 72, 20], 0.6 * mask);
+      t.set(x + 1, y, [210, 72, 20], 0.6 * mask);
+      t.set(x, y, [255, 148, 48], 0.88 * mask);
+    }
+  }
+  scatterRockNodules(t, rnd, 10, 2.5);
+}
+
+function drawRockAlcove(t, rnd) {
+  rockCliffBase(t);
+  const hollow = periodicField(rnd, 3, SIZE);
+  const rim = periodicField(rnd, 6, SIZE);
+  for (let y = 0; y < SIZE; y++)
+    for (let x = 0; x < SIZE; x++) {
+      const mask = edgeMask(x, y, 5);
+      if (mask <= 0.01)
+        continue;
+      const h = hollow(x, y);
+      if (h > 0.52) {
+        const depth = Math.min(1, (h - 0.52) * 4.2) * mask;
+        const ledge = rim(x + 9, y + 15) > 0.56 ? ROCK_OCHRE : ROCK_DARK;
+        t.set(x, y, mix(ROCK_BASALT, ledge, 0.58), depth * 0.78);
+      }
+    }
+  scatterRockNodules(t, rnd, 11, 2.8);
+}
+
+function drawRockExit(t) {
+  rockCliffBase(t);
+  // Ancient rock-hewn monolith portal with glowing exit chevrons so the exit remains unmistakable outdoors
+  t.rect(10, 8, 44, 46, ROCK_ABYSS, 0.9);
+  for (let i = 0; i < 44; i++) {
+    t.set(10 + i, 8, SIGNAL, 0.95);
+    t.set(10 + i, 53, SIGNAL, 0.95);
+    t.set(10, 8 + i, SIGNAL, 0.95);
+    t.set(53, 8 + i, SIGNAL, 0.95);
+  }
+  for (const y0 of [16, 28, 40])
+    for (let k = 0; k < 14; k++) {
+      const x = 32 - 14 + k;
+      const dy = k < 7 ? k : 13 - k;
+      for (let w = 0; w < 3; w++) {
+        t.set(x, y0 + dy / 1.4 + w, SIGNAL, 0.95);
+        t.set(x + 14, y0 + dy / 1.4 + w, SIGNAL, 0.4);
+      }
+    }
+}
+
+function drawRockTop(t, rnd) {
+  rockCliffBase(t);
+  const scree = periodicField(rnd, 4, SIZE);
+  for (let y = 0; y < SIZE; y++)
+    for (let x = 0; x < SIZE; x++) {
+      const mask = edgeMask(x, y, 5);
+      if (mask <= 0.01)
+        continue;
+      const s = scree(x, y);
+      if (s > 0.58)
+        t.set(x, y, ROCK_OCHRE, (s - 0.58) * 1.15 * mask);
+      else if (s < 0.38)
+        t.set(x, y, ROCK_BASALT, (0.38 - s) * 1.25 * mask);
+    }
+  scatterRockNodules(t, rnd, 16, 3.4);
+  carveRockCracks(t, rnd, 2);
+}
+
+function drawRockSeam(t, rnd) {
+  rockCliffBase(t);
+  const basin = periodicField(rnd, 3, SIZE);
+  for (let y = 0; y < SIZE; y++)
+    for (let x = 0; x < SIZE; x++) {
+      const mask = edgeMask(x, y, 5);
+      if (mask > 0.01 && basin(x, y) > 0.48)
+        t.set(x, y, mix(ROCK_BASE, ROCK_OCHRE, 0.38), (basin(x, y) - 0.48) * 1.1 * mask);
+    }
+  scatterRockNodules(t, rnd, 12, 2.6);
+  carveRockCracks(t, rnd, 4);
+}
+
+const MARS_ROCK_DRAW = [
+  drawRockPlain,
+  drawRockFissures,
+  drawRockColumns,
+  drawRockMagmaVeins,
+  drawRockAlcove,
+  drawRockExit,
+  drawRockTop,
+  drawRockSeam,
+];
+
+/**
+ * 8-cell 512x64 procedural Martian canyon rock & cliff wall atlas for `planet: 'mars'`.
+ * Replaces riveted steel bulkheads, vents, pipes, and consoles with craggy red-orange rock strata and fissures.
+ */
+export function marsRockAtlas() {
+  const width = SIZE * WALL_CELL_COUNT;
+  const data = new Uint8Array(width * SIZE * 4);
+  MARS_ROCK_DRAW.forEach((draw, cell) => {
+    const t = new Tile(SIZE, SIZE);
+    draw(t, mulberry32(51000 + cell * 9973));
+    for (let y = 0; y < SIZE; y++)
+      for (let x = 0; x < SIZE; x++) {
+        const i = (y * SIZE + x) * 3;
+        const o = (y * width + cell * SIZE + x) * 4;
+        for (let k = 0; k < 3; k++)
+          data[o + k] = Utils.clamp(Math.round(t.pixels[i + k]), 0, 255);
+        data[o + 3] = 255;
+      }
+  });
+  return { name: 'marsRock', data, width, height: SIZE, cell: SIZE, frames: WALL_CELL_COUNT };
 }
 
 /** Texture coordinates of a cell, a hair inside its edges; `v0` and `v1` pick how much of it height-wise (0..1). */

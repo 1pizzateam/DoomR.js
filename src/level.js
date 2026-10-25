@@ -1,4 +1,4 @@
-import { RightTriangle, Vec2 } from '@1pizzateam/spock';
+import { Grid, RightTriangle, Vec2 } from '@1pizzateam/spock';
 
 export const TILE = 64;
 export const EYE = 32;
@@ -30,6 +30,7 @@ const scratchS = new Vec2();
 const scratchA = new Vec2();
 const scratchB = new Vec2();
 const scratchO = new Vec2();
+const scratchGridPt = new Vec2();
 
 const SOLIDS = {
   '#': { kind: WALL, height: 64 },
@@ -73,6 +74,7 @@ const PICKUPS = {
   O: 'soulsphere',
   Z: 'berserk',
   V: 'radsuit',
+  N: 'nightvision',
 };
 
 // Face directions: the side of a tile a ray enters through (0: -x, 1: +x, 2: -y, 3: +y).
@@ -86,12 +88,15 @@ const DY = [0, 0, -1, 1];
  * line where a wall really starts or ends.
  */
 export class Level {
-  constructor({ name, rows, angle = 0, par = 120 }) {
+  constructor({ name, rows, angle = 0, par = 120, planet = null, wind = null }) {
     this.name = name;
     this.rows = rows;
     this.par = par;
+    this.planet = planet;
+    this.wind = wind ? wind.clone() : new Vec2(planet === 'mars' ? 320 : 0, planet === 'mars' ? 95 : 0);
     this.width = rows[0].length;
     this.rowCount = rows.length;
+    this.grid = new Grid(new Vec2(this.width * TILE, this.rowCount * TILE), TILE);
 
     const total = this.width * this.rowCount;
     this.kind = new Uint8Array(total);
@@ -118,6 +123,9 @@ export class Level {
 
     this.parse();
     this.buildFaces();
+    this.indoor = this.findIndoor();
+    this.outdoor = this.findOutdoor();
+    this.bossArena = this.findBossArena();
     this.arena = this.findArena();
     this.secrets = this.findSecrets();
   }
@@ -129,8 +137,8 @@ export class Level {
     const { width, rowCount, kind } = this;
     const total = width * rowCount;
     const visited = new Uint8Array(total);
-    const startIdx = Math.floor(this.playerStart.y / TILE) * width + Math.floor(this.playerStart.x / TILE);
-    const pickupTiles = new Set(this.pickups.map((p) => Math.floor(p.pos.y / TILE) * width + Math.floor(p.pos.x / TILE)));
+    const startIdx = this.grid.getCell(this.playerStart);
+    const pickupTiles = new Set(this.pickups.map((p) => this.grid.getCell(p.pos)));
     const secrets = [];
 
     for (let i = 0; i < total; i++) {
@@ -175,13 +183,63 @@ export class Level {
           this.secretByTile[tileIdx] = secretIndex;
       }
     }
+
+    // On doorless outdoor planetary levels (e.g. Mars), hidden rock caves behind a 1-tile canyon crevice hold secret caches
+    if (this.planet === 'mars' && secrets.length === 0) {
+      const isRockChoke = (idx) => {
+        if (kind[idx] !== FLOOR)
+          return false;
+        const x = idx % width;
+        const y = (idx - x) / width;
+        const ewWall = x > 0 && x < width - 1 && kind[idx - 1] === WALL && kind[idx + 1] === WALL;
+        const nsWall = y > 0 && y < rowCount - 1 && kind[idx - width] === WALL && kind[idx + width] === WALL;
+        return ewWall || nsWall;
+      };
+      for (const p of this.pickups) {
+        if (p.type !== 'soulsphere' && p.type !== 'blueArmor')
+          continue;
+        const pIdx = this.grid.getCell(p.pos);
+        if (pIdx < 0 || this.secretByTile[pIdx] >= 0 || isRockChoke(pIdx))
+          continue;
+        const cave = new Set();
+        const stack = [pIdx];
+        let touchesStartOrExit = false;
+        while (stack.length) {
+          const idx = stack.pop();
+          if (cave.has(idx))
+            continue;
+          cave.add(idx);
+          if (idx === startIdx)
+            touchesStartOrExit = true;
+          const x = idx % width;
+          const y = (idx - x) / width;
+          for (let d = 0; d < 4; d++) {
+            const nx = x + DX[d];
+            const ny = y + DY[d];
+            if (!this.inBounds(nx, ny))
+              continue;
+            const nidx = ny * width + nx;
+            if (kind[nidx] === EXIT)
+              touchesStartOrExit = true;
+            else if (kind[nidx] === FLOOR && !cave.has(nidx) && !isRockChoke(nidx))
+              stack.push(nidx);
+          }
+        }
+        if (!touchesStartOrExit && cave.size >= 2 && cave.size <= 24) {
+          const secretIndex = secrets.length;
+          secrets.push(cave);
+          for (const tileIdx of cave)
+            this.secretByTile[tileIdx] = secretIndex;
+        }
+      }
+    }
+
     return secrets;
   }
 
   secretAt(x, y) {
-    const tx = Math.floor(x / TILE);
-    const ty = Math.floor(y / TILE);
-    return this.inBounds(tx, ty) ? this.secretByTile[ty * this.width + tx] : -1;
+    const idx = this.grid.getCell(scratchGridPt.setScalar(x, y));
+    return idx >= 0 ? this.secretByTile[idx] : -1;
   }
 
   isSlime(x, y) {
@@ -189,7 +247,8 @@ export class Level {
   }
 
   slimeAt(worldX, worldY) {
-    return this.isSlime(Math.floor(worldX / TILE), Math.floor(worldY / TILE));
+    const idx = this.grid.getCell(scratchGridPt.setScalar(worldX, worldY));
+    return idx >= 0 && this.slime[idx] === 1;
   }
 
   isTeleporter(x, y) {
@@ -197,24 +256,96 @@ export class Level {
   }
 
   teleporterAt(worldX, worldY) {
-    const tx = Math.floor(worldX / TILE);
-    const ty = Math.floor(worldY / TILE);
-    if (!this.inBounds(tx, ty))
+    const idx = this.grid.getCell(scratchGridPt.setScalar(worldX, worldY));
+    return idx >= 0 ? (this.teleporterByTile.get(idx) ?? null) : null;
+  }
+
+  /**
+   * On an outdoor planet level (e.g. Mars), the starting room is an enclosed indoor airlock:
+   * every tile reachable from playerStart without passing through a door.
+   */
+  findIndoor() {
+    if (this.planet !== 'mars' || !this.playerStart)
       return null;
-    return this.teleporterByTile.get(ty * this.width + tx) ?? null;
+    const { width } = this;
+    const indoor = new Set();
+    const startIdx = this.grid.getCell(this.playerStart);
+    const stack = [startIdx];
+    while (stack.length) {
+      const idx = stack.pop();
+      if (indoor.has(idx) || (this.kind[idx] !== FLOOR && this.kind[idx] !== PILLAR))
+        continue;
+      indoor.add(idx);
+      const x = idx % width;
+      const y = (idx - x) / width;
+      for (let d = 0; d < 4; d++) {
+        const nx = x + DX[d];
+        const ny = y + DY[d];
+        if (!this.inBounds(nx, ny))
+          continue;
+        const nidx = ny * width + nx;
+        if (this.diag[nidx] > 0 && !this.hasCardinalFace(nidx, d ^ 1))
+          indoor.add(nidx);
+        else
+          stack.push(nidx);
+      }
+    }
+    return indoor;
+  }
+
+  doorTouchesIndoor(idx) {
+    if (!this.indoor)
+      return false;
+    const x = idx % this.width;
+    const y = (idx - x) / this.width;
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DX[d];
+      const ny = y + DY[d];
+      if (this.inBounds(nx, ny) && this.indoor.has(ny * this.width + nx))
+        return true;
+    }
+    return false;
+  }
+
+  /** Whether tile `idx` belongs to an indoor room or an indoor airlock doorway on a planetary level. */
+  isIndoorTile(idx) {
+    if (this.planet !== 'mars')
+      return true;
+    return Boolean(this.indoor?.has(idx) || (this.kind[idx] === DOOR && this.doorTouchesIndoor(idx)));
+  }
+
+  /** Every open tile outside the starting airlock room on a planetary surface level. */
+  findOutdoor() {
+    if (this.planet !== 'mars' || !this.indoor)
+      return null;
+    const outdoor = new Set();
+    const total = this.width * this.rowCount;
+    for (let idx = 0; idx < total; idx++) {
+      if (this.indoor.has(idx))
+        continue;
+      const k = this.kind[idx];
+      if (k === FLOOR || k === PILLAR || this.diag[idx] > 0 || (k === DOOR && !this.doorTouchesIndoor(idx)))
+        outdoor.add(idx);
+    }
+    return outdoor;
+  }
+
+  isOutdoor(pos) {
+    const idx = this.grid.getCell(pos);
+    return idx >= 0 && !!this.outdoor?.has(idx);
   }
 
   /**
    * The room of a giant: every floor tile reachable from any boss spawn without going through a door. A giant never
    * leaves it, and it has no roof, because he is taller than the walls. Null when the level has none.
    */
-  findArena() {
+  findBossArena() {
     const giants = this.enemies.filter((enemy) => enemy.type === 'boss');
     if (!giants.length)
       return null;
     const { width } = this;
     const arena = new Set();
-    const stack = giants.map((giant) => Math.floor(giant.pos.y / TILE) * width + Math.floor(giant.pos.x / TILE));
+    const stack = giants.map((giant) => this.grid.getCell(giant.pos));
     while (stack.length) {
       const idx = stack.pop();
       if (arena.has(idx) || (this.kind[idx] !== FLOOR && this.kind[idx] !== PILLAR))
@@ -237,8 +368,24 @@ export class Level {
     return arena;
   }
 
+  findArena() {
+    if (this.outdoor) {
+      const arena = new Set(this.outdoor);
+      if (this.bossArena)
+        for (const idx of this.bossArena)
+          arena.add(idx);
+      return arena;
+    }
+    return this.bossArena;
+  }
+
   inArena(x, y) {
-    return !!this.arena?.has(Math.floor(y / TILE) * this.width + Math.floor(x / TILE));
+    const idx = this.grid.getCell(scratchGridPt.setScalar(x, y));
+    if (idx < 0)
+      return false;
+    if (this.bossArena)
+      return this.bossArena.has(idx);
+    return !!this.arena?.has(idx);
   }
 
   parse() {
@@ -373,11 +520,9 @@ export class Level {
 
   /** Effective wall height at a 2D world point (`Vec2`), respecting the open half of diagonal tiles. */
   heightAtPoint(pos) {
-    const tx = Math.floor(pos.x / TILE);
-    const ty = Math.floor(pos.y / TILE);
-    if (!this.inBounds(tx, ty))
+    const idx = this.grid.getCell(pos);
+    if (idx < 0)
       return CEILING;
-    const idx = ty * this.width + tx;
     const h = this.heights[idx];
     if (!h)
       return 0;

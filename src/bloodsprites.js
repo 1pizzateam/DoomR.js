@@ -1,4 +1,4 @@
-import { Bezier, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Bezier, NumArray, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 
 /**
@@ -422,9 +422,11 @@ export function bloodAtlas() {
   return atlas;
 }
 
+const CELL_UVS = Array.from({ length: CELL_COUNT }, (_, cell) => [cell / CELL_COUNT, 0, (cell + 1) / CELL_COUNT, 1]);
+
 /** Texture coordinates of a cell: [u0, v0, u1, v1], with v1 at the top of the image. */
 export function cellUv(cell) {
-  return [cell / CELL_COUNT, 0, (cell + 1) / CELL_COUNT, 1];
+  return CELL_UVS[cell] ?? [cell / CELL_COUNT, 0, (cell + 1) / CELL_COUNT, 1];
 }
 
 // A mark is a flat quad. Its corners come back as 12 numbers (bottom-left, bottom-right, top-right, top-left, in 3D)
@@ -477,7 +479,7 @@ export function printQuad({ x, y, angle, side, strength, scale }) {
  * `hi` along its tangent, from the splat's height `z` and up to `top`), so none hangs in the air past a corner,
  * an opening or the top of the wall.
  */
-export function wallSplatQuad({ x, y, z, nx, ny, size, top, seed, lo = -Infinity, hi = Infinity }) {
+export function wallSplatQuad({ x, y, z, nx, ny, size, top, seed, lo = -Infinity, hi = Infinity, slope = 0 }) {
   const rnd = mulberry32(seed);
   const variant = Math.floor(rnd() * WALL_VARIANTS);
   const pixel = size / 10;
@@ -494,7 +496,10 @@ export function wallSplatQuad({ x, y, z, nx, ny, size, top, seed, lo = -Infinity
     return null;
   const tx = -ny;
   const ty = nx;
-  const at = (u, v) => [x + tx * u + nx * 0.4, z + v, y + ty * u + ny * 0.4];
+  const at = (u, v) => {
+    const n = 0.4 - slope * v;
+    return [x + tx * u + nx * n, z + v, y + ty * u + ny * n];
+  };
   const [a0, b0, a1, b1] = cellUv(CELLS.wall + variant);
   const du = a1 - a0;
   return {
@@ -537,12 +542,12 @@ export function wallDrips(seed, size) {
 
 /** How long, in seconds, until every drip of a splat has stopped. */
 export function dripTime(seed, size) {
-  return Math.max(...wallDrips(seed, size).map((d) => d.delay + d.duration));
+  return NumArray.max(wallDrips(seed, size).map((d) => d.delay + d.duration));
 }
 
 /** How far a drip has run, 0..1, `t` of the way through its time: some slow steadily, some stutter, some creep. */
 function progress(t, profile) {
-  const ease = (x) => 1 - (1 - x) * (1 - x);
+  const ease = (x) => Bezier.quadratic(0, 1, 1, x);
   if (profile === 0)
     return ease(t);
   if (profile === 1) {
@@ -555,7 +560,7 @@ function progress(t, profile) {
   }
   if (profile === 2)
     return Bezier.cubic(0, 0, 1, 1, t);
-  return 1 - (1 - t) ** 3;
+  return Bezier.cubic(0, 1, 1, 1, t);
 }
 
 /** A stem of any length is a stack of its 32-pixel picture: [from, to] along the drip, `part` of a picture each. */
@@ -578,11 +583,14 @@ function columns(cell) {
  * its end. A drip starts fast and slows as the blood thickens, then stays where it stopped. They are cut where the face
  * ends and stop at the floor, like the splat itself. Each is `{ corners, uv }`.
  */
-export function wallDripQuads({ x, y, z, nx, ny, size, top, seed, age = 0, lo = -Infinity, hi = Infinity }) {
+export function wallDripQuads({ x, y, z, nx, ny, size, top, seed, age = 0, lo = -Infinity, hi = Infinity, slope = 0 }) {
   const out = [];
   const tx = -ny;
   const ty = nx;
-  const at = (u, v) => [x + tx * u + nx * 0.45, z + v, y + ty * u + ny * 0.45];
+  const at = (u, v) => {
+    const n = 0.45 - slope * v;
+    return [x + tx * u + nx * n, z + v, y + ty * u + ny * n];
+  };
   const quad = (u0, v0, u1, v1, uv) => out.push({ corners: [...at(u0, v0), ...at(u1, v0), ...at(u1, v1), ...at(u0, v1)], uv });
   const floor = 0.6 - z;
   const start = -size * 0.3;
@@ -611,18 +619,47 @@ export function wallDripQuads({ x, y, z, nx, ny, size, top, seed, age = 0, lo = 
  * A droplet or a gib in the air: a square facing the camera, turned by `spin` in the view plane.
  * `right` and `up` are the camera's axes in the world.
  */
-export function particleQuad({ x, y, z, gib, variant = 0, scale = 1, visualScale }, right, up, spin = 0) {
+export function particleQuad({ x, y, z, gib, variant = 0, scale = 1, visualScale }, right, up, spin = 0, target = null) {
   const half = (gib ? 1.75 : 0.65) * (visualScale ?? scale);
   const cos = Math.cos(spin) * half;
   const sin = Math.sin(spin) * half;
-  // the corner offsets, turned: (-1,-1), (1,-1), (1,1), (-1,1) in (right, up)
-  const corner = (a, b) => {
-    const r = a * cos - b * sin;
-    const u = a * sin + b * cos;
-    return [x + right[0] * r + up[0] * u, z + right[1] * r + up[1] * u, y + right[2] * r + up[2] * u];
-  };
+  const r0 = right[0];
+  const r1 = right[1];
+  const r2 = right[2];
+  const u0 = up[0];
+  const u1 = up[1];
+  const u2 = up[2];
   const cell = gib ? CELLS.gib + ((variant >>> 0) % GIB_VARIANTS) : CELLS.drop;
-  return { corners: [...corner(-1, -1), ...corner(1, -1), ...corner(1, 1), ...corner(-1, 1)], uv: cellUv(cell) };
+  const corners = target ? target.corners : new Array(12);
+  // (-1, -1)
+  let r = -cos + sin;
+  let u = -sin - cos;
+  corners[0] = x + r0 * r + u0 * u;
+  corners[1] = z + r1 * r + u1 * u;
+  corners[2] = y + r2 * r + u2 * u;
+  // (1, -1)
+  r = cos + sin;
+  u = sin - cos;
+  corners[3] = x + r0 * r + u0 * u;
+  corners[4] = z + r1 * r + u1 * u;
+  corners[5] = y + r2 * r + u2 * u;
+  // (1, 1)
+  r = cos - sin;
+  u = sin + cos;
+  corners[6] = x + r0 * r + u0 * u;
+  corners[7] = z + r1 * r + u1 * u;
+  corners[8] = y + r2 * r + u2 * u;
+  // (-1, 1)
+  r = -cos - sin;
+  u = -sin + cos;
+  corners[9] = x + r0 * r + u0 * u;
+  corners[10] = z + r1 * r + u1 * u;
+  corners[11] = y + r2 * r + u2 * u;
+  if (target) {
+    target.uv = cellUv(cell);
+    return target;
+  }
+  return { corners, uv: cellUv(cell) };
 }
 
 /**

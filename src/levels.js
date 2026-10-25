@@ -5,7 +5,7 @@
  * HOW TO EDIT A LEVEL:
  * - Every row in a level must have the exact same character length (56 columns below; use the ruler at the top/bottom).
  * - Carve rooms and corridors out of solid `#` void using `.` for floor tiles.
- * - Use `D` for doors in 1-tile doorways, `o` for waist-high cover/window pillars, and `T` for paired teleporter pads.
+ * - Use `D` for doors in 1-tile doorways, `o` for waist-high futuristic cover crates, and `T` for paired teleporter pads.
  * - Keep the first and last row (and leftmost/rightmost column) solid `#`.
  * - Every enemy (`i`, `b`, `s`, `c`, `w`, `r`, `B`) and pickup (`h`, `a`, `x`) must sit on a reachable floor tile.
  *
@@ -13,7 +13,7 @@
  *   `#`  standard bulkhead wall (64 high)
  *   `◤` `◥` `◣` `◢` (or `/` `\`) 45° diagonal triangle wall in 4 orientations (NW, NE, SW, SE)
  *   `T`  glowing pentagram teleporter pad (warps between paired pads; telefrags monsters on the exit pad)
- *   `o`  low pillar / window sill (26 high — blocks movement, shoot over when standing, cover when crouched)
+ *   `o`  futuristic cover crate (26 high — blocks movement, shoot over when standing, cover when crouched)
  *   `D`  sliding bulkhead door (opens with E / Space)
  *   `R`  red-locked security door (requires Red keycard `k`)
  *   `Y`  yellow-locked security door (requires Yellow keycard `y`)
@@ -57,28 +57,28 @@ export const LEVELS = [
     //        01234567890123456789012345678901234567890123456789012345
     rows: [
       /* 00 */ '########################################################', // Outer Hull
-      /* 01 */ '#P..◥#i......#g.x....#....######.....########....#######', // NW Entry Bay / NE Comms Closets
+      /* 01 */ '#P..◥#i......#g.x....#....#....#a....########....#######', // NW Entry Bay / NE Comms Closets
       /* 02 */ '#.G..#...o..a#....x..#.ih.#....#..i..#..a...#..c.#..hOs#', // NW Reception / North Alcoves (Chainsaw & Soulsphere Secret)
-      /* 03 */ '#..a.Da......D.x.x..iS....D....###D###..#...D....S..W..#', // North Airlock Corridor & Secret Push-Walls
+      /* 03 */ '#..a.Da......D.x.x..iS....D....◥##D###..#...D....S..W..#', // North Airlock Corridor & Secret Push-Walls
       /* 04 */ '#◣...#.....i.#..x....#....#..........D......#....#...i.#', // Upper Tech Hallway & Crusher
       /* 05 */ '###D#######D##########....####D#######..#...############', // Bulkhead Connectors
-      /* 06 */ '##◤.#.....#.#....S...#....#.V..~~~~~.#..u...#◤........◥#', // North-West Dogleg & Rad Suit by Slime Pool
-      /* 07 */ '#...#.h...#.######...#..x.#..o.~~~o~.########..o....o..#', // West Supply / North Hub Slime Pool
+      /* 06 */ '#...#.....#.#M...S.s.#....#.V..~~~~~.#..u...#◤........◥#', // North-West Dogleg & Rad Suit by Slime Pool
+      /* 07 */ '#...#.h...#.######...#..x.#..o.~~~#~.########..o....o..#', // West Supply / North Hub Slime Pool
       /* 08 */ '#.............i..#...#....#...x~~....D......D....b.....#', // West Command Hall (North)
       /* 09 */ '#..o.......C.........D....#...i~~....###D####..........#', // West Command Hall (Main Sightline)
-      /* 10 */ '#........i..b........#....#..o.~~~o~.#......#..o....o..#', // West Command Hall (South)
-      /* 11 */ '#..Z..o..i.......#...######....~~~~~.#..ah..#◣...i....◢#', // West Command Hall (Lower - Berserk Pack)
+      /* 10 */ '#........i..b........#....#..o.~~~#~.#......#..o....o..#', // West Command Hall (South)
+      /* 11 */ '#..Z..o..i.......#D########....~~~~~.#..ah..#◣...i....◢#', // West Command Hall (Lower - Berserk Pack)
       /* 12 */ '#..........m..h..#........#####D######......#####D######', // West Command Support
-      /* 13 */ '#########D#.######...##.......#.#...............#.#....#', // South-West Connector
-      /* 14 */ '#####...#.#.#........##..i.x..#.#...#########...#.#....#', // Mid-Base Crossway
-      /* 15 */ '#####...#.#.#..i.c...######D###.###.#.......#...#.#..h.#', // Mid-West Ambush Closet
-      /* 16 */ '#.......#.#.#........#◤.~~~....◥#.#.#..#T#..#...#.#....#', // Central Courtyard & Teleporter Pad A
-      /* 17 */ '#..i.x..D.#.########D#..#~~~~#..#.#.#...b...U...#......#', // Courtyard Airlocks & Blue-Locked Reactor
-      /* 18 */ '#.......#.#..........#..~~~~~~..#.#.#.y#.#..#...#......#', // Central Courtyard / Yellow Key in Reactor
-      /* 19 */ '#####D###.#############...##....#.###.......#...#####..#', // Courtyard Bulkhead & Monoliths
-      /* 20 */ '#####.#.......#....#......##....#...####U####.......#..#', // Central Courtyard (Core & Teleporter Pad B)
-      /* 21 */ '#..h..S..x.i..D....#.T.b..~~.c..D......#.#....i..x..#..#', // Courtyard Secret Closet & Catwalk
-      /* 22 */ '#.AqM.#.......#....#......~~...##......#.#..........#..#', // West Secret Ammo Closet / Courtyard South
+      /* 13 */ '#########D#.######...##.......#.#....#..........#.#....#', // South-West Connector
+      /* 14 */ '#.......#.#.#........##..i.x..#.#.y..########...#.#....#', // Mid-Base Crossway
+      /* 15 */ '#.......#.#.#..i.c...######D###.#...........#...#.#..h.#', // Mid-West Ambush Closet
+      /* 16 */ '#.......#.#.#........#..~~~.....###....#T#..#...#.#....#', // Central Courtyard & Teleporter Pad A
+      /* 17 */ '#..i.x..D.#..........#..#~~~~#....#.....b...U...#......#', // Courtyard Airlocks & Blue-Locked Reactor
+      /* 18 */ '#.......#.#..........#..~~~~~~....#....#.#..#...#......#', // Central Courtyard / Yellow Key in Reactor
+      /* 19 */ '#####D###.#############...##......###.......#...#####..#', // Courtyard Bulkhead & Monoliths
+      /* 20 */ '#####.#.......#....#......##........####U####.......#..#', // Central Courtyard (Core & Teleporter Pad B)
+      /* 21 */ '#..h..S..x.i..D....#.T.b..~~.c.........#.#....i..x..#..#', // Courtyard Secret Closet & Catwalk
+      /* 22 */ '#.Aq..#.......#....#......~~...##......#.#..........#..#', // West Secret Ammo Closet / Courtyard South
       /* 23 */ '#####.#########....####...o..o..########.########D###..#', // South Courtyard Rim
       /* 24 */ '#####.#.......#....#......i......^..............#.#....#', // South Interconnect Crusher Corridor
       /* 25 */ '#.....D...s...D....D...x........#####Y########..#.#..a.#', // Skull Ambush & Yellow-Locked Vault Door
@@ -230,6 +230,53 @@ export const LEVELS = [
       /* 33 */ '#.........########.#.#.............#####..a..h..#.#...X#', // Anomaly Portal Antechamber
       /* 34 */ '#..h...a..##########.###################........#.###XX#', // Phobos Anomaly Exit Portal
       /* 35 */ '########################################################', // Outer Hull
+    ],
+    //        01234567890123456789012345678901234567890123456789012345
+    //        0         1         2         3         4         5
+  },
+  {
+    name: 'E1M5 · Red Planet',
+    par: 240,
+    planet: 'mars',
+    //        0         1         2         3         4         5
+    //        01234567890123456789012345678901234567890123456789012345
+    rows: [
+      /* 00 */ '########################################################', // Outer Martian Canyon Rim
+      /* 01 */ '#G.a..#..............######............#######...#######', // Airlock Start Room & North Dust Wastes
+      /* 02 */ '#.....#...i....x.....#....#....c.......#..a..#...#..hO.#', // Airlock Chamber & North Canyon Secret Crevice
+      /* 03 */ '#.P...D..N............W................x.....#.i....a..#', // Airlock Door Opening to Hostile Mars Surface
+      /* 04 */ '#.g.h.#....o....o....######....o...o...#.....#...#######', // Martian Regolith Boulders & Outcrops
+      /* 05 */ '#######..............#..~..#...........###.###.........#', // Sealed Airlock Hull & Dust Plain
+      /* 06 */ '#....................#..~..#..o.....o....#.#...o....o..#', // Swept Martian Dune Field
+      /* 07 */ '#...i....x....b.........b........^.......#.#.....b.....#', // Wind-Scoured Ridge & Canyon Pass
+      /* 08 */ '#....................#..~..#.............#.#.....u.....#', // Eastern Mesa & Blue Keycard Outpost
+      /* 09 */ '######.#######.......#######..x.....i..###.#...o....o..#', // West Canyon Secret Cave & Dune Pass
+      /* 10 */ '#..h..A..a...#.......#.................#.#.......r.....#', // MegaArmor Secret Cave & Wraith Ridge
+      /* 11 */ '##############..m.C.....##◤....V....◥##..#.#############', // Chaingun Outcrop & Central Crater North Rim
+      /* 12 */ '#...........#........#..#~~To....o.~~#...#.......#.....#', // Teleporter Pad 1A & Martian Fissure
+      /* 13 */ '#...w.......#...Z....#..#~~~...x..~~~#...#####.###..h..#', // Swarmer Basin, Berserk & Canyon Pass
+      /* 14 */ '#.........N..........#.......#~~~#..................a..#', // Central Martian Crater
+      /* 15 */ '#.....o.....##########..#~~~~..r..~~~#...#.#####.#####.#', // Central Crater Core & East Crevice
+      /* 16 */ '#...c....i...........#..#..y.#~~~#...#...#.#...#.#...h.#', // Yellow Keycard Overlook
+      /* 17 */ '#...............x....#..#~~~...x..~~~#...#.#.c.#.#..q..#', // Southern Fissure & Rocket Cache
+      /* 18 */ '#..T....o............#..#~~.o....oT~~#.....#.....#.....#', // Teleporter Pad 1B & Pad 2A
+      /* 19 */ '###.##################..##◣........◢##...#.#####.#####.#', // Crater South Rim & Canyon Gap
+      /* 20 */ '#....#...............#...................#.#.........#.#', // Lower Martian Badlands
+      /* 21 */ '#.s......i.....x.....#######.....#########.#..x...b....#', // Badlands Ambush & Skull Gulch
+      /* 22 */ '#....#...............#.....#..h..#.......#.#.........#.#', // Badlands Crossway
+      /* 23 */ '######.......o...o...#..s.....q......s...#.#####.#####.#', // Twin Skull Caverns & Southern Canyon
+      /* 24 */ '#....................#.....#..M..#.......#.............#', // Rocket Launcher Vault & Southern Boss Crater
+      /* 25 */ '#...w.......N........#######.....#########..o.......o..#', // Open Martian Dust Bowl & Crater Boulders
+      /* 26 */ '#...........o....o...#...................#......B......#', // Southern Boss Crater (Warden of Mars)
+      /* 27 */ '######.#####.............o...^.x.^...o.................#', // Southern Trench & Boss Crater
+      /* 28 */ '#..h..q..a.#..i...c..#...................#..o...k...o..#', // Red Keycard in Boss Crater & Rock Alcove
+      /* 29 */ '############.........#######.#####.#######......h......#', // Southern Rock Narrows
+      /* 30 */ '#...........########.#.....#.#...#.#.....#########.#####', // Southern Canyon Approach
+      /* 31 */ '#....b..x..........#.#..b....#...#....r.....^..........#', // Pre-Exit Guard Line & Canyon Defile
+      /* 32 */ '#...........#.o..o.#.#.....#.#...#.#.....#######.#######', // Martian Canyon Approach
+      /* 33 */ '#...w................#######.#...#.#######..a..h...i..X#', // Martian Cliff Exit Portal
+      /* 34 */ '#...........#..T...#.........#...#...............#####X#', // Teleporter Pad 2B & Red Planet Exit Portal
+      /* 35 */ '########################################################', // Outer Martian Canyon Rim
     ],
     //        01234567890123456789012345678901234567890123456789012345
     //        0         1         2         3         4         5
