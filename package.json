@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@1pizzateam/bumpr": "1.2.0",
-    "@1pizzateam/groovr": "0.1.0-alpha.2",
+    "@1pizzateam/groovr": "0.1.0-alpha.3",
     "@1pizzateam/loopr": "2.2.0",
     "@1pizzateam/roostr": "0.9.0",
     "@1pizzateam/spock": "4.5.0",
