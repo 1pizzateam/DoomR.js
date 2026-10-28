@@ -1,0 +1,135 @@
+name: Plan from Think Spec
+
+on:
+  workflow_run:
+    workflows: ["Think on Ready Issue"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to generate plan.md for'
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  plan:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: copilot-plan-${{ inputs.issue_number || github.event.workflow_run.id }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve issue number and restore think.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: |
+          mkdir -p specs
+
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            gh run download "$RUN_ID" -n think-spec -D specs
+            ISSUE_NUMBER=$(tr -d '[:space:]' < specs/issue_number.txt)
+          else
+            ISSUE_NUMBER="$INPUT_ISSUE_NUMBER"
+            echo "$ISSUE_NUMBER" > specs/issue_number.txt
+          fi
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "::error::Could not determine ISSUE_NUMBER."
+            exit 1
+          fi
+
+          echo "ISSUE_NUMBER=${ISSUE_NUMBER}" >> "$GITHUB_ENV"
+          SPEC_DIR="specs/issue-${ISSUE_NUMBER}"
+          THINK_FILE="${SPEC_DIR}/think.md"
+          mkdir -p "$SPEC_DIR"
+
+          if [ ! -s "$THINK_FILE" ]; then
+            echo "Fetching latest think.md from issue #${ISSUE_NUMBER} comments..."
+            gh issue view "$ISSUE_NUMBER" --json comments \
+              --jq '[.comments[].body | select(test("^# Think:"; "m"))] | last // empty' > "$THINK_FILE"
+          fi
+
+          if [ ! -s "$THINK_FILE" ]; then
+            echo "::error::No think.md found in artifact or comments for issue #${ISSUE_NUMBER}. Run 'Think on Ready Issue' first."
+            exit 1
+          fi
+
+      - name: Install ALTEN-group/coding-pal plan primitives
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || github.token }}
+        run: |
+          git clone --depth 1 https://x-access-token:${GH_TOKEN}@github.com/ALTEN-group/coding-pal.git /tmp/alten-coding-pal
+          rm -rf .github/instructions .github/agents .github/prompts .github/skills .github/copilot-instructions.md .agents .claude .cursor .gemini CLAUDE.md GEMINI.md AGENTS.md .cursorrules .windsurfrules
+          mkdir -p .github/instructions .github/agents .agents/skills
+          cp /tmp/alten-coding-pal/instructions/sharp-agent.instructions.md .github/instructions/
+          cp /tmp/alten-coding-pal/instructions/plan.instructions.md .github/instructions/
+          cp /tmp/alten-coding-pal/agents/plan.agent.md .github/agents/
+          cp -R /tmp/alten-coding-pal/skills/plan .agents/skills/plan
+          rm -rf /tmp/alten-coding-pal
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm install -g @github/copilot
+
+      - name: Fetch issue context and run Planner agent
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: |
+          ISSUE_TITLE=$(gh issue view "$ISSUE_NUMBER" --json title --jq '.title')
+          ISSUE_BODY=$(gh issue view "$ISSUE_NUMBER" --json body --jq '.body')
+          SPEC_DIR="specs/issue-${ISSUE_NUMBER}"
+          THINK_FILE="${SPEC_DIR}/think.md"
+          PLAN_FILE="${SPEC_DIR}/plan.md"
+
+          copilot --agent="plan" --allow-all-tools \
+            --prompt "Produce a validated Plan record at ${PLAN_FILE} derived strictly from ${THINK_FILE} for GitHub Issue #${ISSUE_NUMBER}.
+          Issue Title: ${ISSUE_TITLE}
+          Issue Body:
+          ${ISSUE_BODY}
+
+          Follow .github/instructions/plan.instructions.md and .agents/skills/plan/SKILL.md (and its references/plan-contract.md).
+          Read ${THINK_FILE} first and ground all file scopes, acceptance criteria, atomic implementation steps (with New Code, Verification, Bootable Check, and Serves), test plan rows, and blast radius checks in ${THINK_FILE} and the existing repository conventions.
+          Every test in ## Test Plan and in test steps' New Code must include its acceptance criterion ID (`AC-1`, `AC-2`, etc.) in the test name (for example `'AC-1: ...'()` in `tests/sim.test.mjs`) and start the Test Plan `Test` cell with the test file path (`tests/sim.test.mjs: AC-1 ...`) so `criteria-verify` can verify every criterion with `--require-test-files`.
+          Do not modify any production or test files; only write ${PLAN_FILE}.
+          Validate and cross-check the generated file with: node .agents/skills/plan/scripts/validate-plan.mjs --plan ${PLAN_FILE} --think ${THINK_FILE} and fix any validation errors until it exits with code 0."
+
+      - name: Validate plan.md contract and cross-check against think.md
+        run: |
+          THINK_FILE="specs/issue-${ISSUE_NUMBER}/think.md"
+          PLAN_FILE="specs/issue-${ISSUE_NUMBER}/plan.md"
+          node .agents/skills/plan/scripts/validate-plan.mjs --plan "$PLAN_FILE" --think "$THINK_FILE"
+          cat "$PLAN_FILE" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment plan.md on issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PLAN_FILE="specs/issue-${ISSUE_NUMBER}/plan.md"
+          gh issue comment "$ISSUE_NUMBER" --body-file "$PLAN_FILE"
+
+      - name: Upload plan.md and think.md artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-spec
+          path: |
+            specs/issue_number.txt
+            specs/issue-${{ env.ISSUE_NUMBER }}/think.md
+            specs/issue-${{ env.ISSUE_NUMBER }}/plan.md
+          retention-days: 7
