@@ -4,8 +4,6 @@ on:
   workflow_run:
     workflows: ["Implement Plan and Open PR"]
     types: [completed]
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -21,7 +19,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  actions: read
+  actions: write
 
 env:
   FIX_LOOP_LIMIT: "5"
@@ -30,11 +28,10 @@ jobs:
   prove:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'pull_request' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     concurrency:
-      group: copilot-prove-${{ github.event.pull_request.number || inputs.pr_number || inputs.issue_number || github.event.workflow_run.id }}
+      group: copilot-prove-${{ inputs.pr_number || inputs.issue_number || github.event.workflow_run.id }}
       cancel-in-progress: false
     steps:
       - name: Resolve PR, branch, and issue number
@@ -42,15 +39,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || github.token }}
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
           INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
         run: |
+          rm -rf /tmp/specs
+          mkdir -p /tmp/specs
           PR_NUMBER=""
           ISSUE_NUMBER=""
 
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            PR_NUMBER="$EVENT_PR_NUMBER"
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if ! gh run download "$RUN_ID" -n code-spec -D /tmp/specs 2>/dev/null; then
+              echo "Triggering Code workflow run (#${RUN_ID}) was skipped (no code-spec artifact); skipping Prove."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            PR_NUMBER=$(tr -d '[:space:]' < /tmp/specs/pr_number.txt)
+            ISSUE_NUMBER=$(tr -d '[:space:]' < /tmp/specs/issue_number.txt)
           elif [ -n "$INPUT_PR_NUMBER" ]; then
             PR_NUMBER="$INPUT_PR_NUMBER"
           elif [ -n "$INPUT_ISSUE_NUMBER" ]; then
@@ -58,7 +63,6 @@ jobs:
             PR_NUMBER=$(gh pr list --state open --json number,headRefName \
               --jq "[.[] | select(.headRefName | test(\"^(feature|fix|chore)/issue-${ISSUE_NUMBER}-\"))][0].number // empty")
           else
-            # workflow_run after "Implement Plan and Open PR"
             PR_NUMBER=$(gh pr list --state open --json number,headRefName,updatedAt \
               --jq '[.[] | select(.headRefName | test("^(feature|fix|chore)/issue-[0-9]+-"))] | sort_by(.updatedAt) | reverse | .[0].number // empty')
           fi
@@ -116,6 +120,9 @@ jobs:
 
           SPEC_DIR="specs/issue-${ISSUE_NUMBER}"
           mkdir -p "$SPEC_DIR"
+          if [ -d "/tmp/specs/issue-${ISSUE_NUMBER}" ]; then
+            cp -R "/tmp/specs/issue-${ISSUE_NUMBER}/." "$SPEC_DIR/"
+          fi
 
           if [ ! -s "${SPEC_DIR}/think.md" ]; then
             gh issue view "$ISSUE_NUMBER" --json comments \
@@ -153,6 +160,7 @@ jobs:
             ".github/agents/" \
             ".agents/" \
             "specs/issue_number.txt" \
+            "specs/pr_number.txt" \
             "reports/" \
             "pr-body.md" \
             "gate-output.log" >> .git/info/exclude
@@ -279,6 +287,7 @@ jobs:
             if [ "$ATTEMPTS" -ge "$FIX_LOOP_LIMIT" ]; then
               gh label create needs:developer --force --description "Fix-loop limit reached" || true
               gh pr edit "$PR_NUMBER" --add-label needs:developer
+              gh issue edit "$ISSUE_NUMBER" --add-label "needs:developer" --remove-label "ready" || true
               if [ -f "$PROVE_FILE" ]; then
                 gh pr review "$PR_NUMBER" --request-changes --body-file "$PROVE_FILE" || gh pr comment "$PR_NUMBER" --body-file "$PROVE_FILE"
               fi
@@ -347,6 +356,7 @@ jobs:
 
           # Auto-merge the PR and delete the short-lived branch
           gh pr merge "$PR_NUMBER" --squash --delete-branch
+          gh issue edit "$ISSUE_NUMBER" --remove-label "ready" || true
 
       - name: Sync issue to Done on DoomR Project board
         if: steps.resolve.outputs.skip != 'true'
@@ -409,3 +419,62 @@ jobs:
           path: |
             specs/issue-${{ env.ISSUE_NUMBER }}/prove.md
             pr-body.md
+
+      - name: Mark issue needs:developer if Prove failed
+        if: failure() && steps.resolve.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || github.token }}
+        run: |
+          if [ -n "${ISSUE_NUMBER:-}" ]; then
+            gh label create needs:developer --force --description "Pipeline failed or fix-loop limit reached; developer attention required" || true
+            gh issue edit "$ISSUE_NUMBER" --add-label "needs:developer" --remove-label "ready" || true
+          fi
+
+      - name: Trigger next Ready issue in FIFO queue
+        if: always() && steps.resolve.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          QUEUE_DATA=$(gh api graphql -f query='
+            query($owner: String!, $repo: String!) {
+              repository(owner: $owner, name: $repo) {
+                issues(states: [OPEN], labels: ["ready"], first: 100) {
+                  nodes {
+                    number
+                    createdAt
+                    labels(first: 20) { nodes { name } }
+                    timelineItems(itemTypes: [LABELED_EVENT], last: 20) {
+                      nodes {
+                        ... on LabeledEvent {
+                          createdAt
+                          label { name }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }' -f owner="$OWNER" -f repo="$REPO" 2>/dev/null || true)
+
+          NEXT_ISSUE=$(echo "$QUEUE_DATA" | jq -r --argjson current "${ISSUE_NUMBER:-0}" '
+            [
+              .data.repository.issues.nodes[]?
+              | select(.number != $current)
+              | select(([.labels.nodes[].name] | index("needs:developer")) == null)
+              | {
+                  number: .number,
+                  readyAt: (([.timelineItems.nodes[]? | select(.label.name == "ready") | .createdAt] | last) // .createdAt)
+                }
+            ]
+            | sort_by(.readyAt, .number)
+            | .[0].number // empty
+          ')
+
+          if [ -n "$NEXT_ISSUE" ]; then
+            echo "Advancing FIFO queue to next Ready issue #${NEXT_ISSUE}..."
+            gh workflow run think.yml -f issue_number="$NEXT_ISSUE"
+          else
+            echo "FIFO queue is empty; no more Ready issues waiting."
+          fi
