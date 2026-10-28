@@ -1,0 +1,23 @@
+name: Dependency Audit
+
+on:
+  schedule: [{ cron: '0 6 * * 1' }]
+  pull_request:
+    branches: [main, master]
+    paths: ['package.json', 'package-lock.json']
+  workflow_dispatch:
+    inputs:
+      scope: { default: 'src/', type: string }
+      dependency: { default: 'all', type: string }
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  audit:
+    uses: 1pizzateam/coding-pal/.github/workflows/dependency-audit.yml@main
+    with:
+      scope: ${{ inputs.scope || 'src/' }}
+      dependency: ${{ inputs.dependency || 'all' }}
+    secrets: inherit
