@@ -1,0 +1,49 @@
+lockfile_version: '1'
+generated_at: '2026-10-28T15:23:49.965513+00:00'
+apm_version: 0.29.0
+dependencies:
+- repo_url: alten-group/coding-pal
+  materialization_repo_url: ALTEN-group/coding-pal
+  name: coding-pal-sharp-agent
+  host: github.com
+  resolved_commit: 1b5c643b068d068f67f8f98062ab0260176586af
+  version: 1.0.0
+  virtual_path: instructions/sharp-agent.instructions.md
+  is_virtual: true
+  deployed_files:
+  - .claude/rules/sharp-agent.md
+  - .cursor/rules/sharp-agent.mdc
+  - .github/instructions/sharp-agent.instructions.md
+  deployed_file_hashes:
+    .claude/rules/sharp-agent.md: sha256:a6751bdb9d26ce796752917bcb685656c0a578e584382057ee58f733b4bf76fa
+    .cursor/rules/sharp-agent.mdc: sha256:e8490758b683721288b34ea68763d06065910563bcab5736dd9034270ceefb8e
+    .github/instructions/sharp-agent.instructions.md: sha256:065fc0b82c2a6ffd9c68f65e6f56cb9d96dec7d31c00791151611c2d77827ad5
+  content_hash: sha256:cf961ff9bd29c1baf3bc77c61f6ca30e4d7981019a8f02845e91b379586f24de
+deployments:
+- kind: project-relative
+  target: claude
+  value: .claude/rules/sharp-agent.md
+  runtime: null
+  scope: project
+  owners:
+  - alten-group/coding-pal/instructions/sharp-agent.instructions.md
+  active_owner: alten-group/coding-pal/instructions/sharp-agent.instructions.md
+  content_hash: sha256:a6751bdb9d26ce796752917bcb685656c0a578e584382057ee58f733b4bf76fa
+- kind: project-relative
+  target: copilot
+  value: .github/instructions/sharp-agent.instructions.md
+  runtime: null
+  scope: project
+  owners:
+  - alten-group/coding-pal/instructions/sharp-agent.instructions.md
+  active_owner: alten-group/coding-pal/instructions/sharp-agent.instructions.md
+  content_hash: sha256:065fc0b82c2a6ffd9c68f65e6f56cb9d96dec7d31c00791151611c2d77827ad5
+- kind: project-relative
+  target: cursor
+  value: .cursor/rules/sharp-agent.mdc
+  runtime: null
+  scope: project
+  owners:
+  - alten-group/coding-pal/instructions/sharp-agent.instructions.md
+  active_owner: alten-group/coding-pal/instructions/sharp-agent.instructions.md
+  content_hash: sha256:e8490758b683721288b34ea68763d06065910563bcab5736dd9034270ceefb8e
