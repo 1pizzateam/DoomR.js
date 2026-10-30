@@ -2,7 +2,7 @@ name: Prove and Validate PR
 
 on:
   workflow_run:
-    workflows: ["Implement Plan and Open PR"]
+    workflows: ["Code Plan and Open PR"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -357,6 +357,68 @@ jobs:
           # Auto-merge the PR and delete the short-lived branch
           gh pr merge "$PR_NUMBER" --squash --delete-branch
           gh issue edit "$ISSUE_NUMBER" --remove-label "ready" || true
+
+      - name: Dispatch companion game editor updates after PR merge
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || github.token }}
+          REPO_FULL_NAME: ${{ github.repository }}
+        run: |
+          EDITOR_REQ_FILE="specs/issue-${ISSUE_NUMBER}/editor-requests.json"
+          if [ ! -s "$EDITOR_REQ_FILE" ] || ! jq -e 'type == "array" and length > 0' "$EDITOR_REQ_FILE" >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          map_editor_repo() {
+            case "$(echo "$1" | tr '[:upper:]' '[:lower:]')" in
+              cadenza|1pizzateam/cadenza) echo "1pizzateam/Cadenza" ;;
+              mappr|1pizzateam/mappr) echo "1pizzateam/MappR" ;;
+              pixelgun|1pizzateam/pixelgun) echo "1pizzateam/PixelGun" ;;
+              polygun|1pizzateam/polygun) echo "1pizzateam/PolyGun" ;;
+              shadergun|1pizzateam/shadergun) echo "1pizzateam/ShaderGun" ;;
+              *) echo "" ;;
+            esac
+          }
+
+          DISPATCHED_LINKS=()
+          while IFS= read -r item; do
+            ED_KEY=$(echo "$item" | jq -r '.editor // empty')
+            ED_TITLE=$(echo "$item" | jq -r '.title // empty')
+            ED_BODY=$(echo "$item" | jq -r '.body // empty')
+            TARGET_REPO=$(map_editor_repo "$ED_KEY")
+            if [ -z "$TARGET_REPO" ] || [ -z "$ED_TITLE" ] || [ -z "$ED_BODY" ]; then
+              continue
+            fi
+
+            gh label create "ready" --repo "$TARGET_REPO" --force --description "Approved for autonomous Think -> Plan -> Code -> Prove pipeline" || true
+            gh label create "upstream:doomr" --repo "$TARGET_REPO" --force --description "Triggered by a merged DoomR.js feature update" || true
+
+            EXISTING=$(gh issue list --repo "$TARGET_REPO" --state open --limit 100 --json number,title \
+              --jq ".[] | select((.title | ascii_downcase) == ($(echo "$ED_TITLE" | jq -Rs 'ascii_downcase'))) | .number" | head -n 1)
+
+            if [ -n "$EXISTING" ]; then
+              ED_URL="https://github.com/${TARGET_REPO}/issues/${EXISTING}"
+              echo "Reusing open companion editor issue ${ED_URL}"
+            else
+              FULL_BODY="${ED_BODY}
+
+          ---
+          _Triggered automatically by merged ${REPO_FULL_NAME}#${ISSUE_NUMBER} (PR #${PR_NUMBER})._"
+              ED_URL=$(gh issue create \
+                --repo "$TARGET_REPO" \
+                --title "$ED_TITLE" \
+                --body "$FULL_BODY" \
+                --label "ready,upstream:doomr")
+              echo "Created companion editor issue ${ED_URL}"
+            fi
+            DISPATCHED_LINKS+=("- **${TARGET_REPO}**: ${ED_URL}")
+          done < <(jq -c '.[]' "$EDITOR_REQ_FILE")
+
+          if [ "${#DISPATCHED_LINKS[@]}" -gt 0 ]; then
+            COMMENT_BODY=$(printf "### Companion Game Editor Updates Dispatched\n\nNow that PR #%s is merged into \`%s\`, the following companion editor issues have been opened and labeled \`ready\` to trigger their autonomous pipelines:\n\n%s\n" \
+              "$PR_NUMBER" "$BASE_REF" "$(printf '%s\n' "${DISPATCHED_LINKS[@]}")")
+            gh issue comment "$ISSUE_NUMBER" --body "$COMMENT_BODY"
+          fi
 
       - name: Sync issue to Done on DoomR Project board
         if: steps.resolve.outputs.skip != 'true'

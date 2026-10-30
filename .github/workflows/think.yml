@@ -118,7 +118,7 @@ jobs:
 
           # 1. Check if Plan, Code, or Prove is currently running or queued
           ACTIVE_PIPELINE_RUNS=0
-          for wf in "Plan from Think Spec" "Implement Plan and Open PR" "Prove and Validate PR"; do
+          for wf in "Plan from Think Spec" "Code Plan and Open PR" "Prove and Validate PR"; do
             COUNT=$(gh run list --workflow "$wf" --limit 5 --json status \
               --jq '[.[] | select(.status == "in_progress" or .status == "queued" or .status == "waiting" or .status == "requested")] | length' 2>/dev/null || echo "0")
             ACTIVE_PIPELINE_RUNS=$((ACTIVE_PIPELINE_RUNS + COUNT))
@@ -221,6 +221,8 @@ jobs:
             ESCALATION_HINT="If you determine that generic math, physics, loop, audio, or rendering logic required for this issue belongs in an upstream @1pizzateam/* library (@1pizzateam/roostr -> 1pizzateam/RoostR.js, @1pizzateam/bumpr -> 1pizzateam/BumpR.js, @1pizzateam/loopr -> 1pizzateam/LoopR.js, @1pizzateam/spock -> 1pizzateam/Spock.js, @1pizzateam/groovr -> 1pizzateam/GroovR.js) rather than DoomR.js—and the installed version in node_modules does not yet export it—also write ${SPEC_DIR}/upstream-request.json with {\"package\": \"@1pizzateam/...\", \"repo\": \"1pizzateam/...\", \"library_issue_title\": \"...\", \"library_issue_body\": \"## Problem\\n...\\n## Proposed API\\n...\\n## Acceptance Criteria\\n- **AC-1:** ...\"}."
           fi
 
+          EDITOR_SYNC_HINT="If implementing this DoomR.js feature or schema change also requires updating one or more of the 5 companion game editors (cadenza -> 1pizzateam/Cadenza for music/soundtrack racks, mappr -> 1pizzateam/MappR for level/map schemas & entities, pixelgun -> 1pizzateam/PixelGun for 2D procedural sprites/textures, polygun -> 1pizzateam/PolyGun for 3D procedural meshes/weapons, shadergun -> 1pizzateam/ShaderGun for WebGL2 post-process/material shaders), also write ${SPEC_DIR}/editor-requests.json containing a JSON array of objects: [{\"editor\": \"mappr\", \"title\": \"feat: ...\", \"body\": \"## Problem\\n...\\n## DoomR.js Contract Changes\\n...\\n## Acceptance Criteria\\n- **AC-1:** ...\"}]. These companion editor issues will be automatically created and labeled ready in the respective editor repositories as soon as this DoomR.js PR merges."
+
           copilot --agent="think" --allow-all-tools \
             --prompt "Produce a validated Think record at ${THINK_FILE} for GitHub Issue #${ISSUE_NUMBER}.
           Issue Title: ${ISSUE_TITLE}
@@ -232,6 +234,7 @@ jobs:
           Follow .github/instructions/think.instructions.md and .agents/skills/think/SKILL.md (and its references/think-contract.md).
           Because no Forge catalog is installed in this repository, evaluate options grounded in the codebase and existing package.json dependencies, set Custom build where applicable with Custom Build Reason in ## Chosen Approach and '- **None:** <reason>' in ## Forge Asset Bindings.
           ${ESCALATION_HINT}
+          ${EDITOR_SYNC_HINT}
           Validate the generated file with: node .agents/skills/think/scripts/validate-think.mjs --think ${THINK_FILE} and fix any validation errors until it exits with code 0."
 
       - name: Check for upstream @1pizzateam/* library escalation
@@ -351,7 +354,16 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
         run: |
           THINK_FILE="specs/issue-${ISSUE_NUMBER}/think.md"
+          EDITOR_REQ_FILE="specs/issue-${ISSUE_NUMBER}/editor-requests.json"
           gh issue comment "$ISSUE_NUMBER" --body-file "$THINK_FILE"
+          if [ -s "$EDITOR_REQ_FILE" ] && jq -e 'type == "array" and length > 0' "$EDITOR_REQ_FILE" >/dev/null 2>&1; then
+            SUMMARY=$(jq -r '.[] | "- **\(.editor)**: \(.title)"' "$EDITOR_REQ_FILE")
+            gh issue comment "$ISSUE_NUMBER" --body "### Scheduled Companion Game Editor Updates
+
+          Once this DoomR.js issue is implemented, proven, and merged into \`main\`, the pipeline will automatically open \`ready\` issues in the following companion game editors:
+
+          ${SUMMARY}"
+          fi
           echo "$ISSUE_NUMBER" > specs/issue_number.txt
 
       - name: Upload think.md artifact for Plan workflow
@@ -362,6 +374,7 @@ jobs:
           path: |
             specs/issue_number.txt
             specs/issue-${{ github.event.issue.number || inputs.issue_number }}/think.md
+            specs/issue-${{ github.event.issue.number || inputs.issue_number }}/editor-requests.json
           retention-days: 7
 
       - name: Advance FIFO queue if Think fails

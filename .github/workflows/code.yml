@@ -1,4 +1,4 @@
-name: Implement Plan and Open PR
+name: Code Plan and Open PR
 
 on:
   workflow_run:
@@ -158,6 +158,9 @@ jobs:
 
           git checkout -B "$BRANCH_NAME"
           git add "specs/issue-${ISSUE_NUMBER}/think.md" "specs/issue-${ISSUE_NUMBER}/plan.md"
+          if [ -f "specs/issue-${ISSUE_NUMBER}/editor-requests.json" ]; then
+            git add "specs/issue-${ISSUE_NUMBER}/editor-requests.json"
+          fi
           git commit -m "docs(specs): add think.md and plan.md for issue #${ISSUE_NUMBER}"
 
       - name: Install ALTEN-group/coding-pal code primitives
@@ -384,6 +387,7 @@ jobs:
             specs/pr_number.txt
             specs/issue-${{ env.ISSUE_NUMBER }}/think.md
             specs/issue-${{ env.ISSUE_NUMBER }}/plan.md
+            specs/issue-${{ env.ISSUE_NUMBER }}/editor-requests.json
           retention-days: 7
 
       - name: Advance FIFO queue if Code fails

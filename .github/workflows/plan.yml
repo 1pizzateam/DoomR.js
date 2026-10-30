@@ -150,6 +150,7 @@ jobs:
             specs/issue_number.txt
             specs/issue-${{ env.ISSUE_NUMBER }}/think.md
             specs/issue-${{ env.ISSUE_NUMBER }}/plan.md
+            specs/issue-${{ env.ISSUE_NUMBER }}/editor-requests.json
           retention-days: 7
 
       - name: Advance FIFO queue if Plan fails
