@@ -36,4 +36,5 @@ jobs:
       workflow_run_id: ${{ inputs.workflow_run_id || '' }}
       project_title: DoomR
       auto_release_npm: false
+      deployment_workflow: deploy-pages.yml
     secrets: inherit
