@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { Mat4 } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PointLight, Rand, Vec2, Vec3 } from '@1pizzateam/roostr';
-import { CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
+import { ACID_PIT_DEPTH, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
 import { BLOOD } from '../src/blood.js';
 import { RECIPES, Sound, spatial } from '../src/audio.js';
 import { validateSong } from '@1pizzateam/groovr';
@@ -63,6 +63,23 @@ function clearEnemies(game) {
     game.damageEnemy(enemy, 999);
   game.enemies = [];
   game.kills = 0;
+}
+
+function acidPitGame() {
+  const game = fresh();
+  game.load({
+    name: 'Acid pit test',
+    rows: [
+      '#########',
+      '#.......#',
+      '#..~~~..#',
+      '#P.~~~..#',
+      '#..~~~..#',
+      '#.......#',
+      '#########',
+    ],
+  });
+  return game;
 }
 
 function withWallWorld(check) {
@@ -2517,6 +2534,132 @@ const tests = {
     assert.equal(hashes.size, FIREBALL_FRAMES, 'every fireball frame is distinct');
   },
 
+  'AC-1 acid entry drops player below floor and walking cannot leave pit'() {
+    for (const [pos, angle] of [
+      [new Vec2(160, 224), 0],
+      [new Vec2(416, 224), Math.PI],
+      [new Vec2(288, 96), Math.PI / 2],
+      [new Vec2(288, 352), -Math.PI / 2],
+    ]) {
+      const game = acidPitGame();
+      game.player.body.setPosition(pos);
+      game.player.angle = angle;
+      run(game, 0.7, input({ forward: 1 }));
+      assert.equal(game.player.z, -ACID_PIT_DEPTH, 'walking off the deck falls onto the pit floor');
+      assert.equal(game.player.eye, EYE - ACID_PIT_DEPTH, 'camera follows the descent');
+      const entered = game.player.pos.clone();
+      run(game, 1, input({ forward: 1, run: true }));
+      assert.ok(game.player.pos.getDistance(entered) > 20, 'movement continues between adjacent acid tiles');
+      assert.ok(game.player.pos.x >= 192 + 14 && game.player.pos.x <= 384 - 14, 'body cannot cross either X edge below floor');
+      assert.ok(game.player.pos.y >= 128 + 14 && game.player.pos.y <= 320 - 14, 'body cannot cross either Y edge below floor');
+      assert.equal(game.player.z, -ACID_PIT_DEPTH);
+      const blocked = game.player.pos.clone();
+      run(game, 0.3, input({ forward: 1, run: true }));
+      assert.ok(game.player.pos.getDistance(blocked) < 0.001, 'continued walking cannot escape the pit');
+    }
+    const game = acidPitGame();
+    game.player.body.setPosition(new Vec2(288, 224));
+    run(game, 0.1);
+    assert.ok(game.player.z < 0 && game.player.z > -ACID_PIT_DEPTH, 'entry descends over time rather than snapping');
+    game.update(1 / 60, input({ jump: true }));
+    assert.ok(game.player.vz < 0, 'jump cannot launch while falling');
+    run(game, 0.3);
+    game.player.angle = Math.PI / 4;
+    run(game, 1, input({ forward: 1, run: true }));
+    assert.ok(game.player.pos.x <= 370 && game.player.pos.y <= 306, 'diagonal motion cannot cut across the raised floor corner');
+    assert.equal(game.player.z, -ACID_PIT_DEPTH);
+  },
+
+  'AC-2 jumping raises player to floor level and permits pit exit'() {
+    const game = acidPitGame();
+    game.player.body.setPosition(new Vec2(224, 224));
+    game.player.angle = Math.PI;
+    run(game, 0.4);
+    assert.equal(game.player.z, -ACID_PIT_DEPTH);
+    const health = game.player.health;
+    game.player.slimeTimer = 0;
+    game.update(1 / 60, input({ jump: true, forward: 1 }));
+    assert.ok(game.player.z > -ACID_PIT_DEPTH && game.player.vz > 0, 'jump launches from the pit floor');
+    assert.equal(game.player.slimeTimer, 0, 'jumping below deck height is still airborne above acid');
+    for (let frame = 0; frame < 20; frame++) {
+      game.update(1 / 60, input({ forward: 1 }));
+      if (game.player.pos.x < 192 + 14)
+        assert.ok(game.player.z >= 0, 'crossing the lip requires floor-level clearance for the whole body');
+    }
+    assert.ok(game.player.pos.x + 14 < 192, 'jump carries the player fully onto adjacent ordinary floor');
+    assert.equal(game.player.health, health, 'airborne pit exit causes no acid damage');
+    run(game, 0.6);
+    assert.equal(game.player.z, 0, 'player lands on the ordinary floor, not the pit bottom');
+    assert.equal(game.player.eye, EYE);
+    const before = game.player.pos.x;
+    run(game, 0.1, input({ forward: 1 }));
+    assert.ok(game.player.pos.x < before, 'ordinary walking resumes after exiting');
+  },
+
+  'AC-3 grounded player in acid pit continues taking periodic damage and emitting effects'() {
+    const game = acidPitGame();
+    game.player.body.setPosition(new Vec2(288, 224));
+    run(game, 0.4);
+    assert.equal(game.player.z, -ACID_PIT_DEPTH);
+    game.player.slimeTimer = 0;
+    game.events.length = 0;
+    const health = game.player.health;
+    run(game, 0.9);
+    assert.equal(game.player.health, health - 5);
+    assert.ok(game.player.radFlash > 0, 'acid damage flashes the radiation border');
+    assert.equal(game.events.filter((event) => event.type === 'acid').length, 1, 'acid damage emits its sound event');
+    run(game, 0.85);
+    assert.equal(game.player.health, health - 10, 'acid burns repeat while grounded');
+    assert.ok(game.player.radFlash > 0);
+    assert.equal(game.events.filter((event) => event.type === 'acid').length, 2);
+  },
+
+  'AC-4 active rad suit prevents acid pit damage and clears burn timer'() {
+    const game = acidPitGame();
+    game.player.body.setPosition(new Vec2(288, 224));
+    game.player.radSuit = 10;
+    run(game, 0.4);
+    assert.equal(game.player.z, -ACID_PIT_DEPTH);
+    game.player.slimeTimer = 0.84;
+    game.events.length = 0;
+    const health = game.player.health;
+    run(game, 1.8);
+    assert.equal(game.player.health, health, 'suit prevents repeated acid burns');
+    assert.equal(game.player.slimeTimer, 0, 'suit clears even a nearly completed burn timer');
+    assert.equal(game.player.radFlash, 0);
+    assert.equal(game.events.filter((event) => event.type === 'acid').length, 0);
+    assert.ok(game.player.radSuit > 0 && game.player.radSuit < 10, 'protection still expires normally');
+    game.player.radSuit = 0;
+    run(game, 0.9);
+    assert.equal(game.player.health, health - 5, 'acid resumes burning after protection expires');
+  },
+
+  'AC-5 acid mesh is recessed and retains animation'() {
+    const game = acidPitGame();
+    withWallWorld((world, programs) => {
+      world.floorBatch = World.prototype.floorBatch;
+      world.slimeBatch = World.prototype.slimeBatch;
+      World.prototype.buildStatic.call(world, game.level);
+      const acid = programs.find(({ fragment }) => fragment === SLIME_FRAGMENT);
+      const floors = programs.filter(({ fragment }) => fragment === FLOOR_FRAGMENT);
+      assert.ok(acid && floors.length > 0, 'actual acid and adjoining floor batches are built');
+      assert.equal(acid.mesh.used, 9, 'one recessed surface per acid tile, with no gaps inside the pool');
+      assert.equal(acid.vertex, FLOOR_VERTEX);
+      for (let i = 1; i < acid.mesh.used * 18; i += 3)
+        assert.ok(Math.abs(acid.mesh.vertices[i] + ACID_PIT_DEPTH + 0.35) < 1e-5, 'surface matches the gameplay pit depth');
+      for (const { mesh } of floors)
+        for (let i = 1; i < mesh.used * 18; i += 3)
+          assert.ok(Math.abs(mesh.vertices[i] + 0.2) < 1e-5, 'ordinary floor stays at deck height');
+      const sides = programs.filter(({ fragment }) => fragment === LINE_FRAGMENT);
+      assert.ok(sides.some(({ mesh }) => Array.from(mesh.vertices).some((value, i) => i % 3 === 1 && value < -ACID_PIT_DEPTH)), 'pit edges are closed below the deck');
+      assert.match(acid.fragment, /uniform float uTime;/);
+      assert.match(acid.fragment, /sin\([^;]*uTime/);
+      assert.equal(acid.mesh.customUniforms.time.value, 0, 'animation time is registered');
+      acid.mesh.setCustomUniform('time', 2);
+      assert.equal(acid.mesh.customUniforms.time.value, 2, 'animation time remains updateable');
+    });
+  },
+
   'crouching lowers the player eye below low pillars, slows movement, and stands back up when released'() {
     const game = fresh();
     clearEnemies(game);
@@ -2539,22 +2682,23 @@ const tests = {
     assert.equal(game.player.crouch, 0, 'releasing crouch returns crouch factor to 0');
     assert.equal(game.player.eye, EYE, 'releasing crouch restores standing eye height');
 
-    // jumping launches the player upward, clears toxic acid tiles without taking damage, and lands back at z = 0
+    // jumping clears the acid surface without damage, then lands in the recessed pit
     const slimeIdx = game.level.slime.findIndex((v) => v === 1);
     const slimeX = (slimeIdx % game.level.width) * 64 + 32;
     const slimeY = Math.floor(slimeIdx / game.level.width) * 64 + 32;
     game.player.body.setPosition(new Vec2(slimeX, slimeY));
+    run(game, 0.4);
     const hpBefore = game.player.health;
     game.events.length = 0;
     game.update(1 / 60, input({ jump: true }));
-    assert.ok(game.player.z > 0 && game.player.eye > EYE, 'jumping raises player z and eye above standing EYE');
+    assert.ok(game.player.z > -ACID_PIT_DEPTH && game.player.eye > EYE - ACID_PIT_DEPTH, 'jumping raises player z and eye above the pit floor');
     run(game, 0.28, idle);
-    assert.ok(game.player.z > 15, 'player reaches jump apex mid-air above acid');
+    assert.ok(game.player.z > 0, 'player reaches jump apex above the ordinary floor');
     assert.equal(game.player.slimeTimer, 0, 'airborne player does not accumulate acid burn timer');
     assert.equal(game.player.health, hpBefore, 'jumping over acid takes no damage');
-    run(game, 0.4, idle);
-    assert.equal(game.player.z, 0, 'gravity brings jumping player back to floor');
-    assert.equal(game.player.eye, EYE, 'landing restores standing eye height');
+    run(game, 0.6, idle);
+    assert.equal(game.player.z, -ACID_PIT_DEPTH, 'gravity brings jumping player down to the pit floor');
+    assert.equal(game.player.eye, EYE - ACID_PIT_DEPTH, 'landing restores standing eye height relative to the pit');
     assert.ok(game.events.some((e) => e.type === 'step' && e.who === 'player'), 'landing emits a player footfall sound');
   },
 
@@ -2938,6 +3082,7 @@ const tests = {
     const slimeY = Math.floor(slimeIdx / game.level.width) * 64 + 32;
     assert.equal(game.level.slimeAt(slimeX, slimeY), true);
     game.player.body.setPosition(new Vec2(slimeX, slimeY));
+    run(game, 0.4);
     game.events.length = 0;
     const hpBefore = game.player.health;
     run(game, 0.9);
@@ -3654,6 +3799,7 @@ const tests = {
     const sx = ((slimeIdx % game.level.width) + 0.5) * 64;
     const sy = (Math.floor(slimeIdx / game.level.width) + 0.5) * 64;
     game.player.body.setPosition(new Vec2(sx, sy));
+    run(game, 0.4);
     const healthBefore = game.player.health;
     for (let i = 0; i < 30; i++)
       game.updateHazards(0.1);
