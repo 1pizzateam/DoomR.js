@@ -2429,7 +2429,7 @@ const tests = {
     game.update(1 / 60, idle);
     assert.equal(game.secretsFound, 1, 'stepping into a secret room increments secretsFound');
     assert.equal(game.message.text, 'Secret area found!');
-    assert.ok(game.events.some((e) => e.type === 'secret'), 'secret discovery emits secret chime');
+    assert.ok(!game.events.some((e) => e.type === 'secret'), 'door-backed secret room entry does not emit secret chime');
     // stepping again in the same secret room does not double-count
     game.events.length = 0;
     game.update(1 / 60, idle);

@@ -255,6 +255,7 @@ export class Game {
     this.itemsPicked = 0;
     this.secretsFound = 0;
     this.discoveredSecrets = new Set();
+    this.chimedSecrets = new Set();
     this.intermission = null;
     this.flowTile = -1;
     this.flow = new Int16Array(this.level.width * this.level.rowCount);
@@ -1606,6 +1607,13 @@ export class Game {
       if (door.target !== (door.lastTarget ?? 0)) {
         door.lastTarget = door.target;
         this.emit(door.target ? 'doorOpen' : 'doorClose', door.center);
+        if (door.target) {
+          const secretIndex = this.level.secretRoomByDoor.get(door.idx);
+          if (secretIndex !== undefined && !this.chimedSecrets.has(secretIndex)) {
+            this.chimedSecrets.add(secretIndex);
+            this.emit('secret');
+          }
+        }
       }
     }
   }
@@ -2427,7 +2435,8 @@ export class Game {
         this.discoveredSecrets.add(secretIdx);
         this.secretsFound++;
         this.say('Secret area found!', 2.5);
-        this.emit('secret');
+        if (this.level.secretDoorByRoom[secretIdx] < 0)
+          this.emit('secret');
       }
       // a failing heart: faster the lower the health
       const { health } = this.player;
