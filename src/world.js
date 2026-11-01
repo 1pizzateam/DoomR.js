@@ -2,7 +2,7 @@ import { CustomMesh, Cylinder, FullscreenQuad, Grid, Material, Mesh, Perspective
 import { BLOOD } from './blood.js';
 import { barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
 import { bloodAtlas, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
-import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
+import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
 import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, MARS_SKY_FRAGMENT, MARS_SKY_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, marsSkyAtlas, marsSkyMesh, updateCeilingLights } from './ceiling.js';
 import { WALL_CELLS, diagWallFaceQuads, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
 import { createExplosion3dPose, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from './explosion.js';
@@ -1982,7 +1982,7 @@ export class World {
       sharedTexture,
       material: new Material({ diffuse: new Vec3(1, 1, 1) }),
       // the rust of the doors: many small patches, thicker low down, worked out on the wall itself
-      vertex: DOOR_VERTEX,
+      vertex: WALL_VERTEX,
       fragment: marsRock ? MARS_ROCK_FRAGMENT : WALL_FRAGMENT,
       textureOptions: texOpts,
     });
