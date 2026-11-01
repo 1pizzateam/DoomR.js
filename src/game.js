@@ -75,6 +75,7 @@ const PLAYER_RUN = 235;
 const CROUCH_SPEED = 10;
 const JUMP_VELOCITY = 135;
 const JUMP_GRAVITY = 460;
+export const ACID_PIT_DEPTH = 12;
 // the head bob advances 9 rad/s at walking pace and the camera dips twice per 2π of it, so one stride is π of bob
 const PLAYER_STRIDE = (PLAYER_WALK * Trigo.pi) / 9;
 const FOOTFALL = (3 * Trigo.pi) / 4; // bob phase where sin(2 * bob), the camera height, is at its lowest
@@ -114,6 +115,10 @@ export class Game {
     this.zero = new Vec2();
     this.scratch = new Vec2();
     this.velocity = new Vec2();
+    this.pitMin = new Vec2();
+    this.pitMax = new Vec2();
+    this.pitStepStart = new Vec2();
+    this.pitStepTarget = new Vec2();
     this.shake = 0;
     // set by the title screen's film: a camera that is not the player's, and a fade to black between shots
     this.cam = null;
@@ -2019,6 +2024,40 @@ export class Game {
       enemy.windup = 0.3;
   }
 
+  playerFloorHeight() {
+    const { player, level, pitMin, pitMax } = this;
+    const x0 = Math.floor((player.pos.x - PLAYER_RADIUS) / TILE);
+    const x1 = Math.floor((player.pos.x + PLAYER_RADIUS) / TILE);
+    const y0 = Math.floor((player.pos.y - PLAYER_RADIUS) / TILE);
+    const y1 = Math.floor((player.pos.y + PLAYER_RADIUS) / TILE);
+    for (let ty = y0; ty <= y1; ty++)
+      for (let tx = x0; tx <= x1; tx++) {
+        if (level.inBounds(tx, ty) && level.slime[ty * level.width + tx])
+          continue;
+        pitMin.setScalar(tx * TILE, ty * TILE);
+        pitMax.setScalar((tx + 1) * TILE, (ty + 1) * TILE);
+        if (player.body.overlapsAabb(pitMin, pitMax))
+          return 0;
+      }
+    return -ACID_PIT_DEPTH;
+  }
+
+  constrainPitMovement() {
+    const { player, pitStepStart, pitStepTarget } = this;
+    if (player.z >= 0)
+      return;
+    pitStepTarget.copy(player.pos);
+    this.scratch.setScalar(pitStepTarget.x, pitStepStart.y);
+    player.body.setPosition(this.scratch);
+    if (this.playerFloorHeight() === 0)
+      player.body.setPosition(pitStepStart);
+    this.scratch.setScalar(player.pos.x, pitStepTarget.y);
+    pitStepTarget.copy(player.pos);
+    player.body.setPosition(this.scratch);
+    if (this.playerFloorHeight() === 0)
+      player.body.setPosition(pitStepTarget);
+  }
+
   updatePlayer(dt, input) {
     const player = this.player;
     player.angle += input.turn * dt * 2.6 + input.mouseX * 0.0022;
@@ -2033,20 +2072,25 @@ export class Game {
     player.hurt = Math.max(0, player.hurt - dt);
     player.hitMarker = Math.max(0, player.hitMarker - dt);
 
-    const wasAirborne = (player.z ?? 0) > 0;
+    const floor = this.playerFloorHeight();
+    if (player.z < floor) {
+      player.z = floor;
+      player.vz = 0;
+    }
+    const wasAirborne = player.z > floor;
     if (input.jump && !wasAirborne) {
       player.vz = JUMP_VELOCITY;
       player.crouch = 0;
     }
-    if ((player.z ?? 0) > 0 || (player.vz ?? 0) > 0) {
+    if (wasAirborne || (player.vz ?? 0) > 0) {
       player.z = (player.z ?? 0) + (player.vz ?? 0) * dt;
       player.vz = (player.vz ?? 0) - JUMP_GRAVITY * dt;
-      if (player.z <= 0) {
-        player.z = 0;
+      if (player.z <= floor) {
+        player.z = floor;
         player.vz = 0;
       }
     }
-    const airborne = (player.z ?? 0) > 0;
+    const airborne = player.z > floor;
 
     player.crouch = airborne
       ? Math.max(0, player.crouch - dt * CROUCH_SPEED)
@@ -2101,7 +2145,7 @@ export class Game {
   /** The player leaves bloody footprints after walking through blood. Monsters only take steps, which are heard. */
   trackFootprints() {
     const { player } = this;
-    if (this.state === 'play' && (player.z ?? 0) <= 0) {
+    if (this.state === 'play' && player.z <= this.playerFloorHeight()) {
       for (const enemy of this.enemies)
         if (enemy.state === 'dead' && enemy.body.overlapsCircle(player.pos, PLAYER_RADIUS))
           player.feet.blood = 1;
@@ -2184,7 +2228,7 @@ export class Game {
       player.ammoFlash.bullets = Math.max(0, (player.ammoFlash.bullets ?? 0) - dt);
       player.ammoFlash.rockets = Math.max(0, (player.ammoFlash.rockets ?? 0) - dt);
     }
-    if (this.state === 'play' && (player.z ?? 0) <= 0 && this.level.slimeAt(player.pos.x, player.pos.y)) {
+    if (this.state === 'play' && player.z <= -ACID_PIT_DEPTH && this.level.slimeAt(player.pos.x, player.pos.y)) {
       if ((player.radSuit ?? 0) > 0)
         player.slimeTimer = 0;
       else {
@@ -2422,7 +2466,9 @@ export class Game {
         shot.dead = true;
     }
 
+    this.pitStepStart.copy(this.player.pos);
     this.scene.step(dt);
+    this.constrainPitMovement();
     this.updateTeleporters(dt);
     this.cleanup();
     this.trackFootprints();

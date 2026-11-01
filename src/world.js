@@ -1,5 +1,6 @@
 import { CustomMesh, Cylinder, FullscreenQuad, Grid, Material, Mesh, PerspectiveCamera, Quat, Rand, Renderer, RenderTarget, Scene, Sprite, Texture, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { BLOOD } from './blood.js';
+import { ACID_PIT_DEPTH } from './game.js';
 import { barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
 import { bloodAtlas, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
 import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
@@ -1690,6 +1691,23 @@ export class World {
       }
     }
 
+    // Close the exposed edges below the deck, including walls adjoining a pit.
+    for (let ty = 0; ty < rowCount; ty++)
+      for (let tx = 0; tx < width; tx++) {
+        if (!level.slime[ty * width + tx])
+          continue;
+        for (let d = 0; d < 4; d++) {
+          const nx = tx + (d === 0 ? -1 : d === 1 ? 1 : 0);
+          const ny = ty + (d === 2 ? -1 : d === 3 ? 1 : 0);
+          if (level.inBounds(nx, ny) && level.slime[ny * width + nx])
+            continue;
+          const axis = d < 2 ? 'x' : 'z';
+          const plane = (d < 2 ? tx + (d === 1 ? 1 : 0) : ty + (d === 3 ? 1 : 0)) * TILE;
+          const along = (d < 2 ? ty : tx) * TILE;
+          hide.push(...quadTriangles(faceCorners(axis, plane, along, along + TILE, -ACID_PIT_DEPTH - 0.35, -0.2)));
+        }
+      }
+
     // and the ceiling closes the roof over everything
     // (except over the giant's room or outdoor Martian terrain: one strip of ceiling per row, with a gap wherever open to the sky)
     const roofHide = [];
@@ -2107,7 +2125,7 @@ export class World {
       this.sharedTexturedMeshes.push(batch);
     }
     batch.addCustomUniform('time', 'uniform1f', 0);
-    const y = -0.35;
+    const y = -ACID_PIT_DEPTH - 0.35;
     batch.begin();
     for (let ty = 0; ty < level.rowCount; ty++)
       for (let tx = 0; tx < level.width; tx++) {
