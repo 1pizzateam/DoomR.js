@@ -39,8 +39,6 @@ const FULL_GLSL = COLORS.orange.getDistance(BG_VEC).toFixed(5);
 // in another room shows above a wall. Tall walls are drawn no higher than it, and the stretch above a low wall is wall.
 const ROOF = CEILING;
 const MARS_GROUND_Y = -0.2;
-// The outdoor wall skirt must survive the rock shader's below-floor clipping.
-const MARS_WALL_FRAGMENT = MARS_ROCK_FRAGMENT.replace('vHeight < -0.01', `vHeight < ${(MARS_GROUND_Y - 0.01).toFixed(2)}`);
 
 const NEAR = 6;
 const FAR = 2400;
@@ -2008,7 +2006,7 @@ export class World {
       material: new Material({ diffuse: new Vec3(1, 1, 1) }),
       // the rust of the doors: many small patches, thicker low down, worked out on the wall itself
       vertex: WALL_VERTEX,
-      fragment: marsRock ? MARS_WALL_FRAGMENT : WALL_FRAGMENT,
+      fragment: marsRock ? MARS_ROCK_FRAGMENT : WALL_FRAGMENT,
       textureOptions: texOpts,
     });
     if (sharedTexture) {
