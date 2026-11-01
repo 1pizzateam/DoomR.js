@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { Mat4 } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PointLight, Rand, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
@@ -14,7 +15,7 @@ import { ARSENAL_CELL, ARSENAL_FRAMES, CHAINSAW_TOOTH_PITCH, chaingunAtlas, chai
 import { AMMO_FLASH_DURATION, FIRE_COOLDOWN } from '../src/game.js';
 import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DYNAMIC_LIGHT_ATTENUATION, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
 import { diagWallFaceQuads, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallFaceQuads } from '../src/wall.js';
-import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, WALL_FRAGMENT, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
+import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
 import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
 import { CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
@@ -64,7 +65,158 @@ function clearEnemies(game) {
   game.kills = 0;
 }
 
+function withWallWorld(check) {
+  const programs = [];
+  const addProgram = Mesh.prototype.addProgram;
+  Mesh.prototype.addProgram = function(vertex, fragment) {
+    programs.push({ mesh: this, vertex, fragment });
+    return true;
+  };
+  const stub = () => ({ setInactive() {} });
+  const world = {
+    gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, bufferSubData() {}, UNSIGNED_SHORT: 5123, NEAREST: 9728, NEAREST_MIPMAP_NEAREST: 9984 },
+    staticMeshes: [],
+    sharedTexturedMeshes: [],
+    lightFixtures: [],
+    hiding: new Material(),
+    scene: { addMesh() {} },
+    doorViews: new Map(),
+    sharedTexture: () => ({}),
+    bindAtlasTexture() {},
+    track(mesh, bucket) { bucket.push(mesh); return mesh; },
+    wallBatch: World.prototype.wallBatch,
+    solid: World.prototype.solid,
+    makeMesh: World.prototype.makeMesh,
+    marsSkyBatch: stub,
+    floorBatch: stub,
+    marsDirtBatch: stub,
+    slimeBatch: stub,
+    teleporterBatch: stub,
+    crateBatch: stub,
+    marsBoulderBatch: stub,
+    ceilingBatch: stub,
+    lightConesBatch: stub,
+  };
+  try {
+    check(world, programs);
+  } finally {
+    Mesh.prototype.addProgram = addProgram;
+  }
+}
+
 const tests = {
+  'AC-1 wall depth correction preserves projection'() {
+    assert.match(WALL_VERTEX, /vec4 v = uViewMatrix \* world;\s*vDepth = -v.z;\s*vHeight = world.y;/);
+    const correction = WALL_VERTEX.match(/vec4 clip = uProjectionMatrix \* v;\s*clip.z -= ([\d.]+) \* clip.w;\s*gl_Position = clip;/);
+    assert.ok(correction, 'only clip-space Z changes after projection');
+    assert.doesNotMatch(WALL_VERTEX, /\bv\.[xyzw]+\s*[+*/-]?=/, 'view coordinates are never shifted');
+    const bias = Number(correction[1]);
+    assert.ok(bias > 0 && bias <= 0.00001, 'depth bias is positive and bounded to avoid pulling walls through other surfaces');
+    const projection = new Mat4().perspective(60, 2, 6, 2400);
+    for (const distance of [6.01, 24, 200, 800, 2300])
+      for (const degrees of [0, 60, 80, 85, 89])
+        for (const along of [-32, 32]) {
+          const angle = degrees * Math.PI / 180;
+          const view = new Vec3(along * Math.cos(angle), 16, -distance - along * Math.sin(angle));
+          if (view.z >= -6)
+            continue;
+          const projected = projection.transformPoint(view);
+          const w = -view.z;
+          const clip = new Vec3(projected.x * w, projected.y * w, projected.z * w);
+          const corrected = clip.clone();
+          corrected.z -= bias * w;
+          assert.equal(corrected.x / w, clip.x / w, 'projected X is unchanged even at grazing angles');
+          assert.equal(corrected.y / w, clip.y / w, 'projected Y is unchanged even at grazing angles');
+          assert.equal(w, -view.z, 'clip W retains true view depth');
+          assert.ok(corrected.z < clip.z, 'textured wall wins a depth tie');
+          assert.ok(Math.abs((clip.z - corrected.z) / w - bias) < 1e-12, 'NDC bias is distance-independent');
+          assert.ok(corrected.z >= -w && corrected.z <= w, 'visible samples remain inside depth clipping planes');
+        }
+    for (const depth of [5.9, 2500]) {
+      const projected = projection.transformPoint(new Vec3(0, 0, -depth));
+      const correctedZ = projected.z - bias;
+      assert.ok(depth < 6 ? correctedZ < -1 : correctedZ > 1, 'geometry beyond the small depth-bias margin remains clipped');
+    }
+  },
+
+  'AC-2 wall batches retain true-depth backing'() {
+    const level = new Level(LEVELS.find((entry) => entry.name.startsWith('E1M5')));
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, level);
+      const indoor = programs.filter(({ fragment }) => fragment === WALL_FRAGMENT);
+      const outdoor = programs.filter(({ fragment }) => fragment === MARS_ROCK_FRAGMENT);
+      const backing = programs.filter(({ fragment }) => fragment === LINE_FRAGMENT);
+      assert.ok(indoor.length > 0 && outdoor.length > 0, 'E1M5 builds indoor and outdoor wall batches');
+      assert.ok(backing.length > 0, 'wall and roof backing is retained, not removed to hide the bug');
+      for (const { mesh, vertex } of [...indoor, ...outdoor]) {
+        assert.equal(vertex, WALL_VERTEX, 'all wall batches use the wall-only correction');
+        assert.ok(mesh.used > 0, 'wall batch has real E1M5 quads');
+      }
+      for (const { mesh, vertex } of backing) {
+        assert.equal(vertex, LINE_VERTEX, 'solid geometry uses the unbiased line projection');
+        assert.ok(mesh.vertices.length > 0, 'backing triangles remain present');
+      }
+      assert.match(LINE_VERTEX, /vDepth = -v.z;\s*gl_Position = uProjectionMatrix \* v;/);
+      assert.doesNotMatch(LINE_VERTEX, /v.z\s*\+=|clip.z/);
+      const rim = outdoor.flatMap(({ mesh }) => Array.from(mesh.vertices));
+      const solids = backing.flatMap(({ mesh }) => Array.from(mesh.vertices));
+      assert.ok(rim.some((value, i) => i % 3 === 0 && value === 64), 'textured west rim stays on its tile boundary');
+      assert.ok(solids.some((value, i) => i % 3 === 0 && Math.abs(value - 63.1) < 1e-4), 'solid west rim retains its existing 0.9-unit inset');
+    });
+  },
+
+  'AC-3 doors retain their existing projection'() {
+    withWallWorld((world, programs) => {
+      for (const door of [
+        { center: new Vec2(160, 224), alongY: true },
+        { center: new Vec2(224, 160), alongY: false, lock: 'red' },
+        { center: new Vec2(288, 224), secret: true },
+      ]) {
+        World.prototype.buildDoor.call(world, door);
+        const { mesh, vertex, fragment } = programs.at(-1);
+        assert.equal(vertex, DOOR_VERTEX, 'ordinary, locked, and secret doors do not inherit wall depth correction');
+        assert.equal(fragment, door.secret ? WALL_FRAGMENT : DOOR_FRAGMENT);
+        assert.equal(world.doorViews.get(door), mesh, 'door view remains registered');
+        assert.ok(mesh.vertices.length > 0 && mesh.uvs.length > 0, 'door geometry and UVs remain populated');
+      }
+      assert.match(DOOR_VERTEX, /vDepth = -v.z;\s*v.z \+= 1.2 \+ vDepth \* 0.01;/);
+      assert.match(DOOR_VERTEX, /gl_Position = uProjectionMatrix \* v;/);
+      assert.doesNotMatch(DOOR_VERTEX, /clip.z/);
+    });
+  },
+
+  'AC-4 wall UV, fog, and alpha invariants remain'() {
+    withWallWorld((world, programs) => {
+      for (const marsRock of [false, true])
+        for (const exit of [false, true]) {
+          const faces = wallFaceQuads({ axis: 'x', plane: 64, from: 1, to: 1, base: 0, top: 64, x: 1, y: 1, d: 0, exit });
+          const batch = world.wallBatch(faces, marsRock);
+          assert.equal(batch.used, faces.length);
+          assert.equal(programs.at(-1).fragment, marsRock ? MARS_ROCK_FRAGMENT : WALL_FRAGMENT);
+          for (let face = 0; face < faces.length; face++) {
+            const uv = faces[face].uv;
+            const expected = [uv[0], uv[1], uv[2], uv[1], uv[2], uv[3], uv[0], uv[1], uv[2], uv[3], uv[0], uv[3]];
+            for (let i = 0; i < expected.length; i++)
+              assert.ok(Math.abs(batch.uvs[face * 12 + i] - expected[i]) < 1e-6, 'atlas cell and exit UV selection are unchanged');
+          }
+        }
+    });
+    for (const varying of ['vDepth', 'vHeight', 'vTextureCoord', 'vSurface', 'vWorldPos']) {
+      const assignment = new RegExp(`${varying} = [^;]+;`);
+      assert.equal(WALL_VERTEX.match(assignment)?.[0], DOOR_VERTEX.match(assignment)?.[0], `${varying} keeps its existing inputs`);
+    }
+    for (const fragment of [WALL_FRAGMENT, MARS_ROCK_FRAGMENT]) {
+      assert.match(fragment, /if \(vHeight < -0.01\)\s*discard;/);
+      assert.ok(fragment.includes(`if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
+    return;
+  }`), 'at and beyond fog far, wall writes fog color and solid alpha without sampling its texture');
+      assert.match(fragment, /texture2D\(uSampler, vTextureCoord\)/, 'in-range fragments keep atlas UV sampling');
+      assert.match(fragment, /if \(uHasFog == 1\) \{\s*float fade = clamp\(\(vDepth - uFogNear\) \/ \(uFogFar - uFogNear\), 0.0, 1.0\);\s*color = mix\(color, uFogColor, fade\);/, 'fog uses true depth, clamps at near/far limits, and stays optional');
+      assert.ok(fragment.includes(`gl_FragColor = vec4(color, ${SOLID_ALPHA});`), 'visible walls retain solid alpha for the neon pass');
+    }
+  },
+
   'bullet holes stay on their wall, even right at a corner'() {
     const game = new Game();
     game.load(1);
@@ -6272,8 +6424,8 @@ const tests = {
       'solid wall hiders write SOLID_ALPHA so post-processing never blooms Mars fog color into glowing yellow'
     );
     assert.ok(
-      !LINE_VERTEX.includes('v.z +='),
-      'solid wall hiders stay at true depth behind DOOR_VERTEX wall quads and never z-fight with textured walls'
+      !LINE_VERTEX.includes('v.z +=') && !LINE_VERTEX.includes('clip.z'),
+      'solid wall hiders stay at true depth behind wall-only clip-depth-corrected quads'
     );
     assert.ok(
       LIGHT_GLSL.includes('distSq > 160000.0') && LIGHT_GLSL.includes('diff.x + diff.y + diff.z <= 0.001'),

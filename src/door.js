@@ -302,6 +302,33 @@ void main(void) {
 }
 `;
 
+// Unlike doors, wall quads must keep their screen coverage aligned with the solid backing at grazing angles.
+export const WALL_VERTEX = `
+attribute vec3 aVertexPosition;
+attribute vec2 aTextureCoord;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+uniform mat4 uProjectionMatrix;
+varying float vDepth;
+varying float vHeight;
+varying vec2 vTextureCoord;
+varying vec2 vSurface;
+varying vec3 vWorldPos;
+
+void main(void) {
+  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
+  vec4 v = uViewMatrix * world;
+  vDepth = -v.z;
+  vHeight = world.y;
+  vTextureCoord = aTextureCoord;
+  vSurface = vec2(aVertexPosition.x * 1.13 + aVertexPosition.z * 0.87, aVertexPosition.y) + uModelMatrix[3].xz * 0.37;
+  vWorldPos = world.xyz;
+  vec4 clip = uProjectionMatrix * v;
+  clip.z -= 0.00001 * clip.w;
+  gl_Position = clip;
+}
+`;
+
 /**
  * The fragment shader of a rusted surface. `scale` is the size of the patches in world units and `threshold` how much of
  * the surface they take: higher is less rust.
