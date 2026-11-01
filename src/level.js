@@ -120,6 +120,8 @@ export class Level {
     this.doors = new Map();
     this.diagTriangles = new Map();
     this.secrets = [];
+    this.secretDoorByRoom = [];
+    this.secretRoomByDoor = new Map();
 
     this.parse();
     this.buildFaces();
@@ -179,6 +181,8 @@ export class Level {
       if (doors.size === 1 && !doorObj?.lock && !touchesExit && !tiles.has(startIdx) && hasPickup && ((isSecretDoor && tiles.size <= 45) || tiles.size <= 24)) {
         const secretIndex = secrets.length;
         secrets.push(tiles);
+        this.secretDoorByRoom.push(doorIdx);
+        this.secretRoomByDoor.set(doorIdx, secretIndex);
         for (const tileIdx of tiles)
           this.secretByTile[tileIdx] = secretIndex;
       }
@@ -228,6 +232,7 @@ export class Level {
         if (!touchesStartOrExit && cave.size >= 2 && cave.size <= 24) {
           const secretIndex = secrets.length;
           secrets.push(cave);
+          this.secretDoorByRoom.push(-1);
           for (const tileIdx of cave)
             this.secretByTile[tileIdx] = secretIndex;
         }
