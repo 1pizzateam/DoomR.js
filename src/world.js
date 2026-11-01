@@ -2549,8 +2549,21 @@ export class World {
 
   buildShot(shot) {
     if (shot?.kind === 'grenade') {
-      const geometry = new Cylinder(new Vec2(6, 6), 10, 8, 1, false);
-      const root = this.makeMesh(geometry.vertices, 'TRIANGLES', this.material('green'));
+      const bodyMaterial = this.material('green');
+      const detailMaterial = this.material('orange');
+      const geometry = new Cylinder(new Vec2(3.6, 4.4), 10, 12, 1, false);
+      const root = new Mesh(this.gl, geometry);
+      root.addProgram(LINE_VERTEX, LINE_FRAGMENT, bodyMaterial);
+      const addPart = (geometry, position, material) => {
+        const mesh = new Mesh(this.gl, geometry);
+        mesh.addProgram(LINE_VERTEX, LINE_FRAGMENT, material);
+        mesh.position.copy(position);
+        root.addChild(mesh);
+      };
+      for (let i = 0; i < 4; i++)
+        addPart(new Cylinder(new Vec2(5.2, 5.2), 0.8, 12, 1, false), new Vec3(0, -3.6 + i * 2.4, 0), bodyMaterial);
+      addPart(new Cylinder(new Vec2(2, 2), 2, 12, 1, false), new Vec3(0, 6, 0), detailMaterial);
+      addPart(new Cylinder(new Vec2(0.7, 0.7), 2, 8, 1, false), new Vec3(0, 8, 0), detailMaterial);
       this.scene.addMesh(root);
       return { root };
     }

@@ -144,7 +144,8 @@ const tests = {
     globalThis.document = { addEventListener() {}, pointerLockElement: null };
     globalThis.window = { addEventListener() {} };
     try {
-      const controls = new Input({ addEventListener() {} });
+      const mouseHandlers = {};
+      const controls = new Input({ addEventListener(name, handler) { mouseHandlers[name] = handler; } });
       const press = { code: 'KeyF', which: 70, repeat: false, preventDefault() {} };
       document.onkeydown(press);
       assert.equal(controls.poll().grenade, true);
@@ -166,6 +167,9 @@ const tests = {
         document.onkeyup({ code });
         controls.endFrame();
       }
+      mouseHandlers.mousedown({ button: 0, clientX: 0, clientY: 0 });
+      assert.equal(controls.poll().fire, true, 'left mouse still fires');
+      assert.equal(controls.poll().grenade, false, 'left mouse does not throw');
     } finally {
       globalThis.document = prevDoc;
       globalThis.window = prevWin;
@@ -184,6 +188,7 @@ const tests = {
     const shot = game.shots[0];
     assert.equal(shot.kind, 'grenade');
     assert.equal(shot.team, 'player');
+    assert.equal(shot.life, 1.5, 'fuse remains exactly 1.5 seconds');
     assert.ok(shot.body.velocity.x > 0, 'throw travels in facing direction');
     assert.ok(shot.pos.x > game.player.pos.x);
     assert.equal(shot.dead, false);
@@ -218,7 +223,32 @@ const tests = {
     }
   },
 
-  'AC-3 grenade splash damages reachable enemies and barrels but not targets behind walls'() {
+  'AC-3 grenade throws faster and farther than the 280-unit baseline without extending its fuse'() {
+    const game = rocketSelfDamageGame();
+    const baseline = rocketSelfDamageGame();
+    const baselineShot = baseline.addGrenade(baseline.player.pos, new Vec2(1, 0));
+    baselineShot.body.setVelocity(new Vec2(280, 0));
+    game.player.angle = 0;
+    const start = game.player.pos.clone();
+    game.update(1 / 60, input({ grenade: true }));
+    baseline.update(1 / 60, idle);
+    const shot = game.shots[0];
+    assert.ok(shot.body.velocity.getMagnitude() > 280, 'initial horizontal speed exceeds the old baseline');
+    assert.equal(shot.life, 1.5);
+    for (let frame = 1; frame < 60; frame++) {
+      game.update(1 / 60, idle);
+      baseline.update(1 / 60, idle);
+    }
+    assert.ok(shot.pos.x - start.x > baselineShot.pos.x - start.x, 'unobstructed flight travels farther under the same BumpR damping');
+    assert.equal(shot.dead, false, 'longer range does not detonate early');
+    for (let frame = 60; frame < 89; frame++)
+      game.update(1 / 60, idle);
+    assert.equal(shot.dead, false, 'grenade remains live immediately before 1.5 seconds');
+    game.update(1 / 30, idle);
+    assert.equal(shot.dead, true, 'unchanged fuse detonates by the next frame after 1.5 seconds');
+  },
+
+  'AC-4 grenade splash damages reachable enemies and barrels but not targets behind walls'() {
     const game = rocketSelfDamageGame('#P..#....#');
     const nearby = game.addEnemy('boss', new Vec2(200, 210));
     const blocked = game.addEnemy('boss', new Vec2(300, 160));
@@ -239,7 +269,63 @@ const tests = {
     assert.ok(game.events.some((event) => event.type === 'boom'));
   },
 
-  'AC-4 World renders the grenade projectile and detonation blast'() {
+  'AC-5 grenade mesh has valid indexed triangles, body ridges, a neck and a fuse'() {
+    const addProgram = Mesh.prototype.addProgram;
+    Mesh.prototype.addProgram = () => true;
+    const world = Object.assign(Object.create(World.prototype), {
+      gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, UNSIGNED_SHORT: 5123 },
+      scene: { addMesh() {} },
+    });
+    try {
+      const { root } = world.buildShot({ kind: 'grenade' });
+      assert.equal(root.children.length, 6, 'four ridges, neck and fuse are attached to the body');
+      const parts = [root, ...root.children];
+      for (const part of parts) {
+        assert.ok(part.vertices.length > 0 && part.vertices.length % 3 === 0);
+        assert.ok(part.indices?.length > 0 && part.indices.length % 3 === 0, 'cylinder topology is retained for triangle rendering');
+        assert.ok(part.vertices.every(Number.isFinite), 'mesh positions are finite');
+        for (let i = 0; i < part.indices.length; i += 3) {
+          const triangle = [];
+          for (let j = 0; j < 3; j++) {
+            const index = part.indices[i + j];
+            assert.ok(Number.isInteger(index) && index >= 0 && index < part.vertices.length / 3);
+            triangle.push(new Vec3(part.vertices[index * 3], part.vertices[index * 3 + 1], part.vertices[index * 3 + 2]));
+          }
+          const ab = new Vec3().subVectors(triangle[1], triangle[0]);
+          const ac = new Vec3().subVectors(triangle[2], triangle[0]);
+          assert.ok(new Vec3().crossVectors(ab, ac).getMagnitude() > 1e-6, 'each indexed triangle has nonzero area');
+        }
+      }
+      const bounds = (mesh) => {
+        let radius = 0;
+        let bottom = Infinity;
+        let top = -Infinity;
+        for (let i = 0; i < mesh.vertices.length; i += 3) {
+          radius = Math.max(radius, Math.hypot(mesh.vertices[i], mesh.vertices[i + 2]));
+          bottom = Math.min(bottom, mesh.vertices[i + 1] + mesh.position.y);
+          top = Math.max(top, mesh.vertices[i + 1] + mesh.position.y);
+        }
+        return { radius, bottom, top };
+      };
+      const body = bounds(root);
+      let previousTop = body.bottom;
+      for (let i = 0; i < 4; i++) {
+        const ridge = bounds(root.children[i]);
+        assert.ok(ridge.radius > body.radius, 'ridges protrude beyond the body silhouette');
+        assert.ok(ridge.bottom > previousTop && ridge.top < body.top, 'ridges have visible gaps along the body');
+        previousTop = ridge.top;
+      }
+      const neck = bounds(root.children[4]);
+      const fuse = bounds(root.children[5]);
+      assert.ok(neck.radius < body.radius && Math.abs(neck.bottom - body.top) < 1e-6, 'narrow neck joins the body top');
+      assert.ok(fuse.radius < neck.radius && Math.abs(fuse.bottom - neck.top) < 1e-6, 'distinct thin fuse extends above the neck');
+      assert.ok(fuse.top > neck.top);
+    } finally {
+      Mesh.prototype.addProgram = addProgram;
+    }
+  },
+
+  'AC-6 World renders the grenade projectile and detonation blast'() {
     const game = rocketSelfDamageGame();
     game.player.angle = 0;
     game.update(1 / 60, input({ grenade: true }));

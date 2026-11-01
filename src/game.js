@@ -723,7 +723,7 @@ export class Game {
     const body = makeBody(from, 6, {
       category: CAT.SHOT,
       mask: CAT.WALL | CAT.ENEMY | CAT.BARREL,
-      velocity: new Vec2().scaleVector(direction, 280),
+      velocity: new Vec2().scaleVector(direction, 340),
     });
     body.setRestitution(0.45);
     body.setDamping(0.2);
