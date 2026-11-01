@@ -138,6 +138,181 @@ function withWallWorld(check) {
 }
 
 const tests = {
+  'AC-1 F maps to a one-shot grenade action and stays out of held fire'() {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    globalThis.document = { addEventListener() {}, pointerLockElement: null };
+    globalThis.window = { addEventListener() {} };
+    try {
+      const controls = new Input({ addEventListener() {} });
+      const press = { code: 'KeyF', which: 70, repeat: false, preventDefault() {} };
+      document.onkeydown(press);
+      assert.equal(controls.poll().grenade, true);
+      assert.equal(controls.poll().fire, false);
+      controls.endFrame();
+      assert.equal(controls.poll().grenade, false, 'holding F does not throw again');
+      document.onkeydown({ ...press, repeat: true });
+      assert.equal(controls.poll().grenade, false, 'OS key repeat does not throw again');
+      assert.equal(controls.poll().fire, false);
+      document.onkeyup(press);
+      document.onkeydown(press);
+      assert.equal(controls.poll().grenade, true, 'a new press throws again');
+      controls.endFrame();
+      document.onkeyup(press);
+      for (const code of ['KeyX', 'AltLeft', 'AltRight', 'ControlLeft', 'ControlRight', 'Enter']) {
+        document.onkeydown({ code, repeat: false, preventDefault() {} });
+        assert.equal(controls.poll().fire, true, `${code} still fires`);
+        assert.equal(controls.poll().grenade, false);
+        document.onkeyup({ code });
+        controls.endFrame();
+      }
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
+  },
+
+  'AC-2 grenade launches once without ammo cost and expires after its fuse'() {
+    const game = rocketSelfDamageGame('#P.#.....#');
+    game.player.angle = 0;
+    game.player.shells = 9;
+    game.player.bullets = 12;
+    game.player.rockets = 3;
+    const ammo = [game.player.shells, game.player.bullets, game.player.rockets];
+    game.update(1 / 60, input({ grenade: true }));
+    assert.equal(game.shots.length, 1);
+    const shot = game.shots[0];
+    assert.equal(shot.kind, 'grenade');
+    assert.equal(shot.team, 'player');
+    assert.ok(shot.body.velocity.x > 0, 'throw travels in facing direction');
+    assert.ok(shot.pos.x > game.player.pos.x);
+    assert.equal(shot.dead, false);
+    assert.equal(shot.body.getSensor(), false, 'BumpR resolves grenade contacts');
+    assert.equal(game.player.triggerHeld, false);
+    run(game, 0.8);
+    assert.equal(game.shots.length, 1, 'idle frames do not spawn more grenades');
+    assert.equal(game.shots[0], shot);
+    assert.equal(shot.dead, false, 'contact with a wall does not detonate early');
+    assert.ok(shot.pos.x < 192 - 5, 'grenade stays on the near side of the wall');
+    assert.ok(shot.z >= 6, 'grenade cannot fall through the floor');
+    run(game, shot.life - shot.age + 1 / 60);
+    assert.equal(shot.dead, true);
+    assert.equal(game.shots.length, 0);
+    assert.equal(shot.body.sceneIndex, -1, 'expired grenade body is removed');
+    assert.equal(game.effects.filter((effect) => effect.type === 'boom').length, 1);
+    assert.deepEqual([game.player.shells, game.player.bullets, game.player.rockets], ammo);
+    run(game, 0.9);
+    assert.equal(game.effects.length, 0, 'blast expires without detonating again');
+
+    game.player.shells = 0;
+    game.player.bullets = 0;
+    game.player.rockets = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    assert.equal(game.shots.length, 1, 'a later action launches even with empty ammo pools');
+    game.load(0);
+    assert.equal(game.shots.length, 0, 'loading a level clears grenades');
+    for (const state of ['title', 'dead', 'cleared']) {
+      game.state = state;
+      game.update(1 / 60, input({ grenade: true }));
+      assert.equal(game.shots.length, 0, `${state} does not accept throws`);
+    }
+  },
+
+  'AC-3 grenade splash damages reachable enemies and barrels but not targets behind walls'() {
+    const game = rocketSelfDamageGame('#P..#....#');
+    const nearby = game.addEnemy('boss', new Vec2(200, 210));
+    const blocked = game.addEnemy('boss', new Vec2(300, 160));
+    const distant = game.addEnemy('boss', new Vec2(500, 160));
+    game.addBarrel(new Vec2(200, 100));
+    game.addBarrel(new Vec2(300, 100));
+    game.addBarrel(new Vec2(500, 100));
+    const shot = game.addGrenade(new Vec2(224, 160), new Vec2());
+    shot.age = shot.life - 1 / 120;
+    game.update(1 / 60, idle);
+    assert.ok(nearby.hp < nearby.def.hp, 'reachable nearby enemy takes splash damage');
+    assert.equal(blocked.hp, blocked.def.hp, 'wall blocks nearby enemy damage');
+    assert.equal(distant.hp, distant.def.hp, 'distant enemy takes no damage');
+    assert.ok(game.barrels[0].fuse > 0, 'reachable barrel starts its explosion fuse');
+    assert.equal(game.barrels[1].fuse, -1, 'wall blocks nearby barrel damage');
+    assert.equal(game.barrels[2].fuse, -1, 'distant barrel takes no damage');
+    assert.equal(game.effects.filter((effect) => effect.type === 'boom').length, 1);
+    assert.ok(game.events.some((event) => event.type === 'boom'));
+  },
+
+  'AC-4 World renders the grenade projectile and detonation blast'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    const addProgram = Mesh.prototype.addProgram;
+    Mesh.prototype.addProgram = () => true;
+    const noop = () => {};
+    const discarded = [];
+    const world = Object.assign(Object.create(World.prototype), {
+      level: game.level,
+      cutaway: true,
+      syncStamp: 0,
+      camera: { position: new Vec3(96, EYE, 160) },
+      gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, viewport() {}, UNSIGNED_SHORT: 5123 },
+      doorViews: new Map(),
+      crusherViews: new Map(),
+      enemyViews: new Map(),
+      pickupViews: new Map(),
+      barrelViews: new Map(),
+      shotViews: new Map(),
+      effectViews: new Map(),
+      ceilingLights: [],
+      lightFixtures: [],
+      updateCamera: noop,
+      updateKnife: noop,
+      updateChainsaw: noop,
+      updateChaingun: noop,
+      updateShotgun: noop,
+      updateRocketLauncher: noop,
+      syncBlood: noop,
+      bindAtlasTexture: noop,
+      discard: (root) => discarded.push(root),
+      scene: { addMesh() {}, clear() {}, render() {} },
+      target: { bind() {}, unbind() {} },
+      glowTarget: { bind() {}, unbind() {} },
+      down: { clear() {}, render() {} },
+      post: { clear() {}, render() {} },
+      overlay: { glow: { render() {} }, crisp: { render() {} } },
+    });
+    try {
+      world.render(game);
+      const projectile = world.shotViews.get(shot);
+      assert.ok(projectile?.root.active, 'grenade has an active projectile view');
+      assert.ok(projectile.root.vertices.length > 0, 'grenade has real mesh geometry');
+      assert.deepEqual(
+        [projectile.root.position.x, projectile.root.position.y, projectile.root.position.z],
+        [shot.pos.x, shot.z, shot.pos.y],
+        'projectile uses grenade position and flight height'
+      );
+      game.update(1 / 60, idle);
+      world.render(game);
+      assert.equal(world.shotViews.get(shot), projectile, 'flight reuses its view');
+      assert.equal(projectile.root.position.y, shot.z);
+      shot.age = shot.life - 1 / 120;
+      game.update(1 / 60, idle);
+      world.render(game);
+      assert.equal(world.shotViews.size, 0);
+      assert.ok(discarded.includes(projectile.root), 'expired projectile is discarded');
+      const effect = game.effects.find((entry) => entry.type === 'boom');
+      const blast = world.effectViews.get(effect);
+      assert.ok(blast?.boom && blast.root.active, 'detonation uses the existing 3D explosion view');
+      assert.ok(blast.root.vertices.length > 0);
+      assert.equal(blast.root.position.x, effect.x);
+      assert.equal(blast.root.position.z, effect.y);
+      run(game, effect.life + 1 / 60);
+      world.render(game);
+      assert.equal(world.effectViews.size, 0);
+      assert.ok(discarded.includes(blast.root), 'expired blast is discarded');
+    } finally {
+      Mesh.prototype.addProgram = addProgram;
+    }
+  },
+
   'AC-1 wall depth correction preserves projection'() {
     assert.match(WALL_VERTEX, /vec4 v = uViewMatrix \* world;\s*vDepth = -v.z;\s*vHeight = world.y;/);
     const correction = WALL_VERTEX.match(/vec4 clip = uProjectionMatrix \* v;\s*clip.z -= ([\d.]+) \* clip.w;\s*gl_Position = clip;/);
@@ -6831,6 +7006,13 @@ const tests = {
       globalThis.document.onkeyup({ code: 'KeyW', which: 87, metaKey: false });
       inp.endFrame();
 
+      globalThis.document.onkeydown({ code: 'KeyF', which: 70, repeat: false, preventDefault() {} });
+      c = inp.poll();
+      assert.equal(c.fire, false, 'F is not held fire');
+      assert.equal(c.grenade, true, 'F throws a grenade');
+      globalThis.document.onkeyup({ code: 'KeyF', which: 70 });
+      inp.endFrame();
+
       // Physical key layout (AZERTY vs QWERTY): event.code 'KeyA' (which=81 on AZERTY) maps to KeyA (strafe left),
       // while physical Q ('KeyQ' with which=65 on AZERTY) does not falsely trigger KeyA
       globalThis.document.onkeydown({ code: 'KeyQ', which: 65, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {} });
@@ -6859,6 +7041,7 @@ const tests = {
   },
 };
 
+console.log('# file: tests/sim.test.mjs');
 let failed = 0;
 for (const [name, fn] of Object.entries(tests)) {
   try {
