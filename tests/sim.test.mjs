@@ -2406,6 +2406,98 @@ const tests = {
     assert.ok(game.events.some((e) => e.type === 'step' && e.who === 'player'), 'landing emits a player footfall sound');
   },
 
+  'AC-2: door-backed secrets chime once on their first opening transition'() {
+    const game = fresh(0);
+    const secretIndexes = [];
+    for (let i = 0; i < game.level.secretDoorByRoom.length; i++)
+      if (game.level.secretDoorByRoom[i] >= 0)
+        secretIndexes.push(i);
+    const firstDoor = game.level.doors.get(game.level.secretDoorByRoom[secretIndexes[0]]);
+    const secondDoor = game.level.doors.get(game.level.secretDoorByRoom[secretIndexes[1]]);
+    assert.ok(firstDoor && secondDoor);
+    game.events.length = 0;
+    firstDoor.target = 1;
+    secondDoor.target = 1;
+    game.updateDoors(1 / 60);
+    assert.equal(game.events.filter((event) => event.type === 'secret').length, 2);
+    firstDoor.open = 1;
+    game.updateDoors(1 / 60);
+    assert.equal(game.events.filter((event) => event.type === 'secret').length, 2);
+    firstDoor.target = 0;
+    game.updateDoors(1 / 60);
+    firstDoor.target = 1;
+    game.updateDoors(1 / 60);
+    assert.equal(game.events.filter((event) => event.type === 'secret').length, 2);
+    game.events.length = 0;
+    game.actorNear = () => true;
+    firstDoor.target = 0;
+    game.updateDoors(1 / 60);
+    assert.equal(game.events.some((event) => event.type === 'secret'), false);
+  },
+
+  'AC-3: entering a door-backed secret updates discovery without a chime'() {
+    const game = fresh(0);
+    const secretIndex = game.level.secretDoorByRoom.findIndex((doorIdx) => doorIdx >= 0);
+    const tile = [...game.level.secrets[secretIndex]][0];
+    game.player.body.setPosition(new Vec2((tile % game.level.width) * 64 + 32, Math.floor(tile / game.level.width) * 64 + 32));
+    game.events.length = 0;
+    game.update(1 / 60, idle);
+    assert.equal(game.secretsFound, 1);
+    assert.equal(game.message.text, 'Secret area found!');
+    assert.equal(game.events.some((event) => event.type === 'secret'), false);
+  },
+
+  'AC-4: doorless secret entry chimes only on first discovery'() {
+    const game = fresh(4);
+    const secretIndex = game.level.secretDoorByRoom.findIndex((doorIdx) => doorIdx < 0);
+    const tile = [...game.level.secrets[secretIndex]][0];
+    game.player.body.setPosition(new Vec2((tile % game.level.width) * 64 + 32, Math.floor(tile / game.level.width) * 64 + 32));
+    game.events.length = 0;
+    game.update(1 / 60, idle);
+    assert.equal(game.events.filter((event) => event.type === 'secret').length, 1);
+    game.events.length = 0;
+    game.update(1 / 60, idle);
+    assert.equal(game.events.some((event) => event.type === 'secret'), false);
+  },
+
+  'AC-5: non-secret and denied locked doors do not emit secret chimes'() {
+    const game = fresh(0);
+    const ordinaryDoor = [...game.level.doors.values()].find((door) => !door.secret && !door.lock && !game.level.secretRoomByDoor.has(door.idx));
+    assert.ok(ordinaryDoor);
+    ordinaryDoor.target = 1;
+    game.events.length = 0;
+    game.updateDoors(1 / 60);
+    assert.ok(game.events.some((event) => event.type === 'doorOpen'));
+    assert.equal(game.events.some((event) => event.type === 'secret'), false);
+    const lockedDoor = [...game.level.doors.values()].find((door) => door.lock === 'blue');
+    assert.ok(lockedDoor);
+    game.player.body.setPosition(new Vec2(lockedDoor.center.x, lockedDoor.center.y - 48));
+    game.player.angle = Math.PI / 2;
+    game.events.length = 0;
+    game.use();
+    assert.equal(lockedDoor.target, 0);
+    assert.ok(game.events.some((event) => event.type === 'locked'));
+    assert.equal(game.events.some((event) => event.type === 'secret'), false);
+  },
+
+  'AC-6: secret chime delivery resets on load and restart independently of reveal state'() {
+    const game = fresh(0);
+    const openSecretEntrance = () => {
+      const secretIndex = game.level.secretDoorByRoom.findIndex((doorIdx) => doorIdx >= 0);
+      const door = game.level.doors.get(game.level.secretDoorByRoom[secretIndex]);
+      door.revealed = true;
+      door.target = 1;
+      game.events.length = 0;
+      game.updateDoors(1 / 60);
+      assert.equal(game.events.filter((event) => event.type === 'secret').length, 1);
+    };
+    openSecretEntrance();
+    game.load(0);
+    openSecretEntrance();
+    game.restart();
+    openSecretEntrance();
+  },
+
   'every level has par time and secret closets, and clearing a level runs the Doom intermission tally and Phobos overworld map'() {
     for (const sound of ['secret', 'tallyTick', 'tallyBoom'])
       assert.equal(typeof RECIPES[sound], 'function', `${sound} audio recipe exists`);
@@ -2429,7 +2521,7 @@ const tests = {
     game.update(1 / 60, idle);
     assert.equal(game.secretsFound, 1, 'stepping into a secret room increments secretsFound');
     assert.equal(game.message.text, 'Secret area found!');
-    assert.ok(game.events.some((e) => e.type === 'secret'), 'secret discovery emits secret chime');
+    assert.ok(!game.events.some((e) => e.type === 'secret'), 'door-backed secret room entry does not emit secret chime');
     // stepping again in the same secret room does not double-count
     game.events.length = 0;
     game.update(1 / 60, idle);

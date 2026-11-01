@@ -31,4 +31,42 @@ for (const def of LEVELS) {
   }
 }
 
+const testName = 'AC-1: secret rooms retain their entrance-door associations';
+let hasOrdinaryEntrance = false;
+let hasSecretEntrance = false;
+let hasDoorlessSecret = false;
+let secretAssociationsValid = true;
+for (const def of LEVELS) {
+  const level = new Level(def);
+  if (level.secretDoorByRoom.length !== level.secrets.length) {
+    failed = true;
+    secretAssociationsValid = false;
+    console.log(`FAIL ${testName}: ${def.name} association count differs from secret count`);
+  }
+  for (let secretIndex = 0; secretIndex < level.secrets.length; secretIndex++) {
+    const doorIdx = level.secretDoorByRoom[secretIndex];
+    if (doorIdx < 0) {
+      hasDoorlessSecret = true;
+      continue;
+    }
+    const door = level.doors.get(doorIdx);
+    if (!door || level.secretRoomByDoor.get(doorIdx) !== secretIndex) {
+      failed = true;
+      secretAssociationsValid = false;
+      console.log(`FAIL ${testName}: ${def.name} secret ${secretIndex} has an invalid entrance`);
+    }
+    if (door?.secret)
+      hasSecretEntrance = true;
+    else if (door)
+      hasOrdinaryEntrance = true;
+  }
+}
+if (!hasOrdinaryEntrance || !hasSecretEntrance || !hasDoorlessSecret) {
+  failed = true;
+  secretAssociationsValid = false;
+  console.log(`FAIL ${testName}: authored levels must cover ordinary, secret, and doorless entrances`);
+}
+if (secretAssociationsValid)
+  console.log(`ok   ${testName}`);
+
 process.exit(failed ? 1 : 0);
