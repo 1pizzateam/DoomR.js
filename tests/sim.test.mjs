@@ -82,6 +82,22 @@ function acidPitGame() {
   return game;
 }
 
+function rocketSelfDamageGame(playerRow = '#P.......#') {
+  const game = new Game();
+  game.load({
+    name: 'Rocket self-damage test',
+    rows: [
+      '##########',
+      '#........#',
+      playerRow,
+      '#........#',
+      '##########',
+    ],
+  });
+  game.state = 'play';
+  return game;
+}
+
 function withWallWorld(check) {
   const programs = [];
   const addProgram = Mesh.prototype.addProgram;
@@ -3624,6 +3640,79 @@ const tests = {
     assert.equal(game.player.weapons.chaingun, true, 'chaingun persists to next level');
     assert.equal(game.player.weapons.rocket, true, 'rocket launcher persists to next level');
     assert.equal(game.player.weapon, 'rocket', 'active weapon persists to next level');
+  },
+
+  'AC-1 player rocket damages player within radius with clear line of sight'() {
+    for (const [distance, damage] of [[0, 32], [41.25, 26], [82.5, 19], [164, 6]]) {
+      const game = rocketSelfDamageGame();
+      const shot = game.addRocket(new Vec2(game.player.pos.x + distance, game.player.pos.y), new Vec2(1, 0));
+      assert.equal(shot.team, 'player');
+      assert.equal(shot.radius, 165);
+      assert.ok(distance < shot.radius);
+      assert.ok(game.scene.hasLineOfSight(shot.pos, game.player.pos, { mask: CAT.WALL }));
+      game.detonateRocket(shot);
+      assert.equal(game.player.health, 100 - damage, `splash damage at distance ${distance}`);
+      assert.equal(game.player.armor, 0);
+    }
+  },
+
+  'AC-2 player rocket does not damage player at or beyond radius'() {
+    for (const distance of [165, 166, 220]) {
+      const game = rocketSelfDamageGame();
+      game.player.armor = 100;
+      game.player.armorType = 'green';
+      const shot = game.addRocket(new Vec2(game.player.pos.x + distance, game.player.pos.y), new Vec2(1, 0));
+      assert.ok(distance >= shot.radius);
+      assert.ok(game.scene.hasLineOfSight(shot.pos, game.player.pos, { mask: CAT.WALL }));
+      game.detonateRocket(shot);
+      assert.equal(game.player.health, 100, `health unchanged at distance ${distance}`);
+      assert.equal(game.player.armor, 100, `armor unchanged at distance ${distance}`);
+    }
+  },
+
+  'AC-3 wall blocks player rocket self-damage'() {
+    const game = rocketSelfDamageGame('#P#......#');
+    game.player.armor = 100;
+    game.player.armorType = 'green';
+    const shot = game.addRocket(new Vec2(224, game.player.pos.y), new Vec2(1, 0));
+    assert.ok(game.player.pos.getDistance(shot.pos) < shot.radius);
+    assert.equal(game.scene.hasLineOfSight(shot.pos, game.player.pos, { mask: CAT.WALL }), false);
+    game.detonateRocket(shot);
+    assert.equal(game.player.health, 100);
+    assert.equal(game.player.armor, 100);
+  },
+
+  'AC-4 player rocket self-damage respects armor handling'() {
+    for (const [type, armor, remainingArmor, health] of [
+      ['green', 100, 94, 87],
+      ['blue', 200, 190, 91],
+      ['green', 3, 0, 84],
+    ]) {
+      const game = rocketSelfDamageGame();
+      game.player.armor = armor;
+      game.player.armorType = type;
+      const shot = game.addRocket(new Vec2(game.player.pos.x + 82.5, game.player.pos.y), new Vec2(1, 0));
+      assert.ok(game.scene.hasLineOfSight(shot.pos, game.player.pos, { mask: CAT.WALL }));
+      game.detonateRocket(shot);
+      assert.equal(game.player.armor, remainingArmor, `${type} armor absorbs its share of 19 splash damage`);
+      assert.equal(game.player.health, health, `${type} armor leaves remaining damage to health`);
+      assert.equal(game.player.armorType, remainingArmor > 0 ? type : null);
+    }
+  },
+
+  'AC-5 god mode blocks player rocket self-damage'() {
+    for (const armor of [0, 100]) {
+      const game = rocketSelfDamageGame();
+      game.player.godMode = true;
+      game.player.armor = armor;
+      game.player.armorType = armor > 0 ? 'green' : null;
+      const shot = game.addRocket(new Vec2(game.player.pos.x + 82.5, game.player.pos.y), new Vec2(1, 0));
+      assert.ok(game.player.pos.getDistance(shot.pos) < shot.radius);
+      assert.ok(game.scene.hasLineOfSight(shot.pos, game.player.pos, { mask: CAT.WALL }));
+      game.detonateRocket(shot);
+      assert.equal(game.player.health, 100);
+      assert.equal(game.player.armor, armor);
+    }
   },
 
   'armor system: 3D green security armor & blue megaarmor pickups absorb 33% and 50% damage and persist across levels'() {
