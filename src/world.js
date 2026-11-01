@@ -2547,7 +2547,13 @@ export class World {
     };
   }
 
-  buildShot() {
+  buildShot(shot) {
+    if (shot?.kind === 'grenade') {
+      const geometry = new Cylinder(new Vec2(6, 6), 10, 8, 1, false);
+      const root = this.makeMesh(geometry.vertices, 'TRIANGLES', this.material('green'));
+      this.scene.addMesh(root);
+      return { root };
+    }
     const atlas = (this.fireballPixels ??= fireballAtlas());
     const material = new Material({ diffuse: new Vec3(1, 1, 1) });
     const root = this.sprite(atlas, material, 18, 18, {
@@ -2821,12 +2827,17 @@ export class World {
       if (deadTime >= 1.25)
         view.wreckSettled = true;
     });
-    this.syncViews(this.shotViews, game.shots, () => this.buildShot(), (shot, view) => {
+    this.syncViews(this.shotViews, game.shots, (shot) => this.buildShot(shot), (shot, view) => {
       if ((Number.isFinite(cullDistSq) && shot.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(shot.pos))) {
         view.root.setInactive();
         return;
       }
       view.root.setActive();
+      if (shot.kind === 'grenade') {
+        setPos(view.root, shot.pos.x, shot.z, shot.pos.y);
+        setRot(view.root, time * 8, 0, time * 5);
+        return;
+      }
       view.root.setFrame(Math.floor((time * 18) % FIREBALL_FRAMES));
       setPos(view.root, shot.pos.x, EYE - 4, shot.pos.y);
       const baseScale = shot.kind === 'rocket' ? 1.35 : 1;

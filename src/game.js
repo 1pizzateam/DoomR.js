@@ -718,6 +718,36 @@ export class Game {
     return shot;
   }
 
+  addGrenade(from, direction) {
+    const def = WEAPONS.rocket;
+    const body = makeBody(from, 6, {
+      category: CAT.SHOT,
+      mask: CAT.WALL | CAT.ENEMY | CAT.BARREL,
+      velocity: new Vec2().scaleVector(direction, 280),
+    });
+    body.setRestitution(0.45);
+    body.setDamping(0.2);
+    body.setBullet(true);
+    body.ignoreCollisionWith(this.player.body);
+    const shot = {
+      kind: 'grenade',
+      team: 'player',
+      body,
+      pos: body.position,
+      splash: def.splashDamage,
+      radius: def.splashRadius,
+      life: 1.5,
+      age: 0,
+      z: this.player.eye - 6,
+      vz: 90,
+      dead: false,
+    };
+    body.ref = shot;
+    this.scene.addBody(body);
+    this.shots.push(shot);
+    return shot;
+  }
+
   detonateRocket(shot, directRef = null) {
     const pos = shot.pos;
     this.burst(pos.x, pos.y, 0, 'boom');
@@ -2123,6 +2153,8 @@ export class Game {
       this.toggleNightVision();
     if (input.use)
       this.use();
+    if (input.grenade)
+      this.addGrenade(player.pos, this.scratch.setScalar(cos, sin));
     player.triggerHeld = Boolean(input.fire);
     if (input.fire && player.cooldown <= 0) {
       const def = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
@@ -2462,8 +2494,15 @@ export class Game {
       this.updateEnemy(enemy, dt);
     for (const shot of this.shots) {
       shot.age += dt;
-      if (shot.age > shot.life)
+      if (shot.kind === 'grenade') {
+        shot.z = Math.max(6, shot.z + shot.vz * dt);
+        shot.vz = shot.z <= 6 ? 0 : shot.vz - JUMP_GRAVITY * dt;
+      }
+      if (!shot.dead && shot.age > shot.life) {
         shot.dead = true;
+        if (shot.kind === 'grenade')
+          this.detonateRocket(shot);
+      }
     }
 
     this.pitStepStart.copy(this.player.pos);
