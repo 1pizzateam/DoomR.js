@@ -38,6 +38,9 @@ const FULL_GLSL = COLORS.orange.getDistance(BG_VEC).toFixed(5);
 // Rooms are closed by a ceiling one wall high (a wall texture is one tile high): the walls go right up to it, so nothing
 // in another room shows above a wall. Tall walls are drawn no higher than it, and the stretch above a low wall is wall.
 const ROOF = CEILING;
+const MARS_GROUND_Y = -0.2;
+// The outdoor wall skirt must survive the rock shader's below-floor clipping.
+const MARS_WALL_FRAGMENT = MARS_ROCK_FRAGMENT.replace('vHeight < -0.01', `vHeight < ${(MARS_GROUND_Y - 0.01).toFixed(2)}`);
 
 const NEAR = 6;
 const FAR = 2400;
@@ -1628,9 +1631,11 @@ export class World {
           const tileRoofless = level.arena?.has(adjIdx);
           const tileToRoof = top < ROOF && !tileRoofless;
           const quads = wallFaceQuads({ axis, plane, from: a, to: a, base, top: tileToRoof ? ROOF : top, x: group.x, y: group.y, d, exit: group.kind === EXIT });
-          if (isMars && !level.isIndoorTile(adjIdx))
+          if (isMars && !level.isIndoorTile(adjIdx)) {
+            if (base === 0 && quads.length)
+              quads[0].corners[1] = quads[0].corners[4] = MARS_GROUND_Y;
             outdoorFaces.push(...quads);
-          else
+          } else
             faces.push(...quads);
         }
       }
@@ -1656,9 +1661,11 @@ export class World {
       if (toRoof)
         hide.push(...quadTriangles(lap(top, ROOF), offset));
       const quads = diagWallFaceQuads({ ax: df.ax, ay: df.ay, bx: df.bx, by: df.by, base: 0, top: toRoof ? ROOF : top, x: df.x, y: df.y, diag: df.diag, exit: kind[idx] === EXIT });
-      if (isMars && !level.isIndoorTile(idx))
+      if (isMars && !level.isIndoorTile(idx)) {
+        if (quads.length)
+          quads[0].corners[1] = quads[0].corners[4] = MARS_GROUND_Y;
         outdoorFaces.push(...quads);
-      else
+      } else
         faces.push(...quads);
     }
 
@@ -2001,7 +2008,7 @@ export class World {
       material: new Material({ diffuse: new Vec3(1, 1, 1) }),
       // the rust of the doors: many small patches, thicker low down, worked out on the wall itself
       vertex: WALL_VERTEX,
-      fragment: marsRock ? MARS_ROCK_FRAGMENT : WALL_FRAGMENT,
+      fragment: marsRock ? MARS_WALL_FRAGMENT : WALL_FRAGMENT,
       textureOptions: texOpts,
     });
     if (sharedTexture) {
@@ -2086,7 +2093,7 @@ export class World {
       batch.sharedTexOptions = texOpts;
       this.sharedTexturedMeshes.push(batch);
     }
-    const y = -0.2;
+    const y = MARS_GROUND_Y;
     batch.begin();
     for (let ty = y0Bound; ty < y1Bound; ty++)
       for (let tx = x0Bound; tx < x1Bound; tx++) {

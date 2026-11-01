@@ -38,6 +38,7 @@ import { Input } from '../src/input.js';
 
 const idle = { forward: 0, strafe: 0, turn: 0, mouseX: 0, run: false, fire: false, use: false };
 const input = (patch) => ({ ...idle, ...patch });
+const MARS_WALL_FRAGMENT = MARS_ROCK_FRAGMENT.replace('vHeight < -0.01', 'vHeight < -0.21');
 
 function run(game, seconds, controls = idle) {
   for (let t = 0; t < seconds; t += 1 / 60)
@@ -137,7 +138,176 @@ function withWallWorld(check) {
   }
 }
 
+function wallFootLevel(planet = 'mars', center = '#') {
+  return new Level({
+    name: 'Wall-foot fixture',
+    planet,
+    rows: [
+      '#########',
+      '#P#.....#',
+      '###.....#',
+      `#...${center}...#`,
+      '#.......#',
+      '#########',
+    ],
+  });
+}
+
+function assertBatchedWallFace(programs, fragment, face, bottom = face.corners[1]) {
+  const corners = face.corners.slice();
+  corners[1] = corners[4] = bottom;
+  const vertices = [0, 1, 2, 0, 2, 3].flatMap((i) => corners.slice(i * 3, i * 3 + 3)).map(Math.fround);
+  const uv = face.uv;
+  const uvs = [uv[0], uv[1], uv[2], uv[1], uv[2], uv[3], uv[0], uv[1], uv[2], uv[3], uv[0], uv[3]].map(Math.fround);
+  let matches = 0;
+  for (const { mesh, fragment: actualFragment } of programs) {
+    if (actualFragment !== fragment)
+      continue;
+    for (let q = 0; q < mesh.used; q++) {
+      const actual = Array.from(mesh.vertices.subarray(q * 18, (q + 1) * 18));
+      if (actual[0] !== vertices[0] || actual[2] !== vertices[2] || actual[3] !== vertices[3] || actual[5] !== vertices[5])
+        continue;
+      if (actual[7] !== vertices[7])
+        continue;
+      assert.deepEqual(actual, vertices, 'only the two bottom Y coordinates may change; the footprint and top stay fixed');
+      assert.deepEqual(Array.from(mesh.uvs.subarray(q * 12, (q + 1) * 12)), uvs, 'generated atlas UVs stay unchanged');
+      matches++;
+    }
+  }
+  assert.equal(matches, 1, 'the expected face is emitted exactly once in its material batch');
+}
+
 const tests = {
+  'AC-1 E1M5 outdoor cardinal wall feet meet the dirt plane'() {
+    const level = new Level(LEVELS.find((entry) => entry.name.startsWith('E1M5')));
+    withWallWorld((world, programs) => {
+      world.marsDirtBatch = World.prototype.marsDirtBatch;
+      World.prototype.buildStatic.call(world, level);
+      const dirt = programs.filter(({ fragment }) => fragment === MARS_DIRT_FRAGMENT);
+      const rock = programs.filter(({ fragment }) => fragment === MARS_WALL_FRAGMENT);
+      assert.ok(dirt.length > 0 && rock.length > 0, 'real E1M5 terrain and outdoor walls are assembled');
+      let feet = 0;
+      for (const { mesh } of rock)
+        for (let q = 0; q < mesh.used; q++) {
+          const base = mesh.vertices[q * 18 + 1];
+          assert.ok(base === Math.fround(-0.2) || base > 0, 'no outdoor ground-level wall ends above the dirt');
+          if (base === Math.fround(-0.2))
+            feet++;
+        }
+      assert.ok(feet > 100, 'the correction covers the E1M5 outdoor canyon, not just a synthetic wall');
+      for (const { mesh } of dirt)
+        for (let i = 1; i < mesh.used * 18; i += 3)
+          assert.equal(mesh.vertices[i], Math.fround(-0.2), 'wall feet and dirt use exactly the same plane');
+    });
+    const fixture = wallFootLevel();
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, fixture);
+      for (let d = 0; d < 4; d++) {
+        const face = wallFaceQuads({
+          axis: d < 2 ? 'x' : 'z',
+          plane: (d === 0 ? 4 : d === 1 ? 5 : d === 2 ? 3 : 4) * 64,
+          from: d < 2 ? 3 : 4, to: d < 2 ? 3 : 4,
+          base: 0, top: 64, x: 4, y: 3, d, exit: false,
+        })[0];
+        assertBatchedWallFace(programs, MARS_WALL_FRAGMENT, face, -0.2);
+      }
+    });
+  },
+
+  'AC-2 stepped outdoor wall bases do not gain skirts'() {
+    const level = new Level({
+      name: 'Stepped outdoor wall',
+      planet: 'mars',
+      rows: ['#########', '#P#.....#', '###.....#', '#...##..#', '#.......#', '#########'],
+    });
+    const lowIdx = 3 * level.width + 5;
+    level.baseHeight[lowIdx] = level.heights[lowIdx] = 26;
+    level.buildFaces();
+    assert.equal(level.isIndoorTile(lowIdx), false);
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, level);
+      const [face] = wallFaceQuads({ axis: 'x', plane: 320, from: 3, to: 3, base: 26, top: 64, x: 4, y: 3, d: 1, exit: false });
+      assertBatchedWallFace(programs, MARS_WALL_FRAGMENT, face);
+    });
+  },
+
+  'AC-3 indoor Mars and non-Mars wall feet remain unchanged'() {
+    for (const planet of ['mars', null]) {
+      const level = wallFootLevel(planet);
+      withWallWorld((world, programs) => {
+        World.prototype.buildStatic.call(world, level);
+        const [face] = wallFaceQuads({ axis: 'x', plane: 64, from: 1, to: 1, base: 0, top: 64, x: 0, y: 1, d: 1, exit: false });
+        assert.equal(level.isIndoorTile(level.width + 1), true);
+        assertBatchedWallFace(programs, WALL_FRAGMENT, face);
+        const indoor = programs.filter(({ fragment }) => fragment === WALL_FRAGMENT);
+        assert.ok(indoor.length > 0);
+        for (const { mesh } of indoor)
+          for (let i = 1; i < mesh.used * 18; i += 3)
+            assert.ok(mesh.vertices[i] >= 0, 'indoor and non-Mars walls never gain a skirt');
+        assert.equal(programs.some(({ fragment }) => fragment === MARS_WALL_FRAGMENT), planet === 'mars', 'only outdoor Mars faces enter the rock batch');
+        if (planet === null) {
+          const [outdoorFace] = wallFaceQuads({ axis: 'x', plane: 256, from: 3, to: 3, base: 0, top: 64, x: 4, y: 3, d: 0, exit: false });
+          assertBatchedWallFace(programs, WALL_FRAGMENT, outdoorFace);
+        }
+      });
+    }
+  },
+
+  'AC-4 outdoor diagonal wall feet extend without changing footprint or UVs'() {
+    for (const glyph of ['\u25e4', '\u25e5', '\u25e3', '\u25e2']) {
+      const level = wallFootLevel('mars', glyph);
+      const idx = 3 * level.width + 4;
+      const df = level.diagInfo(idx);
+      assert.ok(df);
+      assert.equal(level.isIndoorTile(idx), false);
+      const [face] = diagWallFaceQuads({ ...df, base: 0, top: 64, exit: false });
+      withWallWorld((world, programs) => {
+        World.prototype.buildStatic.call(world, level);
+        assertBatchedWallFace(programs, MARS_WALL_FRAGMENT, face, -0.2);
+      });
+    }
+    const indoor = new Level({ name: 'Indoor diagonal', planet: 'mars', rows: ['#####', '#P..#', '#.\\.#', '#...#', '#####'] });
+    const idx = 2 * indoor.width + 2;
+    assert.equal(indoor.isIndoorTile(idx), true);
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, indoor);
+      const [face] = diagWallFaceQuads({ ...indoor.diagInfo(idx), base: 0, top: 64, exit: false });
+      assertBatchedWallFace(programs, WALL_FRAGMENT, face);
+    });
+  },
+
+  'AC-5 wall rendering and level gameplay invariants remain intact'() {
+    const level = new Level(LEVELS.find((entry) => entry.name.startsWith('E1M5')));
+    const fields = ['kind', 'heights', 'baseHeight', 'faceIds', 'diag', 'slime', 'teleporter'];
+    const before = fields.map((field) => level[field].slice());
+    const rows = level.rows.slice();
+    const indoor = [...level.indoor];
+    const points = [new Vec2(96, 96), new Vec2(480, 224), new Vec2(32, 32)];
+    const heights = points.map((point) => level.heightAtPoint(point));
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, level);
+      for (let i = 0; i < fields.length; i++)
+        assert.deepEqual(level[fields[i]], before[i], `${fields[i]} gameplay data remains untouched`);
+      assert.deepEqual(level.rows, rows);
+      assert.deepEqual([...level.indoor], indoor);
+      assert.deepEqual(points.map((point) => level.heightAtPoint(point)), heights, 'collision heights remain unchanged');
+      assert.deepEqual(world.marsRockPixels, marsRockAtlas(), 'the original rock atlas is retained');
+      const rock = programs.filter(({ fragment }) => fragment === MARS_WALL_FRAGMENT);
+      assert.ok(rock.length > 0);
+      for (const { vertex } of rock)
+        assert.equal(vertex, WALL_VERTEX, 'depth correction and all shader inputs remain unchanged');
+      assert.equal(rock[0].fragment, MARS_ROCK_FRAGMENT.replace('vHeight < -0.01', 'vHeight < -0.21'), 'only the below-ground cutoff changes; rock sampling, lighting, fog and alpha are identical');
+      const cutoff = Number(rock[0].fragment.match(/if \(vHeight < (-[\d.]+)\)/)?.[1]);
+      assert.ok(Number.isFinite(cutoff));
+      for (const height of [-0.2, -0.1, -0.01, 0, 64])
+        assert.ok(height >= cutoff, 'the entire wall skirt survives fragment clipping');
+      assert.ok(-0.22 < cutoff, 'geometry below the dirt retains its clipping guard');
+    });
+    tests['AC-1 wall depth correction preserves projection']();
+    tests['AC-2 wall batches retain true-depth backing']();
+    tests['AC-4 wall UV, fog, and alpha invariants remain']();
+  },
+
   'AC-1 F maps to a one-shot grenade action and stays out of held fire'() {
     const prevDoc = globalThis.document;
     const prevWin = globalThis.window;
@@ -438,7 +608,7 @@ const tests = {
     withWallWorld((world, programs) => {
       World.prototype.buildStatic.call(world, level);
       const indoor = programs.filter(({ fragment }) => fragment === WALL_FRAGMENT);
-      const outdoor = programs.filter(({ fragment }) => fragment === MARS_ROCK_FRAGMENT);
+      const outdoor = programs.filter(({ fragment }) => fragment === MARS_WALL_FRAGMENT);
       const backing = programs.filter(({ fragment }) => fragment === LINE_FRAGMENT);
       assert.ok(indoor.length > 0 && outdoor.length > 0, 'E1M5 builds indoor and outdoor wall batches');
       assert.ok(backing.length > 0, 'wall and roof backing is retained, not removed to hide the bug');
@@ -486,7 +656,7 @@ const tests = {
           const faces = wallFaceQuads({ axis: 'x', plane: 64, from: 1, to: 1, base: 0, top: 64, x: 1, y: 1, d: 0, exit });
           const batch = world.wallBatch(faces, marsRock);
           assert.equal(batch.used, faces.length);
-          assert.equal(programs.at(-1).fragment, marsRock ? MARS_ROCK_FRAGMENT : WALL_FRAGMENT);
+          assert.equal(programs.at(-1).fragment, marsRock ? MARS_WALL_FRAGMENT : WALL_FRAGMENT);
           for (let face = 0; face < faces.length; face++) {
             const uv = faces[face].uv;
             const expected = [uv[0], uv[1], uv[2], uv[1], uv[2], uv[3], uv[0], uv[1], uv[2], uv[3], uv[0], uv[3]];
