@@ -427,6 +427,7 @@ void main(void) {
 }
 `;
 
+
 /**
  * Every ceiling tile with a light fixture texture (`CEILING_CELLS.light`) over a roofed floor or doorway tile gets a 3D
  * light fixture entry positioned just beneath the ceiling diffuser.
@@ -1447,20 +1448,10 @@ void main(void) {
   float elev = clamp(dir.y / 0.54, 0.0, 1.0);
   float v = clamp(1.0 - pow(elev, 0.88), 0.004, 0.996);
 
-  // Smooth C1 Hermite-filtered panoramic Martian sky (zenith, Phobos & Deimos, hazy sun, and mountain silhouettes)
+  // Smooth C1 Hermite-filtered panoramic Martian sky (zenith, hazy sun, and mountain silhouettes)
   vec3 sky = sampleSmoothSky(vec2(u, v));
 
-  // Per-fragment 3D ray-sphere shading for Phobos & Deimos so both moons remain razor-sharp, undistorted 3D spheres at any angle
-  vec4 phobos = evalMoonSphere(
-    dir,
-    vec3(${phobosBasisCenter.x.toFixed(6)}, ${phobosBasisCenter.y.toFixed(6)}, ${phobosBasisCenter.z.toFixed(6)}),
-    vec3(${phobosBasisRight.x.toFixed(6)}, ${phobosBasisRight.y.toFixed(6)}, ${phobosBasisRight.z.toFixed(6)}),
-    vec3(${phobosBasisDown.x.toFixed(6)}, ${phobosBasisDown.y.toFixed(6)}, ${phobosBasisDown.z.toFixed(6)}),
-    ${PHOBOS_ANGULAR_RADIUS.toFixed(4)},
-    1.0
-  );
-  sky = mix(sky, phobos.rgb, phobos.a);
-
+  // Per-fragment 3D ray-sphere shading keeps Deimos sharp and undistorted at any angle.
   vec4 deimos = evalMoonSphere(
     dir,
     vec3(${deimosBasisCenter.x.toFixed(6)}, ${deimosBasisCenter.y.toFixed(6)}, ${deimosBasisCenter.z.toFixed(6)}),
@@ -1508,4 +1499,3 @@ void main(void) {
   gl_FragColor = vec4(color, ${SOLID_ALPHA});
 }
 `;
-

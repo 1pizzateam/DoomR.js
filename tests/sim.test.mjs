@@ -5994,6 +5994,33 @@ const tests = {
     assert.equal(cMesh.uvs.length, cQuads.length * 12, 'crateMesh UVs match triangle vertices');
   },
 
+  'AC-1 E1M5 sky does not evaluate or composite Phobos'() {
+    const composition = MARS_SKY_FRAGMENT.slice(MARS_SKY_FRAGMENT.indexOf('void main(void)'));
+    assert.doesNotMatch(composition, /phobos/i, 'Phobos has no evaluation or composite in the fragment composition');
+    assert.equal(composition.match(/\bevalMoonSphere\s*\(/g)?.length, 1, 'only one moon is evaluated');
+  },
+
+  'AC-2 E1M5 sky evaluates and composites Deimos'() {
+    const composition = MARS_SKY_FRAGMENT.slice(MARS_SKY_FRAGMENT.indexOf('void main(void)'));
+    assert.match(composition, /vec4 deimos = evalMoonSphere\(/, 'Deimos retains its sphere evaluation');
+    assert.ok(composition.includes(`${DEIMOS_ANGULAR_RADIUS.toFixed(4)},`), 'Deimos retains its small angular radius');
+    assert.ok(composition.includes('sky = mix(sky, deimos.rgb, deimos.a);'), 'Deimos is composited into the sky');
+  },
+
+  'AC-3 E1M5 sky retains its sun, panorama, terrain, clouds, and storm fog'() {
+    const composition = MARS_SKY_FRAGMENT.slice(MARS_SKY_FRAGMENT.indexOf('void main(void)'));
+    assert.ok(composition.includes('vec3 sky = sampleSmoothSky(vec2(u, v));'), 'the panorama remains the sky base');
+    assert.ok(composition.includes('sky += vec3(0.055, 0.024, 0.01) * strata * mountainZone;'), 'terrain strata remain composited over the panorama');
+    assert.ok(composition.includes('uTime * 0.11') && composition.includes('uTime * 0.19'), 'dust clouds keep drifting with time');
+    assert.ok(composition.includes('color = mix(sky, dustCloud, cloudStrength);'), 'dust clouds remain composited');
+    assert.ok(composition.includes('mix(opticalFog, 1.0, stormFog * 0.65)'), 'storm fog still blankets the optical fog path');
+    assert.ok(composition.includes('color = mix(color * uMaterialDiffuse, fogCol, skyFog);'), 'fog remains composited into the final sky color');
+    assert.ok(composition.includes(`gl_FragColor = vec4(color, ${SOLID_ALPHA});`), 'the composed sky reaches the fragment output');
+    const panorama = marsSkyAtlas({ includeMoons: false });
+    const sunIdx = (60 * panorama.width + 224) * 4;
+    assert.ok(panorama.data[sunIdx] > 235 && panorama.data[sunIdx + 1] > 190, 'the moon-free panorama retains its bright hazy sun');
+  },
+
   'E1M5 Red Planet: indoor airlock start room opening onto roofless hostile Martian surface with wind and blowing orange dirt'() {
     const g = fresh(4);
     const { level } = g;
@@ -6180,7 +6207,7 @@ const tests = {
     const deimosDir = skyPixelDir(DEIMOS_CENTER);
     const deimosNorthDir = skyPixelDir(new Vec2(DEIMOS_CENTER.x, DEIMOS_CENTER.y - 15));
     assert.ok(deimosNorthDir.getAngle(deimosDir) < DEIMOS_ANGULAR_RADIUS, 'Deimos northern limb lies within spherical DEIMOS_ANGULAR_RADIUS');
-    assert.ok(MARS_SKY_FRAGMENT.includes('evalMoonSphere'), 'MARS_SKY_FRAGMENT evaluates per-fragment 3D ray-sphere shading for Phobos & Deimos');
+    assert.ok(MARS_SKY_FRAGMENT.includes('vec4 deimos = evalMoonSphere('), 'MARS_SKY_FRAGMENT evaluates per-fragment 3D ray-sphere shading for Deimos');
     assert.ok(
       MARS_SKY_FRAGMENT.includes('moonLimbRadius') &&
       MARS_SKY_FRAGMENT.includes('moonCellularCraters') &&
