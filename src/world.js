@@ -636,6 +636,15 @@ function partitionTrianglesBySector(vertices, sectorGrid, sectorWorldSize = SECT
   return [...buckets.values()];
 }
 
+// walls end at y = 0 but floor and dirt tiles sit at y = -0.2; lowering the bottom edge closes the seam that shows the sky
+const WALL_FLOOR_Y = -0.2;
+function sinkToFloor(quads) {
+  for (const quad of quads)
+    for (let i = 1; i < 12; i += 3)
+      if (quad.corners[i] === 0)
+        quad.corners[i] = WALL_FLOOR_Y;
+}
+
 export function registerStaticChunk(chunks, mesh, fallbackCenter, fallbackRadius, hideInCutaway = false, bounds = null) {
   const sphere = mesh?.localBoundingSphere;
   const hasSphere = sphere?.center && Number.isFinite(sphere.radius) && sphere.radius > 0;
@@ -1611,7 +1620,7 @@ export class World {
       const lap1 = (d < 2 ? solid(nx, group.to + 1) : solid(group.to + 1, ny)) ? 1.2 : 0;
       const lap = (y0, y1) => faceCorners(axis, plane, a0 - lap0, a1 + lap1, y0, y1);
       if (group.kind !== PILLAR)
-        hide.push(...quadTriangles(lap(base, top), offset));
+        hide.push(...quadTriangles(lap(base === 0 ? WALL_FLOOR_Y : base, top), offset));
       // the wall carries on up to the roof, without being drawn; a low pillar does not, it has sky above,
       // and nor does a face looking into the giant's room, which is open to the sky
       const roofless = level.arena?.has(ny * width + nx);
@@ -1628,6 +1637,8 @@ export class World {
           const tileRoofless = level.arena?.has(adjIdx);
           const tileToRoof = top < ROOF && !tileRoofless;
           const quads = wallFaceQuads({ axis, plane, from: a, to: a, base, top: tileToRoof ? ROOF : top, x: group.x, y: group.y, d, exit: group.kind === EXIT });
+          if (base === 0)
+            sinkToFloor(quads);
           if (isMars && !level.isIndoorTile(adjIdx))
             outdoorFaces.push(...quads);
           else
@@ -1650,12 +1661,13 @@ export class World {
         [df.bx + tx * 1.2, y1, df.by + ty * 1.2],
         [df.ax - tx * 1.2, y1, df.ay - ty * 1.2],
       ];
-      hide.push(...quadTriangles(lap(0, top), offset));
+      hide.push(...quadTriangles(lap(WALL_FLOOR_Y, top), offset));
       const roofless = level.arena?.has(idx);
       const toRoof = kind[idx] !== PILLAR && top < ROOF && !roofless;
       if (toRoof)
         hide.push(...quadTriangles(lap(top, ROOF), offset));
       const quads = diagWallFaceQuads({ ax: df.ax, ay: df.ay, bx: df.bx, by: df.by, base: 0, top: toRoof ? ROOF : top, x: df.x, y: df.y, diag: df.diag, exit: kind[idx] === EXIT });
+      sinkToFloor(quads);
       if (isMars && !level.isIndoorTile(idx))
         outdoorFaces.push(...quads);
       else

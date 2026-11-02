@@ -430,11 +430,12 @@ void main(void) {
   vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
   vec4 v = uViewMatrix * world;
   vDepth = -v.z;
-  v.z += 1.2 + vDepth * 0.01;
   vTextureCoord = aTextureCoord;
   vWorld = world.xz;
   vWorldPos = world.xyz;
-  gl_Position = uProjectionMatrix * v;
+  vec4 clip = uProjectionMatrix * v;
+  clip.z -= 0.00001 * clip.w;
+  gl_Position = clip;
 }
 `;
 
@@ -1726,7 +1727,7 @@ vec3 sampleRockCell(vec2 p, float seed) {
 }
 
 void main(void) {
-  if (vHeight < -0.01)
+  if (vHeight < -0.21)
     discard;
   if (uHasFog == 1 && vDepth >= uFogFar) {
     gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
