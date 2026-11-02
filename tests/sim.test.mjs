@@ -8707,6 +8707,324 @@ const tests = {
     const log = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
     assert.ok(log.includes('#26') && log.includes('doomr.controls'));
   },
+
+  'AC-1 use prompt: a door in reach prompts OPEN then CLOSE and nothing out of reach'() {
+    const rows = ['#######', '#.....#', '#..D..#', '#..P..#', '#.....#', '#######'];
+    const make = (dy, angle) => {
+      const game = new Game();
+      game.load({ name: 'Prompt door', rows });
+      game.state = 'play';
+      const door = [...game.level.doors.values()][0];
+      game.player.body.setPosition(new Vec2(door.center.x, door.center.y + dy));
+      game.player.angle = angle;
+      return { game, door };
+    };
+    const { game, door } = make(64, -Math.PI / 2);
+    game.update(1 / 60, idle);
+    assert.equal(game.useTarget.kind, 'door');
+    assert.equal(game.useTarget.door, door);
+    assert.equal(game.useTarget.verb, 'OPEN');
+    assert.ok(game.usePrompt.fade > 0);
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(door.target, 1);
+    game.update(1 / 60, idle);
+    assert.equal(game.useTarget.verb, 'CLOSE');
+
+    for (const [dy, angle] of [[100, -Math.PI / 2], [64, Math.PI / 2]]) {
+      const far = make(dy, angle);
+      run(far.game, 0.2);
+      assert.equal(far.game.useTarget.kind, null);
+      assert.equal(far.game.usePrompt.fade, 0);
+      far.game.update(1 / 60, input({ use: true }));
+      assert.equal(far.door.target, 0);
+    }
+  },
+
+  'AC-2 use prompt: chests prompt LOOT, emptied chests do not, and the door wins ties'() {
+    const level = { name: 'Prompt chest', rows: ['##########', '#........#', '#P...a...#', '#........#', '##########'] };
+    const make = (dx, angle) => {
+      const game = new Game();
+      game.load(level);
+      game.state = 'play';
+      game.player.body.setPosition(new Vec2(game.caches[0].pos.x + dx, game.caches[0].pos.y));
+      game.player.angle = angle;
+      game.events.length = 0;
+      return game;
+    };
+    for (const [dx, angle] of [[-60, 0], [20, Math.PI]]) {
+      const game = make(dx, angle);
+      game.update(1 / 60, idle);
+      assert.equal(game.useTarget.kind, 'cache');
+      assert.equal(game.useTarget.verb, 'LOOT');
+      assert.ok(game.usePrompt.fade > 0);
+    }
+    const open = make(-60, 0);
+    open.update(1 / 60, input({ use: true }));
+    const events = open.events.filter((e) => e.type === 'cacheOpen');
+    assert.equal(events.length, 1);
+    assert.deepEqual([events[0].x, events[0].y], [open.caches[0].pos.x, open.caches[0].pos.y]);
+
+    const empty = make(-60, 0);
+    empty.caches[0].state = 'emptied';
+    empty.caches[0].contents.length = 0;
+    run(empty, 0.2);
+    assert.equal(empty.useTarget.kind, null);
+    assert.equal(empty.usePrompt.fade, 0);
+
+    const tie = new Game();
+    tie.load({ name: 'Prompt tie', rows: ['#######', '#.....#', '#..D.a#', '#..P..#', '#######'] });
+    tie.state = 'play';
+    const door = [...tie.level.doors.values()][0];
+    tie.player.body.setPosition(new Vec2((door.center.x + tie.caches[0].pos.x) / 2, tie.caches[0].pos.y + 56));
+    tie.player.angle = -Math.PI / 2;
+    tie.update(1 / 60, idle);
+    assert.equal(tie.useTarget.kind, 'door');
+    tie.update(1 / 60, input({ use: true }));
+    assert.equal(door.target, 1);
+    assert.equal(tie.caches[0].state, 'closed');
+  },
+
+  'AC-3 use prompt: unrevealed secret doors never prompt but still open'() {
+    const game = new Game();
+    game.load({ name: 'Prompt secret', rows: ['#######', '#.....#', '#..S..#', '#..P..#', '#######'] });
+    game.state = 'play';
+    const door = [...game.level.doors.values()][0];
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 64));
+    game.player.angle = -Math.PI / 2;
+    for (let t = 0; t < 0.3; t += 1 / 60) {
+      game.update(1 / 60, idle);
+      assert.equal(game.usePrompt.fade, 0);
+      assert.equal(game.useTarget.kind, 'door');
+      assert.equal(game.useTarget.promptable, false);
+    }
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(door.target, 1);
+    assert.equal(door.revealed, true);
+    game.update(1 / 60, idle);
+    assert.equal(game.useTarget.promptable, true);
+    assert.equal(game.useTarget.verb, 'CLOSE');
+    assert.ok(game.usePrompt.fade > 0);
+  },
+
+  'AC-4 use prompt: a locked door shows LOCKED with its colour'() {
+    const game = new Game();
+    game.load({ name: 'Prompt lock', rows: ['#######', '#.....#', '#..R..#', '#..P..#', '#######'] });
+    game.state = 'play';
+    const door = [...game.level.doors.values()][0];
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 64));
+    game.player.angle = -Math.PI / 2;
+    game.player.keys.red = false;
+    game.update(1 / 60, idle);
+    assert.equal(game.useTarget.verb, 'LOCKED');
+    assert.equal(game.useTarget.lock, 'red');
+    assert.equal(game.usePrompt.lock, 'red');
+    game.events.length = 0;
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(door.target, 0);
+    assert.equal(game.events.filter((e) => e.type === 'locked').length, 1);
+    assert.equal(game.message.text, 'You need a Red keycard to open this door.');
+    game.player.keys.red = true;
+    game.update(1 / 60, idle);
+    assert.equal(game.useTarget.verb, 'OPEN');
+    assert.equal(game.useTarget.lock, null);
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(door.target, 1);
+  },
+
+  'AC-5 use prompt: the fade eases in and out and resets outside play'() {
+    const game = new Game();
+    game.load({ name: 'Prompt fade', rows: ['#######', '#.....#', '#..D..#', '#..P..#', '#.....#', '#######'] });
+    game.state = 'play';
+    const door = [...game.level.doors.values()][0];
+    const near = () => {
+      game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 64));
+      game.player.angle = -Math.PI / 2;
+    };
+    near();
+    let prev = 0;
+    for (let i = 0; i < 10; i++) {
+      game.update(1 / 60, idle);
+      assert.ok(game.usePrompt.fade >= prev);
+      prev = game.usePrompt.fade;
+    }
+    assert.ok(prev >= 0.999);
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 100));
+    for (let i = 0; i < 16; i++) {
+      game.update(1 / 60, idle);
+      assert.ok(game.usePrompt.fade <= prev);
+      if (game.usePrompt.fade > 0)
+        assert.equal(game.usePrompt.verb, 'OPEN');
+      prev = game.usePrompt.fade;
+    }
+    assert.equal(game.usePrompt.fade, 0);
+    near();
+    run(game, 0.2);
+    assert.ok(game.usePrompt.fade > 0.9);
+    game.state = 'paused';
+    game.update(1 / 60, idle);
+    assert.equal(game.usePrompt.fade, 0);
+    game.state = 'play';
+    near();
+    run(game, 0.2);
+    assert.ok(game.usePrompt.fade > 0.9);
+    game.load(0);
+    assert.equal(game.usePrompt.fade, 0);
+    assert.equal(game.useTarget.kind, null);
+  },
+
+  'AC-6 use prompt: the HUD draws a discreet keycap with the bound key'() {
+    const drawn = [];
+    const rects = [];
+    const ctx = {
+      globalAlpha: 1,
+      font: '',
+      fillStyle: '',
+      setTransform() {},
+      clearRect() {},
+      fillRect() {},
+      beginPath() {},
+      moveTo() {},
+      lineTo() {},
+      stroke() {},
+      fillText(str, x, y) {
+        drawn.push({ str, y, alpha: this.globalAlpha, font: this.font });
+      },
+    };
+    const overlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: {
+        fillRect() {},
+        rectLine(x, y, w, h, color, alpha) {
+          rects.push({ x, y, w, h, color: [...color], alpha });
+        },
+        line() {},
+        circleLine() {},
+        weapon: { quad() {} },
+        sprites: { quad() {} },
+        face: { quad() {} },
+      },
+    };
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
+    hud.resize(1024, 768, 1);
+    const game = fresh(0);
+    game.message.age = 99;
+    game.usePrompt.fade = 1;
+    game.usePrompt.verb = 'OPEN';
+    const keycaps = () => rects.filter((r) => r.y > 394 && r.h < 30);
+    hud.render(game);
+    const labels = drawn.filter((d) => d.str === 'E');
+    assert.equal(labels.length, 1);
+    assert.ok(labels[0].font.includes('11px') && labels[0].alpha <= 0.75 && labels[0].y > 394);
+    const verbs = drawn.filter((d) => d.str === 'OPEN');
+    assert.equal(verbs.length, 1);
+    assert.ok(verbs[0].font.includes('9px') && verbs[0].alpha <= 0.45 && verbs[0].y > 394);
+    assert.equal(keycaps().length, 1);
+    const narrow = keycaps()[0];
+    assert.ok(Math.abs(narrow.x + narrow.w / 2 - 512) <= 1);
+
+    const keymap = new Keymap({ storage: null, navigator: null });
+    keymap.setBinding('use', 0, 'Mouse3');
+    hud.useKeyLabel = keymap.actionLabel('use');
+    drawn.length = 0;
+    rects.length = 0;
+    hud.render(game);
+    assert.equal(drawn.filter((d) => d.str === 'MOUSE 4').length, 1);
+    assert.ok(keycaps()[0].w > narrow.w);
+
+    hud.useKeyLabel = 'E';
+    game.usePrompt.verb = 'LOCKED';
+    game.usePrompt.lock = 'red';
+    rects.length = 0;
+    hud.render(game);
+    assert.notDeepEqual(keycaps()[0].color, narrow.color, 'a locked prompt tints the keycap');
+    assert.ok(keycaps()[0].color[0] > keycaps()[0].color[1]);
+  },
+
+  'AC-7 use prompt: the HUD hides the prompt and keys its text cache'() {
+    const drawn = [];
+    const rects = [];
+    const ctx = {
+      globalAlpha: 1,
+      setTransform() {},
+      clearRect() {},
+      fillRect() {},
+      beginPath() {},
+      moveTo() {},
+      lineTo() {},
+      stroke() {},
+      fillText(str) {
+        drawn.push(str);
+      },
+    };
+    const overlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: {
+        fillRect() {},
+        rectLine(x, y, w, h) {
+          rects.push({ y, h });
+        },
+        line() {},
+        circleLine() {},
+        weapon: { quad() {} },
+        sprites: { quad() {} },
+        face: { quad() {} },
+      },
+    };
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
+    hud.resize(1024, 768, 1);
+    const game = fresh(0);
+    const hidden = (label) => {
+      drawn.length = 0;
+      rects.length = 0;
+      hud.render(game);
+      assert.ok(!drawn.includes('E') && !drawn.includes('OPEN'), label);
+      assert.equal(rects.filter((r) => r.y > 394 && r.h < 30).length, 0, label);
+    };
+    game.message.age = 99;
+    game.usePrompt.verb = 'OPEN';
+    game.usePrompt.fade = 0;
+    hidden('fade 0');
+    game.usePrompt.fade = 1;
+    hud.automap = true;
+    hidden('automap');
+    hud.automap = false;
+    hud.controlsView = { open: true };
+    hidden('controls view');
+    hud.controlsView = null;
+    for (const state of ['paused', 'dead', 'title']) {
+      game.state = state;
+      game.usePrompt.fade = 1;
+      hidden(state);
+    }
+    game.state = 'playing';
+    game.message.age = 99;
+    game.usePrompt.fade = 0;
+    const base = hud.computeHudTextKey(game, false);
+    game.usePrompt.fade = 1;
+    const faded = hud.computeHudTextKey(game, false);
+    assert.notEqual(base, faded);
+    game.usePrompt.verb = 'CLOSE';
+    assert.notEqual(hud.computeHudTextKey(game, false), faded);
+    game.usePrompt.verb = 'OPEN';
+    hud.useKeyLabel = 'MOUSE 4';
+    assert.notEqual(hud.computeHudTextKey(game, false), faded);
+  },
+
+  'AC-8 use prompt: README E row and CHANGELOG document the key prompt'() {
+    const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const start = md.indexOf('## Controls');
+    const rest = md.slice(start + 1);
+    const end = rest.indexOf('\n## ');
+    const section = end < 0 ? rest : rest.slice(0, end);
+    assert.ok(section.split('\n').some((l) => /^\|\s*E\s*\|[^|]*doors[^|]*chests[^|]*prompt/.test(l)));
+    const log = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+    const from = log.indexOf('## Unreleased');
+    const after = log.slice(from + 1);
+    const next = after.indexOf('\n## ');
+    assert.ok((next < 0 ? after : after.slice(0, next)).includes('#28'));
+  },
 };
 
 const withInput = (fn) => {

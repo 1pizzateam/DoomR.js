@@ -26,7 +26,7 @@ Every action can be rebound. Open the CONTROLS page with `F1`, or click CONTROLS
 | C | crouch | position |
 | Shift | run | position |
 | 1-4 | weapons | position |
-| E | open / close doors | printed letter |
+| E | open / close doors, loot chests (a discreet key prompt appears when in reach) | printed letter |
 | M | toggle music | printed letter |
 | V | toggle map | printed letter |
 | ; | toggle sound (B also works) | printed letter |

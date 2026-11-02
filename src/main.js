@@ -89,6 +89,7 @@ function control(dt) {
     hud.controlHints = keymap.hintLines;
     hud.selectHint = keymap.selectHint;
     hud.setControlsStatus(keymap.actionLabel('controls'), keymap.unboundActions().length);
+    hud.useKeyLabel = keymap.actionLabel('use');
     hintVersion = keymap.version;
   }
   if (controlsMenu.isOpen) {
