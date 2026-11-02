@@ -12,18 +12,28 @@
 
 ## Controls
 
-| Key | Action |
-| :-- | :-- |
-| W A S D | move |
-| mouse / ← → | turn |
-| click / Space | fire |
-| E | open / close doors |
-| Shift | run |
-| M | toggle map |
-| ; | toggle sound (B also works) |
-| N | toggle night vision |
-| F3 | show fps and render scale |
-| Esc | pause |
+Controls adapt to your keyboard layout (QWERTY, AZERTY, QWERTZ, Dvorak). Positional keys stay in the same physical place on every layout, so WASD on QWERTY is ZQSD on AZERTY. Mnemonic keys follow the letter printed on the keycap. The on-screen labels adapt automatically (from the Keyboard Map API, or learned from your key presses), and `F2` cycles Auto → QWERTY → AZERTY → QWERTZ → Dvorak, stored as `doomr.keyboardLayout`.
+
+| Key (QWERTY) | Action | Follows |
+| :-- | :-- | :-- |
+| W A S D | move (ZQSD on AZERTY) | position |
+| mouse / ← → | turn | position |
+| click / X / Ctrl / Alt / Enter | fire | position |
+| F | grenade | position |
+| Space | jump | position |
+| C | crouch | position |
+| Shift | run | position |
+| 1-4 | weapons | position |
+| E | open / close doors | printed letter |
+| M | toggle music | printed letter |
+| V | toggle map | printed letter |
+| ; | toggle sound (B also works) | printed letter |
+| N | toggle night vision | printed letter |
+| Tab | automap (`G` grid, `+ / -` zoom) | position |
+| [ / ] | switch level | printed letter |
+| P / Esc | pause | printed letter / position |
+| F2 | cycle keyboard layout labels | position |
+| F3 | show fps and render scale | position |
 
 ## Tests
 

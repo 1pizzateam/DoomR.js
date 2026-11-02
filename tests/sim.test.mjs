@@ -36,6 +36,7 @@ import { POWERUP_CELL, POWERUP_CELLS, POWERUP_FRAMES, POWERUP_TYPES, berserkAtla
 import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.js';
 import { Hud, SCREEN_BLOOD_ALPHA } from '../src/hud.js';
 import { Input } from '../src/input.js';
+import { ACTIONS, DEFAULT_HINT_LINES, Keymap, LAYOUT_STORAGE_KEY, PRESETS } from '../src/keymap.js';
 
 const idle = { forward: 0, strafe: 0, turn: 0, mouseX: 0, run: false, fire: false, use: false };
 const input = (patch) => ({ ...idle, ...patch });
@@ -7222,9 +7223,8 @@ const tests = {
       const inp = new Input({ addEventListener() {} });
       for (const ev of [{ code: 'Semicolon', which: 186 }, { which: 59 }, { which: 186 }]) {
         down(ev);
-        assert.equal(inp.took('Semicolon'), true, 'AC-1 physical Semicolon records a one-shot Semicolon press');
-        assert.equal(inp.took('KeyN'), false, 'AC-1 Semicolon is not N');
-        assert.equal(inp.took('KeyB'), false, 'AC-1 Semicolon is not B');
+        assert.equal(inp.took('sound'), true, 'AC-1 physical Semicolon records a one-shot Semicolon press');
+        assert.equal(inp.took('nightVision'), false, 'AC-1 Semicolon is not N');
         assert.equal(inp.poll().nightVision, false, 'AC-1 Semicolon does not toggle night vision');
         up(ev);
         inp.endFrame();
@@ -7235,23 +7235,22 @@ const tests = {
       inp.endFrame();
       down({ code: 'Semicolon', which: 186, repeat: true });
       down({ code: 'Semicolon', which: 186, repeat: true });
-      assert.equal(inp.took('Semicolon'), false, 'AC-2 held Semicolon repeats are ignored');
+      assert.equal(inp.took('sound'), false, 'AC-2 held Semicolon repeats are ignored');
       inp.endFrame();
       up({ code: 'Semicolon', which: 186 });
       down({ code: 'Semicolon', which: 186 });
-      assert.equal(inp.took('Semicolon'), true, 'AC-2 fresh press after release is a new one-shot');
+      assert.equal(inp.took('sound'), true, 'AC-2 fresh press after release is a new one-shot');
       inp.endFrame();
-      assert.equal(inp.took('Semicolon'), false, 'AC-2 one-shot clears at frame end');
+      assert.equal(inp.took('sound'), false, 'AC-2 one-shot clears at frame end');
       up({ code: 'Semicolon', which: 186 });
 
       down({ code: 'KeyN', which: 78 });
       assert.equal(inp.poll().nightVision, true, 'AC-3 N toggles night vision');
-      assert.equal(inp.took('Semicolon'), false, 'AC-3 N is not Semicolon');
-      assert.equal(inp.took('KeyB'), false, 'AC-3 N is not B');
+      assert.equal(inp.took('sound'), false, 'AC-3 N is not Semicolon');
       up({ code: 'KeyN', which: 78 });
       inp.endFrame();
       down({ code: 'KeyB', which: 66 });
-      assert.equal(inp.took('KeyB'), true, 'AC-3 B stays a mute alias');
+      assert.equal(inp.took('sound'), true, 'AC-3 B stays a mute alias');
       assert.equal(inp.poll().nightVision, false, 'AC-3 B is not night vision');
       up({ code: 'KeyB', which: 66 });
       inp.endFrame();
@@ -7269,7 +7268,7 @@ const tests = {
     let g = at;
     while (g >= 0 && !lines[g].includes('if ('))
       g--;
-    assert.ok(lines[g].includes("input.took('Semicolon')") && lines[g].includes("input.took('KeyB')"), 'AC-4 guard references Semicolon and KeyB');
+    assert.ok(lines[g].includes("input.took('sound')"), 'AC-4 guard references the sound action');
     assert.ok(!src.includes('KeyN'), 'AC-4 main.js never references KeyN');
   },
 
@@ -7335,6 +7334,198 @@ const tests = {
     assert.ok(lines.some((l) => /^\|\s*N\s*\|\s*toggle night vision\s*\|/.test(l)), 'AC-7 N row toggles night vision');
     assert.ok(!lines.some((l) => /^\|\s*N\s*\|[^|]*sound/.test(l)), 'AC-7 no N sound row');
   },
+  'AC-1 keyboard layouts: positional movement resolves by physical code on AZERTY'() {
+    withInput((inp, down, up) => {
+      down({ code: 'KeyW', key: 'z' });
+      down({ code: 'KeyA', key: 'q' });
+      const c = inp.poll();
+      assert.equal(c.forward, 1, 'AC-1 AZERTY Z moves forward');
+      assert.equal(c.strafe, -1, 'AC-1 AZERTY Q strafes left');
+      up({ code: 'KeyW', key: 'z' });
+      up({ code: 'KeyA', key: 'q' });
+      inp.endFrame();
+      down({ code: 'KeyZ', key: 'w' });
+      down({ code: 'KeyQ', key: 'a' });
+      const d = inp.poll();
+      assert.equal(d.forward, 0, 'AC-1 physical KeyZ is not forward');
+      assert.equal(d.strafe, 0, 'AC-1 physical KeyQ is not strafe');
+    });
+  },
+
+  'AC-2 keyboard layouts: mnemonic music and sound follow the printed glyph on AZERTY and QWERTY'() {
+    withInput((inp, down, up) => {
+      const press = (e) => { down(e); const r = [inp.took('music'), inp.took('sound')]; up(e); inp.endFrame(); return r; };
+      assert.deepEqual(press({ code: 'Semicolon', key: 'm' }), [true, false], 'AC-2 AZERTY printed M is music');
+      assert.deepEqual(press({ code: 'Comma', key: ';' }), [false, true], 'AC-2 AZERTY printed ; is sound');
+      assert.deepEqual(press({ code: 'KeyM', key: 'm' }), [true, false], 'AC-2 QWERTY M is music');
+      assert.deepEqual(press({ code: 'Semicolon', key: ';' }), [false, true], 'AC-2 QWERTY ; is sound');
+    });
+  },
+
+  'AC-3 keyboard layouts: Dvorak positional precedence, physical fallback, and legacy which aliases'() {
+    withInput((inp, down, up) => {
+      down({ code: 'KeyD', key: 'e' });
+      assert.equal(inp.poll().strafe, 1, 'AC-3 Dvorak physical D strafes');
+      assert.equal(inp.took('use'), false, 'AC-3 Dvorak printed E on KeyD is not use');
+      up({ code: 'KeyD', key: 'e' });
+      inp.endFrame();
+      down({ code: 'KeyE', key: '.' });
+      assert.equal(inp.took('use'), true, 'AC-3 Dvorak physical E falls back to use');
+      up({ code: 'KeyE', key: '.' });
+      inp.endFrame();
+      down({ code: 'BracketLeft', key: 'Dead' });
+      assert.equal(inp.took('levelPrev'), true, 'AC-3 dead key falls back to physical code');
+      up({ code: 'BracketLeft', key: 'Dead' });
+      inp.endFrame();
+      down({ which: 186 });
+      assert.equal(inp.took('sound'), true, 'AC-3 legacy which 186 is sound');
+      up({ which: 186 });
+      inp.endFrame();
+      down({ code: 'KeyY', key: 'z' });
+      assert.ok(ACTIONS.every((a) => !inp.took(a.id)), 'AC-3 QWERTZ KeyY z maps to no action');
+    });
+  },
+
+  'AC-4 keyboard layouts: keyup reuses the keydown action and blur clears pins'() {
+    withInput((inp, down, up, blur) => {
+      down({ code: 'Semicolon', key: 'm' });
+      assert.ok(inp.keys.has('music'));
+      up({ code: 'Semicolon', key: ':' });
+      assert.ok(!inp.keys.has('music'), 'AC-4 keyup releases music despite a changed key');
+      assert.equal(inp.heldWhich.size, 0);
+      assert.equal(inp.downByCode.size, 0);
+      down({ code: 'KeyX', key: 'x' });
+      down({ code: 'ControlLeft', key: 'Control' });
+      up({ code: 'KeyX', key: 'x' });
+      assert.equal(inp.poll().fire, true, 'AC-4 fire stays held by the second binding');
+      up({ code: 'ControlLeft', key: 'Control' });
+      assert.equal(inp.poll().fire, false);
+      down({ code: 'KeyW', key: 'z' });
+      down({ code: 'KeyX', key: 'x' });
+      blur();
+      assert.equal(inp.downByCode.size, 0);
+      assert.equal(inp.keys.size, 0);
+      assert.equal(inp.heldWhich.size, 0);
+    });
+  },
+
+  'AC-5 keyboard layouts: hint lines default to QWERTY and follow AZERTY and Dvorak layouts'() {
+    const k = new Keymap({ storage: null, navigator: null });
+    assert.deepEqual(k.hintLines, DEFAULT_HINT_LINES);
+    assert.deepEqual(k.hintLines.slice(0, 5), [
+      'W A S D  move     mouse / ← →  turn',
+      'click / X / OPT / CTRL  fire     1-4  weapons',
+      'SPACE  jump     C  crouch     SHIFT  run',
+      'E  open doors     [ / ]  switch level     ;  sound',
+      'TAB  automap     N  night vision     M  music     ESC  pause',
+    ]);
+    assert.equal(k.hintLines[5], 'F2  keyboard layout: auto (QWERTY)');
+    k.applyLayoutMap(new Map(Object.entries(PRESETS.azerty.glyphs)));
+    assert.equal(k.layoutName, 'AZERTY');
+    assert.ok(k.hintLines[0].startsWith('Z Q S D  move'));
+    assert.equal(k.hintLines[3], 'E  open doors     ^ / $  switch level     ;  sound');
+    assert.ok(k.hintLines[4].includes('M  music'));
+    const d = new Keymap({ storage: { getItem: () => 'dvorak' }, navigator: null });
+    assert.ok(d.hintLines[0].startsWith(', A O E  move'));
+    assert.ok(d.hintLines[3].startsWith('.  open doors'));
+  },
+
+  'AC-6 keyboard layouts: live learning detects AZERTY once and F2 cycles and persists the override'() {
+    const writes = [];
+    const storage = { getItem() { return null; }, setItem(k, v) { writes.push([k, v]); } };
+    const k = new Keymap({ storage, navigator: null });
+    const ev = { code: 'KeyQ', key: 'a', shiftKey: false, altKey: false, ctrlKey: false, metaKey: false };
+    const v0 = k.version;
+    assert.equal(k.learn(ev), true);
+    assert.equal(k.learn(ev), false);
+    assert.equal(k.version - v0, 1, 'AC-6 version increments once');
+    assert.equal(k.layoutName, 'AZERTY');
+    assert.equal(k.learn({ ...ev, code: 'KeyE', key: 'Dead' }), false);
+    assert.equal(k.learn({ ...ev, code: 'KeyE', key: 'e', shiftKey: true }), false);
+    const statuses = [];
+    for (let i = 0; i < 5; i++)
+      statuses.push(k.cycleOverride());
+    assert.deepEqual(statuses.slice(0, 4), ['Keyboard: QWERTY (manual)', 'Keyboard: AZERTY (manual)', 'Keyboard: QWERTZ (manual)', 'Keyboard: Dvorak (manual)']);
+    assert.ok(statuses[4].startsWith('Keyboard: auto'));
+    assert.deepEqual(writes.filter(([key]) => key === LAYOUT_STORAGE_KEY).map(([, v]) => v), ['qwerty', 'azerty', 'qwertz', 'dvorak', 'auto']);
+    assert.equal(new Keymap({ storage: { getItem: () => 'qwertz' }, navigator: null }).override, 'qwertz');
+    assert.equal(new Keymap({ storage: { getItem: () => 'bogus' }, navigator: null }).override, 'auto');
+    withInput((inp, down) => {
+      down({ code: 'F2', key: 'F2' });
+      assert.equal(inp.took('layoutCycle'), true);
+    });
+  },
+
+  'AC-7 keyboard layouts: HUD draws cached AZERTY hints on title and pause and main wires F2'() {
+    const texts = [];
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+          fillText(str) { texts.push(str); },
+        };
+      },
+    };
+    const fakeOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } },
+    };
+    const game = fresh(0);
+    game.state = 'title';
+    game.selectingDifficulty = false;
+    const hud = new Hud(fakeCanvas, fakeOverlay);
+    hud.resize(1024, 768, 1);
+    hud.controlHints = new Keymap({ storage: { getItem: () => 'azerty' }, navigator: null }).hintLines;
+    hud.render(game);
+    assert.ok(texts.includes('Z Q S D  move     mouse / ← →  turn'));
+    assert.ok(texts.includes('F2  keyboard layout: AZERTY'));
+    texts.length = 0;
+    game.state = 'paused';
+    hud.render(game);
+    assert.ok(texts.some((t) => t.startsWith('F2  keyboard layout:')));
+    const src = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    for (const s of ["input.took('layoutCycle')", 'keymap.cycleOverride()', 'hud.controlHints = keymap.hintLines'])
+      assert.ok(src.includes(s), `AC-7 main.js contains ${s}`);
+    for (const s of ["input.took('Key", "input.took('Semicolon')", "input.took('Bracket", "input.took('Digit", "input.took('Arrow"])
+      assert.ok(!src.includes(s), `AC-7 main.js has no ${s}`);
+  },
+
+  'AC-8 keyboard layouts: README documents the strategy and CHANGELOG records #21'() {
+    const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const start = md.indexOf('## Controls');
+    const rest = md.slice(start + 1);
+    const end = rest.indexOf('\n## ');
+    const section = end < 0 ? rest : rest.slice(0, end);
+    const lines = section.split('\n');
+    assert.ok(lines.some((l) => /^\|\s*M\s*\|[^|]*toggle music/.test(l)));
+    assert.ok(lines.some((l) => /^\|\s*V\s*\|[^|]*toggle map/.test(l)));
+    assert.ok(lines.some((l) => /^\|\s*F2\s*\|[^|]*keyboard layout/.test(l)));
+    assert.ok(!lines.some((l) => /^\|\s*M\s*\|[^|]*toggle map/.test(l)));
+    assert.ok(lines.some((l) => /^\|\s*;\s*\|[^|]*toggle sound/.test(l)));
+    assert.ok(lines.some((l) => /^\|\s*N\s*\|\s*toggle night vision\s*\|/.test(l)));
+    assert.ok(section.includes('ZQSD'));
+    const log = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+    assert.ok(log.includes('#21') && log.includes('doomr.keyboardLayout'));
+  },
+};
+
+const withInput = (fn) => {
+  const prevDoc = globalThis.document;
+  const prevWin = globalThis.window;
+  const handlers = {};
+  globalThis.document = { addEventListener() {}, pointerLockElement: null };
+  globalThis.window = { addEventListener(name, handler) { handlers[name] = handler; } };
+  const base = { repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, preventDefault() {} };
+  try {
+    const inp = new Input({ addEventListener() {} }, new Keymap({ storage: null, navigator: null }));
+    fn(inp, (e) => globalThis.document.onkeydown({ ...base, ...e }), (e) => globalThis.document.onkeyup({ ...base, ...e }), () => handlers.blur());
+  } finally {
+    globalThis.document = prevDoc;
+    globalThis.window = prevWin;
+  }
 };
 
 console.log('# file: tests/sim.test.mjs');

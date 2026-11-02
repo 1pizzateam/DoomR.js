@@ -5,6 +5,7 @@ import { screenSplatQuads } from './bloodsprites.js';
 import { faceCellUv, faceFrame, facePlacement } from './face.js';
 import { AMMO_FLASH_DURATION, DIFFICULTIES, DIFFICULTY_ORDER, FIRE_COOLDOWN } from './game.js';
 import { AMMO_TYPES } from './ammo.js';
+import { DEFAULT_HINT_LINES, DEFAULT_SELECT_HINT } from './keymap.js';
 import { WEAPON_SLOTS, WEAPONS, weaponCellUv, weaponFrame, weaponPlacement } from './weapon.js';
 
 const COLORS = ['#5b8cff', '#38c793', '#ff9f43', '#e8102c'];
@@ -21,6 +22,9 @@ const FLOOR_VISIBLE = dimmed(RGB[BLUE], 0.6);
 const SLIME_SEEN = dimmed(RGB[GREEN], 0.38);
 const SLIME_VISIBLE = dimmed(RGB[GREEN], 0.82);
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
+const HINT_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.75, glow: 3 });
+const HINT_DIM_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.45, glow: 2 });
 
 export const SCREEN_BLOOD_ALPHA = 0.72;
 
@@ -47,6 +51,14 @@ export class Hud {
     this.skipCanvasText = false;
     this.lastFont = '';
     this.lastAlign = '';
+    this.controlHints = DEFAULT_HINT_LINES;
+    this.selectHint = DEFAULT_SELECT_HINT;
+  }
+
+  drawControlHints(cx, y) {
+    const lines = this.controlHints;
+    for (let i = 0; i < lines.length; i++)
+      this.text(lines[i], cx, y + i * 20, BLUE, i === 5 ? HINT_DIM_STYLE : HINT_STYLE);
   }
 
   toggleAutomap(game) {
@@ -1151,8 +1163,7 @@ export class Hud {
         this.text('DOOMR', cx, cy - 60, BLUE, { size: Math.min(110, width / 7), align: 'center', weight: 800, glow: 22 });
         this.text('Rip and tear', cx, cy - 20, GREEN, { size: 15, align: 'center', alpha: 0.9 });
         this.text('click or press ENTER to start', cx, cy + 56, ORANGE, { size: 16, align: 'center', alpha: 0.5 + blink * 0.5 });
-        const keys = ['W A S D  move     mouse / ← →  turn', 'click / X / OPT / CTRL  fire     1-4  weapons', 'SPACE  jump     C  crouch     SHIFT  run', 'E  open doors     [ / ]  switch level     ;  sound', 'TAB  automap     N  night vision     M  music     ESC  pause'];
-        keys.forEach((k, i) => this.text(k, cx, cy + 100 + i * 20, BLUE, { size: 12, align: 'center', alpha: 0.75, glow: 3 }));
+        this.drawControlHints(cx, cy + 100);
       } else {
         this.text('DOOMR', cx, cy - 116, BLUE, { size: Math.min(84, width / 8), align: 'center', weight: 800, glow: 22 });
         const boxW = Utils.clamp(width - 48, 280, 390);
@@ -1194,12 +1205,13 @@ export class Hud {
         this.canvasLine([boxX + 18, boxY + 160, boxX + boxW - 18, boxY + 160], BLUE, 0.25, 1, 2);
         const levelDef = LEVELS[game.levelIndex] ?? LEVELS[0];
         this.text(`MISSION:  ◂  ${levelDef.name.toUpperCase()}  ▸`, cx, boxY + 181, ORANGE, { size: 13, align: 'center', weight: 800, glow: 8 });
-        this.text('←/→ select mission  ·  ↑/↓ or 1-4 select skill  ·  click or press ENTER to begin  ·  ESC back', cx, cy + 148, ORANGE, { size: 14, align: 'center', alpha: 0.5 + blink * 0.5 });
+        this.text(this.selectHint, cx, cy + 148, ORANGE, { size: 14, align: 'center', alpha: 0.5 + blink * 0.5 });
       }
     } else if (state === 'paused') {
       dim(0.6);
       this.text('PAUSED', cx, cy, BLUE, { size: 40, align: 'center', weight: 800, glow: 14 });
       this.text('click or press ENTER to resume', cx, cy + 36, GREEN, { size: 14, align: 'center' });
+      this.drawControlHints(cx, cy + 76);
     } else if (state === 'dead') {
       const fade = Utils.clamp(game.player.deadTime / 1.2, 0, 1);
       dim(0.5 * fade);

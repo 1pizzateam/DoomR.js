@@ -1,57 +1,6 @@
 import { Keyboard } from '@dwtechs/ctrltab';
 import { Vec2 } from '@1pizzateam/spock';
-
-// Physical event.code -> [commandName, ctrlTabKeys, rawWhichOverride]
-const KEY_BINDINGS = [
-  ['KeyW', ['W']],
-  ['KeyA', ['A']],
-  ['KeyS', ['S']],
-  ['KeyD', ['D']],
-  ['ArrowUp', [38]],
-  ['ArrowDown', [40]],
-  ['ArrowLeft', [37]],
-  ['ArrowRight', [39]],
-  ['Space', [32]],
-  ['Enter', [13]],
-  ['ShiftLeft', [16]],
-  ['ShiftRight', [16], 160],
-  ['ControlLeft', [17]],
-  ['ControlRight', [17], 162],
-  ['AltLeft', [18]],
-  ['AltRight', [18], 164],
-  ['KeyC', ['C']],
-  ['KeyX', ['X']],
-  ['KeyE', ['E']],
-  ['KeyF', ['F']],
-  ['KeyN', ['N']],
-  ['KeyM', ['M']],
-  ['KeyV', ['V']],
-  ['KeyG', ['G']],
-  ['KeyB', ['B']],
-  ['KeyP', ['P']],
-  ['Semicolon', [59]],
-  ['SemicolonChrome', [1], 186, 'Semicolon'],
-  ['Digit1', [49]],
-  ['Digit2', [50]],
-  ['Digit3', [51]],
-  ['Digit4', [52]],
-  ['Numpad1', [97], 97, 'Digit1'],
-  ['Numpad2', [98], 98, 'Digit2'],
-  ['Numpad3', [99], 99, 'Digit3'],
-  ['Numpad4', [100], 100, 'Digit4'],
-  ['Tab', [9]],
-  ['Escape', [27]],
-  ['F3', [114]],
-  ['NumpadAdd', [107]],
-  ['NumpadSubtract', [109]],
-  ['Equal', [61]],
-  ['EqualChrome', [1], 187, 'Equal'],
-  ['Minus', [45]],
-  ['MinusChrome', [1], 189, 'Minus'],
-  ['MinusFirefox', [1], 173, 'Minus'],
-  ['BracketLeft', [1], 219],
-  ['BracketRight', [1], 221],
-];
+import { Keymap } from './keymap.js';
 
 const OPPOSITE_WHICH = {
   87: 83,
@@ -66,10 +15,12 @@ const OPPOSITE_WHICH = {
 
 /** Keyboard and mouse state, polled once per frame by the game loop. */
 export class Input {
-  constructor(canvas) {
+  constructor(canvas, keymap = new Keymap()) {
     this.canvas = canvas;
+    this.keymap = keymap;
     this.keys = new Set();
     this.heldWhich = new Set();
+    this.downByCode = new Map();
     this.metaHeld = new Set();
     this.metaTainted = new Set();
     this.mouseDX = 0;
@@ -80,27 +31,26 @@ export class Input {
     this.onAction = () => {};
 
     this.keyboard = new Keyboard();
-    const codeToWhich = new Map();
-    const boundWhich = new Set();
 
-    for (const [name, asciiKeys, rawWhich, targetCode] of KEY_BINDINGS) {
-      const code = targetCode || name;
-      const which = rawWhich || (typeof asciiKeys[0] === 'string' ? asciiKeys[0].charCodeAt(0) : asciiKeys[0]);
-      codeToWhich.set(name, which);
-      boundWhich.add(which);
+    for (const { action, which } of keymap.bindings) {
+      const whiches = keymap.whichesOf(action);
+      // ctrltab only validates ASCII key codes, so higher codes are injected after registration
       const cmd = this.keyboard.addCmd(
-        name,
+        `${action}:${which}`,
         null,
-        asciiKeys,
+        which <= 127 ? [which] : [1],
         (isKeyDown) => {
           if (isKeyDown) {
-            this.pressed.add(code);
-            this.keys.delete(code);
-            this.keys.add(code);
+            this.pressed.add(action);
+            this.keys.delete(action);
+            this.keys.add(action);
             this.heldWhich.add(which);
           } else {
-            this.keys.delete(code);
             this.heldWhich.delete(which);
+            for (let i = 0; i < whiches.length; i++)
+              if (this.heldWhich.has(whiches[i]))
+                return;
+            this.keys.delete(action);
           }
         },
         {
@@ -108,18 +58,12 @@ export class Input {
           groupName: 'game',
         }
       );
-      if (rawWhich) {
+      if (which > 127) {
         cmd.inputs.keys = {};
-        cmd.inputs.setKeys([rawWhich]);
+        cmd.inputs.setKeys([which]);
       }
     }
     this.keyboard.listen('game');
-
-    const resolveWhich = (event) => {
-      if (event.code)
-        return codeToWhich.get(event.code) ?? 0;
-      return event.which || event.keyCode;
-    };
 
     const releaseMetaHeld = () => {
       this.keyboard.up({ which: 91 });
@@ -134,10 +78,22 @@ export class Input {
     };
 
     document.onkeydown = (event) => {
+      keymap.learn(event);
       syncMeta(event);
-      const which = resolveWhich(event);
-      if ((event.metaKey || event.ctrlKey || event.altKey) && !boundWhich.has(which))
+      const code = event.code;
+      const pinned = code ? this.downByCode.get(code) : undefined;
+      let which;
+      if (pinned !== undefined && event.repeat)
+        which = pinned;
+      else {
+        which = keymap.resolve(event);
+        if (pinned !== undefined && pinned !== which)
+          this.keyboard.up({ which: pinned });
+      }
+      if ((event.metaKey || event.ctrlKey || event.altKey) && !keymap.isBound(which))
         return;
+      if (code && which !== 0)
+        this.downByCode.set(code, which);
       if (!event.repeat) {
         this.metaTainted.delete(which);
         const opp = OPPOSITE_WHICH[which];
@@ -164,7 +120,10 @@ export class Input {
     };
 
     document.onkeyup = (event) => {
-      const which = resolveWhich(event);
+      const code = event.code;
+      const which = code ? (this.downByCode.get(code) ?? keymap.resolve(event)) : keymap.resolve(event);
+      if (code)
+        this.downByCode.delete(code);
       this.keyboard.up({ which });
       this.metaHeld.delete(which);
       this.metaTainted.delete(which);
@@ -187,6 +146,7 @@ export class Input {
         this.keyboard.up({ which });
       this.keys.clear();
       this.heldWhich.clear();
+      this.downByCode.clear();
       this.metaHeld.clear();
       this.metaTainted.clear();
       this.mouseFire = false;
@@ -241,14 +201,14 @@ export class Input {
   }
 
   axis(positive, negative) {
-    const pos = this.down(...positive);
-    const neg = this.down(...negative);
+    const pos = this.keys.has(positive);
+    const neg = this.keys.has(negative);
     if (pos && neg) {
       let last = 0;
-      for (const code of this.keys)
-        if (positive.includes(code))
+      for (const id of this.keys)
+        if (id === positive)
           last = 1;
-        else if (negative.includes(code))
+        else if (id === negative)
           last = -1;
       return last;
     }
@@ -258,21 +218,22 @@ export class Input {
   /** Controls for this frame; clears the one-shot state. */
   poll() {
     let weapon = 0;
-    if (this.took('Digit1')) weapon = 1;
-    else if (this.took('Digit2')) weapon = 2;
-    else if (this.took('Digit3')) weapon = 3;
-    else if (this.took('Digit4')) weapon = 4;
+    if (this.took('weapon1')) weapon = 1;
+    else if (this.took('weapon2')) weapon = 2;
+    else if (this.took('weapon3')) weapon = 3;
+    else if (this.took('weapon4')) weapon = 4;
+    const keys = this.keys;
     const controls = {
-      forward: this.axis(['KeyW', 'ArrowUp'], ['KeyS', 'ArrowDown']),
-      strafe: this.axis(['KeyD'], ['KeyA']),
-      turn: this.axis(['ArrowRight'], ['ArrowLeft']),
-      run: this.down('ShiftLeft', 'ShiftRight'),
-      jump: this.down('Space'),
-      crouch: this.down('KeyC'),
-      fire: this.down('KeyX', 'AltLeft', 'AltRight', 'ControlLeft', 'ControlRight', 'Enter') || this.mouseFire,
-      grenade: this.took('KeyF'),
-      use: this.took('KeyE'),
-      nightVision: this.took('KeyN'),
+      forward: this.axis('moveForward', 'moveBack'),
+      strafe: this.axis('strafeRight', 'strafeLeft'),
+      turn: this.axis('turnRight', 'turnLeft'),
+      run: keys.has('run'),
+      jump: keys.has('jump'),
+      crouch: keys.has('crouch'),
+      fire: keys.has('fire') || keys.has('confirm') || this.mouseFire,
+      grenade: this.took('grenade'),
+      use: this.took('use'),
+      nightVision: this.took('nightVision'),
       weapon,
       mouseX: this.mouseDX,
     };
