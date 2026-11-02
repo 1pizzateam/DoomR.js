@@ -5,7 +5,7 @@ import { screenSplatQuads } from './bloodsprites.js';
 import { faceCellUv, faceFrame, facePlacement } from './face.js';
 import { AMMO_FLASH_DURATION, DIFFICULTIES, DIFFICULTY_ORDER, FIRE_COOLDOWN } from './game.js';
 import { AMMO_TYPES } from './ammo.js';
-import { DEFAULT_HINT_LINES, DEFAULT_SELECT_HINT } from './keymap.js';
+import { DEFAULT_HINT_LINES, DEFAULT_SELECT_HINT, defaultActionLabel } from './keymap.js';
 import { HIT_BACK, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP } from './controls.js';
 import { WEAPON_SLOTS, WEAPONS, weaponCellUv, weaponFrame, weaponPlacement } from './weapon.js';
 
@@ -27,6 +27,18 @@ const FONT = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 const HINT_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.75, glow: 3 });
 const HINT_DIM_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.45, glow: 2 });
+
+const USE_PROMPT_TOP = 20;
+const USE_PROMPT_H = 16;
+const USE_PROMPT_CHAR_W = 6.6;
+const USE_PROMPT_PAD = 5;
+const USE_PROMPT_LABEL_ALPHA = 0.75;
+const USE_PROMPT_VERB_ALPHA = 0.45;
+const USE_PROMPT_FRAME_ALPHA = 0.5;
+const USE_PROMPT_EPSILON = 1e-3;
+const USE_LABEL_STYLE = { size: 11, align: 'center', alpha: 0, glow: 0 };
+const USE_VERB_STYLE = { size: 9, align: 'center', alpha: 0, glow: 0 };
+const USE_LOCK_COLOR = { red: RED, yellow: ORANGE, blue: BLUE };
 
 export const SCREEN_BLOOD_ALPHA = 0.72;
 
@@ -91,6 +103,7 @@ export class Hud {
     this.ratio = 1;
     this.showMap = true;
     this.automap = false;
+    this.useKeyLabel = defaultActionLabel('use');
     this.automapZoom = 1;
     this.automapFollow = true;
     this.automapGrid = true;
@@ -164,7 +177,7 @@ export class Hud {
       : '0';
     const w = p.weapons;
     const wMask = (w?.chainsaw || w?.knife ? 1 : 0) | (w?.shotgun ? 2 : 0) | (w?.chaingun ? 4 : 0) | (w?.rocket ? 8 : 0);
-    return `${this.width}|${this.height}|${this.ratio}|${Math.round(this.fps)}|${this.diagnostics}|${Math.ceil(p.health)}|${Math.max(0, Math.ceil(p.armor ?? 0))}|${p.armorType ?? ''}|${p.weapon ?? 'shotgun'}|${wMask}|${p.berserk ? 1 : 0}|${radKey}|${nvgKey}|${p.bullets ?? 0}|${p.shells ?? 0}|${p.rockets ?? 0}|${game.kills}|${game.totalEnemies}`;
+    return `${this.width}|${this.height}|${this.ratio}|${Math.round(this.fps)}|${this.diagnostics}|${Math.ceil(p.health)}|${Math.max(0, Math.ceil(p.armor ?? 0))}|${p.armorType ?? ''}|${p.weapon ?? 'shotgun'}|${wMask}|${p.berserk ? 1 : 0}|${radKey}|${nvgKey}|${p.bullets ?? 0}|${p.shells ?? 0}|${p.rockets ?? 0}|${game.kills}|${game.totalEnemies}|${this.useKeyLabel}|${game.usePrompt?.verb ?? ''}|${Math.round((game.usePrompt?.fade ?? 0) * 20)}`;
   }
 
   render(game) {
@@ -307,6 +320,24 @@ export class Hud {
     }
   }
 
+  /** Discreet keycap under the crosshair telling the player which key uses the door or chest in reach. */
+  drawUsePrompt(game, cx, cy) {
+    const prompt = game.usePrompt;
+    if (!prompt || game.state !== 'play' || game.automap || this.controlsView?.open || prompt.fade <= USE_PROMPT_EPSILON)
+      return;
+    const label = this.useKeyLabel;
+    const w = Math.max(USE_PROMPT_H, label.length * USE_PROMPT_CHAR_W + USE_PROMPT_PAD * 2);
+    const x0 = cx - w / 2;
+    const y0 = cy + USE_PROMPT_TOP;
+    const locked = prompt.verb === 'LOCKED' && USE_LOCK_COLOR[prompt.lock] !== undefined;
+    const color = locked ? USE_LOCK_COLOR[prompt.lock] : GREEN;
+    this.overlay.crisp.rectLine(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(w), USE_PROMPT_H, RGB[color], USE_PROMPT_FRAME_ALPHA * prompt.fade);
+    USE_LABEL_STYLE.alpha = USE_PROMPT_LABEL_ALPHA * prompt.fade;
+    USE_VERB_STYLE.alpha = USE_PROMPT_VERB_ALPHA * prompt.fade;
+    this.text(label, cx, y0 + USE_PROMPT_H / 2 + 4, color, USE_LABEL_STYLE);
+    this.text(prompt.verb, cx, y0 + USE_PROMPT_H + 12, color, USE_VERB_STYLE);
+  }
+
   drawHud(game) {
     const { width, height } = this;
     const player = game.player;
@@ -327,6 +358,8 @@ export class Hud {
       this.line([cx - m, cy + m, cx - m / 2, cy + m / 2], ORANGE);
       this.line([cx + m, cy + m, cx + m / 2, cy + m / 2], ORANGE);
     }
+
+    this.drawUsePrompt(game, cx, cy);
 
     const faceRect = facePlacement({ width, height, hurt: player.hurt });
     const weaponDef = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;

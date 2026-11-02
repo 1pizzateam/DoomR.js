@@ -101,6 +101,10 @@ const CACHE_WEAPONS = new Set(['chainsaw', 'shotgun', 'chaingun', 'rocket']);
 const USE_RANGE = 96;
 const USE_DOT = 0.35;
 const CACHE_TOUCH_RANGE = TILE * 0.5;
+export const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', take: 'TAKE', locked: 'LOCKED' });
+// seconds for a full 0 to 1 (in) or 1 to 0 (out) ramp of the use prompt
+const USE_PROMPT_FADE_IN = 0.12;
+const USE_PROMPT_FADE_OUT = 0.2;
 export const CACHE_LID_TIME = 0.35;
 // supplies in one outdoor room share a chest when at most this many walking tiles apart
 export const CACHE_OUTDOOR_LINK = 6;
@@ -148,6 +152,8 @@ export class Game {
     this.blood = new Blood();
     // sound events for main.js to hand to the audio layer; the rules never touch audio themselves
     this.events = [];
+    this.useTarget = { kind: null, door: null, cache: null, verb: '', lock: null, promptable: false };
+    this.usePrompt = { fade: 0, verb: '', lock: null };
     this.load(0);
   }
 
@@ -256,6 +262,10 @@ export class Game {
       this.levelIndex = indexOrDef;
     }
     const def = this.customLevelDef ?? LEVELS[this.levelIndex] ?? LEVELS[0];
+    this.usePrompt.fade = 0;
+    this.usePrompt.verb = '';
+    this.usePrompt.lock = null;
+    this.clearUseTarget();
     const seedIndex = this.levelIndex;
     this.level = def instanceof Level ? def : new Level(def);
     // the grid lets BumpR test only bodies that share a cell instead of every pair; two tiles per cell
@@ -1948,8 +1958,21 @@ export class Game {
     return level.inBounds(tx, ty) && level.kind[ty * level.width + tx] === DOOR ? 'door' : 'wall';
   }
 
-  use() {
+  clearUseTarget() {
+    const target = this.useTarget;
+    target.kind = null;
+    target.door = null;
+    target.cache = null;
+    target.verb = '';
+    target.lock = null;
+    target.promptable = false;
+  }
+
+  // single selection rule shared by use() and the on-screen prompt
+  findUseTarget() {
     const player = this.player;
+    const target = this.useTarget;
+    this.clearUseTarget();
     const facing = this.scratch.setScalar(1, 0).setRadian(player.angle);
     let best = null;
     let bestCache = null;
@@ -1977,11 +2000,47 @@ export class Game {
       }
     }
     if (bestCache) {
-      this.openCache(bestCache);
+      target.kind = 'cache';
+      target.cache = bestCache;
+      target.verb = bestCache.state === 'closed' ? USE_VERBS.loot : USE_VERBS.take;
+      target.promptable = true;
+    } else if (best) {
+      target.kind = 'door';
+      target.door = best;
+      if (best.lock && !player.keys?.[best.lock]) {
+        target.verb = USE_VERBS.locked;
+        target.lock = best.lock;
+      } else
+        target.verb = best.target ? USE_VERBS.close : USE_VERBS.open;
+      target.promptable = !(best.secret && !best.revealed);
+    }
+    return target.promptable;
+  }
+
+  updateUsePrompt(dt) {
+    const prompt = this.usePrompt;
+    if (this.state !== 'play') {
+      prompt.fade = 0;
       return;
     }
-    if (best) {
-      if (best.lock && !player.keys?.[best.lock]) {
+    if (this.findUseTarget()) {
+      prompt.verb = this.useTarget.verb;
+      prompt.lock = this.useTarget.lock;
+      prompt.fade = Utils.clamp(prompt.fade + dt / USE_PROMPT_FADE_IN, 0, 1);
+    } else
+      prompt.fade = Utils.clamp(prompt.fade - dt / USE_PROMPT_FADE_OUT, 0, 1);
+  }
+
+  use() {
+    this.findUseTarget();
+    const target = this.useTarget;
+    if (target.kind === 'cache') {
+      this.openCache(target.cache);
+      return;
+    }
+    if (target.kind === 'door') {
+      const best = target.door;
+      if (best.lock && !this.player.keys?.[best.lock]) {
         const label = best.lock === 'red' ? 'Red' : best.lock === 'yellow' ? 'Yellow' : 'Blue';
         this.say(`You need a ${label} keycard to open this door.`);
         this.emit('locked', best.center);
@@ -2854,6 +2913,8 @@ export class Game {
     this.time += dt;
     this.shake = Math.max(0, this.shake - dt * 1.6);
     this.message.age += dt;
+    if (this.state !== 'play')
+      this.usePrompt.fade = 0;
     this.blood.update(dt);
     this.updateMarsWeather(dt);
     for (const effect of this.effects)
@@ -2936,5 +2997,6 @@ export class Game {
           break;
         }
     }
+    this.updateUsePrompt(dt);
   }
 }
