@@ -1,7 +1,8 @@
 import { Utils } from '@1pizzateam/spock';
-import { SOLID_ALPHA } from './quads.js';
 import { mulberry32 } from './rng.js';
-import { GLOW, LIGHT, LIGHT_GLSL, METAL, mix, plate, rivet, RUST_GLSL, SHADOW, Tile } from './floor.js';
+import { GLOW, LIGHT, METAL, mix, plate, rivet, SHADOW, Tile } from './floor.js';
+import doorRustShader from './shaders/door-rust.shadergun.json' with { type: 'json' };
+import wallRustShader from './shaders/wall-rust.shadergun.json' with { type: 'json' };
 
 /**
  * The doors of an old space base: heavy sliding blast doors in two leaves, with a hazard-striped frame, recessed
@@ -276,129 +277,11 @@ export function secretDoorBox(dimensions, wallCells = 8) {
 // face), so it does not slide off the door as it sinks into the floor. Each door has its own, from where it stands.
 // What is below the floor is not drawn.
 
-export const DOOR_VERTEX = `
-attribute vec3 aVertexPosition;
-attribute vec2 aTextureCoord;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uProjectionMatrix;
-varying float vDepth;
-varying float vHeight;
-varying vec2 vTextureCoord;
-varying vec2 vSurface;
-varying vec3 vWorldPos;
-
-void main(void) {
-  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
-  vec4 v = uViewMatrix * world;
-  vDepth = -v.z;
-  v.z += 1.2 + vDepth * 0.01;
-  vHeight = world.y;
-  vTextureCoord = aTextureCoord;
-  // a point on the door or wall: along it (cardinal or diagonal) and up it, apart from every other door
-  vSurface = vec2(aVertexPosition.x * 1.13 + aVertexPosition.z * 0.87, aVertexPosition.y) + uModelMatrix[3].xz * 0.37;
-  vWorldPos = world.xyz;
-  gl_Position = uProjectionMatrix * v;
-}
-`;
+export const DOOR_VERTEX = doorRustShader.vertex;
 
 // Unlike doors, wall quads must keep their screen coverage aligned with the solid backing at grazing angles.
-export const WALL_VERTEX = `
-attribute vec3 aVertexPosition;
-attribute vec2 aTextureCoord;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uProjectionMatrix;
-varying float vDepth;
-varying float vHeight;
-varying vec2 vTextureCoord;
-varying vec2 vSurface;
-varying vec3 vWorldPos;
+export const WALL_VERTEX = wallRustShader.vertex;
 
-void main(void) {
-  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
-  vec4 v = uViewMatrix * world;
-  vDepth = -v.z;
-  vHeight = world.y;
-  vTextureCoord = aTextureCoord;
-  vSurface = vec2(aVertexPosition.x * 1.13 + aVertexPosition.z * 0.87, aVertexPosition.y) + uModelMatrix[3].xz * 0.37;
-  vWorldPos = world.xyz;
-  vec4 clip = uProjectionMatrix * v;
-  clip.z -= 0.00001 * clip.w;
-  gl_Position = clip;
-}
-`;
-
-/**
- * The fragment shader of a rusted surface. `scale` is the size of the patches in world units and `threshold` how much of
- * the surface they take: higher is less rust.
- */
-function rustedFragment(scale, threshold, minHeight = -0.01) {
-  return `
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying float vHeight;
-varying vec2 vTextureCoord;
-varying vec2 vSurface;
-varying vec3 vWorldPos;
-${RUST_GLSL}
-${LIGHT_GLSL}
-
-void main(void) {
-  if (vHeight < ${minHeight})
-    discard;
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
-    return;
-  }
-  vec3 steel = texture2D(uSampler, vTextureCoord).rgb;
-  vec3 color = steel;
-  // the lights and the hazard stripes stay as they are
-  float peak = max(steel.r, max(steel.g, steel.b));
-  float lit = max(max(smoothstep(0.06, 0.2, steel.b - steel.r), smoothstep(0.06, 0.2, steel.g - steel.r)), smoothstep(0.68, 0.85, peak));
-  float hazard = smoothstep(0.1, 0.2, steel.r - steel.b);
-  float amount = 0.0;
-  if (lit < 0.95) {
-    // small patches scattered over the door, thicker low down where water ran
-    float spots = noise(vSurface / ${scale.toFixed(1)} + 3.0) * 0.6 + noise(vSurface / ${(scale * 0.43).toFixed(1)} + 17.0) * 0.4;
-    if (spots > ${(threshold - 0.06).toFixed(2)}) {
-      float low = 1.0 - smoothstep(0.0, 40.0, vSurface.y);
-      float area = smoothstep(${(threshold).toFixed(2)} - low * 0.06, ${(threshold + 0.1).toFixed(2)} - low * 0.06, spots);
-      float near = 1.0 - smoothstep(220.0, 620.0, vDepth);
-      amount = area * 0.8;
-      if (near > 0.01 && area > 0.25) {
-        vec2 texel = floor(vSurface);
-        float grain = noise(texel / 3.0) * 0.6 + noise(texel / 1.3 + 40.0) * 0.4;
-        amount = area * mix(0.8, 0.3 + grain * 0.9, near);
-      }
-      amount *= (1.0 - lit) * (1.0 - hazard * 0.6);
-    }
-  }
-
-  if (amount > 0.3) {
-    vec3 paint = (amount > 0.9 ? RUST_BRIGHT : (amount > 0.6 ? RUST : RUST_DARK)) * 0.62;
-    color = clamp(paint + (steel - STEEL) * 0.9, 0.0, 1.0);
-  }
-  color *= uMaterialDiffuse * surfaceLight(vWorldPos, lit);
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA});
-}
-`;
-}
-
-export const DOOR_FRAGMENT = rustedFragment(14, 0.62);
+export const DOOR_FRAGMENT = doorRustShader.fragment;
 // walls are bigger and nearer than doors, so their patches are smaller and there are fewer of them
-export const WALL_FRAGMENT = rustedFragment(8, 0.7, -0.21);
+export const WALL_FRAGMENT = wallRustShader.fragment;

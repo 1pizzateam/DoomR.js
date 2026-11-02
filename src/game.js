@@ -2,7 +2,7 @@ import { Grid, Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { Physics, Raycast, Scene } from '@1pizzateam/bumpr';
 import { Blood, makeFeet } from './blood.js';
 import { CONE_RANGE, Fog, marsFogNearFar } from './fog.js';
-import { CEILING, CROUCH_EYE, DOOR, EYE, Level, TILE } from './level.js';
+import { CEILING, CROUCH_EYE, DOOR, EXIT, EYE, FLOOR, Level, TILE, WALL } from './level.js';
 import { LEVELS } from './levels.js';
 import { WEAPON_SLOTS, WEAPONS } from './weapon.js';
 import { AMMO_TYPES } from './ammo.js';
@@ -102,6 +102,13 @@ const USE_RANGE = 96;
 const USE_DOT = 0.35;
 const CACHE_TOUCH_RANGE = TILE * 0.5;
 export const CACHE_LID_TIME = 0.35;
+// supplies in one outdoor room share a chest when at most this many walking tiles apart
+export const CACHE_OUTDOOR_LINK = 6;
+// distance from the tile centre toward the wall the chest backs onto
+export const CACHE_WALL_OFFSET = 14;
+// wall sides indexed E, S, W, N
+const WALL_DX = [1, 0, -1, 0];
+const WALL_DY = [0, 1, 0, -1];
 
 function makeBody(pos, radius, { type = 'dynamic', mass = 1, sensor = false, category, mask, velocity }) {
   const size = new Vec2(radius * 2, radius * 2);
@@ -671,102 +678,192 @@ export class Game {
     return pickup;
   }
 
+  roomDistances(room, src) {
+    const { level } = this;
+    const { width, rowCount, kind, roomByTile } = level;
+    const dist = new Int32Array(width * rowCount).fill(-1);
+    const queue = [src];
+    dist[src] = 0;
+    for (let head = 0; head < queue.length; head++) {
+      const idx = queue[head];
+      const x = idx % width;
+      const y = (idx - x) / width;
+      for (let d = 0; d < 4; d++) {
+        const nx = x + WALL_DX[d];
+        const ny = y + WALL_DY[d];
+        if (!level.inBounds(nx, ny))
+          continue;
+        const j = ny * width + nx;
+        if (dist[j] >= 0 || roomByTile[j] !== room || kind[j] !== FLOOR)
+          continue;
+        dist[j] = dist[idx] + 1;
+        queue.push(j);
+      }
+    }
+    return dist;
+  }
+
   buildCaches() {
     const { level } = this;
-    const { width, rowCount } = level;
-    const buckets = new Map();
+    const supplyTiles = new Set();
     for (const spawn of level.pickups) {
       if (!CACHE_TYPE_SET.has(spawn.type)) {
         this.addPickup(spawn.type, spawn.pos, true);
         continue;
       }
-      buckets.set(level.grid.getCell(spawn.pos), true);
+      supplyTiles.add(level.grid.getCell(spawn.pos));
     }
-    const keys = [...buckets.keys()].sort((a, b) => a - b);
-    const clusterOf = new Map();
-    const clusters = [];
-    for (const key of keys) {
-      if (clusterOf.has(key))
-        continue;
-      const id = clusters.length;
-      const tiles = [];
-      const stack = [key];
-      clusterOf.set(key, id);
-      while (stack.length) {
-        const idx = stack.pop();
-        tiles.push(idx);
-        const x = idx % width;
-        const y = (idx - x) / width;
-        for (let d = 0; d < 4; d++) {
-          const nx = x + (d === 0 ? 1 : d === 2 ? -1 : 0);
-          const ny = y + (d === 1 ? 1 : d === 3 ? -1 : 0);
-          if (nx < 0 || nx >= width || ny < 0 || ny >= rowCount)
-            continue;
-          const next = ny * width + nx;
-          if (!buckets.has(next) || clusterOf.has(next))
-            continue;
-          clusterOf.set(next, id);
-          stack.push(next);
-        }
+    const tiles = [...supplyTiles].sort((a, b) => a - b);
+    const parent = new Map(tiles.map((t) => [t, t]));
+    const find = (t) => {
+      while (parent.get(t) !== t)
+        t = parent.get(t);
+      return t;
+    };
+    for (let i = 0; i < tiles.length; i++) {
+      const a = tiles[i];
+      const room = level.roomByTile[a];
+      const outdoor = !!level.outdoor?.has(a) && level.secretByTile[a] < 0;
+      const dist = outdoor ? this.roomDistances(room, a) : null;
+      for (let k = i + 1; k < tiles.length; k++) {
+        const b = tiles[k];
+        if (level.roomByTile[b] !== room)
+          continue;
+        if (outdoor && (dist[b] < 0 || dist[b] > CACHE_OUTDOOR_LINK))
+          continue;
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb)
+          parent.set(Math.max(ra, rb), Math.min(ra, rb));
       }
-      tiles.sort((a, b) => a - b);
-      clusters.push({ tiles, contents: [] });
+    }
+    const groups = new Map();
+    for (const t of tiles) {
+      const root = find(t);
+      if (!groups.has(root))
+        groups.set(root, { tiles: [], contents: [] });
+      groups.get(root).tiles.push(t);
     }
     for (const spawn of level.pickups) {
       if (CACHE_TYPE_SET.has(spawn.type))
-        clusters[clusterOf.get(level.grid.getCell(spawn.pos))].contents.push(spawn.type);
+        groups.get(find(level.grid.getCell(spawn.pos))).contents.push(spawn.type);
     }
-    for (const cluster of clusters)
-      this.addCache(cluster.tiles, cluster.contents);
+    for (const root of [...groups.keys()].sort((a, b) => a - b)) {
+      const group = groups.get(root);
+      this.addCache(group.tiles, group.contents);
+    }
   }
 
   addCache(tiles, contents) {
     const { level } = this;
-    const { width } = level;
-    let cx = 0;
-    let cy = 0;
-    for (const idx of tiles) {
-      cx += (idx % width) + 0.5;
-      cy += Math.floor(idx / width) + 0.5;
+    const { width, rowCount, kind, diag } = level;
+    const room = level.roomByTile[tiles[0]];
+    const dists = tiles.map((t) => this.roomDistances(room, t));
+    const blocked = new Set();
+    blocked.add(level.grid.getCell(level.playerStart));
+    for (const enemy of level.enemies)
+      blocked.add(level.grid.getCell(enemy.pos));
+    for (const barrel of level.barrels)
+      blocked.add(level.grid.getCell(barrel.pos));
+    for (const pickup of level.pickups) {
+      if (!CACHE_TYPE_SET.has(pickup.type))
+        blocked.add(level.grid.getCell(pickup.pos));
     }
-    cx = (cx / tiles.length) * TILE;
-    cy = (cy / tiles.length) * TILE;
-    let anchor = tiles[0];
-    let bestSq = Infinity;
-    for (const idx of tiles) {
-      const x = ((idx % width) + 0.5) * TILE - cx;
-      const y = (Math.floor(idx / width) + 0.5) * TILE - cy;
-      const sq = x * x + y * y;
-      if (sq < bestSq - 1e-9) {
-        bestSq = sq;
-        anchor = idx;
+    for (const crusher of level.crushers)
+      blocked.add(crusher.idx);
+    for (const cache of this.caches)
+      blocked.add(cache.idx);
+    const isWall = (x, y) => level.inBounds(x, y) && kind[y * width + x] === WALL && diag[y * width + x] === 0;
+    const wallSideOf = (x, y, allowDoors) => {
+      if (!allowDoors) {
+        for (let d = 0; d < 4; d++) {
+          const nx = x + WALL_DX[d];
+          const ny = y + WALL_DY[d];
+          if (level.inBounds(nx, ny) && (kind[ny * width + nx] === DOOR || kind[ny * width + nx] === EXIT))
+            return -1;
+        }
+      }
+      let side = -1;
+      let sideScore = -1;
+      for (let d = 0; d < 4; d++) {
+        const ox = x - WALL_DX[d];
+        const oy = y - WALL_DY[d];
+        if (!isWall(x + WALL_DX[d], y + WALL_DY[d]) || !level.isWalkable(ox, oy))
+          continue;
+        let score = 0;
+        for (let e = 0; e < 4; e++) {
+          if (level.isWalkable(ox + WALL_DX[e], oy + WALL_DY[e]))
+            score++;
+        }
+        if (score > sideScore) {
+          sideScore = score;
+          side = d;
+        }
+      }
+      return side;
+    };
+    let anchor = -1;
+    let wallSide = -1;
+    for (let tier = 1; tier <= 3 && anchor < 0; tier++) {
+      let best = Infinity;
+      for (let i = 0; i < width * rowCount; i++) {
+        if (level.roomByTile[i] !== room || kind[i] !== FLOOR || diag[i] !== 0 || level.slime[i] || level.teleporter[i] || blocked.has(i))
+          continue;
+        let score = 0;
+        for (const dist of dists) {
+          if (dist[i] < 0) {
+            score = -1;
+            break;
+          }
+          score += dist[i];
+        }
+        if (score < 0 || score >= best)
+          continue;
+        const x = i % width;
+        const y = (i - x) / width;
+        const side = tier < 3 ? wallSideOf(x, y, tier === 2) : -1;
+        if (tier < 3 && side < 0)
+          continue;
+        best = score;
+        anchor = i;
+        wallSide = side;
       }
     }
+    if (anchor < 0)
+      anchor = tiles[0];
     const ax = anchor % width;
     const ay = (anchor - ax) / width;
-    const steps = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+    const pos = level.center(ax, ay);
     let angle = 0;
-    let bestScore = -1;
-    for (const [dx, dy] of steps) {
-      const nx = ax + dx;
-      const ny = ay + dy;
-      if (!level.isWalkable(nx, ny))
-        continue;
-      let score = 0;
-      for (const [ex, ey] of steps) {
-        if (level.isWalkable(nx + ex, ny + ey))
-          score++;
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        angle = Math.atan2(dy, dx);
+    if (wallSide >= 0) {
+      pos.x += WALL_DX[wallSide] * CACHE_WALL_OFFSET;
+      pos.y += WALL_DY[wallSide] * CACHE_WALL_OFFSET;
+      angle = Math.atan2(-WALL_DY[wallSide], -WALL_DX[wallSide]);
+    } else {
+      let bestScore = -1;
+      for (let d = 0; d < 4; d++) {
+        const nx = ax + WALL_DX[d];
+        const ny = ay + WALL_DY[d];
+        if (!level.isWalkable(nx, ny))
+          continue;
+        let score = 0;
+        for (let e = 0; e < 4; e++) {
+          if (level.isWalkable(nx + WALL_DX[e], ny + WALL_DY[e]))
+            score++;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          angle = Math.atan2(WALL_DY[d], WALL_DX[d]);
+        }
       }
     }
     const cache = {
       kind: 'cache',
       idx: anchor,
+      room,
+      wallSide,
       tiles,
-      pos: level.center(ax, ay),
+      pos,
       angle,
       contents,
       hasWeapon: contents.some((type) => CACHE_WEAPONS.has(type)),
@@ -784,22 +881,40 @@ export class Game {
       this.emit('cacheOpen', cache.pos);
     }
     const { contents } = cache;
+    const { player } = this;
+    const health = player.health;
+    const shells = player.shells;
+    const bullets = player.bullets;
+    const rockets = player.rockets;
     let write = 0;
     let line = '';
+    let granted = false;
     let refused = null;
     for (let read = 0; read < contents.length; read++) {
       const type = contents[read];
+      const isNew = CACHE_WEAPONS.has(type) && !player.weapons[type];
       if (this.award(type, true)) {
-        line = line ? `${line} · ${this.message.text}` : this.message.text;
+        granted = true;
+        if (isNew)
+          line = line ? `${line} · ${this.message.text}` : this.message.text;
       } else {
         contents[write++] = type;
         refused = type;
       }
     }
     contents.length = write;
-    if (line)
-      this.say(line, 2.5);
-    else if (refused) {
+    if (granted) {
+      if (player.health > health)
+        line = line ? `${line} · Health +${player.health - health}` : `Health +${player.health - health}`;
+      if (player.shells > shells)
+        line = `${line}${line ? ' · ' : ''}${AMMO_TYPES.shells.label} +${player.shells - shells}`;
+      if (player.bullets > bullets)
+        line = `${line}${line ? ' · ' : ''}${AMMO_TYPES.bullets.label} +${player.bullets - bullets}`;
+      if (player.rockets > rockets)
+        line = `${line}${line ? ' · ' : ''}${AMMO_TYPES.rockets.label} +${player.rockets - rockets}`;
+      if (line)
+        this.say(line, 2.5);
+    } else if (refused) {
       const label = refused === 'health'
         ? 'Health'
         : refused === 'chainsaw'

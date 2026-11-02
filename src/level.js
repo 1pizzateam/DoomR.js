@@ -130,6 +130,7 @@ export class Level {
     this.bossArena = this.findBossArena();
     this.arena = this.findArena();
     this.secrets = this.findSecrets();
+    this.findRooms();
   }
 
   /**
@@ -240,6 +241,46 @@ export class Level {
     }
 
     return secrets;
+  }
+
+  /**
+   * Door- and secret-bounded room partition: floor/pillar tiles flood into one room id; doors, exits and walls bound rooms,
+   * and a secret area never merges with non-secret floor. Diagonal halves join a room through their open side only.
+   */
+  findRooms() {
+    const { width, rowCount, kind, diag, secretByTile } = this;
+    const total = width * rowCount;
+    this.roomByTile = new Int16Array(total).fill(-1);
+    this.roomCount = 0;
+    const stack = [];
+    for (let i = 0; i < total; i++) {
+      if (this.roomByTile[i] !== -1 || (kind[i] !== FLOOR && kind[i] !== PILLAR))
+        continue;
+      const room = this.roomCount++;
+      this.roomByTile[i] = room;
+      stack.push(i);
+      while (stack.length) {
+        const idx = stack.pop();
+        const x = idx % width;
+        const y = (idx - x) / width;
+        for (let d = 0; d < 4; d++) {
+          const nx = x + DX[d];
+          const ny = y + DY[d];
+          if (!this.inBounds(nx, ny))
+            continue;
+          const j = ny * width + nx;
+          if (this.roomByTile[j] !== -1)
+            continue;
+          if (diag[j] > 0) {
+            if (!this.hasCardinalFace(j, d ^ 1))
+              this.roomByTile[j] = room;
+          } else if ((kind[j] === FLOOR || kind[j] === PILLAR) && secretByTile[j] === secretByTile[idx]) {
+            this.roomByTile[j] = room;
+            stack.push(j);
+          }
+        }
+      }
+    }
   }
 
   secretAt(x, y) {

@@ -1,6 +1,12 @@
 import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
-import { LIGHT_GLSL, SOLID_ALPHA } from './quads.js';
+import { LIGHT_GLSL } from './quads.js';
 import { mulberry32 } from './rng.js';
+import floorRustShader from './shaders/floor-rust.shadergun.json' with { type: 'json' };
+import slimeShader from './shaders/slime.shadergun.json' with { type: 'json' };
+import teleporterShader from './shaders/teleporter.shadergun.json' with { type: 'json' };
+import crateShader from './shaders/crate.shadergun.json' with { type: 'json' };
+import marsDirtShader from './shaders/mars-dirt.shadergun.json' with { type: 'json' };
+import marsRockShader from './shaders/mars-rock.shadergun.json' with { type: 'json' };
 
 export { LIGHT_GLSL };
 
@@ -415,95 +421,9 @@ float noise(vec2 p) {
 }
 `;
 
-export const FLOOR_VERTEX = `
-attribute vec3 aVertexPosition;
-attribute vec2 aTextureCoord;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uProjectionMatrix;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec2 vWorld;
-varying vec3 vWorldPos;
+export const FLOOR_VERTEX = floorRustShader.vertex;
 
-void main(void) {
-  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
-  vec4 v = uViewMatrix * world;
-  vDepth = -v.z;
-  vTextureCoord = aTextureCoord;
-  vWorld = world.xz;
-  vWorldPos = world.xyz;
-  vec4 clip = uProjectionMatrix * v;
-  clip.z -= 0.00001 * clip.w;
-  gl_Position = clip;
-}
-`;
-
-export const FLOOR_FRAGMENT = `
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec2 vWorld;
-varying vec3 vWorldPos;
-
-${RUST_GLSL}
-${LIGHT_GLSL}
-void main(void) {
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
-    return;
-  }
-  vec3 steel = texture2D(uSampler, vTextureCoord).rgb;
-  vec3 color = steel;
-  // the lights and the hazard stripes stay as they are
-  float lit = smoothstep(0.06, 0.2, steel.b - steel.r);
-  float amount = 0.0;
-  if (lit < 0.95) {
-    // many small patches, a third of a tile to a tile across, scattered over the floor; a slow drift makes some stretches
-    // of deck dirtier than others without ever making one big patch
-    float spots = noise(vWorld / 44.0 + 13.0) * 0.6 + noise(vWorld / 18.0 + 5.0) * 0.4;
-    if (spots > 0.48) {
-      float drift = noise(vWorld / 360.0 + 90.0) - 0.5;
-      float area = smoothstep(0.63, 0.74, spots - drift * 0.1);
-      // it gathers along the seams of the plates, where water sat
-      vec2 seam = abs(fract(vWorld / 32.0) - 0.5);
-      float nearSeam = 1.0 - smoothstep(0.34, 0.5, max(seam.x, seam.y));
-      area = clamp(area + nearSeam * 0.3 * smoothstep(0.54, 0.64, spots), 0.0, 1.0);
-      // the fine grain: a pixel of rust per texel up close, fading to nothing far away
-      float near = 1.0 - smoothstep(220.0, 620.0, vDepth);
-      amount = area * 0.8;
-      if (near > 0.01 && area > 0.25) {
-        vec2 texel = floor(vWorld);
-        float grain = noise(texel / 3.0) * 0.6 + noise(texel / 1.3 + 40.0) * 0.4;
-        amount = area * mix(0.8, 0.3 + grain * 0.9, near);
-      }
-      amount *= 1.0 - lit;
-    }
-  }
-
-  if (amount > 0.3) {
-    vec3 paint = (amount > 0.9 ? RUST_BRIGHT : (amount > 0.6 ? RUST : RUST_DARK)) * 0.62;
-    // the relief of the plate shows through the rust
-    color = clamp(paint + (steel - STEEL) * 0.9, 0.0, 1.0);
-  }
-  color *= uMaterialDiffuse * surfaceLight(vWorldPos, lit);
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA});
-}
-`;
+export const FLOOR_FRAGMENT = floorRustShader.fragment;
 
 
 /** Smooth random 0..1 that repeats seamlessly across `period` pixels in both X and Y. */
@@ -561,56 +481,7 @@ export function slimeAtlas() {
   return { name: 'slime', data, width, height, cell: TILE_PIXELS, frames: 1 };
 }
 
-export const SLIME_FRAGMENT = `
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform float uTime;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec2 vWorld;
-varying vec3 vWorldPos;
-
-${RUST_GLSL}
-${LIGHT_GLSL}
-void main(void) {
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
-    return;
-  }
-  vec2 uv = vWorld / 64.0;
-  vec2 driftA = vec2(
-    sin(vWorld.y * 0.08 + uTime * 0.75) * 0.035 + uTime * 0.012,
-    cos(vWorld.x * 0.08 - uTime * 0.6) * 0.035 + uTime * 0.008
-  );
-  vec2 driftB = vec2(
-    cos((vWorld.x + vWorld.y) * 0.055 - uTime * 0.52) * 0.03 - uTime * 0.009,
-    sin((vWorld.x - vWorld.y) * 0.055 + uTime * 0.68) * 0.03 + uTime * 0.011
-  );
-  vec3 baseA = texture2D(uSampler, uv + driftA).rgb;
-  vec3 baseB = texture2D(uSampler, uv * 0.75 + vec2(0.37, 0.61) + driftB).rgb;
-  vec3 base = mix(baseA, baseB, 0.45);
-  float churn = noise(vWorld / 16.0 + vec2(uTime * 0.22, -uTime * 0.16)) * 0.6
-              + noise(vWorld / 7.0 - vec2(uTime * 0.35, uTime * 0.28)) * 0.4;
-  float bubble = smoothstep(0.74, 0.88, churn);
-  float pulse = 0.92 + 0.08 * sin(uTime * 1.2 + vWorld.x * 0.05 + vWorld.y * 0.05);
-  vec3 glow = mix(base * pulse, vec3(0.58, 1.0, 0.28), bubble * 0.78);
-  vec3 color = glow * uMaterialDiffuse * max(vec3(0.68, 0.92, 0.68), surfaceLight(vWorldPos, 0.75));
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA});
-}
-`;
+export const SLIME_FRAGMENT = slimeShader.fragment;
 
 
 /**
@@ -881,51 +752,7 @@ export function teleporterMachineMesh(center = new Vec3(0, 0, 0), size = new Vec
   return { vertices, uvs };
 }
 
-export const TELEPORTER_FRAGMENT = `
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform float uTime;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec2 vWorld;
-varying vec3 vWorldPos;
-
-${RUST_GLSL}
-${LIGHT_GLSL}
-void main(void) {
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
-    return;
-  }
-  vec2 centered = vTextureCoord - vec2(0.5);
-  float dist = length(centered);
-  vec3 tex = texture2D(uSampler, vTextureCoord).rgb;
-  float pulse = 0.82 + 0.18 * sin(uTime * 5.6);
-  float ringWave = 0.5 + 0.5 * sin(dist * 38.0 - uTime * 7.2);
-  float elevWave = 0.5 + 0.5 * sin(vWorldPos.y * 0.35 - uTime * 6.0);
-  float inside = 1.0 - smoothstep(0.32, 0.42, dist);
-  float techGlow = smoothstep(0.34, 0.72, max(tex.g, tex.b));
-  vec3 cyanBeam = vec3(0.18, 0.88, 1.0);
-  vec3 emeraldCore = vec3(0.24, 0.98, 0.78);
-  vec3 plasma = mix(cyanBeam, emeraldCore, ringWave * 0.55 + smoothstep(0.16, 0.0, dist) * 0.45);
-  vec3 lit = tex * (0.92 + 0.38 * pulse * techGlow) + plasma * (0.34 * inside * ringWave + 0.32 * techGlow * pulse * (0.7 + 0.3 * elevWave));
-  vec3 color = lit * uMaterialDiffuse * max(vec3(0.78, 0.9, 0.96), surfaceLight(vWorldPos, max(inside, techGlow) * 0.88));
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA});
-}
-`;
+export const TELEPORTER_FRAGMENT = teleporterShader.fragment;
 
 
 export const CRATE_CELL = TILE_PIXELS;
@@ -1206,45 +1033,7 @@ export function crateMesh(center = new Vec3(0, 0, 0), size = new Vec2(64, 26)) {
   return { vertices, uvs };
 }
 
-export const CRATE_FRAGMENT = `
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform float uTime;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec2 vWorld;
-varying vec3 vWorldPos;
-
-${RUST_GLSL}
-${LIGHT_GLSL}
-void main(void) {
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
-    return;
-  }
-  vec3 tex = texture2D(uSampler, vTextureCoord).rgb;
-  float pulse = 0.86 + 0.14 * sin(uTime * 3.8 + (vWorldPos.x + vWorldPos.z) * 0.04);
-  float cyanGlow = smoothstep(0.42, 0.78, min(tex.g, tex.b) - tex.r * 0.35);
-  float amberGlow = smoothstep(0.45, 0.78, min(tex.r, tex.g) - tex.b * 0.45);
-  float emissive = max(cyanGlow, amberGlow * 0.75);
-  vec3 lit = tex * (0.94 + 0.28 * pulse * emissive) + vec3(0.08, 0.32, 0.38) * (cyanGlow * pulse * 0.35);
-  vec3 color = lit * uMaterialDiffuse * max(vec3(0.76, 0.86, 0.92), surfaceLight(vWorldPos, emissive * 0.82));
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA});
-}
-`;
+export const CRATE_FRAGMENT = crateShader.fragment;
 
 // ---- Martian surface dirt & boulders (E1M5 Red Planet) -------------------------------------------------------------
 
@@ -1556,89 +1345,7 @@ export function marsDirtAtlas() {
   return { name: 'marsDirt', data, width, height, cell: TILE_PIXELS, frames: FLOOR_CELL_COUNT };
 }
 
-export const MARS_DIRT_FRAGMENT = `
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec2 vWorld;
-varying vec3 vWorldPos;
-
-${RUST_GLSL}
-${LIGHT_GLSL}
-
-vec3 sampleDirtCell(vec2 p, float seed) {
-  vec2 tileId = floor(p / 64.0);
-  float cell = floor(hash(tileId + seed) * 8.0);
-  vec2 t = floor(mod(p, 64.0)) + 0.5;
-  return texture2D(uSampler, vec2((cell * 64.0 + t.x) / 512.0, t.y / 64.0)).rgb;
-}
-
-void main(void) {
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
-    return;
-  }
-  // Domain-warp world coordinates and blend 3 incommensurate rotated/scaled layers across all 8 periodic dirt cells
-  // (mod(vWorld, 64.0) base with shared periodic cell borders so tile seams and repetition never appear)
-  vec2 warp = vec2(
-    noise(vWorld / 58.0 + vec2(3.7, 9.2)) - 0.5,
-    noise(vWorld / 52.0 + vec2(19.4, 7.1)) - 0.5
-  ) * 24.0;
-  vec2 pA = vWorld + warp;
-  vec3 dirt = sampleDirtCell(pA, 0.0);
-  if (vDepth < 680.0) {
-    vec2 pB = vec2(vWorld.x * 0.58 - vWorld.y * 0.51, vWorld.x * 0.51 + vWorld.y * 0.58) + warp * 0.7 + vec2(31.4, 73.8);
-    vec3 dirtB = sampleDirtCell(pB, 17.3);
-    float blendAB = smoothstep(0.24, 0.76, noise(vWorld / 74.0 + 5.0));
-    dirt = mix(dirt, dirtB, blendAB);
-  }
-  float near = 1.0 - smoothstep(180.0, 520.0, vDepth);
-  float grit = 0.0;
-  if (near > 0.01) {
-    vec2 pC = vec2(-vWorld.x * 0.43 - vWorld.y * 0.67, vWorld.x * 0.67 - vWorld.y * 0.43) - warp * 0.5 + vec2(89.1, 17.6);
-    vec3 dirtC = sampleDirtCell(pC, 43.9);
-    float blendC = smoothstep(0.32, 0.78, noise(vWorld / 118.0 + 29.0));
-    dirt = mix(dirt, dirtC, blendC * 0.58);
-    vec2 texel = floor(vWorld);
-    grit = ((noise(texel / 3.9) - 0.5) * 0.6 + (noise(texel / 1.8 + 17.0) - 0.5) * 0.4) * 0.14 * near;
-  }
-  dirt = mix(vec3(0.50, 0.21, 0.10), dirt, 0.35 + 0.65 * near);
-
-  // Multi-scale domain-warped geological zones, twisted erosion ridges, and gravel scree (no periodic sine waves)
-  float macro = noise(vWorld / 195.0 + 19.0) * 0.55 + noise(pA / 78.0 + 7.0) * 0.45;
-  float ridge = 0.5;
-  float scree = 0.5;
-  if (vDepth < 680.0) {
-    ridge = 1.0 - abs(noise((pA + warp * 0.8) / 38.0 + 41.0) * 2.0 - 1.0);
-    scree = noise((vWorld - warp) / 21.0 + 63.0);
-  }
-  vec3 ochre = vec3(0.78, 0.39, 0.17);
-  vec3 rustClay = vec3(0.62, 0.24, 0.11);
-  vec3 basalt = vec3(0.22, 0.11, 0.07);
-  vec3 color = dirt;
-  color = mix(color, ochre, smoothstep(0.54, 0.84, macro * 0.6 + ridge * 0.4) * 0.32);
-  color = mix(color, rustClay, smoothstep(0.55, 0.82, scree * 0.65 + (1.0 - ridge) * 0.35) * 0.24);
-  color = mix(color, basalt, smoothstep(0.58, 0.85, (1.0 - macro) * 0.65 + (1.0 - scree) * 0.35) * 0.36);
-  color = clamp(color + grit, 0.0, 1.0);
-  float ember = smoothstep(0.32, 0.58, dirt.r - dirt.g * 0.65) * smoothstep(0.45, 0.75, dirt.g);
-  color *= uMaterialDiffuse * surfaceLight(vWorldPos, ember * 0.45);
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA});
-}
-`;
+export const MARS_DIRT_FRAGMENT = marsDirtShader.fragment;
 
 export const MARS_BOULDER_CELLS = {
   crag: 0,
@@ -1697,103 +1404,7 @@ function drawBoulderCell(t, rnd, variant) {
   t.set(17, 16, BOULDER_HIGHLIGHT, 0.9);
 }
 
-export const MARS_ROCK_FRAGMENT = `
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying float vHeight;
-varying vec2 vTextureCoord;
-varying vec2 vSurface;
-varying vec3 vWorldPos;
-
-${RUST_GLSL}
-${LIGHT_GLSL}
-
-vec3 sampleRockCell(vec2 p, float seed) {
-  vec2 tileId = floor(p / 64.0);
-  float r = floor(hash(tileId + seed) * 7.0);
-  float cell = r >= 5.0 ? r + 1.0 : r;
-  vec2 t = floor(mod(p, 64.0)) + 0.5;
-  return texture2D(uSampler, vec2((cell * 64.0 + t.x) / 512.0, t.y / 64.0)).rgb;
-}
-
-void main(void) {
-  if (vHeight < -0.21)
-    discard;
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
-    return;
-  }
-  // Preserve the glowing green exit chevrons on exit monolith walls without evaluating rock noise
-  vec3 uvTex = texture2D(uSampler, vTextureCoord).rgb;
-  vec3 rock;
-  vec3 color;
-  if (uvTex.g > uvTex.r) {
-    rock = uvTex;
-    color = uvTex;
-  } else {
-    // Domain-warp surface coordinates and blend 3 incommensurate rotated/scaled layers across all 7 periodic rock cells
-    // so walls share the floor's color & organic variety without any repeating 64-unit grid or tile seams
-    vec2 warp = vec2(
-      noise(vSurface / 58.0 + vec2(3.7, 9.2)) - 0.5,
-      noise(vSurface / 52.0 + vec2(19.4, 7.1)) - 0.5
-    ) * 24.0;
-    vec2 pA = vSurface + warp;
-    rock = sampleRockCell(pA, 0.0);
-    if (vDepth < 680.0) {
-      vec2 pB = vec2(vSurface.x * 0.58 - vSurface.y * 0.51, vSurface.x * 0.51 + vSurface.y * 0.58) + warp * 0.7 + vec2(31.4, 73.8);
-      vec3 rockB = sampleRockCell(pB, 17.3);
-      float blendAB = smoothstep(0.24, 0.76, noise(vSurface / 74.0 + 5.0));
-      rock = mix(rock, rockB, blendAB);
-    }
-    float near = 1.0 - smoothstep(180.0, 520.0, vDepth);
-    float grit = 0.0;
-    if (near > 0.01) {
-      vec2 pC = vec2(-vSurface.x * 0.43 - vSurface.y * 0.67, vSurface.x * 0.67 - vSurface.y * 0.43) - warp * 0.5 + vec2(89.1, 17.6);
-      vec3 rockC = sampleRockCell(pC, 43.9);
-      float blendC = smoothstep(0.32, 0.78, noise(vSurface / 118.0 + 29.0));
-      rock = mix(rock, rockC, blendC * 0.58);
-      vec2 texel = floor(vSurface);
-      grit = ((noise(texel / 3.9) - 0.5) * 0.6 + (noise(texel / 1.8 + 17.0) - 0.5) * 0.4) * 0.14 * near;
-    }
-    rock = mix(vec3(0.50, 0.21, 0.10), rock, 0.35 + 0.65 * near);
-
-    // Same multi-scale domain-warped geological zones, twisted erosion ridges, and gravel scree as MARS_DIRT_FRAGMENT
-    float macro = noise(vSurface / 195.0 + 19.0) * 0.55 + noise(pA / 78.0 + 7.0) * 0.45;
-    float ridge = 0.5;
-    float scree = 0.5;
-    if (vDepth < 680.0) {
-      ridge = 1.0 - abs(noise((pA + warp * 0.8) / 38.0 + 41.0) * 2.0 - 1.0);
-      scree = noise((vSurface - warp) / 21.0 + 63.0);
-    }
-    vec3 ochre = vec3(0.78, 0.39, 0.17);
-    vec3 rustClay = vec3(0.62, 0.24, 0.11);
-    vec3 basalt = vec3(0.22, 0.11, 0.07);
-    color = rock;
-    color = mix(color, ochre, smoothstep(0.54, 0.84, macro * 0.6 + ridge * 0.4) * 0.32);
-    color = mix(color, rustClay, smoothstep(0.55, 0.82, scree * 0.65 + (1.0 - ridge) * 0.35) * 0.24);
-    color = mix(color, basalt, smoothstep(0.58, 0.85, (1.0 - macro) * 0.65 + (1.0 - scree) * 0.35) * 0.36);
-    color = clamp(color + grit, 0.0, 1.0);
-  }
-  float ember = smoothstep(0.32, 0.58, rock.r - rock.g * 0.65) * smoothstep(0.45, 0.75, rock.g);
-  float exitGlow = smoothstep(0.06, 0.2, rock.g - rock.r);
-  color *= uMaterialDiffuse * surfaceLight(vWorldPos, max(ember * 0.45, exitGlow * 0.85));
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA});
-}
-`;
+export const MARS_ROCK_FRAGMENT = marsRockShader.fragment;
 
 /**
  * 256x64 4-cell procedural Martian rock boulder atlas (`crag`, `strata`, `scoured`, `cap`)

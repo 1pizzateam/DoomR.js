@@ -1,0 +1,43 @@
+{
+  "kind": "shadergun.project",
+  "version": 3,
+  "exportedAt": "2026-11-02T16:48:45.852Z",
+  "name": "hud-overlay",
+  "title": "HUD Untextured Quad Overlay",
+  "category": "Post-Processing & HUD",
+  "selectedLayer": 0,
+  "layers": [
+    {
+      "shader": "hud-overlay",
+      "vertex": "\nattribute vec2 aVertexPosition;\nattribute vec3 aVertexNormal;\nuniform vec2 uSize;\nvarying vec3 vColor;\n\nvoid main(void) {\n  // positions are in CSS pixels with the origin at the top left; the normal slot carries the colour\n  vColor = aVertexNormal;\n  gl_Position = vec4(aVertexPosition.x / uSize.x * 2.0 - 1.0, 1.0 - aVertexPosition.y / uSize.y * 2.0, 0.0, 1.0);\n}\n",
+      "fragment": "\nprecision mediump float;\nvarying vec3 vColor;\n\nvoid main(void) {\n  gl_FragColor = vec4(vColor, 1.0);\n}\n",
+      "camera": null,
+      "uniformTracks": {},
+      "mesh": "quad",
+      "texture": "none",
+      "visible": true,
+      "opacity": 1,
+      "blend": "normal",
+      "scale": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "spin": false,
+      "poseTracks": {}
+    }
+  ],
+  "shader": "hud-overlay",
+  "vertex": "\nattribute vec2 aVertexPosition;\nattribute vec3 aVertexNormal;\nuniform vec2 uSize;\nvarying vec3 vColor;\n\nvoid main(void) {\n  // positions are in CSS pixels with the origin at the top left; the normal slot carries the colour\n  vColor = aVertexNormal;\n  gl_Position = vec4(aVertexPosition.x / uSize.x * 2.0 - 1.0, 1.0 - aVertexPosition.y / uSize.y * 2.0, 0.0, 1.0);\n}\n",
+  "fragment": "\nprecision mediump float;\nvarying vec3 vColor;\n\nvoid main(void) {\n  gl_FragColor = vec4(vColor, 1.0);\n}\n",
+  "camera": null,
+  "uniformTracks": {},
+  "mesh": "quad",
+  "texture": "none",
+  "visible": true,
+  "opacity": 1,
+  "blend": "normal",
+  "scale": 1,
+  "offsetX": 0,
+  "offsetY": 0,
+  "spin": false,
+  "poseTracks": {}
+}

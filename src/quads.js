@@ -1,4 +1,7 @@
 import { Material, Mesh, QuadBatch as RoostrQuadBatch, Vec2, Vec3 } from '@1pizzateam/roostr';
+import texturedQuadShader from './shaders/textured-quad.shadergun.json' with { type: 'json' };
+import solidLitShader from './shaders/solid-lit.shadergun.json' with { type: 'json' };
+import particleLitShader from './shaders/particle-lit.shadergun.json' with { type: 'json' };
 
 // A textured quad batch is drawn with this: the texture is multiplied by the material colour, pixels with no alpha are
 // dropped, and the quads are pulled a little towards the camera so they win depth ties against the faces they lie on.
@@ -55,137 +58,16 @@ vec3 surfaceLight(vec3 worldPos, float emissive) {
 }
 `;
 
-export const TEXTURED_VERTEX = `
-attribute vec3 aVertexPosition;
-attribute vec2 aTextureCoord;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uProjectionMatrix;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec3 vWorldPos;
+export const TEXTURED_VERTEX = texturedQuadShader.vertex;
 
-void main(void) {
-  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
-  vec4 v = uViewMatrix * world;
-  vDepth = -v.z;
-  v.z += 1.2 + vDepth * 0.01;
-  vTextureCoord = aTextureCoord;
-  vWorldPos = world.xyz;
-  gl_Position = uProjectionMatrix * v;
-}
-`;
-
-export const TEXTURED_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-
-void main(void) {
-  vec4 texel = texture2D(uSampler, vTextureCoord);
-  if (texel.a < 0.5)
-    discard;
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA.toFixed(1)});
-    return;
-  }
-  vec3 color = texel.rgb * uMaterialDiffuse;
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA.toFixed(1)});
-}
-`;
+export const TEXTURED_FRAGMENT = texturedQuadShader.fragment;
 
 /** Every textured surface in the world is dynamically lit and solid to the neon pass. */
-export const SOLID_TEXTURED_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec3 vWorldPos;
+export const SOLID_TEXTURED_FRAGMENT = solidLitShader.fragment;
 
-${LIGHT_GLSL}
-void main(void) {
-  vec4 texel = texture2D(uSampler, vTextureCoord);
-  if (texel.a < 0.5)
-    discard;
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA.toFixed(1)});
-    return;
-  }
-  vec3 color = texel.rgb * uMaterialDiffuse * surfaceLight(vWorldPos, 0.0);
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA.toFixed(1)});
-}
-`;
+export const PARTICLE_VERTEX = particleLitShader.vertex;
 
-export const PARTICLE_VERTEX = `
-attribute vec3 aVertexPosition;
-attribute vec2 aTextureCoord;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uProjectionMatrix;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec3 vWorldPos;
-
-void main(void) {
-  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
-  vec4 v = uViewMatrix * world;
-  vDepth = -v.z;
-  v.z += min(vDepth * 0.45, 16.0 + vDepth * 0.02);
-  vTextureCoord = aTextureCoord;
-  vWorldPos = world.xyz;
-  gl_Position = uProjectionMatrix * v;
-}
-`;
-
-export const PARTICLE_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec3 vWorldPos;
-
-${LIGHT_GLSL}
-void main(void) {
-  vec4 texel = texture2D(uSampler, vTextureCoord);
-  if (texel.a < 0.5)
-    discard;
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA.toFixed(1)});
-    return;
-  }
-  vec3 lit = mix(vec3(1.12), surfaceLight(vWorldPos, 0.85), 0.35);
-  vec3 color = texel.rgb * uMaterialDiffuse * lit;
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA.toFixed(1)});
-}
-`;
+export const PARTICLE_FRAGMENT = particleLitShader.fragment;
 
 /**
  * Many flat textured quads in one RoostR mesh, one draw call, refilled whenever they change. Decals on walls and floors

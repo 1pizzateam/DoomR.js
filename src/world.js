@@ -24,6 +24,15 @@ import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas
 import { WEAPONS } from './weapon.js';
 import { armorAtlas, armorMesh } from './armor.js';
 import { berserkAtlas, berserkMesh, nightvisionAtlas, nightvisionMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from './powerups.js';
+import lineFogShader from './shaders/line-fog.shadergun.json' with { type: 'json' };
+import spriteGoreShader from './shaders/sprite-gore.shadergun.json' with { type: 'json' };
+import monster3dShader from './shaders/monster-3d.shadergun.json' with { type: 'json' };
+import viewmodel3dShader from './shaders/viewmodel-3d.shadergun.json' with { type: 'json' };
+import explosion3dShader from './shaders/explosion-3d.shadergun.json' with { type: 'json' };
+import sparkParticleShader from './shaders/spark-particle.shadergun.json' with { type: 'json' };
+import postCoreNvgShader from './shaders/post-core-nvg.shadergun.json' with { type: 'json' };
+import postDownsampleShader from './shaders/post-downsample.shadergun.json' with { type: 'json' };
+import postGlowShader from './shaders/post-glow.shadergun.json' with { type: 'json' };
 
 // Blue is the world, green is what helps you, orange is what hurts, red is blood.
 const BG = [7 / 255, 9 / 255, 15 / 255];
@@ -34,8 +43,6 @@ const COLORS = {
   orange: new Vec3(0xff / 255, 0x9f / 255, 0x43 / 255),
   red: new Vec3(0xe8 / 255, 0x10 / 255, 0x2c / 255),
 };
-const vec3Glsl = (v) => `vec3(${v.x.toFixed(5)}, ${v.y.toFixed(5)}, ${v.z.toFixed(5)})`;
-const FULL_GLSL = COLORS.orange.getDistance(BG_VEC).toFixed(5);
 
 // Rooms are closed by a ceiling one wall high (a wall texture is one tile high): the walls go right up to it, so nothing
 // in another room shows above a wall. Tall walls are drawn no higher than it, and the stretch above a low wall is wall.
@@ -45,514 +52,40 @@ const NEAR = 6;
 const FAR = 2400;
 const HORIZONTAL_FOV = 82;
 
-export const LINE_VERTEX = `
-attribute vec3 aVertexPosition;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uProjectionMatrix;
-varying float vDepth;
+export const LINE_VERTEX = lineFogShader.vertex;
 
-void main(void) {
-  vec4 v = uViewMatrix * uModelMatrix * vec4(aVertexPosition, 1.0);
-  vDepth = -v.z;
-  gl_Position = uProjectionMatrix * v;
-}
-`;
-
-export const LINE_FRAGMENT = `
-precision mediump float;
-uniform vec3 uMaterialDiffuse;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-
-void main(void) {
-  vec3 color = uMaterialDiffuse;
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA});
-}
-`;
+export const LINE_FRAGMENT = lineFogShader.fragment;
 
 // The colours of a sprite: RoostR's Sprite places it and hands over `vTextureCoord` and `vDepth`.
-export const SPRITE_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform float uGlare;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
+export const SPRITE_FRAGMENT = spriteGoreShader.fragment;
 
-const vec3 BACKGROUND = ${vec3Glsl(BG_VEC)};
-const vec3 BLOOD = ${vec3Glsl(COLORS.red)};
-const float FULL = ${FULL_GLSL};
+export const MONSTER_VERTEX = monster3dShader.vertex;
 
-void main(void) {
-  vec4 texel = texture2D(uSampler, vTextureCoord);
-  if (texel.a < 0.5)
-    discard;
-  float strength = min(1.0, length(uMaterialDiffuse - BACKGROUND) / FULL);
-  vec3 base;
-  if (texel.g > 0.99) {
-    // Glowing eyes: eerie spectral ectoplasm when lurking, flaring into blazing hellfire crimson when enraged
-    vec3 spectralEye = vec3(0.42, 0.96, 0.78);
-    vec3 rageEye = vec3(1.0, 0.22, 0.34);
-    float rage = clamp((uGlare - 0.3) / 0.7, 0.0, 1.0);
-    base = mix(spectralEye, rageEye, rage) * (0.65 + 0.55 * uGlare);
-  } else if (texel.b > 0.99) {
-    // Visceral gore when blown apart: dark clotted crimson to deep arterial red
-    vec3 clot = vec3(0.18, 0.01, 0.02);
-    vec3 arterial = mix(vec3(0.46, 0.02, 0.04), BLOOD, texel.r);
-    base = mix(clot, arterial, clamp((texel.r - 0.35) * 1.35, 0.0, 1.0));
-  } else {
-    base = texel.rgb;
-  }
-  vec3 color = mix(BACKGROUND, base, strength);
-  if (uHasFog == 1) {
-    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fade);
-  }
-  gl_FragColor = vec4(color, ${SOLID_ALPHA});
-}
-`;
+export const MONSTER_FRAGMENT = monster3dShader.fragment;
 
-const MONSTER_VERTEX = `
-attribute vec3 aVertexPosition;
-attribute vec3 aVertexNormal;
-attribute vec2 aTextureCoord;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uProjectionMatrix;
-uniform mat3 uNormalMatrix;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec3 vWorldPos;
-varying vec3 vNormal;
+export const VIEWMODEL_VERTEX = viewmodel3dShader.vertex;
 
-void main(void) {
-  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
-  vec4 v = uViewMatrix * world;
-  vDepth = -v.z;
-  vTextureCoord = aTextureCoord;
-  vWorldPos = world.xyz;
-  vNormal = normalize(uNormalMatrix * aVertexNormal);
-  gl_Position = uProjectionMatrix * v;
-}
-`;
+export const VIEWMODEL_FRAGMENT = viewmodel3dShader.fragment;
 
-export const MONSTER_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform float uGlare;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec3 vWorldPos;
-varying vec3 vNormal;
+export const EXPLOSION_3D_VERTEX = explosion3dShader.vertex;
 
-const vec3 BACKGROUND = ${vec3Glsl(BG_VEC)};
-const vec3 BLOOD = ${vec3Glsl(COLORS.red)};
-const float FULL = ${FULL_GLSL};
+export const EXPLOSION_3D_FRAGMENT = explosion3dShader.fragment;
 
-${LIGHT_GLSL}
-void main(void) {
-  vec4 texel = texture2D(uSampler, vTextureCoord);
-  if (texel.a < 0.5)
-    discard;
-  if (uHasFog == 1 && vDepth >= uFogFar) {
-    gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA.toFixed(1)});
-    return;
-  }
-  float strength = length(uMaterialDiffuse - BACKGROUND) / FULL;
-  vec3 base;
-  float emissive = 0.0;
-  if (texel.g > 0.99) {
-    vec3 spectralEye = vec3(0.42, 0.96, 0.78);
-    vec3 rageEye = vec3(1.0, 0.22, 0.34);
-    float rage = clamp((uGlare - 0.3) / 0.7, 0.0, 1.0);
-    base = mix(spectralEye, rageEye, rage) * (0.72 + 0.62 * uGlare);
-    emissive = 1.0;
-  } else if (texel.b > 0.99) {
-    vec3 clot = vec3(0.18, 0.01, 0.02);
-    vec3 arterial = mix(vec3(0.46, 0.02, 0.04), BLOOD, texel.r);
-    base = mix(clot, arterial, clamp((texel.r - 0.35) * 1.35, 0.0, 1.0));
-  } else {
-    base = texel.rgb;
-  }
-  vec3 n = normalize(vNormal);
-  float relief = 0.74 + 0.22 * n.y + 0.14 * abs(n.x) + 0.08 * max(0.0, n.z);
-  vec3 sceneLit = mix(vec3(0.76), surfaceLight(vWorldPos, emissive), 0.52) * relief;
-  vec3 shaded = base * mix(sceneLit, vec3(1.15), emissive) * clamp(strength, 0.05, 1.6);
-  vec3 color = mix(BACKGROUND, shaded, min(1.0, strength));
-  float fogFade = 0.0;
-  if (uHasFog == 1) {
-    fogFade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fogFade);
-  }
-  gl_FragColor = vec4(color, emissive * (1.0 - fogFade) > 0.5 ? 1.0 : ${SOLID_ALPHA.toFixed(1)});
-}
-`;
+export const SPARK_PARTICLE_FRAGMENT = sparkParticleShader.fragment;
 
-const VIEWMODEL_VERTEX = `
-attribute vec3 aVertexPosition;
-attribute vec3 aVertexNormal;
-attribute vec2 aTextureCoord;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uProjectionMatrix;
-uniform mat3 uNormalMatrix;
-varying vec2 vTextureCoord;
-varying vec3 vWorldPos;
-varying vec3 vNormal;
-
-void main(void) {
-  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);
-  vec4 v = uViewMatrix * world;
-  vTextureCoord = aTextureCoord;
-  vWorldPos = world.xyz;
-  vNormal = normalize(uNormalMatrix * aVertexNormal);
-  vec4 clip = uProjectionMatrix * v;
-  clip.z = mix(-clip.w * 0.96, clip.z, 0.08);
-  gl_Position = clip;
-}
-`;
-
-const VIEWMODEL_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-varying vec2 vTextureCoord;
-varying vec3 vWorldPos;
-varying vec3 vNormal;
-
-${LIGHT_GLSL}
-void main(void) {
-  vec4 texel = texture2D(uSampler, vTextureCoord);
-  if (texel.a < 0.5)
-    discard;
-  vec3 n = normalize(vNormal);
-  float relief = 0.72 + 0.24 * n.y + 0.14 * abs(n.x) + 0.1 * max(0.0, -n.z);
-  vec3 sceneLit = mix(vec3(0.84), surfaceLight(vWorldPos, 0.0), 0.48) * relief;
-  vec3 color = texel.rgb * uMaterialDiffuse * sceneLit;
-  gl_FragColor = vec4(color, ${SOLID_ALPHA.toFixed(1)});
-}
-`;
-
-export const EXPLOSION_3D_VERTEX = `
-precision mediump float;
-attribute vec3 aVertexPosition;
-attribute vec3 aVertexNormal;
-attribute vec2 aTextureCoord;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uProjectionMatrix;
-uniform mat3 uNormalMatrix;
-uniform float uProgress;
-uniform float uPhase;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec3 vNormal;
-varying vec3 vViewNormal;
-varying vec3 vViewDir;
-varying vec3 vLocalPos;
-varying vec3 vBillowPos;
-
-float wave3(vec3 p) {
-  return sin(p.x) * cos(p.y) + sin(p.y * 1.3 + p.z) * cos(p.z * 0.9 - p.x);
-}
-
-void main(void) {
-  vec3 nObj = normalize(aVertexNormal);
-  vec3 flowPos = aVertexPosition * 2.8 - vec3(0.0, uProgress * 4.6, 0.0) + vec3(uPhase, uPhase * 1.37, -uPhase * 0.83);
-  float turb = 0.55 * wave3(flowPos) + 0.28 * wave3(flowPos * 2.15 + vec3(1.9));
-  float dispAmp = (0.07 + 0.10 * uProgress) * clamp(aVertexPosition.y + 0.65, 0.15, 1.2);
-  vec3 displaced = aVertexPosition + nObj * (turb * dispAmp);
-
-  vec4 world = uModelMatrix * vec4(displaced, 1.0);
-  vec4 v = uViewMatrix * world;
-  vDepth = -v.z;
-  v.z += 1.2 + vDepth * 0.01;
-  vTextureCoord = vec2(aTextureCoord.x, clamp(aTextureCoord.y + (uProgress - 0.5) * 0.08, 0.01, 0.99));
-  vLocalPos = displaced;
-  vBillowPos = displaced * 3.2 - vec3(0.0, uProgress * 4.2, 0.0) + vec3(uPhase, -uPhase * 0.7, uPhase * 1.3);
-  vNormal = normalize(uNormalMatrix * nObj);
-  vViewNormal = normalize((uViewMatrix * vec4(vNormal, 0.0)).xyz);
-  vViewDir = normalize(-v.xyz);
-  gl_Position = uProjectionMatrix * v;
-}
-`;
-
-export const EXPLOSION_3D_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform float uDissolve;
-uniform float uHeat;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec3 vNormal;
-varying vec3 vViewNormal;
-varying vec3 vViewDir;
-varying vec3 vLocalPos;
-varying vec3 vBillowPos;
-
-float gyroid(vec3 p) {
-  return dot(sin(p), cos(p.yzx));
-}
-
-float fbmBillow(vec3 p) {
-  float f1 = abs(gyroid(p)) * 0.52;
-  float f2 = abs(gyroid(p * 2.13 + vec3(1.7, -2.3, 0.9))) * 0.28;
-  float f3 = abs(gyroid(p * 4.41 - vec3(0.8, 3.1, -1.4))) * 0.14;
-  return clamp((f1 + f2 + f3) / 1.45, 0.0, 1.0);
-}
-
-vec3 evalBlackbody(float t) {
-  vec3 soot = vec3(0.11, 0.09, 0.10);
-  vec3 charRed = vec3(0.42, 0.07, 0.04);
-  vec3 lava = vec3(0.88, 0.18, 0.03);
-  vec3 orange = vec3(1.02, 0.48, 0.08);
-  vec3 gold = vec3(1.08, 0.82, 0.24);
-  vec3 plasma = vec3(1.16, 1.05, 0.72);
-
-  if (t < 0.20)
-    return mix(soot, charRed, clamp(t / 0.20, 0.0, 1.0));
-  if (t < 0.42)
-    return mix(charRed, lava, (t - 0.20) / 0.22);
-  if (t < 0.68)
-    return mix(lava, orange, (t - 0.42) / 0.26);
-  if (t < 0.94)
-    return mix(orange, gold, (t - 0.68) / 0.26);
-  return mix(gold, plasma, clamp((t - 0.94) / 0.38, 0.0, 1.0));
-}
-
-void main(void) {
-  vec4 texel = texture2D(uSampler, vTextureCoord);
-  if (texel.a < 0.25)
-    discard;
-
-  vec3 nWorld = normalize(vNormal);
-  vec3 nView = normalize(vViewNormal);
-  vec3 vDir = normalize(vViewDir);
-  // Two-sided facing ratio clamped strictly inside (0.02, 0.98) with NaN-free algebraic curves
-  float ndv = clamp(abs(dot(nView, vDir)), 0.02, 0.98);
-  float sqrtNdv = sqrt(ndv);
-  float invNdv = 1.0 - ndv;
-
-  // 3D volumetric cauliflower billow & magma crevice field
-  float billow = fbmBillow(vBillowPos);
-  float invBillow = clamp(1.0 - billow, 0.0, 1.0);
-  float crevice = invBillow * invBillow;
-  float texHeat = dot(texel.rgb, vec3(0.45, 0.4, 0.15));
-
-  // Organic 3D silhouette & wisp erosion: grazing edges erode first as uDissolve rises
-  float silhouetteWeight = 0.34 + 0.66 * sqrtNdv;
-  float density = (0.48 * texHeat + 0.52 * (0.35 + 0.65 * billow)) * silhouetteWeight * texel.a;
-  if (density < uDissolve)
-    discard;
-
-  // Glowing ember rim along the tearing erosion boundary
-  float dissolveEdge = 1.0 - smoothstep(0.0, 0.09, density - uDissolve);
-  float edgeEmber = dissolveEdge * clamp(uHeat * 0.85, 0.15, 0.85) * 0.38;
-
-  // Radial optical depth: center of the 3D volume is hotter than the cooling outer billow crust
-  float coreDepth = mix(0.46, 1.12, sqrtNdv);
-  float fissureGlow = crevice * (0.58 + 0.42 * texHeat);
-  float localTemp = uHeat * (0.54 * coreDepth + 0.46 * texHeat) + fissureGlow * (0.34 + 0.56 * uHeat) - (1.0 - clamp(uHeat, 0.0, 1.0)) * billow * 0.30 + edgeEmber;
-  localTemp = clamp(localTemp, 0.0, 1.32);
-
-  vec3 fireColor = evalBlackbody(localTemp);
-
-  // Volumetric smoke shading: cool outer soot domes receive warm orange-red internal bounce lighting from the blast core below
-  vec3 lightVec = vLocalPos + vec3(0.0, 0.45, 0.0);
-  vec3 coreLightDir = lightVec / max(length(lightVec), 0.001);
-  float internalBounce = clamp(dot(nWorld, -coreLightDir) * 0.5 + 0.5, 0.0, 1.0);
-  float topAmbient = 0.55 + 0.45 * clamp(nWorld.y, -0.4, 1.0);
-  float rimScatter = invNdv * invNdv * clamp(uHeat, 0.15, 1.0);
-  vec3 smokeLit = vec3(0.14, 0.12, 0.13) * topAmbient + vec3(0.78, 0.26, 0.07) * (internalBounce * clamp(uHeat * 0.8, 0.08, 0.7) + rimScatter * 0.38);
-
-  float smokeBlend = smoothstep(0.42, 0.12, localTemp);
-  vec3 color = mix(fireColor, smokeLit, smokeBlend * 0.72);
-  color *= mix(vec3(1.0), normalize(max(uMaterialDiffuse, vec3(0.2))), 0.18);
-
-  float fogFade = 0.0;
-  if (uHasFog == 1) {
-    fogFade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fogFade);
-  }
-  gl_FragColor = vec4(color, localTemp * (1.0 - fogFade) > 0.68 ? 1.0 : ${SOLID_ALPHA.toFixed(1)});
-}
-`;
-
-export const SPARK_PARTICLE_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec3 uMaterialDiffuse;
-uniform int uHasFog;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-varying float vDepth;
-varying vec2 vTextureCoord;
-varying vec3 vWorldPos;
-
-void main(void) {
-  float slot = floor(vTextureCoord.x);
-  float localU = ((vTextureCoord.x - slot) - 0.5) / 0.48;
-  float localV = (vTextureCoord.y - 0.5) / 0.48;
-  float rSq = localU * localU + localV * localV;
-  if (rSq > 1.0)
-    discard;
-  vec4 texel = texture2D(uSampler, fract(vTextureCoord * 0.25));
-  float heat = clamp((slot / 16.0) + (1.0 - rSq) * 0.28 + (texel.r - 0.5) * 0.05, 0.22, 1.45);
-  vec3 color;
-  if (heat < 0.55)
-    color = mix(vec3(0.88, 0.18, 0.04), vec3(1.22, 0.58, 0.08), (heat - 0.22) / 0.33);
-  else if (heat < 0.95)
-    color = mix(vec3(1.22, 0.58, 0.08), vec3(1.48, 1.18, 0.36), (heat - 0.55) / 0.40);
-  else
-    color = mix(vec3(1.48, 1.18, 0.36), vec3(1.75, 1.68, 1.42), clamp((heat - 0.95) / 0.50, 0.0, 1.0));
-  color *= uMaterialDiffuse;
-  float fogFade = 0.0;
-  if (uHasFog == 1) {
-    fogFade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-    color = mix(color, uFogColor, fogFade);
-  }
-  gl_FragColor = vec4(color, 1.0 - fogFade * 0.5 > 0.5 ? 1.0 : ${SOLID_ALPHA.toFixed(1)});
-}
-`;
-
-const POST_VERTEX = `
-attribute vec2 aVertexPosition;
-attribute vec2 aTextureCoord;
-varying vec2 vTextureCoord;
-
-void main(void) {
-  vTextureCoord = aTextureCoord;
-  gl_Position = vec4(aVertexPosition, 0.0, 1.0);
-}
-`;
+export const POST_VERTEX = postCoreNvgShader.vertex;
 
 // The neon look is made in three cheap passes instead of one expensive one:
 //  1. CORE (full resolution): thickens the 1px GL lines with four taps.
 //  2. DOWN (a small target): averages the scene into a much smaller texture, where blurring is nearly free.
 //  3. GLOW (full resolution, additive): adds that small texture back, smoothly upscaled by the GPU.
-const BG_GLSL = `const vec3 BG = vec3(${BG.map((v) => v.toFixed(5)).join(', ')});`;
-
-const CORE_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec2 uScreenResolution;
-uniform float uNightVision;
-uniform float uTime;
-varying vec2 vTextureCoord;
-
-${BG_GLSL}
-
-// solid surfaces (floor, walls, doors, barrels) are marked in alpha and are neither thickened nor made to glow
-bool solid(vec4 texel) {
-  return texel.a > 0.25 && texel.a < 0.75;
-}
-
-vec3 tap(vec2 offset) {
-  vec4 texel = texture2D(uSampler, vTextureCoord + offset / uScreenResolution);
-  return solid(texel) ? vec3(0.0) : max(texel.rgb - BG, 0.0);
-}
-
-vec3 applyNightVision(vec3 col) {
-  float lum = dot(col, vec3(0.32, 0.54, 0.14));
-  float boosted = clamp(pow(max(lum, 0.0), 0.62) * 1.65 + 0.06, 0.0, 1.35);
-  float scan = 0.92 + 0.08 * sin(vTextureCoord.y * uScreenResolution.y * 1.45);
-  float grain = fract(sin(dot(vTextureCoord * uScreenResolution + vec2(uTime * 37.0, uTime * 19.0), vec2(12.9898, 78.233))) * 43758.5453);
-  vec3 phosphor = vec3(0.09, 0.96, 0.36) * boosted + vec3(0.44, 1.0, 0.68) * pow(max(boosted - 0.35, 0.0), 1.8) * 0.55;
-  phosphor = (phosphor + (grain - 0.5) * 0.045) * scan;
-  float dl = length((vTextureCoord - vec2(0.32, 0.5)) * vec2(1.18, 1.42));
-  float dr = length((vTextureCoord - vec2(0.68, 0.5)) * vec2(1.18, 1.42));
-  float tubeDist = min(dl, dr);
-  float vig = 1.0 - smoothstep(0.52, 0.88, tubeDist) * 0.68;
-  return mix(col, phosphor * vig, clamp(uNightVision, 0.0, 1.0));
-}
-
-void main(void) {
-  vec4 here = texture2D(uSampler, vTextureCoord);
-  vec3 outCol;
-  if (solid(here)) {
-    outCol = here.rgb;
-  } else {
-    float s = max(uScreenResolution.y / 760.0, 1.0);
-    vec3 line = max(here.rgb - BG, 0.0);
-    line = max(line, tap(vec2(1.0, 0.0) * s) * 0.9);
-    line = max(line, tap(vec2(-1.0, 0.0) * s) * 0.9);
-    line = max(line, tap(vec2(0.0, 1.0) * s) * 0.9);
-    line = max(line, tap(vec2(0.0, -1.0) * s) * 0.9);
-    outCol = BG + line;
-  }
-  if (uNightVision > 0.001)
-    outCol = applyNightVision(outCol);
-  gl_FragColor = vec4(outCol, 1.0);
-}
-`;
+export const CORE_FRAGMENT = postCoreNvgShader.fragment;
 
 // Four bilinear taps average the whole span x span block of scene pixels under each small pixel.
 // The result is boosted so that faint, thin lines survive the 8-bit target; GLOW takes the boost out again.
-const DOWN_BOOST = 8;
+export const DOWN_FRAGMENT = postDownsampleShader.fragment;
 
-const DOWN_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec2 uSourceTexel;
-uniform float uSpan;
-varying vec2 vTextureCoord;
-
-${BG_GLSL}
-
-vec3 tap(vec2 offset) {
-  vec4 texel = texture2D(uSampler, vTextureCoord + offset * uSourceTexel);
-  // a solid surface (marked in alpha) gives no glow
-  return texel.a > 0.25 && texel.a < 0.75 ? vec3(0.0) : max(texel.rgb - BG, 0.0);
-}
-
-void main(void) {
-  float h = uSpan * 0.25;
-  vec3 sum = tap(vec2(-h, -h)) + tap(vec2(h, -h)) + tap(vec2(-h, h)) + tap(vec2(h, h));
-  gl_FragColor = vec4(min(sum * 0.25 * ${DOWN_BOOST.toFixed(1)}, 1.0), 1.0);
-}
-`;
-
-const GLOW_STRENGTH = 2.8;
-
-const GLOW_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-uniform vec2 uGlowTexel;
-varying vec2 vTextureCoord;
-
-vec3 tap(vec2 offset) {
-  return texture2D(uSampler, vTextureCoord + offset * uGlowTexel).rgb;
-}
-
-void main(void) {
-  vec3 glow = tap(vec2(0.0)) * 0.36;
-  glow += (tap(vec2(1.35, 1.35)) + tap(vec2(-1.35, 1.35)) + tap(vec2(1.35, -1.35)) + tap(vec2(-1.35, -1.35))) * 0.165;
-  gl_FragColor = vec4(glow * ${(GLOW_STRENGTH / DOWN_BOOST).toFixed(4)}, 1.0);
-}
-`;
+export const GLOW_FRAGMENT = postGlowShader.fragment;
 
 export const MARS_SKY_VEC = new Vec3(0.46, 0.18, 0.06);
 export const MARS_AMBIENT_COLOR = new Vec3(1.04, 0.86, 0.72);
