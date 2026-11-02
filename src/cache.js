@@ -6,6 +6,7 @@
  *   - Cell 2 (SIDE PANEL): Ribbed side panel with dark bumper edges.
  *   - Cell 3 (INTERIOR GLOW): Bright green glow with a darker rim, seen once the lid is up.
  * - `chestBodyMesh()` and `chestLidMesh()` build the two parts; the lid hinge sits at its local origin.
+ * - The lid stops at about 80 degrees so a chest placed 14 units toward a wall (body back 5 units off the wall face) keeps every lid vertex at least 1 unit in front of the wall.
  * Everything here runs at build time, never per frame.
  */
 import { Vec3 } from '@1pizzateam/spock';
@@ -15,7 +16,7 @@ export const CHEST_FRAMES = 4;
 export const CHEST_CELLS = { lidSeal: 0, latch: 1, sidePanel: 2, interiorGlow: 3 };
 export const CHEST_SIZE = new Vec3(40, 18, 26);
 export const CHEST_LID_HINGE = new Vec3(0, 18, -13);
-export const CHEST_LID_OPEN_ANGLE = 1.9;
+export const CHEST_LID_OPEN_ANGLE = 1.4;
 export const CHEST_TINTS = {
   closed: new Vec3(1, 1, 1),
   open: new Vec3(1, 1, 1),
