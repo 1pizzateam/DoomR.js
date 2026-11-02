@@ -333,7 +333,7 @@ void main(void) {
  * The fragment shader of a rusted surface. `scale` is the size of the patches in world units and `threshold` how much of
  * the surface they take: higher is less rust.
  */
-function rustedFragment(scale, threshold) {
+function rustedFragment(scale, threshold, minHeight = -0.01) {
   return `
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
@@ -355,7 +355,7 @@ ${RUST_GLSL}
 ${LIGHT_GLSL}
 
 void main(void) {
-  if (vHeight < -0.01)
+  if (vHeight < ${minHeight})
     discard;
   if (uHasFog == 1 && vDepth >= uFogFar) {
     gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
@@ -401,4 +401,4 @@ void main(void) {
 
 export const DOOR_FRAGMENT = rustedFragment(14, 0.62);
 // walls are bigger and nearer than doors, so their patches are smaller and there are fewer of them
-export const WALL_FRAGMENT = rustedFragment(8, 0.7);
+export const WALL_FRAGMENT = rustedFragment(8, 0.7, -0.21);

@@ -459,6 +459,63 @@ const tests = {
     });
   },
 
+  'AC-1 E1M5 cardinal wall faces and backings reach the floor at y = -0.2'() {
+    const level = new Level(LEVELS.find((entry) => entry.name.startsWith('E1M5')));
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, level);
+      const meshes = programs.filter(({ fragment }) => [WALL_FRAGMENT, MARS_ROCK_FRAGMENT].includes(fragment));
+      const ys = [];
+      for (const { mesh } of meshes)
+        for (let i = 1; i < mesh.vertices.length; i += 3)
+          ys.push(mesh.vertices[i]);
+      assert.ok(ys.some((y) => Math.abs(y + 0.2) < 1e-6), 'lower edges reach the floor plane');
+      assert.ok(ys.every((y) => y >= -0.2 - 1e-6), 'nothing is pushed below the floor plane');
+    });
+    const quads = wallFaceQuads({ axis: 'x', plane: 64, from: 1, to: 1, base: 0, top: 64, x: 1, y: 1, d: 0, exit: false });
+    assert.equal(quads.length, 1, 'a 64-unit wall stays a single quad');
+  },
+
+  'AC-2 diagonal wall faces keep their quad count and sink to the floor'() {
+    const entry = LEVELS.find((candidate) => {
+      const level = new Level(candidate);
+      for (let idx = 0; idx < level.kind.length; idx++)
+        if (level.diagInfo(idx))
+          return true;
+      return false;
+    });
+    assert.ok(entry, 'a level with diagonal walls exists');
+    const level = new Level(entry);
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, level);
+      const walls = programs.filter(({ fragment }) => fragment === WALL_FRAGMENT || fragment === MARS_ROCK_FRAGMENT);
+      assert.ok(walls.length > 0);
+      let low = Infinity;
+      for (const { mesh } of walls)
+        for (let i = 1; i < mesh.vertices.length; i += 3)
+          low = Math.min(low, mesh.vertices[i]);
+      assert.ok(Math.abs(low + 0.2) < 1e-6, `lowest wall vertex ${low}`);
+    });
+    assert.equal(diagWallFaceQuads({ ax: 0, ay: 0, bx: 64, by: 64, base: 0, top: 64, x: 0, y: 0, diag: 0, exit: false }).length, 1);
+  },
+
+  'AC-3 wall and rock fragments keep y = -0.2 while doors still clip'() {
+    for (const fragment of [WALL_FRAGMENT, MARS_ROCK_FRAGMENT])
+      assert.match(fragment, /if \(vHeight < -0.21\)\s*discard;/);
+    assert.match(DOOR_FRAGMENT, /if \(vHeight < -0.01\)\s*discard;/);
+  },
+
+  'AC-4 wall rust parameters and wall projection are unchanged'() {
+    assert.match(WALL_FRAGMENT, /scale|spots/, 'rust shading remains');
+    assert.match(WALL_VERTEX, /clip.z -= 0.00001 \* clip.w;\s*gl_Position = clip;/);
+    assert.ok(WALL_FRAGMENT.includes(`gl_FragColor = vec4(color, ${SOLID_ALPHA});`));
+  },
+
+  'AC-5 floor stays at y = -0.2 and FLOOR_VERTEX uses true-depth clip bias'() {
+    assert.match(FLOOR_VERTEX, /vDepth = -v.z;/);
+    assert.doesNotMatch(FLOOR_VERTEX, /v\.z\s*\+=/);
+    assert.match(FLOOR_VERTEX, /vec4 clip = uProjectionMatrix \* v;\s*clip.z -= 0.00001 \* clip.w;\s*gl_Position = clip;/);
+  },
+
   'AC-3 doors retain their existing projection'() {
     withWallWorld((world, programs) => {
       for (const door of [
@@ -500,7 +557,7 @@ const tests = {
       assert.equal(WALL_VERTEX.match(assignment)?.[0], DOOR_VERTEX.match(assignment)?.[0], `${varying} keeps its existing inputs`);
     }
     for (const fragment of [WALL_FRAGMENT, MARS_ROCK_FRAGMENT]) {
-      assert.match(fragment, /if \(vHeight < -0.01\)\s*discard;/);
+      assert.match(fragment, /if \(vHeight < -0.21\)\s*discard;/);
       assert.ok(fragment.includes(`if (uHasFog == 1 && vDepth >= uFogFar) {
     gl_FragColor = vec4(uFogColor, ${SOLID_ALPHA});
     return;
