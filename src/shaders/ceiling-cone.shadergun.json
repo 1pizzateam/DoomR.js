@@ -1,0 +1,43 @@
+{
+  "kind": "shadergun.project",
+  "version": 3,
+  "exportedAt": "2026-11-02T16:48:45.850Z",
+  "name": "ceiling-cone",
+  "title": "Volumetric Ceiling Light Cone",
+  "category": "Environment",
+  "selectedLayer": 0,
+  "layers": [
+    {
+      "shader": "ceiling-cone",
+      "vertex": "\nattribute vec3 aVertexPosition;\nattribute vec2 aTextureCoord;\nuniform mat4 uModelMatrix;\nuniform mat4 uViewMatrix;\nuniform mat4 uProjectionMatrix;\nvarying float vDepth;\nvarying vec3 vWorldPos;\nvarying vec2 vFixtureCenter;\n\nvoid main(void) {\n  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);\n  vec4 v = uViewMatrix * world;\n  vDepth = -v.z;\n  vWorldPos = world.xyz;\n  vFixtureCenter = aTextureCoord;\n  gl_Position = uProjectionMatrix * v;\n}\n",
+      "fragment": "\nprecision mediump float;\nuniform vec3 uMaterialDiffuse;\nuniform float uTime;\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\nvarying vec3 vWorldPos;\nvarying vec2 vFixtureCenter;\n\nvoid main(void) {\n  if (uHasFog == 1 && vDepth >= uFogFar)\n    discard;\n  float t = clamp((62.6 - vWorldPos.y) / 52.6, 0.0, 1.0);\n  float topSoft = smoothstep(0.0, 0.06, t);\n  float vFade = topSoft * (1.0 - t) * (1.0 - t) * (1.0 - t * 0.45);\n\n  vec2 rel = vWorldPos.xz - vFixtureCenter;\n  vec2 span = mix(vec2(22.0, 6.0), vec2(38.0, 20.0), t);\n  vec2 q = rel / span;\n  float xFade = 1.0 - smoothstep(0.12, 1.0, abs(q.x));\n  float zFade = 1.0 - smoothstep(0.05, 1.0, abs(q.y));\n  float hFade = xFade * xFade * zFade;\n\n  // four soft fanned shafts matching the four louver bays of the ceiling fixture, diffusing as they descend\n  float bay = 0.5 + 0.5 * cos(q.x * 12.56637);\n  float shafts = mix(0.52 + 0.48 * bay * bay, 1.0, t * 0.72);\n\n  float seed = fract(sin(dot(vFixtureCenter, vec2(12.9898, 78.233))) * 43758.5453);\n  float hum = 1.0;\n  if (seed < 0.2) {\n    float wave = sin(uTime * 19.0 + seed * 31.4) * sin(uTime * 43.0 + seed * 53.4);\n    hum = wave < -0.68 ? 0.64 : 0.96 + 0.04 * wave;\n  }\n\n  float nearFade = smoothstep(10.0, 34.0, vDepth);\n  float fogFade = uHasFog == 1 ? 1.0 - clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0) : 1.0;\n  float alpha = vFade * hFade * shafts * hum * nearFade * fogFade * 0.075;\n  if (alpha <= 0.001)\n    discard;\n  gl_FragColor = vec4(uMaterialDiffuse * alpha, 0.0);\n}\n",
+      "camera": null,
+      "uniformTracks": {},
+      "mesh": "cube",
+      "texture": "none",
+      "visible": true,
+      "opacity": 1,
+      "blend": "normal",
+      "scale": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "spin": true,
+      "poseTracks": {}
+    }
+  ],
+  "shader": "ceiling-cone",
+  "vertex": "\nattribute vec3 aVertexPosition;\nattribute vec2 aTextureCoord;\nuniform mat4 uModelMatrix;\nuniform mat4 uViewMatrix;\nuniform mat4 uProjectionMatrix;\nvarying float vDepth;\nvarying vec3 vWorldPos;\nvarying vec2 vFixtureCenter;\n\nvoid main(void) {\n  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);\n  vec4 v = uViewMatrix * world;\n  vDepth = -v.z;\n  vWorldPos = world.xyz;\n  vFixtureCenter = aTextureCoord;\n  gl_Position = uProjectionMatrix * v;\n}\n",
+  "fragment": "\nprecision mediump float;\nuniform vec3 uMaterialDiffuse;\nuniform float uTime;\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\nvarying vec3 vWorldPos;\nvarying vec2 vFixtureCenter;\n\nvoid main(void) {\n  if (uHasFog == 1 && vDepth >= uFogFar)\n    discard;\n  float t = clamp((62.6 - vWorldPos.y) / 52.6, 0.0, 1.0);\n  float topSoft = smoothstep(0.0, 0.06, t);\n  float vFade = topSoft * (1.0 - t) * (1.0 - t) * (1.0 - t * 0.45);\n\n  vec2 rel = vWorldPos.xz - vFixtureCenter;\n  vec2 span = mix(vec2(22.0, 6.0), vec2(38.0, 20.0), t);\n  vec2 q = rel / span;\n  float xFade = 1.0 - smoothstep(0.12, 1.0, abs(q.x));\n  float zFade = 1.0 - smoothstep(0.05, 1.0, abs(q.y));\n  float hFade = xFade * xFade * zFade;\n\n  // four soft fanned shafts matching the four louver bays of the ceiling fixture, diffusing as they descend\n  float bay = 0.5 + 0.5 * cos(q.x * 12.56637);\n  float shafts = mix(0.52 + 0.48 * bay * bay, 1.0, t * 0.72);\n\n  float seed = fract(sin(dot(vFixtureCenter, vec2(12.9898, 78.233))) * 43758.5453);\n  float hum = 1.0;\n  if (seed < 0.2) {\n    float wave = sin(uTime * 19.0 + seed * 31.4) * sin(uTime * 43.0 + seed * 53.4);\n    hum = wave < -0.68 ? 0.64 : 0.96 + 0.04 * wave;\n  }\n\n  float nearFade = smoothstep(10.0, 34.0, vDepth);\n  float fogFade = uHasFog == 1 ? 1.0 - clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0) : 1.0;\n  float alpha = vFade * hFade * shafts * hum * nearFade * fogFade * 0.075;\n  if (alpha <= 0.001)\n    discard;\n  gl_FragColor = vec4(uMaterialDiffuse * alpha, 0.0);\n}\n",
+  "camera": null,
+  "uniformTracks": {},
+  "mesh": "cube",
+  "texture": "none",
+  "visible": true,
+  "opacity": 1,
+  "blend": "normal",
+  "scale": 1,
+  "offsetX": 0,
+  "offsetY": 0,
+  "spin": true,
+  "poseTracks": {}
+}

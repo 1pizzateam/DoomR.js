@@ -1,0 +1,43 @@
+{
+  "kind": "shadergun.project",
+  "version": 3,
+  "exportedAt": "2026-11-02T16:48:45.851Z",
+  "name": "sprite-gore",
+  "title": "Sprite Billboard (Gore & Projectiles)",
+  "category": "Sprites & Particles",
+  "selectedLayer": 0,
+  "layers": [
+    {
+      "shader": "sprite-gore",
+      "vertex": "\nattribute vec3 aVertexPosition;\nattribute vec2 aTextureCoord;\nuniform mat4 uModelMatrix;\nuniform mat4 uViewMatrix;\nuniform mat4 uProjectionMatrix;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vWorldPos;\n\nvoid main(void) {\n  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);\n  vec4 v = uViewMatrix * world;\n  vDepth = -v.z;\n  v.z += 1.2 + vDepth * 0.01;\n  vTextureCoord = aTextureCoord;\n  vWorldPos = world.xyz;\n  gl_Position = uProjectionMatrix * v;\n}\n",
+      "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec3 uMaterialDiffuse;\nuniform float uGlare; // 0.0 1.0 0.5 0.01\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\n\nconst vec3 BACKGROUND = vec3(0.02745, 0.03529, 0.05882);\nconst vec3 BLOOD = vec3(0.90980, 0.06275, 0.17255);\nconst float FULL = 1.15475;\n\nvoid main(void) {\n  vec4 texel = texture2D(uSampler, vTextureCoord);\n  if (texel.a < 0.5)\n    discard;\n  float strength = min(1.0, length(uMaterialDiffuse - BACKGROUND) / FULL);\n  vec3 base;\n  if (texel.g > 0.99) {\n    // Glowing eyes: eerie spectral ectoplasm when lurking, flaring into blazing hellfire crimson when enraged\n    vec3 spectralEye = vec3(0.42, 0.96, 0.78);\n    vec3 rageEye = vec3(1.0, 0.22, 0.34);\n    float rage = clamp((uGlare - 0.3) / 0.7, 0.0, 1.0);\n    base = mix(spectralEye, rageEye, rage) * (0.65 + 0.55 * uGlare);\n  } else if (texel.b > 0.99) {\n    // Visceral gore when blown apart: dark clotted crimson to deep arterial red\n    vec3 clot = vec3(0.18, 0.01, 0.02);\n    vec3 arterial = mix(vec3(0.46, 0.02, 0.04), BLOOD, texel.r);\n    base = mix(clot, arterial, clamp((texel.r - 0.35) * 1.35, 0.0, 1.0));\n  } else {\n    base = texel.rgb;\n  }\n  vec3 color = mix(BACKGROUND, base, strength);\n  if (uHasFog == 1) {\n    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);\n    color = mix(color, uFogColor, fade);\n  }\n  gl_FragColor = vec4(color, 0.5);\n}\n",
+      "camera": null,
+      "uniformTracks": {},
+      "mesh": "cube",
+      "texture": "explosion_atlas",
+      "visible": true,
+      "opacity": 1,
+      "blend": "normal",
+      "scale": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "spin": true,
+      "poseTracks": {}
+    }
+  ],
+  "shader": "sprite-gore",
+  "vertex": "\nattribute vec3 aVertexPosition;\nattribute vec2 aTextureCoord;\nuniform mat4 uModelMatrix;\nuniform mat4 uViewMatrix;\nuniform mat4 uProjectionMatrix;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vWorldPos;\n\nvoid main(void) {\n  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);\n  vec4 v = uViewMatrix * world;\n  vDepth = -v.z;\n  v.z += 1.2 + vDepth * 0.01;\n  vTextureCoord = aTextureCoord;\n  vWorldPos = world.xyz;\n  gl_Position = uProjectionMatrix * v;\n}\n",
+  "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec3 uMaterialDiffuse;\nuniform float uGlare; // 0.0 1.0 0.5 0.01\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\n\nconst vec3 BACKGROUND = vec3(0.02745, 0.03529, 0.05882);\nconst vec3 BLOOD = vec3(0.90980, 0.06275, 0.17255);\nconst float FULL = 1.15475;\n\nvoid main(void) {\n  vec4 texel = texture2D(uSampler, vTextureCoord);\n  if (texel.a < 0.5)\n    discard;\n  float strength = min(1.0, length(uMaterialDiffuse - BACKGROUND) / FULL);\n  vec3 base;\n  if (texel.g > 0.99) {\n    // Glowing eyes: eerie spectral ectoplasm when lurking, flaring into blazing hellfire crimson when enraged\n    vec3 spectralEye = vec3(0.42, 0.96, 0.78);\n    vec3 rageEye = vec3(1.0, 0.22, 0.34);\n    float rage = clamp((uGlare - 0.3) / 0.7, 0.0, 1.0);\n    base = mix(spectralEye, rageEye, rage) * (0.65 + 0.55 * uGlare);\n  } else if (texel.b > 0.99) {\n    // Visceral gore when blown apart: dark clotted crimson to deep arterial red\n    vec3 clot = vec3(0.18, 0.01, 0.02);\n    vec3 arterial = mix(vec3(0.46, 0.02, 0.04), BLOOD, texel.r);\n    base = mix(clot, arterial, clamp((texel.r - 0.35) * 1.35, 0.0, 1.0));\n  } else {\n    base = texel.rgb;\n  }\n  vec3 color = mix(BACKGROUND, base, strength);\n  if (uHasFog == 1) {\n    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);\n    color = mix(color, uFogColor, fade);\n  }\n  gl_FragColor = vec4(color, 0.5);\n}\n",
+  "camera": null,
+  "uniformTracks": {},
+  "mesh": "cube",
+  "texture": "explosion_atlas",
+  "visible": true,
+  "opacity": 1,
+  "blend": "normal",
+  "scale": 1,
+  "offsetX": 0,
+  "offsetY": 0,
+  "spin": true,
+  "poseTracks": {}
+}

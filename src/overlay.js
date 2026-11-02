@@ -3,59 +3,16 @@ import { Trigo } from '@1pizzateam/spock';
 import { bloodAtlas } from './bloodsprites.js';
 import { faceAtlas } from './face.js';
 import { arsenalAtlas } from './weapon.js';
+import hudOverlayShader from './shaders/hud-overlay.shadergun.json' with { type: 'json' };
+import hudTexturedShader from './shaders/hud-textured.shadergun.json' with { type: 'json' };
 
-const VERTEX = `
-attribute vec2 aVertexPosition;
-attribute vec3 aVertexNormal;
-uniform vec2 uSize;
-varying vec3 vColor;
+export const VERTEX = hudOverlayShader.vertex;
 
-void main(void) {
-  // positions are in CSS pixels with the origin at the top left; the normal slot carries the colour
-  vColor = aVertexNormal;
-  gl_Position = vec4(aVertexPosition.x / uSize.x * 2.0 - 1.0, 1.0 - aVertexPosition.y / uSize.y * 2.0, 0.0, 1.0);
-}
-`;
+export const FRAGMENT = hudOverlayShader.fragment;
 
-const FRAGMENT = `
-precision mediump float;
-varying vec3 vColor;
+export const TEXTURED_VERTEX = hudTexturedShader.vertex;
 
-void main(void) {
-  gl_FragColor = vec4(vColor, 1.0);
-}
-`;
-
-const TEXTURED_VERTEX = `
-attribute vec2 aVertexPosition;
-attribute vec3 aVertexNormal;
-attribute vec2 aTextureCoord;
-uniform vec2 uSize;
-varying float vBright;
-varying vec2 vTextureCoord;
-
-void main(void) {
-  // positions are in CSS pixels; the normal slot carries how bright the quad is
-  vBright = aVertexNormal.x;
-  vTextureCoord = aTextureCoord;
-  gl_Position = vec4(aVertexPosition.x / uSize.x * 2.0 - 1.0, 1.0 - aVertexPosition.y / uSize.y * 2.0, 0.0, 1.0);
-}
-`;
-
-const TEXTURED_FRAGMENT = `
-precision mediump float;
-uniform sampler2D uSampler;
-varying float vBright;
-varying vec2 vTextureCoord;
-
-void main(void) {
-  vec4 texel = texture2D(uSampler, vTextureCoord);
-  if (texel.a < 0.5)
-    discard;
-  // it is a picture on the glass: it fades by being see-through, not by being added to what is behind it
-  gl_FragColor = vec4(texel.rgb, vBright);
-}
-`;
+export const TEXTURED_FRAGMENT = hudTexturedShader.fragment;
 
 /** Textured quads in screen pixels, drawn over what is behind them; a faded one is more see-through. */
 class SpriteBuffer {

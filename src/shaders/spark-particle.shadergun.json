@@ -1,0 +1,43 @@
+{
+  "kind": "shadergun.project",
+  "version": 3,
+  "exportedAt": "2026-11-02T16:48:45.852Z",
+  "name": "spark-particle",
+  "title": "Additive Spark & Ember Particle",
+  "category": "Sprites & Particles",
+  "selectedLayer": 0,
+  "layers": [
+    {
+      "shader": "spark-particle",
+      "vertex": "\nattribute vec3 aVertexPosition;\nattribute vec2 aTextureCoord;\nuniform mat4 uModelMatrix;\nuniform mat4 uViewMatrix;\nuniform mat4 uProjectionMatrix;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vWorldPos;\n\nvoid main(void) {\n  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);\n  vec4 v = uViewMatrix * world;\n  vDepth = -v.z;\n  v.z += min(vDepth * 0.45, 16.0 + vDepth * 0.02);\n  vTextureCoord = aTextureCoord;\n  vWorldPos = world.xyz;\n  gl_Position = uProjectionMatrix * v;\n}\n",
+      "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec3 uMaterialDiffuse;\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vWorldPos;\n\nvoid main(void) {\n  float slot = floor(vTextureCoord.x);\n  float localU = ((vTextureCoord.x - slot) - 0.5) / 0.48;\n  float localV = (vTextureCoord.y - 0.5) / 0.48;\n  float rSq = localU * localU + localV * localV;\n  if (rSq > 1.0)\n    discard;\n  vec4 texel = texture2D(uSampler, fract(vTextureCoord * 0.25));\n  float heat = clamp((slot / 16.0) + (1.0 - rSq) * 0.28 + (texel.r - 0.5) * 0.05, 0.22, 1.45);\n  vec3 color;\n  if (heat < 0.55)\n    color = mix(vec3(0.88, 0.18, 0.04), vec3(1.22, 0.58, 0.08), (heat - 0.22) / 0.33);\n  else if (heat < 0.95)\n    color = mix(vec3(1.22, 0.58, 0.08), vec3(1.48, 1.18, 0.36), (heat - 0.55) / 0.40);\n  else\n    color = mix(vec3(1.48, 1.18, 0.36), vec3(1.75, 1.68, 1.42), clamp((heat - 0.95) / 0.50, 0.0, 1.0));\n  color *= uMaterialDiffuse;\n  float fogFade = 0.0;\n  if (uHasFog == 1) {\n    fogFade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);\n    color = mix(color, uFogColor, fogFade);\n  }\n  gl_FragColor = vec4(color, 1.0 - fogFade * 0.5 > 0.5 ? 1.0 : 0.5);\n}\n",
+      "camera": null,
+      "uniformTracks": {},
+      "mesh": "cube",
+      "texture": "impact_atlas",
+      "visible": true,
+      "opacity": 1,
+      "blend": "normal",
+      "scale": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "spin": true,
+      "poseTracks": {}
+    }
+  ],
+  "shader": "spark-particle",
+  "vertex": "\nattribute vec3 aVertexPosition;\nattribute vec2 aTextureCoord;\nuniform mat4 uModelMatrix;\nuniform mat4 uViewMatrix;\nuniform mat4 uProjectionMatrix;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vWorldPos;\n\nvoid main(void) {\n  vec4 world = uModelMatrix * vec4(aVertexPosition, 1.0);\n  vec4 v = uViewMatrix * world;\n  vDepth = -v.z;\n  v.z += min(vDepth * 0.45, 16.0 + vDepth * 0.02);\n  vTextureCoord = aTextureCoord;\n  vWorldPos = world.xyz;\n  gl_Position = uProjectionMatrix * v;\n}\n",
+  "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec3 uMaterialDiffuse;\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vWorldPos;\n\nvoid main(void) {\n  float slot = floor(vTextureCoord.x);\n  float localU = ((vTextureCoord.x - slot) - 0.5) / 0.48;\n  float localV = (vTextureCoord.y - 0.5) / 0.48;\n  float rSq = localU * localU + localV * localV;\n  if (rSq > 1.0)\n    discard;\n  vec4 texel = texture2D(uSampler, fract(vTextureCoord * 0.25));\n  float heat = clamp((slot / 16.0) + (1.0 - rSq) * 0.28 + (texel.r - 0.5) * 0.05, 0.22, 1.45);\n  vec3 color;\n  if (heat < 0.55)\n    color = mix(vec3(0.88, 0.18, 0.04), vec3(1.22, 0.58, 0.08), (heat - 0.22) / 0.33);\n  else if (heat < 0.95)\n    color = mix(vec3(1.22, 0.58, 0.08), vec3(1.48, 1.18, 0.36), (heat - 0.55) / 0.40);\n  else\n    color = mix(vec3(1.48, 1.18, 0.36), vec3(1.75, 1.68, 1.42), clamp((heat - 0.95) / 0.50, 0.0, 1.0));\n  color *= uMaterialDiffuse;\n  float fogFade = 0.0;\n  if (uHasFog == 1) {\n    fogFade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);\n    color = mix(color, uFogColor, fogFade);\n  }\n  gl_FragColor = vec4(color, 1.0 - fogFade * 0.5 > 0.5 ? 1.0 : 0.5);\n}\n",
+  "camera": null,
+  "uniformTracks": {},
+  "mesh": "cube",
+  "texture": "impact_atlas",
+  "visible": true,
+  "opacity": 1,
+  "blend": "normal",
+  "scale": 1,
+  "offsetX": 0,
+  "offsetY": 0,
+  "spin": true,
+  "poseTracks": {}
+}
