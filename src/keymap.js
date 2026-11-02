@@ -1,4 +1,11 @@
 export const LAYOUT_STORAGE_KEY = 'doomr.keyboardLayout';
+export const CONTROLS_STORAGE_KEY = 'doomr.controls';
+export const CONTROLS_VERSION = 1;
+export const MAX_SLOTS = 2;
+export const MAX_CODE_LENGTH = 32;
+export const RESERVED_CODES = Object.freeze(new Set(['Escape', 'Enter', 'NumpadEnter', 'MetaLeft', 'MetaRight', 'OSLeft', 'OSRight', 'ContextMenu']));
+export const MOUSE_CODES = Object.freeze(['Mouse0', 'Mouse1', 'Mouse2', 'Mouse3', 'Mouse4']);
+export const MOUSE_WHICH_BASE = 1000;
 export const LAYOUTS = Object.freeze(['auto', 'qwerty', 'azerty', 'qwertz', 'dvorak']);
 
 const LETTER_CODES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((c) => `Key${c}`);
@@ -47,7 +54,7 @@ export const ACTIONS = Object.freeze([
   positional('turnRight', bind('ArrowRight', 39)),
   positional('jump', bind('Space', 32)),
   positional('run', bind('ShiftLeft', 16), bind('ShiftRight', 160)),
-  positional('fire', bind('KeyX', 88), bind('ControlLeft', 17), bind('ControlRight', 162), bind('AltLeft', 18), bind('AltRight', 164)),
+  positional('fire', bind('Mouse0', MOUSE_WHICH_BASE), bind('KeyX', 88), bind('ControlLeft', 17), bind('ControlRight', 162), bind('AltLeft', 18), bind('AltRight', 164)),
   positional('confirm', bind('Enter', 13)),
   positional('crouch', bind('KeyC', 67)),
   positional('grenade', bind('KeyF', 70)),
@@ -59,6 +66,7 @@ export const ACTIONS = Object.freeze([
   positional('menu', bind('Escape', 27)),
   positional('diagnostics', bind('F3', 114)),
   positional('layoutCycle', bind('F2', 113)),
+  positional('controls', bind('F1', 112)),
   mnemonic('use', ['e'], bind('KeyE', 69)),
   mnemonic('nightVision', ['n'], bind('KeyN', 78)),
   mnemonic('music', ['m'], bind('KeyM', 77)),
@@ -74,37 +82,163 @@ export const ACTIONS = Object.freeze([
 
 export const DEFAULT_SELECT_HINT = '←/→ select mission  ·  ↑/↓ or 1-4 select skill  ·  click or press ENTER to begin  ·  ESC back';
 
-const buildHints = (label, layoutText) => Object.freeze([
-  `${label('moveForward')} ${label('strafeLeft')} ${label('moveBack')} ${label('strafeRight')}  move     mouse / ← →  turn`,
-  `click / ${label('fire')} / OPT / CTRL  fire     1-4  weapons`,
-  `SPACE  jump     ${label('crouch')}  crouch     SHIFT  run`,
-  `${label('use')}  open doors     ${label('levelPrev')} / ${label('levelNext')}  switch level     ${label('sound')}  sound`,
-  `TAB  automap     ${label('nightVision')}  night vision     ${label('music')}  music     ESC  pause`,
-  `F2  keyboard layout: ${layoutText}`,
-]);
+const NO_OVERRIDES = new Map();
+
+const buildHints = (label, layoutText, custom = NO_OVERRIDES) => {
+  const weapons = custom.has('weapon1') || custom.has('weapon2') || custom.has('weapon3') || custom.has('weapon4')
+    ? `${label('weapon1')} ${label('weapon2')} ${label('weapon3')} ${label('weapon4')}`
+    : '1-4';
+  const turn = custom.has('turnLeft') || custom.has('turnRight') ? `mouse / ${label('turnLeft')} ${label('turnRight')}` : 'mouse / ← →';
+  const fire = custom.has('fire') ? label('fire') : `click / ${label('fire')} / OPT / CTRL`;
+  const jump = custom.has('jump') ? label('jump') : 'SPACE';
+  const run = custom.has('run') ? label('run') : 'SHIFT';
+  const automap = custom.has('automap') ? label('automap') : 'TAB';
+  return Object.freeze([
+    `${label('moveForward')} ${label('strafeLeft')} ${label('moveBack')} ${label('strafeRight')}  move     ${turn}  turn`,
+    `${fire}  fire     ${weapons}  weapons`,
+    `${jump}  jump     ${label('crouch')}  crouch     ${run}  run`,
+    `${label('use')}  open doors     ${label('levelPrev')} / ${label('levelNext')}  switch level     ${label('sound')}  sound`,
+    `${automap}  automap     ${label('nightVision')}  night vision     ${label('music')}  music     ESC  pause`,
+    `${label('layoutCycle')}  keyboard layout: ${layoutText}`,
+    `${label('controls')}  controls`,
+  ]);
+};
 
 const POSITIONAL_LABEL_CODE = Object.freeze({
   moveForward: 'KeyW', moveBack: 'KeyS', strafeLeft: 'KeyA', strafeRight: 'KeyD', fire: 'KeyX', crouch: 'KeyC',
 });
 
+const NAMED_KEY_LABELS = {
+  Space: 'SPACE', ShiftLeft: 'SHIFT', ShiftRight: 'SHIFT', ControlLeft: 'CTRL', ControlRight: 'CTRL', AltLeft: 'ALT', AltRight: 'ALT',
+  Tab: 'TAB', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Escape: 'ESC', Enter: 'ENTER', Backspace: 'BKSP',
+  Delete: 'DEL', Insert: 'INS', Home: 'HOME', End: 'END', PageUp: 'PG UP', PageDown: 'PG DN', CapsLock: 'CAPS',
+  NumpadAdd: 'NUM +', NumpadSubtract: 'NUM -', NumpadMultiply: 'NUM *', NumpadDivide: 'NUM /', NumpadDecimal: 'NUM .',
+  Mouse0: 'MOUSE L', Mouse1: 'MOUSE M', Mouse2: 'MOUSE R', Mouse3: 'MOUSE 4', Mouse4: 'MOUSE 5',
+};
+for (let i = 0; i <= 9; i++) {
+  NAMED_KEY_LABELS[`Digit${i}`] = String(i);
+  NAMED_KEY_LABELS[`Numpad${i}`] = `NUM ${i}`;
+}
+for (let i = 1; i <= 24; i++)
+  NAMED_KEY_LABELS[`F${i}`] = `F${i}`;
+Object.freeze(NAMED_KEY_LABELS);
+
+const LEGACY_KEYCODES = {
+  Backspace: 8, CapsLock: 20, PageUp: 33, PageDown: 34, End: 35, Home: 36, Insert: 45, Delete: 46,
+  NumpadMultiply: 106, NumpadDecimal: 110, NumpadDivide: 111, Quote: 222, Comma: 188, Period: 190, Slash: 191, Backquote: 192, Backslash: 220, IntlBackslash: 226,
+};
+for (let i = 0; i < 26; i++)
+  LEGACY_KEYCODES[LETTER_CODES[i]] = 65 + i;
+for (let i = 0; i <= 9; i++) {
+  LEGACY_KEYCODES[`Digit${i}`] = 48 + i;
+  LEGACY_KEYCODES[`Numpad${i}`] = 96 + i;
+}
+for (let i = 1; i <= 12; i++)
+  LEGACY_KEYCODES[`F${i}`] = 111 + i;
+
+const NO_CODES = Object.freeze([]);
+const NO_CLAIMS = new Set();
+const SYNTHETIC_WHICH_BASE = 1024;
+
+const MODIFIER_PAIRS = Object.freeze({
+  ShiftLeft: Object.freeze(['ShiftLeft', 'ShiftRight']),
+  ShiftRight: Object.freeze(['ShiftLeft', 'ShiftRight']),
+  ControlLeft: Object.freeze(['ControlLeft', 'ControlRight']),
+  ControlRight: Object.freeze(['ControlLeft', 'ControlRight']),
+  AltLeft: Object.freeze(['AltLeft', 'AltRight']),
+  AltRight: Object.freeze(['AltLeft', 'AltRight']),
+});
+const MODIFIER_LEFT = Object.freeze({ ShiftRight: 'ShiftLeft', ControlRight: 'ControlLeft', AltRight: 'AltLeft' });
+
+const normalizeCode = (code) => MODIFIER_LEFT[code] ?? code;
+const expandedCache = new Map();
+const expandCode = (code) => {
+  const pair = MODIFIER_PAIRS[code];
+  if (pair)
+    return pair;
+  let single = expandedCache.get(code);
+  if (!single) {
+    single = Object.freeze([code]);
+    expandedCache.set(code, single);
+  }
+  return single;
+};
+
 const ACTION_BY_ID = new Map();
 for (const action of ACTIONS)
   ACTION_BY_ID.set(action.id, action);
 
-const defaultLabel = (id) => {
+const staticCodeLabel = (code) => NAMED_KEY_LABELS[code] ?? (LABELLED_SET.has(code) ? QWERTY_GLYPHS[code].toUpperCase() : code);
+
+export const defaultActionLabel = (id) => {
   const action = ACTION_BY_ID.get(id);
-  if (action.kind === 'positional')
-    return QWERTY_GLYPHS[POSITIONAL_LABEL_CODE[id]].toUpperCase();
+  if (!action)
+    return '';
+  if (action.kind === 'positional') {
+    const code = POSITIONAL_LABEL_CODE[id];
+    return code ? QWERTY_GLYPHS[code].toUpperCase() : staticCodeLabel(action.bindings[0].code);
+  }
   return action.glyphs[0].toUpperCase();
 };
 
-export const DEFAULT_HINT_LINES = buildHints(defaultLabel, 'auto (QWERTY)');
+const group = (title, actions) => Object.freeze({ title, actions: Object.freeze(actions.map(([id, name]) => Object.freeze({ id, name }))) });
+
+export const CONTROL_GROUPS = Object.freeze([
+  group('MOVEMENT', [
+    ['moveForward', 'Move forward'], ['moveBack', 'Move back'], ['strafeLeft', 'Strafe left'], ['strafeRight', 'Strafe right'],
+    ['turnLeft', 'Turn left'], ['turnRight', 'Turn right'], ['jump', 'Jump'], ['crouch', 'Crouch'], ['run', 'Run'],
+  ]),
+  group('COMBAT', [['fire', 'Fire'], ['grenade', 'Throw grenade'], ['use', 'Use / open doors'], ['nightVision', 'Night vision']]),
+  group('WEAPONS', [['weapon1', 'Weapon slot 1'], ['weapon2', 'Weapon slot 2'], ['weapon3', 'Weapon slot 3'], ['weapon4', 'Weapon slot 4']]),
+  group('INTERFACE', [
+    ['automap', 'Automap'], ['automapGrid', 'Automap grid'], ['zoomIn', 'Automap zoom in'], ['zoomOut', 'Automap zoom out'],
+    ['map', 'Minimap'], ['pause', 'Pause'], ['music', 'Music'], ['sound', 'Sound'], ['levelPrev', 'Previous level'],
+    ['levelNext', 'Next level'], ['layoutCycle', 'Keyboard layout labels'], ['diagnostics', 'Diagnostics'], ['controls', 'Controls page'],
+  ]),
+]);
+
+const BINDABLE_IDS = [];
+for (const g of CONTROL_GROUPS)
+  for (const a of g.actions)
+    BINDABLE_IDS.push(a.id);
+Object.freeze(BINDABLE_IDS);
+const BINDABLE_SET = new Set(BINDABLE_IDS);
+
+const DEFAULT_POSITIONAL_CODES = new Set();
+for (const action of ACTIONS)
+  if (action.kind === 'positional')
+    for (const b of action.bindings)
+      DEFAULT_POSITIONAL_CODES.add(b.code);
+
+export const DEFAULT_HINT_LINES = buildHints(defaultActionLabel, 'auto (QWERTY)');
+
+const defaultStorage = () => {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export class Keymap {
-  constructor({ storage = globalThis.localStorage, navigator = globalThis.navigator } = {}) {
+  constructor({ storage = defaultStorage(), navigator = globalThis.navigator } = {}) {
     this.storage = storage;
     this.navigator = navigator;
-    const flat = [];
+    this.whichByCode = new Map();
+    this.claimedWhich = new Set();
+    for (const action of ACTIONS)
+      for (const { code, which } of action.bindings) {
+        this.claimedWhich.add(which);
+        if (code && !this.whichByCode.has(code))
+          this.whichByCode.set(code, which);
+      }
+    for (let i = 0; i < MOUSE_CODES.length; i++) {
+      this.whichByCode.set(MOUSE_CODES[i], MOUSE_WHICH_BASE + i);
+      this.claimedWhich.add(MOUSE_WHICH_BASE + i);
+    }
+    this.nextSyntheticWhich = SYNTHETIC_WHICH_BASE;
     this.positionalByCode = new Map();
     this.glyphWhich = new Map();
     this.fallbackByCode = new Map();
@@ -112,26 +246,17 @@ export class Keymap {
     this.whichesByAction = new Map();
     this.allWhich = new Set();
     this.claimedGlyphs = new Set();
-    for (const action of ACTIONS) {
-      const whiches = [];
-      for (const { code, which } of action.bindings) {
-        flat.push(Object.freeze({ action: action.id, code, which }));
-        whiches.push(which);
-        this.allWhich.add(which);
-        this.actionByWhich.set(which, action.id);
-        if (action.kind === 'positional')
-          this.positionalByCode.set(code, which);
-        else if (code)
-          this.fallbackByCode.set(code, which);
-      }
-      this.whichesByAction.set(action.id, Object.freeze(whiches));
-      for (const glyph of action.glyphs) {
+    for (const action of ACTIONS)
+      for (const glyph of action.glyphs)
         this.claimedGlyphs.add(glyph);
-        this.glyphWhich.set(glyph, action.bindings[0].which);
-        this.glyphWhich.set(glyph.toUpperCase(), action.bindings[0].which);
-      }
-    }
-    this.bindings = Object.freeze(flat);
+    this.bindings = Object.freeze([]);
+    this.overrides = new Map();
+    this.effective = new Map();
+    this.slots = new Map();
+    this.unbound = Object.freeze([]);
+    this.saveFailed = false;
+    this.lastChange = { ok: false, stolenFrom: null, swapped: false, saved: false, code: '' };
+    this.bindingsVersion = 0;
     this.layoutGlyphs = new Map();
     this.learned = new Map();
     const lang = String(navigator?.language ?? '').toLowerCase();
@@ -142,13 +267,356 @@ export class Keymap {
     else
       this.languagePreset = 'qwerty';
     this.detected = null;
-    const stored = storage?.getItem(LAYOUT_STORAGE_KEY);
+    const stored = this.readStorage(LAYOUT_STORAGE_KEY);
     this.override = LAYOUTS.includes(stored) ? stored : 'auto';
     this.version = 0;
     this.hintLines = DEFAULT_HINT_LINES;
     this.selectHint = DEFAULT_SELECT_HINT;
-    this.rebuild();
+    this.load();
+    this.rebuildLookups();
     this.requestLayoutMap();
+  }
+
+  readStorage(key) {
+    try {
+      return this.storage?.getItem(key) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  writeStorage(key, value) {
+    try {
+      if (!this.storage)
+        return false;
+      this.storage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  removeStorage(key) {
+    try {
+      if (!this.storage)
+        return false;
+      this.storage.removeItem(key);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  whichFor(code) {
+    const known = this.whichByCode.get(code);
+    if (known !== undefined)
+      return known;
+    const legacy = LEGACY_KEYCODES[code];
+    let which;
+    if (legacy !== undefined && !this.claimedWhich.has(legacy))
+      which = legacy;
+    else
+      which = this.nextSyntheticWhich++;
+    this.whichByCode.set(code, which);
+    this.claimedWhich.add(which);
+    return which;
+  }
+
+  whichOfCode(code) {
+    return this.positionalByCode.get(code) ?? 0;
+  }
+
+  isCustom(id) {
+    return this.overrides.has(id);
+  }
+
+  effectiveCodes(id) {
+    return this.effective.get(id) ?? NO_CODES;
+  }
+
+  slotCodes(id) {
+    return this.slots.get(id) ?? NO_CODES;
+  }
+
+  extraCount(id) {
+    return Math.max(0, this.effectiveCodes(id).length - MAX_SLOTS);
+  }
+
+  unboundActions() {
+    return this.unbound;
+  }
+
+  load() {
+    this.overrides = new Map();
+    const raw = this.readStorage(CONTROLS_STORAGE_KEY);
+    if (typeof raw !== 'string')
+      return;
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!isPlainObject(data) || data.version !== CONTROLS_VERSION || !isPlainObject(data.bindings))
+      return;
+    const seen = new Set();
+    for (const id of BINDABLE_IDS) {
+      if (!Object.hasOwn(data.bindings, id))
+        continue;
+      const list = data.bindings[id];
+      if (!Array.isArray(list) || list.length > MAX_SLOTS)
+        continue;
+      const kept = [];
+      for (const entry of list) {
+        if (typeof entry !== 'string' || entry.length < 1 || entry.length > MAX_CODE_LENGTH || RESERVED_CODES.has(entry))
+          continue;
+        const code = normalizeCode(entry);
+        if (seen.has(code))
+          continue;
+        seen.add(code);
+        kept.push(code);
+      }
+      if (kept.length > 0 || list.length === 0)
+        this.overrides.set(id, Object.freeze(kept));
+    }
+  }
+
+  reload() {
+    this.load();
+    this.rebuildLookups();
+    this.bindingsVersion++;
+    this.version++;
+  }
+
+  save() {
+    let result;
+    if (this.overrides.size === 0)
+      result = this.removeStorage(CONTROLS_STORAGE_KEY);
+    else {
+      const bindings = {};
+      for (const id of BINDABLE_IDS) {
+        const codes = this.overrides.get(id);
+        if (codes)
+          bindings[id] = Array.from(codes);
+      }
+      result = this.writeStorage(CONTROLS_STORAGE_KEY, JSON.stringify({ version: CONTROLS_VERSION, bindings }));
+    }
+    this.saveFailed = !result;
+    return result;
+  }
+
+  rebuildLookups() {
+    this.positionalByCode.clear();
+    this.glyphWhich.clear();
+    this.fallbackByCode.clear();
+    this.actionByWhich.clear();
+    this.whichesByAction.clear();
+    this.allWhich.clear();
+    const flat = [];
+    const claimedByOverride = new Set();
+    for (const codes of this.overrides.values())
+      for (const code of codes)
+        for (const expanded of expandCode(code))
+          claimedByOverride.add(expanded);
+    this.claimedByOverride = claimedByOverride;
+    for (const action of ACTIONS) {
+      if (this.overrides.has(action.id))
+        continue;
+      const whiches = [];
+      for (const { code, which } of action.bindings) {
+        if (code && claimedByOverride.has(code))
+          continue;
+        flat.push(Object.freeze({ action: action.id, code, which }));
+        whiches.push(which);
+        this.allWhich.add(which);
+        this.actionByWhich.set(which, action.id);
+        if (action.kind === 'positional')
+          this.positionalByCode.set(code, which);
+        else if (code)
+          this.fallbackByCode.set(code, which);
+      }
+      this.whichesByAction.set(action.id, Object.freeze(whiches));
+      const first = action.bindings[0];
+      if (!(first.code && claimedByOverride.has(first.code)))
+        for (const glyph of action.glyphs) {
+          this.glyphWhich.set(glyph, first.which);
+          this.glyphWhich.set(glyph.toUpperCase(), first.which);
+        }
+    }
+    for (const [id, codes] of this.overrides) {
+      const whiches = [];
+      for (const code of codes)
+        for (const expanded of expandCode(code)) {
+          const which = this.whichFor(expanded);
+          flat.push(Object.freeze({ action: id, code: expanded, which }));
+          whiches.push(which);
+          this.allWhich.add(which);
+          this.actionByWhich.set(which, id);
+          this.positionalByCode.set(expanded, which);
+        }
+      this.whichesByAction.set(id, Object.freeze(whiches));
+    }
+    this.bindings = Object.freeze(flat);
+    this.rebuild();
+  }
+
+  computeDefaultCodes(id, positional, claimed) {
+    const action = ACTION_BY_ID.get(id);
+    const out = [];
+    const add = (code) => {
+      if (code && !claimed.has(code) && !out.includes(code))
+        out.push(code);
+    };
+    if (action.kind === 'positional') {
+      for (const b of action.bindings)
+        add(b.code && normalizeCode(b.code));
+      return out;
+    }
+    for (const glyph of action.glyphs)
+      for (const code of LABELLED_CODES)
+        if (!positional.has(code) && this.glyphOf(code) === glyph) {
+          add(code);
+          break;
+        }
+    for (const b of action.bindings)
+      if (b.code && !LABELLED_SET.has(b.code))
+        add(b.code);
+    if (out.length === 0)
+      for (const b of action.bindings)
+        if (b.code && LABELLED_SET.has(b.code) && !positional.has(b.code))
+          add(b.code);
+    return out;
+  }
+
+  defaultCodes(id) {
+    return this.computeDefaultCodes(id, DEFAULT_POSITIONAL_CODES, NO_CLAIMS);
+  }
+
+  computeEffective(id) {
+    const stored = this.overrides.get(id);
+    if (stored)
+      return stored;
+    return this.computeDefaultCodes(id, this.positionalByCode, this.claimedByOverride);
+  }
+
+  codeLabel(code) {
+    if (LABELLED_SET.has(code))
+      return this.labelOf(code) ?? code;
+    return NAMED_KEY_LABELS[code] ?? code;
+  }
+
+  actionLabel(id) {
+    const codes = this.effectiveCodes(id);
+    if (codes.length === 0)
+      return 'UNBOUND';
+    if (!this.overrides.has(id)) {
+      const action = ACTION_BY_ID.get(id);
+      if (action.kind === 'mnemonic')
+        return this.mnemonicLabel(action);
+      const code = POSITIONAL_LABEL_CODE[id];
+      if (code)
+        return this.labelOf(code);
+    }
+    return this.codeLabel(codes[0]);
+  }
+
+  materialise(id, codes) {
+    this.overrides.set(id, Object.freeze(codes.slice(0, MAX_SLOTS)));
+  }
+
+  beginChange(code = '') {
+    const change = this.lastChange;
+    change.ok = false;
+    change.stolenFrom = null;
+    change.swapped = false;
+    change.saved = false;
+    change.code = code;
+    return change;
+  }
+
+  commit(change) {
+    this.rebuildLookups();
+    this.bindingsVersion++;
+    this.version++;
+    change.ok = true;
+    change.saved = this.save();
+    return change;
+  }
+
+  stealFrom(code, exceptId, change) {
+    for (const other of BINDABLE_IDS) {
+      if (other === exceptId)
+        continue;
+      const codes = this.effectiveCodes(other);
+      const at = codes.indexOf(code);
+      if (at < 0)
+        continue;
+      const rest = codes.filter((c) => c !== code);
+      this.materialise(other, rest);
+      change.stolenFrom ??= other;
+    }
+  }
+
+  setBinding(id, slot, rawCode) {
+    const change = this.beginChange(typeof rawCode === 'string' ? rawCode : '');
+    if (!BINDABLE_SET.has(id) || (slot !== 0 && slot !== 1) || typeof rawCode !== 'string'
+      || rawCode.length < 1 || rawCode.length > MAX_CODE_LENGTH || RESERVED_CODES.has(rawCode))
+      return change;
+    const code = normalizeCode(rawCode);
+    change.code = code;
+    const current = this.effectiveCodes(id).slice(0, MAX_SLOTS);
+    const at = current.indexOf(code);
+    if (at === slot || (at >= 0 && slot >= current.length)) {
+      change.ok = true;
+      return change;
+    }
+    if (at >= 0) {
+      current[at] = current[slot];
+      current[slot] = code;
+      change.swapped = true;
+    } else if (slot < current.length)
+      current[slot] = code;
+    else
+      current.push(code);
+    this.overrides.set(id, Object.freeze(current));
+    this.stealFrom(code, id, change);
+    return this.commit(change);
+  }
+
+  clearBinding(id, slot) {
+    const change = this.beginChange();
+    if (!BINDABLE_SET.has(id))
+      return change;
+    const current = this.effectiveCodes(id).slice(0, MAX_SLOTS);
+    if (!(slot >= 0 && slot < current.length))
+      return change;
+    change.code = current[slot];
+    current.splice(slot, 1);
+    this.overrides.set(id, Object.freeze(current));
+    return this.commit(change);
+  }
+
+  resetAction(id) {
+    const change = this.beginChange();
+    if (!BINDABLE_SET.has(id))
+      return change;
+    const codes = this.defaultCodes(id);
+    this.overrides.delete(id);
+    for (let i = 0; i < codes.length; i++)
+      this.stealFrom(codes[i], id, change);
+    return this.commit(change);
+  }
+
+  resetAll() {
+    const change = this.beginChange();
+    this.overrides.clear();
+    this.rebuildLookups();
+    this.bindingsVersion++;
+    this.version++;
+    change.ok = true;
+    change.saved = this.removeStorage(CONTROLS_STORAGE_KEY);
+    this.saveFailed = !change.saved;
+    return change;
   }
 
   resolve(event) {
@@ -217,7 +685,7 @@ export class Keymap {
 
   cycleOverride() {
     this.override = LAYOUTS[(LAYOUTS.indexOf(this.override) + 1) % LAYOUTS.length];
-    this.storage?.setItem(LAYOUT_STORAGE_KEY, this.override);
+    this.writeStorage(LAYOUT_STORAGE_KEY, this.override);
     this.rebuild();
     this.version++;
     return this.statusText;
@@ -271,12 +739,18 @@ export class Keymap {
   }
 
   rebuild() {
-    const labels = new Map();
-    for (const action of ACTIONS)
-      if (action.kind === 'mnemonic')
-        labels.set(action.id, this.mnemonicLabel(action));
-    const label = (id) => labels.get(id) ?? this.labelOf(POSITIONAL_LABEL_CODE[id]);
-    this.hintLines = buildHints(label, this.override === 'auto' ? `auto (${this.layoutName})` : this.layoutName);
+    this.effective.clear();
+    this.slots.clear();
+    const unbound = [];
+    for (const id of BINDABLE_IDS) {
+      const codes = Object.freeze(this.computeEffective(id).slice());
+      this.effective.set(id, codes);
+      this.slots.set(id, codes.length > MAX_SLOTS ? Object.freeze(codes.slice(0, MAX_SLOTS)) : codes);
+      if (codes.length === 0)
+        unbound.push(id);
+    }
+    this.unbound = Object.freeze(unbound);
+    this.hintLines = buildHints((id) => this.actionLabel(id), this.override === 'auto' ? `auto (${this.layoutName})` : this.layoutName, this.overrides);
   }
 
   get layoutName() {

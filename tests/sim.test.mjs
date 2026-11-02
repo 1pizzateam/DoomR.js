@@ -35,9 +35,11 @@ import { KEYCARD_CELL, KEYCARD_CELLS, KEYCARD_FRAMES, keycardAtlas, keycardMesh 
 import { ARMOR_CELL, ARMOR_CELLS, ARMOR_COLORS, ARMOR_FRAMES, ARMOR_TYPES, armorAtlas, armorMesh } from '../src/armor.js';
 import { POWERUP_CELL, POWERUP_CELLS, POWERUP_FRAMES, POWERUP_TYPES, berserkAtlas, berserkMesh, nightvisionAtlas, nightvisionMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from '../src/powerups.js';
 import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.js';
-import { Hud, SCREEN_BLOOD_ALPHA } from '../src/hud.js';
+import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
-import { ACTIONS, DEFAULT_HINT_LINES, Keymap, LAYOUT_STORAGE_KEY, PRESETS } from '../src/keymap.js';
+import { ACTIONS, CONTROLS_STORAGE_KEY, CONTROL_GROUPS, DEFAULT_HINT_LINES, Keymap, LAYOUT_STORAGE_KEY, PRESETS, RESERVED_CODES } from '../src/keymap.js';
+import { ControlsMenu, TONE_RED } from '../src/controls.js';
+import { NAV_DOWN, NAV_LEFT, NAV_NONE, NAV_RIGHT, NAV_UP, RAW_RING_SIZE } from '../src/input.js';
 
 const idle = { forward: 0, strafe: 0, turn: 0, mouseX: 0, run: false, fire: false, use: false };
 const input = (patch) => ({ ...idle, ...patch });
@@ -8388,6 +8390,323 @@ const tests = {
     sound.handle({ type: 'rocketFire', x: 0, y: 0 });
     assert.equal(log.length, 0, 'AC-8 muted schedules no duck');
   },
+
+  'AC-1 controls page: defaults are unchanged, F1 opens controls and left click fires'() {
+    const expected = {
+      KeyW: 87, ArrowUp: 38, KeyS: 83, ArrowDown: 40, KeyA: 65, KeyD: 68, ArrowLeft: 37, ArrowRight: 39, Space: 32,
+      ShiftLeft: 16, ShiftRight: 160, KeyX: 88, ControlLeft: 17, ControlRight: 162, AltLeft: 18, AltRight: 164, Enter: 13,
+      KeyC: 67, KeyF: 70, Digit1: 49, Digit2: 50, Digit3: 51, Digit4: 52, Numpad1: 97, Numpad2: 98, Numpad3: 99, Numpad4: 100,
+      Tab: 9, Escape: 27, F3: 114, F2: 113, KeyE: 69, KeyN: 78, KeyM: 77, KeyV: 86, KeyG: 71, KeyP: 80, Semicolon: 59, KeyB: 66,
+      Equal: 61, NumpadAdd: 107, Minus: 45, NumpadSubtract: 109, BracketLeft: 219, BracketRight: 221, F1: 112, Mouse0: 1000,
+    };
+    for (const layout of ['qwerty', 'azerty', 'qwertz', 'dvorak']) {
+      const k = new Keymap({ storage: null, navigator: null });
+      k.applyLayoutMap(new Map(Object.entries(PRESETS[layout].glyphs)));
+      for (const action of ACTIONS)
+        for (const { code, which } of action.bindings)
+          if (code) {
+            assert.equal(expected[code], which, `${code} keeps its which`);
+            assert.equal(k.resolve({ code, key: '' }), which, `${layout} ${code}`);
+            assert.equal(k.actionOf(which), action.id);
+          }
+      assert.equal(k.unboundActions().length, 0);
+    }
+    const k = new Keymap({ storage: null, navigator: null });
+    assert.deepEqual(k.hintLines.slice(0, 6), DEFAULT_HINT_LINES.slice(0, 6));
+    assert.deepEqual(k.hintLines.slice(0, 5), [
+      'W A S D  move     mouse / ← →  turn',
+      'click / X / OPT / CTRL  fire     1-4  weapons',
+      'SPACE  jump     C  crouch     SHIFT  run',
+      'E  open doors     [ / ]  switch level     ;  sound',
+      'TAB  automap     N  night vision     M  music     ESC  pause',
+    ]);
+    assert.equal(k.hintLines[5], 'F2  keyboard layout: auto (QWERTY)');
+    assert.equal(k.hintLines[6], 'F1  controls');
+    const ids = [];
+    for (const g of CONTROL_GROUPS)
+      for (const a of g.actions)
+        ids.push(a.id);
+    for (const a of ACTIONS)
+      assert.equal(ids.filter((id) => id === a.id).length, a.id === 'menu' || a.id === 'confirm' ? 0 : 1, a.id);
+    withRig((inp, rig) => {
+      rig.down({ code: 'F1', key: 'F1' });
+      assert.equal(inp.took('controls'), true);
+      inp.endFrame();
+      rig.canvas.mousedown({ button: 0, clientX: 0, clientY: 0 });
+      assert.equal(inp.poll().fire, true);
+    });
+  },
+
+  'AC-2 controls page: bindings round-trip through doomr.controls'() {
+    const storage = memoryStorage();
+    const k = new Keymap({ storage, navigator: null });
+    assert.equal(k.setBinding('jump', 0, 'KeyJ').ok, true);
+    assert.equal(storage.data[CONTROLS_STORAGE_KEY], '{"version":1,"bindings":{"jump":["KeyJ"]}}');
+    const again = new Keymap({ storage, navigator: null });
+    assert.equal(again.actionOf(again.resolve({ code: 'KeyJ', key: 'j' })), 'jump');
+    assert.equal(again.resolve({ code: 'Space', key: ' ' }), 0);
+    assert.equal(again.codeLabel(again.slotCodes('jump')[0]), 'J');
+    again.resetAll();
+    assert.equal(storage.data[CONTROLS_STORAGE_KEY], undefined);
+    assert.equal(again.resolve({ code: 'KeyJ', key: 'j' }), 0);
+    assert.equal(again.resolve({ code: 'Space', key: ' ' }), 32);
+    assert.equal(new Keymap({ storage, navigator: null }).resolve({ code: 'Space', key: ' ' }), 32);
+  },
+
+  'AC-3 controls page: corrupt or unavailable storage falls back safely'() {
+    const record = (bindings, version = 1) => JSON.stringify({ version, bindings });
+    const cases = [
+      ['{', null],
+      [record({ jump: ['KeyJ'] }, 2), null],
+      [record([]), null],
+      [record(null), null],
+      [record({ bogus: ['KeyJ'] }), null],
+      ...[...RESERVED_CODES].map((code) => [record({ jump: [code] }), null]),
+      [record({ jump: ['KeyJ', 'KeyK', 'KeyL'] }), null],
+      [record({ jump: [5] }), null],
+      [record({ jump: [''] }), null],
+      [record({ jump: ['K'.repeat(40)] }), null],
+      [record({ jump: ['Enter'], crouch: ['KeyK'] }), ['crouch', 'KeyK']],
+      [record({ jump: ['KeyJ'], crouch: ['KeyJ'] }), ['jump', 'KeyJ']],
+    ];
+    for (const [raw, survivor] of cases) {
+      const storage = memoryStorage({ [CONTROLS_STORAGE_KEY]: raw });
+      let k;
+      assert.doesNotThrow(() => { k = new Keymap({ storage, navigator: null }); });
+      assert.equal(storage.writes.length, 0, 'loading never writes');
+      assert.equal(k.overrides.size, survivor ? 1 : 0, raw);
+      if (survivor) {
+        assert.deepEqual([...k.effectiveCodes(survivor[0])], [survivor[1]]);
+        assert.equal(k.effectiveCodes(survivor[0] === 'jump' ? 'crouch' : 'jump').includes(survivor[1]), false);
+      }
+    }
+    const boom = () => { throw new Error('storage unavailable'); };
+    const throwing = { getItem: boom, setItem: boom, removeItem: boom };
+    const k = new Keymap({ storage: throwing, navigator: null });
+    assert.equal(k.resolve({ code: 'Space', key: ' ' }), 32);
+    assert.equal(k.setBinding('jump', 0, 'KeyJ').saved, false);
+    assert.equal(k.actionOf(k.resolve({ code: 'KeyJ', key: 'j' })), 'jump');
+    const trapped = {};
+    Object.defineProperty(trapped, 'localStorage', { get: boom });
+    assert.doesNotThrow(() => new Keymap({ navigator: null }));
+  },
+
+  'AC-4 controls page: stealing, swapping and modifier normalisation'() {
+    const k = new Keymap({ storage: null, navigator: null });
+    const change = k.setBinding('grenade', 0, 'KeyM');
+    assert.equal(k.actionOf(k.resolve({ code: 'KeyM', key: 'm' })), 'grenade');
+    assert.deepEqual([...k.effectiveCodes('music')], []);
+    assert.ok(k.unboundActions().includes('music'));
+    assert.equal(change.stolenFrom, 'music');
+    const swap = new Keymap({ storage: memoryStorage(), navigator: null });
+    swap.setBinding('jump', 1, 'KeyJ');
+    assert.deepEqual([...swap.effectiveCodes('jump')], ['Space', 'KeyJ']);
+    assert.equal(swap.setBinding('jump', 0, 'KeyJ').swapped, true);
+    assert.deepEqual([...swap.effectiveCodes('jump')], ['KeyJ', 'Space']);
+    const mod = new Keymap({ storage: null, navigator: null });
+    mod.setBinding('crouch', 0, 'ShiftRight');
+    assert.deepEqual([...mod.overrides.get('crouch')], ['ShiftLeft']);
+    assert.equal(mod.actionOf(mod.resolve({ code: 'ShiftLeft', key: 'Shift' })), 'crouch');
+    assert.equal(mod.actionOf(mod.resolve({ code: 'ShiftRight', key: 'Shift' })), 'crouch');
+    assert.ok(mod.unboundActions().includes('run'));
+    withRig((inp, rig) => {
+      const menu = new ControlsMenu(inp.keymap, inp);
+      const game = fakeGame();
+      menu.open('title');
+      menu.view.cursorLine = menu.view.lines.findIndex((l) => l.id === 'grenade');
+      rig.down({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Enter', key: 'Enter' });
+      rig.down({ code: 'KeyM', key: 'm' });
+      menu.update(0.016, game);
+      assert.equal(menu.view.toastText, 'M was taken from MUSIC — MUSIC is now UNBOUND');
+      assert.equal(menu.view.toastTone, TONE_RED);
+    });
+  },
+
+  'AC-5 controls page: capture flow, reserved keys, timeout and mouse binding'() {
+    withRig((inp, rig) => {
+      const menu = new ControlsMenu(inp.keymap, inp);
+      const game = fakeGame();
+      const v = menu.view;
+      const seek = (id) => { v.cursorLine = v.lines.findIndex((l) => l.id === id); v.cursorCol = 0; };
+      const begin = () => {
+        rig.down({ code: 'Enter', key: 'Enter' });
+        menu.update(0.016, game);
+        rig.up({ code: 'Enter', key: 'Enter' });
+        menu.update(0.016, game);
+        assert.equal(v.mode, 'capture');
+      };
+      menu.open('title');
+      seek('jump');
+      begin();
+      rig.down({ code: 'KeyJ', key: 'j' });
+      menu.update(0.016, game);
+      assert.equal(inp.keymap.effectiveCodes('jump')[0], 'KeyJ');
+      assert.ok(game.events.includes('keycard'));
+      rig.up({ code: 'KeyJ', key: 'j' });
+      for (const code of ['Escape', 'Enter', 'MetaLeft']) {
+        game.events.length = 0;
+        seek('crouch');
+        begin();
+        rig.down({ code, key: code });
+        menu.update(0.016, game);
+        assert.deepEqual([...inp.keymap.effectiveCodes('crouch')], ['KeyC'], code);
+        assert.ok(game.events.includes('dry'), code);
+        assert.equal(v.mode, 'browse');
+        rig.up({ code, key: code });
+        menu.update(0.016, game);
+      }
+      seek('crouch');
+      begin();
+      menu.update(5 + 0.02, game);
+      assert.equal(v.mode, 'browse');
+      seek('grenade');
+      begin();
+      rig.canvas.mousedown({ button: 2, clientX: 0, clientY: 0 });
+      menu.update(0.016, game);
+      assert.equal(inp.keymap.effectiveCodes('grenade')[0], 'Mouse2');
+      menu.close();
+      assert.equal(inp.syncBindings(), true);
+      rig.canvas.mousedown({ button: 2, clientX: 0, clientY: 0 });
+      assert.equal(inp.poll().grenade, true);
+    });
+  },
+
+  'AC-6 controls page: raw mode isolates input and rebuilds leave no stuck keys'() {
+    withRig((inp, rig) => {
+      rig.down({ code: 'KeyW', key: 'w' });
+      assert.ok(inp.keys.has('moveForward'));
+      inp.setRawMode(true);
+      assert.equal(inp.keys.size + inp.heldWhich.size + inp.downByCode.size + inp.pressed.size, 0);
+      for (const [code, key] of [['KeyM', 'm'], ['F2', 'F2'], ['Tab', 'Tab'], ['KeyX', 'x']])
+        rig.down({ code, key });
+      rig.canvas.mousedown({ button: 0, clientX: 0, clientY: 0 });
+      for (const id of ['music', 'layoutCycle', 'automap', 'fire', 'Click'])
+        assert.equal(inp.took(id), false, id);
+      assert.equal(inp.keys.size, 0);
+      const drained = [];
+      for (let r = inp.nextRaw(); r !== null; r = inp.nextRaw())
+        drained.push(r.code);
+      assert.deepEqual(drained, ['KeyM', 'F2', 'Tab', 'KeyX', 'Mouse0']);
+      for (let i = 0; i < 20; i++)
+        rig.down({ code: 'KeyZ', key: 'z' });
+      let count = 0;
+      while (inp.nextRaw() !== null)
+        count++;
+      assert.equal(count, RAW_RING_SIZE);
+      inp.setRawMode(false);
+      rig.down({ code: 'KeyW', key: 'w' });
+      inp.keymap.setBinding('moveForward', 0, 'KeyI');
+      inp.keymap.clearBinding('moveForward', 1);
+      assert.equal(inp.syncBindings(), true);
+      assert.equal(inp.keys.has('moveForward'), false);
+      rig.down({ code: 'KeyI', key: 'i' });
+      assert.equal(inp.poll().forward, 1);
+      rig.up({ code: 'KeyI', key: 'i' });
+      rig.up({ code: 'KeyW', key: 'w' });
+      rig.down({ code: 'KeyW', key: 'w' });
+      assert.equal(inp.poll().forward, 0);
+    });
+  },
+
+  'AC-7 controls page: menus navigate after a WASD rebind and main.js is wired'() {
+    withRig((inp, rig) => {
+      const k = inp.keymap;
+      const moves = [['moveForward', 'KeyI'], ['moveBack', 'KeyK'], ['strafeLeft', 'KeyJ'], ['strafeRight', 'KeyL'], ['turnLeft', 'KeyU'], ['turnRight', 'KeyO']];
+      for (const [id, code] of moves) {
+        k.setBinding(id, 0, code);
+        k.clearBinding(id, 1);
+      }
+      inp.syncBindings();
+      for (const [code, nav] of [['ArrowUp', NAV_UP], ['ArrowDown', NAV_DOWN], ['ArrowLeft', NAV_LEFT], ['ArrowRight', NAV_RIGHT], ['KeyI', NAV_UP]]) {
+        rig.down({ code, key: code });
+        assert.equal(inp.navigate(), nav, code);
+        inp.endFrame();
+        assert.equal(inp.navigate(), NAV_NONE);
+        rig.up({ code, key: code });
+      }
+    });
+    const src = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    for (const s of ['input.navigate()', "input.took('controls')", 'input.syncBindings()', 'controlsMenu.open(', 'CONTROLS_STORAGE_KEY', 'keymap.reload()', 'game.keyLabel'])
+      assert.ok(src.includes(s), `AC-7 main.js contains ${s}`);
+    for (const s of ["input.took('Key", "input.took('Digit", "input.took('Arrow"])
+      assert.ok(!src.includes(s), `AC-7 main.js has no ${s}`);
+    const pickup = (game) => {
+      const nvg = game.pickups.find((p) => p.type === 'nightvision');
+      game.touch({ ref: nvg });
+      return game.message.text;
+    };
+    assert.equal(pickup(fresh(4)), 'Night Vision Goggles! (Press N to toggle)');
+    const custom = fresh(4);
+    custom.keyLabel = () => 'K';
+    assert.equal(pickup(custom), 'Night Vision Goggles! (Press K to toggle)');
+  },
+
+  'AC-8 controls page: HUD draws the page, entry, warning and hit-tests, and docs record #26'() {
+    const texts = [];
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+          fillText(str) { texts.push(str); },
+        };
+      },
+    };
+    const fakeOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } },
+    };
+    withRig((inp) => {
+      inp.keymap.setBinding('grenade', 0, 'KeyM');
+      const menu = new ControlsMenu(inp.keymap, inp);
+      const game = fresh(0);
+      game.state = 'title';
+      game.selectingDifficulty = false;
+      const hud = new Hud(fakeCanvas, fakeOverlay);
+      hud.resize(1024, 768, 1);
+      hud.controlsView = menu.view;
+      menu.open('title');
+      hud.render(game);
+      menu.view.scroll = menu.view.lines.length - menu.view.visibleRows;
+      hud.render(game);
+      for (const t of ['CONTROLS', 'MOVEMENT', 'COMBAT', 'WEAPONS', 'INTERFACE', 'KEY 1', 'KEY 2', '[RESET ALL]', '[BACK]', 'UNBOUND'])
+        assert.ok(texts.includes(t), `draws ${t}`);
+      menu.view.scroll = 0;
+      const L = layoutControls(1024, 768);
+      const probe = new Vec2(L.slot1X, L.rowsTop + 1 * 20 + 10);
+      assert.equal(hud.controlsHitAt(probe), 3);
+      probe.setScalar(L.slot0X, L.rowsTop + 1 * 20 + 10);
+      assert.equal(hud.controlsHitAt(probe), 2);
+      menu.close();
+      assert.equal(hud.controlsHitAt(probe), -1);
+      hud.setControlsStatus('F1', 1);
+      for (const state of ['title', 'paused']) {
+        texts.length = 0;
+        game.state = state;
+        hud.render(game);
+        assert.ok(texts.includes('CONTROLS · F1'), state);
+        assert.ok(texts.includes('1 controls unbound — open CONTROLS'), state);
+        const dy = state === 'title' ? 80 : 58;
+        assert.equal(hud.controlsButtonAt(new Vec2(512, 384 + dy), game), true);
+        assert.equal(hud.controlsButtonAt(new Vec2(512, 384 + dy + 60), game), false);
+      }
+    });
+    const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const start = md.indexOf('## Controls');
+    const rest = md.slice(start + 1);
+    const end = rest.indexOf('\n## ');
+    const section = end < 0 ? rest : rest.slice(0, end);
+    const lines = section.split('\n');
+    assert.ok(lines.some((l) => /^\|\s*F1\s*\|[^|]*controls page/.test(l)));
+    assert.ok(lines.some((l) => /^\|\s*F2\s*\|[^|]*keyboard layout/.test(l)));
+    assert.ok(section.includes('doomr.controls'));
+    const log = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+    assert.ok(log.includes('#26') && log.includes('doomr.controls'));
+  },
 };
 
 const withInput = (fn) => {
@@ -8400,6 +8719,42 @@ const withInput = (fn) => {
   try {
     const inp = new Input({ addEventListener() {} }, new Keymap({ storage: null, navigator: null }));
     fn(inp, (e) => globalThis.document.onkeydown({ ...base, ...e }), (e) => globalThis.document.onkeyup({ ...base, ...e }), () => handlers.blur());
+  } finally {
+    globalThis.document = prevDoc;
+    globalThis.window = prevWin;
+  }
+};
+
+const memoryStorage = (initial = {}) => {
+  const data = { ...initial };
+  const writes = [];
+  return {
+    data,
+    writes,
+    getItem: (key) => data[key] ?? null,
+    setItem(key, value) { writes.push(['set', key]); data[key] = String(value); },
+    removeItem(key) { writes.push(['remove', key]); delete data[key]; },
+  };
+};
+
+const fakeGame = () => ({ zero: new Vec2(), events: [], emit(type) { this.events.push(type); } });
+
+const withRig = (fn, storage = null) => {
+  const prevDoc = globalThis.document;
+  const prevWin = globalThis.window;
+  const canvas = { getBoundingClientRect: undefined };
+  const canvasHandlers = {};
+  globalThis.document = { addEventListener() {}, pointerLockElement: null };
+  globalThis.window = { addEventListener() {} };
+  const base = { repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, preventDefault() {} };
+  try {
+    const target = { addEventListener(name, handler) { canvasHandlers[name] = handler; } };
+    const inp = new Input(target, new Keymap({ storage, navigator: null }));
+    fn(inp, {
+      canvas: canvasHandlers,
+      down: (e) => globalThis.document.onkeydown({ ...base, ...e }),
+      up: (e) => globalThis.document.onkeyup({ ...base, ...e }),
+    });
   } finally {
     globalThis.document = prevDoc;
     globalThis.window = prevWin;

@@ -9,6 +9,7 @@ import { AMMO_TYPES } from './ammo.js';
 import { ARMOR_TYPES } from './armor.js';
 import { KNIFE_ATTACKS } from './arsenal.js';
 import { POWERUP_TYPES } from './powerups.js';
+import { defaultActionLabel } from './keymap.js';
 
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
@@ -130,6 +131,7 @@ export class Game {
     this.carry = { health: MAX_HEALTH, shells: 0, bullets: 0, rockets: 0 };
     this.message = { text: '', age: 99 };
     this.zero = new Vec2();
+    this.keyLabel = defaultActionLabel;
     this.scratch = new Vec2();
     this.velocity = new Vec2();
     this.pitMin = new Vec2();
@@ -1341,7 +1343,7 @@ export class Game {
       ref.taken = true;
       if (ref.initial)
         this.itemsPicked = Math.min(this.totalItems, this.itemsPicked + 1);
-      this.say('Night Vision Goggles! (Press N to toggle)', 2.5);
+      this.say(`Night Vision Goggles! (Press ${this.keyLabel('nightVision')} to toggle)`, 2.5);
       this.emit('powerup', null, { kind: 'nightvision' });
       return;
     }

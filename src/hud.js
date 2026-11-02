@@ -6,6 +6,7 @@ import { faceCellUv, faceFrame, facePlacement } from './face.js';
 import { AMMO_FLASH_DURATION, DIFFICULTIES, DIFFICULTY_ORDER, FIRE_COOLDOWN } from './game.js';
 import { AMMO_TYPES } from './ammo.js';
 import { DEFAULT_HINT_LINES, DEFAULT_SELECT_HINT } from './keymap.js';
+import { HIT_BACK, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP } from './controls.js';
 import { WEAPON_SLOTS, WEAPONS, weaponCellUv, weaponFrame, weaponPlacement } from './weapon.js';
 
 const COLORS = ['#5b8cff', '#38c793', '#ff9f43', '#e8102c'];
@@ -28,6 +29,53 @@ const HINT_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.75, glow:
 const HINT_DIM_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.45, glow: 2 });
 
 export const SCREEN_BLOOD_ALPHA = 0.72;
+
+const CONTROLS_ROW_H = 20;
+const CONTROLS_TOP = 64;
+const CONTROLS_HEADER_H = 64;
+const CONTROLS_FOOTER_H = 72;
+const CONTROLS_ENTRY_TITLE_DY = 80;
+const CONTROLS_ENTRY_PAUSED_DY = 58;
+const CONTROLS_LEGEND = '↑↓←→ select · ENTER / click rebind · DEL clear · R reset row · ESC back';
+const CONTROLS_CUE_W = 24;
+const CONTROLS_BUTTON_HALF_W = 70;
+const SEG4 = [0, 0, 0, 0];
+const RECT10 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+const controlsRect = (x0, y0, x1, y1) => {
+  RECT10[0] = x0; RECT10[1] = y0; RECT10[2] = x1; RECT10[3] = y0; RECT10[4] = x1;
+  RECT10[5] = y1; RECT10[6] = x0; RECT10[7] = y1; RECT10[8] = x0; RECT10[9] = y0;
+  return RECT10;
+};
+const controlsSeg = (x0, y0, x1, y1) => {
+  SEG4[0] = x0; SEG4[1] = y0; SEG4[2] = x1; SEG4[3] = y1;
+  return SEG4;
+};
+
+/** Written by layoutControls and read by both drawing and hit-testing so they never drift. */
+export const CONTROLS_LAYOUT = {
+  boxX: 0, boxY: 0, boxW: 0, boxH: 0, rowsTop: 0, footerTop: 0, visibleRows: 4, rowH: CONTROLS_ROW_H,
+  nameX: 0, slot0X: 0, slot1X: 0, slotHalf: 0, resetX: 0, backX: 0, buttonY: 0,
+};
+
+export const layoutControls = (width, height) => {
+  const L = CONTROLS_LAYOUT;
+  L.boxW = Utils.clamp(width - 48, 360, 640);
+  L.boxH = Math.max(CONTROLS_HEADER_H + CONTROLS_FOOTER_H + CONTROLS_ROW_H * 4, Math.min(height - 48, 760));
+  L.boxX = width / 2 - L.boxW / 2;
+  L.boxY = Math.max(8, (height - L.boxH) / 2);
+  L.rowsTop = L.boxY + CONTROLS_TOP;
+  L.footerTop = L.boxY + L.boxH - CONTROLS_FOOTER_H;
+  L.visibleRows = Math.max(4, Math.floor((L.boxH - CONTROLS_HEADER_H - CONTROLS_FOOTER_H) / CONTROLS_ROW_H));
+  L.nameX = L.boxX + 24;
+  L.slot0X = L.boxX + L.boxW * 0.58;
+  L.slot1X = L.boxX + L.boxW * 0.82;
+  L.slotHalf = L.boxW * 0.11;
+  L.resetX = L.boxX + L.boxW * 0.3;
+  L.backX = L.boxX + L.boxW * 0.7;
+  L.buttonY = L.footerTop + 58;
+  return L;
+};
 
 /**
  * Everything that is drawn flat on top of the 3D world: weapon, HUD, minimap and menus.
@@ -54,6 +102,16 @@ export class Hud {
     this.lastAlign = '';
     this.controlHints = DEFAULT_HINT_LINES;
     this.selectHint = DEFAULT_SELECT_HINT;
+    this.controlsView = null;
+    this.unboundControls = 0;
+    this.controlsEntryText = 'CONTROLS · F1';
+    this.unboundText = '';
+  }
+
+  setControlsStatus(label, unboundCount) {
+    this.unboundControls = unboundCount;
+    this.controlsEntryText = `CONTROLS · ${label}`;
+    this.unboundText = unboundCount > 0 ? `${unboundCount} controls unbound — open CONTROLS` : '';
   }
 
   drawControlHints(cx, y) {
@@ -1161,6 +1219,118 @@ export class Hud {
     return pos.x < cx ? -1 : 1;
   }
 
+  controlsHitAt(pos) {
+    const view = this.controlsView;
+    if (!view?.open)
+      return HIT_NONE;
+    const L = layoutControls(this.width, this.height);
+    if (pos.x < L.boxX || pos.x > L.boxX + L.boxW || pos.y < L.boxY || pos.y > L.boxY + L.boxH)
+      return HIT_NONE;
+    if (pos.y >= L.buttonY - 16 && pos.y <= L.buttonY + 6) {
+      if (Math.abs(pos.x - L.resetX) <= CONTROLS_BUTTON_HALF_W)
+        return HIT_RESET_ALL;
+      if (Math.abs(pos.x - L.backX) <= CONTROLS_BUTTON_HALF_W)
+        return HIT_BACK;
+      return HIT_NONE;
+    }
+    if (pos.x >= L.boxX + L.boxW - CONTROLS_CUE_W) {
+      if (pos.y >= L.rowsTop - 16 && pos.y < L.rowsTop && view.scroll > 0)
+        return HIT_SCROLL_UP;
+      if (pos.y >= L.footerTop - 16 && pos.y < L.footerTop && view.scroll + L.visibleRows < view.lines.length)
+        return HIT_SCROLL_DOWN;
+    }
+    if (pos.y < L.rowsTop || pos.y >= L.rowsTop + L.visibleRows * CONTROLS_ROW_H)
+      return HIT_NONE;
+    const line = view.scroll + Math.floor((pos.y - L.rowsTop) / CONTROLS_ROW_H);
+    if (line >= view.lines.length || view.lines[line].kind !== 'action')
+      return HIT_NONE;
+    if (Math.abs(pos.x - L.slot0X) <= L.slotHalf)
+      return line * 2;
+    if (Math.abs(pos.x - L.slot1X) <= L.slotHalf)
+      return line * 2 + 1;
+    return HIT_NONE;
+  }
+
+  controlsButtonAt(pos, game) {
+    let dy;
+    if (game.state === 'title' && !game.selectingDifficulty)
+      dy = CONTROLS_ENTRY_TITLE_DY;
+    else if (game.state === 'paused')
+      dy = CONTROLS_ENTRY_PAUSED_DY;
+    else
+      return false;
+    const cx = this.width / 2;
+    const cy = this.height / 2;
+    return Math.abs(pos.x - cx) <= 110 && pos.y >= cy + dy - 14 && pos.y <= cy + dy + 6;
+  }
+
+  drawControls(view, game) {
+    const L = layoutControls(this.width, this.height);
+    view.visibleRows = L.visibleRows;
+    const { boxX, boxY, boxW, boxH, rowsTop, footerTop } = L;
+    const right = boxX + boxW;
+    const bottom = boxY + boxH;
+    this.canvasLine(controlsRect(boxX, boxY, right, bottom), BLUE, 0.45, 1.5, 8);
+    const arm = 12;
+    this.canvasLine(controlsSeg(boxX - 3, boxY + arm, boxX - 3, boxY - 3), GREEN, 0.85, 2, 8);
+    this.canvasLine(controlsSeg(right + 3, boxY + arm, right + 3, boxY - 3), GREEN, 0.85, 2, 8);
+    this.canvasLine(controlsSeg(boxX - 3, bottom - arm, boxX - 3, bottom + 3), GREEN, 0.85, 2, 8);
+    this.canvasLine(controlsSeg(right + 3, bottom - arm, right + 3, bottom + 3), GREEN, 0.85, 2, 8);
+    this.text('CONTROLS', boxX + boxW / 2, boxY + 22, BLUE, { size: 14, align: 'center', weight: 800, glow: 8 });
+    this.text('ACTION', L.nameX, boxY + 50, BLUE, { size: 10, alpha: 0.6, glow: 0 });
+    this.text('KEY 1', L.slot0X, boxY + 50, BLUE, { size: 10, align: 'center', alpha: 0.6, glow: 0 });
+    this.text('KEY 2', L.slot1X, boxY + 50, BLUE, { size: 10, align: 'center', alpha: 0.6, glow: 0 });
+    this.canvasLine(controlsSeg(boxX + 18, boxY + 28, right - 18, boxY + 28), BLUE, 0.25, 1, 2);
+
+    const capturing = view.mode === 'capture';
+    const blink = 0.5 + 0.5 * Math.sin(game.time * 8);
+    const lines = view.lines;
+    const last = Math.min(lines.length, view.scroll + L.visibleRows);
+    for (let i = view.scroll; i < last; i++) {
+      const line = lines[i];
+      const base = rowsTop + (i - view.scroll) * CONTROLS_ROW_H;
+      const y = base + 14;
+      if (line.kind === 'header') {
+        this.text(line.title, L.nameX, y, BLUE, { size: 11, weight: 800, alpha: 0.55, glow: 0 });
+        continue;
+      }
+      const selectedRow = view.footerFocus < 0 && view.cursorLine === i;
+      if (line.custom)
+        this.text('•', L.nameX - 10, y, GREEN, { size: 12, glow: 0 });
+      if (capturing && selectedRow)
+        this.text('PRESS A KEY… (ESC cancel)', L.nameX, y, ORANGE, { size: 10, weight: 800, alpha: 0.4 + blink * 0.6, glow: 6 });
+      else
+        this.text(line.name, L.nameX, y, line.custom ? GREEN : BLUE, { size: 12, alpha: selectedRow ? 1 : 0.8, glow: selectedRow ? 6 : 0 });
+      for (let col = 0; col < 2; col++) {
+        const x = col === 0 ? L.slot0X : L.slot1X;
+        const selected = selectedRow && view.cursorCol === col;
+        const text = col === 0 ? line.slot0 : line.slot1;
+        if (selected)
+          this.canvasLine(controlsRect(x - L.slotHalf, base + 2, x + L.slotHalf, base + CONTROLS_ROW_H - 2), ORANGE, 0.8, 1.5, 6);
+        if (selected && capturing) {
+          this.canvasLine(controlsSeg(x - L.slotHalf + 3, base + CONTROLS_ROW_H - 4, x - L.slotHalf + 3 + (L.slotHalf * 2 - 6) * Utils.clamp(view.captureTime / view.captureMax, 0, 1), base + CONTROLS_ROW_H - 4), ORANGE, 0.9, 2, 4);
+          continue;
+        }
+        const tone = text === 'UNBOUND' ? RED : (selected ? ORANGE : BLUE);
+        this.text(text, x, y, tone, { size: 12, align: 'center', alpha: selected ? 1 : 0.8, glow: selected ? 6 : 0 });
+      }
+    }
+    if (view.scroll > 0)
+      this.text('▲', right - 12, rowsTop - 4, ORANGE, { size: 11, align: 'center', glow: 0 });
+    if (view.scroll + L.visibleRows < lines.length)
+      this.text('▼', right - 12, footerTop - 4, ORANGE, { size: 11, align: 'center', glow: 0 });
+
+    this.canvasLine(controlsSeg(boxX + 18, footerTop, right - 18, footerTop), BLUE, 0.25, 1, 2);
+    this.text(CONTROLS_LEGEND, boxX + boxW / 2, footerTop + 16, BLUE, { size: 10, align: 'center', alpha: 0.6, glow: 0 });
+    if (view.toastTime > 0)
+      this.text(view.toastText, boxX + boxW / 2, footerTop + 34, view.toastTone, { size: 12, align: 'center', alpha: Utils.clamp(view.toastTime * 2, 0, 1), glow: 4 });
+    const confirming = view.mode === 'confirmReset';
+    const resetFocus = view.footerFocus === 0;
+    this.text(confirming ? '[PRESS AGAIN TO RESET ALL]' : '[RESET ALL]', L.resetX, L.buttonY, RED, { size: 12, align: 'center', weight: 800, alpha: resetFocus || confirming ? 1 : 0.7, glow: resetFocus ? 8 : 2 });
+    const backFocus = view.footerFocus === 1;
+    this.text('[BACK]', L.backX, L.buttonY, backFocus ? ORANGE : BLUE, { size: 12, align: 'center', weight: 800, alpha: backFocus ? 1 : 0.7, glow: backFocus ? 8 : 2 });
+  }
+
   drawOverlay(game) {
     const { ctx, width, height } = this;
     const state = game.state;
@@ -1173,6 +1343,12 @@ export class Hud {
       ctx.globalAlpha = 1;
     };
 
+    if (this.controlsView?.open && (state === 'title' || state === 'paused')) {
+      dim(0.82);
+      this.drawControls(this.controlsView, game);
+      return;
+    }
+
     if (state === 'title') {
       dim(Math.max(0.55, game.fade));
       const blink = 0.5 + 0.5 * Math.sin(game.time * 2.2);
@@ -1180,7 +1356,10 @@ export class Hud {
         this.text('DOOMR', cx, cy - 60, BLUE, { size: Math.min(110, width / 7), align: 'center', weight: 800, glow: 22 });
         this.text('Rip and tear', cx, cy - 20, GREEN, { size: 15, align: 'center', alpha: 0.9 });
         this.text('click or press ENTER to start', cx, cy + 56, ORANGE, { size: 16, align: 'center', alpha: 0.5 + blink * 0.5 });
+        this.text(this.controlsEntryText, cx, cy + CONTROLS_ENTRY_TITLE_DY, GREEN, { size: 13, align: 'center', alpha: 0.85 });
         this.drawControlHints(cx, cy + 100);
+        if (this.unboundText)
+          this.text(this.unboundText, cx, cy + 100 + this.controlHints.length * 20, RED, { size: 12, align: 'center' });
       } else {
         this.text('DOOMR', cx, cy - 116, BLUE, { size: Math.min(84, width / 8), align: 'center', weight: 800, glow: 22 });
         const boxW = Utils.clamp(width - 48, 280, 390);
@@ -1228,7 +1407,10 @@ export class Hud {
       dim(0.6);
       this.text('PAUSED', cx, cy, BLUE, { size: 40, align: 'center', weight: 800, glow: 14 });
       this.text('click or press ENTER to resume', cx, cy + 36, GREEN, { size: 14, align: 'center' });
+      this.text(this.controlsEntryText, cx, cy + CONTROLS_ENTRY_PAUSED_DY, GREEN, { size: 13, align: 'center', alpha: 0.85 });
       this.drawControlHints(cx, cy + 76);
+      if (this.unboundText)
+        this.text(this.unboundText, cx, cy + 76 + this.controlHints.length * 20, RED, { size: 12, align: 'center' });
     } else if (state === 'dead') {
       const fade = Utils.clamp(game.player.deadTime / 1.2, 0, 1);
       dim(0.5 * fade);

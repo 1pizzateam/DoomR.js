@@ -3,7 +3,9 @@ import { Time } from '@1pizzateam/spock';
 import { Game } from './game.js';
 import { Hud } from './hud.js';
 import { Sound } from './audio.js';
-import { Input } from './input.js';
+import { Input, NAV_DOWN, NAV_LEFT, NAV_RIGHT, NAV_UP } from './input.js';
+import { ControlsMenu } from './controls.js';
+import { CONTROLS_STORAGE_KEY } from './keymap.js';
 import { TitleDirector } from './title.js';
 import { World } from './world.js';
 
@@ -24,6 +26,13 @@ if (urlLevel) {
   if (m)
     game.setLevel(Number(m[1]) - 1);
 }
+const controlsMenu = new ControlsMenu(keymap, input, { hitAt: (pos) => hud.controlsHitAt(pos) });
+hud.controlsView = controlsMenu.view;
+game.keyLabel = (id) => keymap.actionLabel(id);
+window.addEventListener('storage', (event) => {
+  if (event.key === CONTROLS_STORAGE_KEY || event.key === null)
+    keymap.reload();
+});
 const sound = new Sound();
 const quality = new Quality();
 const title = new TitleDirector(game);
@@ -75,10 +84,21 @@ document.addEventListener('pointerlockchange', () => {
 });
 
 function control(dt) {
+  input.syncBindings();
   if (keymap.version !== hintVersion) {
     hud.controlHints = keymap.hintLines;
     hud.selectHint = keymap.selectHint;
+    hud.setControlsStatus(keymap.actionLabel('controls'), keymap.unboundActions().length);
     hintVersion = keymap.version;
+  }
+  if (controlsMenu.isOpen) {
+    if (controlsMenu.returnState === 'title') {
+      hud.automap = false;
+      game.time += dt;
+      title.update(dt);
+    }
+    controlsMenu.update(dt, game);
+    return;
   }
   if (input.took('layoutCycle'))
     game.say(keymap.cycleOverride(), 1.5);
@@ -109,6 +129,16 @@ function control(dt) {
       game.cycleLevel(1);
   }
 
+  if ((game.state === 'title' || game.state === 'paused' || game.state === 'play')
+    && (input.took('controls') || (input.took('Click') && !unlockedThisFrame && hud.controlsButtonAt(input.mousePos, game)))) {
+    if (game.state === 'play') {
+      game.state = 'paused';
+      input.unlock();
+    }
+    controlsMenu.open(game.state === 'title' ? 'title' : 'paused');
+    return;
+  }
+
   switch (game.state) {
     case 'title':
       hud.automap = false;
@@ -123,13 +153,14 @@ function control(dt) {
         game.selectingDifficulty = false;
         break;
       }
-      if (input.took('moveForward'))
+      const nav = input.navigate();
+      if (nav === NAV_UP)
         game.cycleDifficulty(-1);
-      if (input.took('moveBack'))
+      if (nav === NAV_DOWN)
         game.cycleDifficulty(1);
-      if (input.took('turnLeft') || input.took('strafeLeft') || input.took('levelPrev'))
+      if (nav === NAV_LEFT || input.took('levelPrev'))
         game.cycleLevel(-1);
-      if (input.took('turnRight') || input.took('strafeRight') || input.took('levelNext'))
+      if (nav === NAV_RIGHT || input.took('levelNext'))
         game.cycleLevel(1);
       if (input.took('weapon1'))
         game.setDifficulty(0);
