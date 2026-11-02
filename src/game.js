@@ -91,6 +91,14 @@ export const AMMO_FLASH_DURATION = 0.65;
 // the ammo crates and the pool each one fills, whatever weapon is in hand
 const AMMO_CRATES = { ammo: 'shells', bullets: 'bullets', rockets: 'rockets' };
 const MAX_HEALTH = 100;
+// authored supplies live in openable caches; only enemy drops and keys/armor/powerups lie on the floor
+export const CACHE_TYPES = Object.freeze(['health', 'ammo', 'bullets', 'rockets', 'chainsaw', 'shotgun', 'chaingun', 'rocket']);
+const CACHE_TYPE_SET = new Set(CACHE_TYPES);
+const CACHE_WEAPONS = new Set(['chainsaw', 'shotgun', 'chaingun', 'rocket']);
+const USE_RANGE = 96;
+const USE_DOT = 0.35;
+const CACHE_TOUCH_RANGE = TILE * 0.5;
+export const CACHE_LID_TIME = 0.35;
 
 function makeBody(pos, radius, { type = 'dynamic', mass = 1, sensor = false, category, mask, velocity }) {
   const size = new Vec2(radius * 2, radius * 2);
@@ -124,6 +132,7 @@ export class Game {
     this.cam = null;
     this.fade = 0;
     this.toPlayer = new Vec2();
+    this.awardRef = { type: '', initial: false, taken: false };
     this.move = new Vec2();
     this.blood = new Blood();
     // sound events for main.js to hand to the audio layer; the rules never touch audio themselves
@@ -253,6 +262,7 @@ export class Game {
     this.dust = [];
     this.enemies = [];
     this.pickups = [];
+    this.caches = [];
     this.barrels = [];
     this.shots = [];
     this.effects = [];
@@ -292,8 +302,7 @@ export class Game {
     }
     for (const spawn of this.level.barrels)
       this.addBarrel(spawn.pos);
-    for (const spawn of this.level.pickups)
-      this.addPickup(spawn.type, spawn.pos, true);
+    this.buildCaches();
     this.totalEnemies = this.enemies.length;
     if (this.level.planet === 'mars')
       this.seedMarsDust();
@@ -656,6 +665,167 @@ export class Game {
     return pickup;
   }
 
+  buildCaches() {
+    const { level } = this;
+    const { width, rowCount } = level;
+    const buckets = new Map();
+    for (const spawn of level.pickups) {
+      if (!CACHE_TYPE_SET.has(spawn.type)) {
+        this.addPickup(spawn.type, spawn.pos, true);
+        continue;
+      }
+      buckets.set(level.grid.getCell(spawn.pos), true);
+    }
+    const keys = [...buckets.keys()].sort((a, b) => a - b);
+    const clusterOf = new Map();
+    const clusters = [];
+    for (const key of keys) {
+      if (clusterOf.has(key))
+        continue;
+      const id = clusters.length;
+      const tiles = [];
+      const stack = [key];
+      clusterOf.set(key, id);
+      while (stack.length) {
+        const idx = stack.pop();
+        tiles.push(idx);
+        const x = idx % width;
+        const y = (idx - x) / width;
+        for (let d = 0; d < 4; d++) {
+          const nx = x + (d === 0 ? 1 : d === 2 ? -1 : 0);
+          const ny = y + (d === 1 ? 1 : d === 3 ? -1 : 0);
+          if (nx < 0 || nx >= width || ny < 0 || ny >= rowCount)
+            continue;
+          const next = ny * width + nx;
+          if (!buckets.has(next) || clusterOf.has(next))
+            continue;
+          clusterOf.set(next, id);
+          stack.push(next);
+        }
+      }
+      tiles.sort((a, b) => a - b);
+      clusters.push({ tiles, contents: [] });
+    }
+    for (const spawn of level.pickups) {
+      if (CACHE_TYPE_SET.has(spawn.type))
+        clusters[clusterOf.get(level.grid.getCell(spawn.pos))].contents.push(spawn.type);
+    }
+    for (const cluster of clusters)
+      this.addCache(cluster.tiles, cluster.contents);
+  }
+
+  addCache(tiles, contents) {
+    const { level } = this;
+    const { width } = level;
+    let cx = 0;
+    let cy = 0;
+    for (const idx of tiles) {
+      cx += (idx % width) + 0.5;
+      cy += Math.floor(idx / width) + 0.5;
+    }
+    cx = (cx / tiles.length) * TILE;
+    cy = (cy / tiles.length) * TILE;
+    let anchor = tiles[0];
+    let bestSq = Infinity;
+    for (const idx of tiles) {
+      const x = ((idx % width) + 0.5) * TILE - cx;
+      const y = (Math.floor(idx / width) + 0.5) * TILE - cy;
+      const sq = x * x + y * y;
+      if (sq < bestSq - 1e-9) {
+        bestSq = sq;
+        anchor = idx;
+      }
+    }
+    const ax = anchor % width;
+    const ay = (anchor - ax) / width;
+    const steps = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+    let angle = 0;
+    let bestScore = -1;
+    for (const [dx, dy] of steps) {
+      const nx = ax + dx;
+      const ny = ay + dy;
+      if (!level.isWalkable(nx, ny))
+        continue;
+      let score = 0;
+      for (const [ex, ey] of steps) {
+        if (level.isWalkable(nx + ex, ny + ey))
+          score++;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        angle = Math.atan2(dy, dx);
+      }
+    }
+    const cache = {
+      kind: 'cache',
+      idx: anchor,
+      tiles,
+      pos: level.center(ax, ay),
+      angle,
+      contents,
+      hasWeapon: contents.some((type) => CACHE_WEAPONS.has(type)),
+      state: 'closed',
+      lid: 0,
+    };
+    this.caches.push(cache);
+    return cache;
+  }
+
+  openCache(cache) {
+    if (cache.state === 'closed') {
+      cache.state = 'opening';
+      cache.lid = 0;
+      this.emit('cacheOpen', cache.pos);
+    }
+    const { contents } = cache;
+    let write = 0;
+    let line = '';
+    let refused = null;
+    for (let read = 0; read < contents.length; read++) {
+      const type = contents[read];
+      if (this.award(type, true)) {
+        line = line ? `${line} · ${this.message.text}` : this.message.text;
+      } else {
+        contents[write++] = type;
+        refused = type;
+      }
+    }
+    contents.length = write;
+    if (line)
+      this.say(line, 2.5);
+    else if (refused) {
+      const label = refused === 'health'
+        ? 'Health'
+        : refused === 'chainsaw'
+          ? null
+          : AMMO_TYPES[AMMO_CRATES[refused] ?? WEAPONS[refused].ammoType].label;
+      this.say(label ? `${label} full` : 'Chainsaw already owned', 2);
+    }
+    cache.hasWeapon = false;
+    for (let i = 0; i < contents.length; i++) {
+      if (CACHE_WEAPONS.has(contents[i]))
+        cache.hasWeapon = true;
+    }
+    if (!contents.length) {
+      this.emit('cacheEmpty', cache.pos);
+      if (cache.state === 'open')
+        cache.state = 'emptied';
+    }
+  }
+
+  updateCaches(dt) {
+    for (let i = 0; i < this.caches.length; i++) {
+      const cache = this.caches[i];
+      if (cache.state !== 'opening')
+        continue;
+      cache.lid = Math.min(1, cache.lid + dt / CACHE_LID_TIME);
+      if (cache.lid >= 1 - 1e-6) {
+        cache.lid = 1;
+        cache.state = cache.contents.length ? 'open' : 'emptied';
+      }
+    }
+  }
+
   addShot(from, direction, speed, damage, owner = null) {
     const velocity = new Vec2().scaleVector(direction, speed);
     const body = makeBody(from, 6, {
@@ -917,6 +1087,21 @@ export class Game {
     const ref = other.ref;
     if (!ref || ref.kind !== 'pickup' || ref.taken)
       return;
+    if (this.award(ref.type, ref.initial))
+      ref.taken = true;
+  }
+
+  /** Grants one item with the pickup rules; false when refused. Shared by floor pickups and cache contents. */
+  award(type, initial = false) {
+    const ref = this.awardRef;
+    ref.type = type;
+    ref.initial = initial;
+    ref.taken = false;
+    this.grant(ref);
+    return ref.taken;
+  }
+
+  grant(ref) {
     const player = this.player;
     if (ref.type === 'redKey' || ref.type === 'yellowKey' || ref.type === 'blueKey') {
       const color = ref.type === 'redKey' ? 'red' : ref.type === 'yellowKey' ? 'yellow' : 'blue';
@@ -1587,14 +1772,33 @@ export class Game {
     const player = this.player;
     const facing = this.scratch.setScalar(1, 0).setRadian(player.angle);
     let best = null;
-    let bestDistance = 96;
+    let bestCache = null;
+    let bestDistance = USE_RANGE;
     for (const door of this.level.doors.values()) {
       const toDoor = this.toPlayer.subVectors(door.center, player.pos);
       const distance = toDoor.getMagnitude();
-      if (distance > 0 && distance < bestDistance && toDoor.dotProduct(facing) / distance > 0.35) {
+      if (distance > 0 && distance < bestDistance && toDoor.dotProduct(facing) / distance > USE_DOT) {
         best = door;
         bestDistance = distance;
       }
+    }
+    for (let i = 0; i < this.caches.length; i++) {
+      const cache = this.caches[i];
+      if (cache.state === 'emptied' || (cache.state !== 'closed' && !cache.contents.length))
+        continue;
+      const toCache = this.toPlayer.subVectors(cache.pos, player.pos);
+      const distance = toCache.getMagnitude();
+      if (distance >= bestDistance)
+        continue;
+      if (distance < CACHE_TOUCH_RANGE + 1e-3 || (distance > 0 && toCache.dotProduct(facing) / distance > USE_DOT)) {
+        bestCache = cache;
+        best = null;
+        bestDistance = distance;
+      }
+    }
+    if (bestCache) {
+      this.openCache(bestCache);
+      return;
     }
     if (best) {
       if (best.lock && !player.keys?.[best.lock]) {
@@ -2488,6 +2692,7 @@ export class Game {
 
     this.updateFlow();
     this.updateDoors(dt);
+    this.updateCaches(dt);
     this.updateBarrels(dt);
     this.updateHazards(dt);
     for (const enemy of this.enemies)

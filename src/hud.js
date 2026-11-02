@@ -21,6 +21,7 @@ const FLOOR_SEEN = dimmed(RGB[BLUE], 0.25);
 const FLOOR_VISIBLE = dimmed(RGB[BLUE], 0.6);
 const SLIME_SEEN = dimmed(RGB[GREEN], 0.38);
 const SLIME_VISIBLE = dimmed(RGB[GREEN], 0.82);
+const EMPTY_CACHES = Object.freeze([]);
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 const HINT_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.75, glow: 3 });
@@ -896,6 +897,22 @@ export class Hud {
         const r = isKey ? Math.max(3.5, s * 0.28) : Math.max(2.5, s * 0.2);
         layer.line([sx, sy - r, sx + r, sy, sx, sy + r, sx - r, sy, sx, sy - r], col, 0.95);
       }
+
+    // supply chests on explored tiles: weapon chests stand out, emptied ones fade
+    const caches = game.caches ?? EMPTY_CACHES;
+    for (let i = 0; i < caches.length; i++) {
+      const cache = caches[i];
+      if (!fog.isExplored(cache.idx))
+        continue;
+      const sx = ox + (cache.pos.x / TILE) * s;
+      const sy = oy + (cache.pos.y / TILE) * s;
+      if (sx < mapX0 || sx > mapX0 + mapW || sy < mapY0 || sy > mapY0 + mapH)
+        continue;
+      const emptied = cache.state === 'emptied';
+      const major = cache.hasWeapon && !emptied;
+      const r = Math.max(2.5, s * 0.22) * (major ? 1.25 : 1);
+      layer.rectLine(sx - r, sy - r, 2 * r, 2 * r, major ? RGB[ORANGE] : RGB[GREEN], major ? 0.95 : emptied ? 0.3 : 0.85);
+    }
 
     // visible enemies (only while currently in line-of-sight)
     for (const enemy of game.enemies) {

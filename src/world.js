@@ -19,6 +19,7 @@ import { holeQuad, IMPACT_CELLS, impactAtlas, SPARK_FRAMES, SPARK_VARIANTS } fro
 import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
 import { keycardAtlas, keycardMesh } from './keycard.js';
+import { CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from './cache.js';
 import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, knifeAtlas, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from './arsenal.js';
 import { armorAtlas, armorMesh } from './armor.js';
 import { berserkAtlas, berserkMesh, nightvisionAtlas, nightvisionMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from './powerups.js';
@@ -569,6 +570,7 @@ const scratchQuat = new Quat();
 const scratchLocalQuat = new Quat();
 const scratchFog = new Vec2();
 const scratchCam2d = new Vec2();
+const EMPTY = Object.freeze([]);
 const scratchEntity2d = new Vec2();
 const scratchRightArr = [0, 0, 0];
 const scratchUpArr = [0, 0, 0];
@@ -768,6 +770,9 @@ export class World {
     this.crusherViews = new Map();
     this.enemyViews = new Map();
     this.pickupViews = new Map();
+    this.cacheViews = new Map();
+    this.frameCullDistSq = Infinity;
+    this.frameOccludeFog = null;
     this.barrelViews = new Map();
     this.shotViews = new Map();
     this.effectViews = new Map();
@@ -1236,6 +1241,7 @@ export class World {
     this.crusherViews.clear();
     this.enemyViews.clear();
     this.pickupViews.clear();
+    this.cacheViews.clear();
     this.barrelViews.clear();
     this.shotViews.clear();
     this.effectViews.clear();
@@ -2483,6 +2489,67 @@ export class World {
     return { root, spinSpeed: isChainsaw || isShotgun || isChaingun || isRocket ? 1.4 : 1.8 };
   }
 
+  /** A supply chest: a textured body plus a lid child hinged at the back top edge. */
+  buildCache(cache) {
+    const { gl } = this;
+    const atlas = (this.chestPixels ??= chestAtlas());
+    this.chestBodyGeo ??= chestBodyMesh();
+    this.chestLidGeo ??= chestLidMesh();
+    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
+    const sharedTexture = this.sharedTexture(atlas, texOpts);
+    const makePart = (data, material) => {
+      const geometry = new CustomMesh();
+      geometry.vertices = data.vertices;
+      geometry.uvs = data.uvs;
+      geometry.setPrimitive('TRIANGLES');
+      const mesh = texturedMesh(gl, geometry, {
+        fragment: SOLID_TEXTURED_FRAGMENT,
+        atlas,
+        sharedTexture,
+        material,
+        textureOptions: texOpts,
+      });
+      if (sharedTexture) {
+        mesh.sharedAtlas = atlas;
+        mesh.sharedTexOptions = texOpts;
+        this.sharedTexturedMeshes.push(mesh);
+      }
+      return mesh;
+    };
+    const bodyMaterial = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const lidMaterial = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const body = makePart(this.chestBodyGeo, bodyMaterial);
+    const lid = makePart(this.chestLidGeo, lidMaterial);
+    const root = new Mesh(gl, new CustomMesh());
+    root.addChild(body);
+    root.addChild(lid);
+    setPos(lid, CHEST_LID_HINGE.x, CHEST_LID_HINGE.y, CHEST_LID_HINGE.z);
+    const yaw = Trigo.halfpi - cache.angle;
+    setPos(root, cache.pos.x, 0, cache.pos.y);
+    setRot(root, 0, yaw, 0);
+    this.scene.addMesh(root);
+    return { root, body, lid, bodyMaterial, lidMaterial, yaw, lastLid: -1, lastState: '' };
+  }
+
+  updateCache(cache, view) {
+    const occludeFog = this.frameOccludeFog;
+    if ((Number.isFinite(this.frameCullDistSq) && cache.pos.getDistance(scratchCam2d, true) > this.frameCullDistSq) || (occludeFog && !occludeFog.canSeeNear(cache.pos))) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+    if (cache.lid !== view.lastLid) {
+      setRot(view.lid, -cache.lid * CHEST_LID_OPEN_ANGLE, 0, 0);
+      view.lastLid = cache.lid;
+    }
+    if (cache.state !== view.lastState) {
+      const tint = cache.state === 'emptied' ? CHEST_TINTS.emptied : CHEST_TINTS.closed;
+      view.bodyMaterial.setDiffuse(tint);
+      view.lidMaterial.setDiffuse(tint);
+      view.lastState = cache.state;
+    }
+  }
+
   /** An oil drum: ribbed sides, a zig-zag hazard band, and a lid; when detonated, its ruptured stump and flying 3D shrapnel remain. */
   buildBarrel() {
     const R = 9.5;
@@ -2789,6 +2856,9 @@ export class World {
       setPos(view.root, pickup.pos.x, bob, pickup.pos.y);
       setRot(view.root, 0, time * view.spinSpeed + pickup.phase, 0);
     });
+    this.frameCullDistSq = cullDistSq;
+    this.frameOccludeFog = occludeFog;
+    this.syncViews(this.cacheViews, game.caches ?? EMPTY, (this.buildCacheView ??= (cache) => this.buildCache(cache)), (this.updateCacheView ??= (cache, view) => this.updateCache(cache, view)));
     this.syncViews(this.barrelViews, game.barrels, () => this.buildBarrel(), (barrel, view) => {
       if ((Number.isFinite(cullDistSq) && barrel.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(barrel.pos))) {
         view.root.setInactive();

@@ -1,0 +1,262 @@
+{
+  "format": "groovr-song",
+  "version": 2,
+  "name": "SFX: Pickup Chest Open",
+  "bpm": 120,
+  "loop": false,
+  "level": 1,
+  "reverb": {
+    "seconds": 1.8,
+    "power": 2.5,
+    "return": 1
+  },
+  "buses": [],
+  "instruments": [
+    {
+      "id": "latch",
+      "layers": [
+        {
+          "kind": "noise",
+          "type": "bandpass",
+          "q": 3,
+          "length": {
+            "d": 1
+          },
+          "pad": 0.02,
+          "filterEnvelope": [
+            [
+              0,
+              {
+                "f": 1
+              }
+            ],
+            [
+              {
+                "d": 1
+              },
+              {
+                "f": 0.55
+              },
+              "exp"
+            ]
+          ],
+          "envelope": [
+            [
+              0,
+              0.0001
+            ],
+            [
+              0.002,
+              {
+                "v": 0.3
+              },
+              "exp"
+            ],
+            [
+              {
+                "d": 1
+              },
+              0.0001,
+              "exp"
+            ]
+          ]
+        }
+      ],
+      "fx": {
+        "chain": [],
+        "send": 0.125
+      },
+      "rack": {
+        "template": "sfx-noise",
+        "values": {
+          "filterType": "bandpass",
+          "level": 0.3,
+          "attack": 0.002,
+          "cutoff": 1,
+          "sweep": 0.55,
+          "res": 3
+        }
+      }
+    },
+    {
+      "id": "hiss",
+      "layers": [
+        {
+          "kind": "noise",
+          "type": "highpass",
+          "q": 0.7,
+          "length": {
+            "d": 1
+          },
+          "pad": 0.03,
+          "filterEnvelope": [
+            [
+              0,
+              {
+                "f": 1
+              }
+            ],
+            [
+              {
+                "d": 1
+              },
+              {
+                "f": 0.5
+              },
+              "exp"
+            ]
+          ],
+          "envelope": [
+            [
+              0,
+              0.0001
+            ],
+            [
+              0.03,
+              {
+                "v": 0.14
+              },
+              "exp"
+            ],
+            [
+              {
+                "d": 1
+              },
+              0.0001,
+              "exp"
+            ]
+          ]
+        }
+      ],
+      "fx": {
+        "chain": [],
+        "send": 0.125
+      },
+      "rack": {
+        "template": "sfx-noise",
+        "values": {
+          "filterType": "highpass",
+          "level": 0.14,
+          "attack": 0.03,
+          "cutoff": 1,
+          "sweep": 0.5,
+          "res": 0.7
+        }
+      }
+    },
+    {
+      "id": "thud",
+      "layers": [
+        {
+          "kind": "voice",
+          "duration": {
+            "d": 1
+          },
+          "pad": 0.04,
+          "adsr": {
+            "attack": 0.004,
+            "decay": 0.14,
+            "sustain": 0,
+            "release": 0.01,
+            "amount": {
+              "v": 0.3
+            }
+          },
+          "voices": [
+            {
+              "type": "triangle",
+              "freq": {
+                "f": 1
+              }
+            }
+          ]
+        }
+      ],
+      "fx": {
+        "chain": [],
+        "send": 0.125
+      },
+      "rack": {
+        "template": "synth",
+        "values": {
+          "wave1": "triangle",
+          "level": 0.3,
+          "attack": 0.004,
+          "decay": 0.14,
+          "sustain": 0,
+          "release": 0.01
+        }
+      }
+    }
+  ],
+  "patterns": [
+    {
+      "id": "pat-latch",
+      "length": 4,
+      "notes": [
+        {
+          "time": 0,
+          "duration": 0.04,
+          "pitch": 93.38906,
+          "velocity": 1
+        }
+      ]
+    },
+    {
+      "id": "pat-hiss",
+      "length": 4,
+      "notes": [
+        {
+          "time": 0.05,
+          "duration": 0.25,
+          "pitch": 100.5,
+          "velocity": 0.8
+        }
+      ]
+    },
+    {
+      "id": "pat-thud",
+      "length": 4,
+      "notes": [
+        {
+          "time": 0.3,
+          "duration": 0.14,
+          "pitch": 45,
+          "velocity": 1
+        }
+      ]
+    }
+  ],
+  "tracks": [
+    {
+      "id": "latch",
+      "instrument": "latch",
+      "clips": [
+        {
+          "pattern": "pat-latch",
+          "start": 0
+        }
+      ]
+    },
+    {
+      "id": "hiss",
+      "instrument": "hiss",
+      "clips": [
+        {
+          "pattern": "pat-hiss",
+          "start": 0
+        }
+      ]
+    },
+    {
+      "id": "thud",
+      "instrument": "thud",
+      "clips": [
+        {
+          "pattern": "pat-thud",
+          "start": 0
+        }
+      ]
+    }
+  ]
+}
