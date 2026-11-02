@@ -1151,7 +1151,7 @@ export class Hud {
         this.text('DOOMR', cx, cy - 60, BLUE, { size: Math.min(110, width / 7), align: 'center', weight: 800, glow: 22 });
         this.text('Rip and tear', cx, cy - 20, GREEN, { size: 15, align: 'center', alpha: 0.9 });
         this.text('click or press ENTER to start', cx, cy + 56, ORANGE, { size: 16, align: 'center', alpha: 0.5 + blink * 0.5 });
-        const keys = ['W A S D  move     mouse / ← →  turn', 'click / X / OPT / CTRL  fire     1-4  weapons', 'SPACE  jump     C  crouch     SHIFT  run', 'E  open doors     [ / ]  switch level', 'TAB  automap     N  night vision     M  music     ESC  pause'];
+        const keys = ['W A S D  move     mouse / ← →  turn', 'click / X / OPT / CTRL  fire     1-4  weapons', 'SPACE  jump     C  crouch     SHIFT  run', 'E  open doors     [ / ]  switch level     ;  sound', 'TAB  automap     N  night vision     M  music     ESC  pause'];
         keys.forEach((k, i) => this.text(k, cx, cy + 100 + i * 20, BLUE, { size: 12, align: 'center', alpha: 0.75, glow: 3 }));
       } else {
         this.text('DOOMR', cx, cy - 116, BLUE, { size: Math.min(84, width / 8), align: 'center', weight: 800, glow: 22 });

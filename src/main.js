@@ -87,7 +87,7 @@ function control(dt) {
     if (input.took('KeyG'))
       hud.toggleAutomapGrid();
   }
-  if (input.took('KeyB') || (input.took('KeyN') && !(game.state === 'play' && game.player?.hasNightVision)))
+  if (input.took('Semicolon') || input.took('KeyB'))
     game.say(sound.toggleMute() ? 'Sound off' : 'Sound on', 1.5);
   if (input.took('F3')) {
     showDiagnostics = !showDiagnostics;

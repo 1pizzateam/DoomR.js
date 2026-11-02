@@ -20,7 +20,8 @@
 | E | open / close doors |
 | Shift | run |
 | M | toggle map |
-| N | toggle sound |
+| ; | toggle sound (B also works) |
+| N | toggle night vision |
 | F3 | show fps and render scale |
 | Esc | pause |
 
