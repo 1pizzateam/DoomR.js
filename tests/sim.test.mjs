@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Mat4 } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
-import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PointLight, Rand, Vec2, Vec3 } from '@1pizzateam/roostr';
-import { ACID_PIT_DEPTH, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
+import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
+import { ACID_PIT_DEPTH, CACHE_LID_TIME, CACHE_TYPES, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
+import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
 import { BLOOD } from '../src/blood.js';
 import { RECIPES, Sound, spatial } from '../src/audio.js';
 import { validateSong } from '@1pizzateam/groovr';
@@ -346,6 +347,7 @@ const tests = {
       crusherViews: new Map(),
       enemyViews: new Map(),
       pickupViews: new Map(),
+      cacheViews: new Map(),
       barrelViews: new Map(),
       shotViews: new Map(),
       effectViews: new Map(),
@@ -359,6 +361,8 @@ const tests = {
       updateRocketLauncher: noop,
       syncBlood: noop,
       bindAtlasTexture: noop,
+      sharedTexture: () => ({}),
+      sharedTexturedMeshes: [],
       discard: (root) => discarded.push(root),
       scene: { addMesh() {}, clear() {}, render() {} },
       target: { bind() {}, unbind() {} },
@@ -1054,7 +1058,7 @@ const tests = {
   'pickups are collected through sensor overlaps'() {
     const game = fresh();
     clearEnemies(game);
-    const ammo = game.pickups.find((p) => p.type === 'ammo');
+    const ammo = game.addPickup('ammo', game.player.pos.clone());
     game.player.ammo = 5;
     game.player.body.setPosition(ammo.pos.clone());
     run(game, 0.1);
@@ -1070,47 +1074,53 @@ const tests = {
       g.player.weapons.rocket = true;
       g.player.weapon = weapon;
       g.player.shells = 10;
-      const crate = g.pickups.find((p) => p.type === 'ammo');
+      const crate = g.addPickup('ammo', g.player.pos.clone());
       g.touch(crate.body);
       assert.equal(g.player.shells, 10 + AMMO_TYPES.shells.bonus, `ammo crate is picked up while holding ${weapon}`);
       assert.equal(crate.taken, true, `ammo crate is taken while holding ${weapon}`);
     }
-    // every ammo crate in every level is collected by walking onto it, whatever is in hand, and says so when its pool is full
+    // every supply cache in every level hands out its ammo when opened, whatever is in hand, and says so when its pool is full
     for (let level = 0; level < LEVELS.length; level++)
       for (const [type, pool] of [['ammo', 'shells'], ['bullets', 'bullets'], ['rockets', 'rockets']]) {
-        const walk = (hold, amount) => {
+        const open = (hold, amount) => {
           const g = fresh(level);
           clearEnemies(g);
           g.player.weapons.chaingun = true;
           g.player.weapons.rocket = true;
           g.player.weapon = hold;
           g.player[pool] = amount;
-          const crate = g.pickups.find((p) => p.type === type);
-          assert.ok(crate, `level ${level} has a ${type} crate`);
-          g.player.body.setPosition(crate.pos.clone());
-          run(g, 0.2);
-          return { g, crate };
+          g.player.health = 100;
+          if (amount) {
+            g.player.shells = AMMO_TYPES.shells.max;
+            g.player.bullets = AMMO_TYPES.bullets.max;
+            g.player.rockets = AMMO_TYPES.rockets.max;
+          }
+          const cache = g.caches.find((c) => c.contents.includes(type));
+          assert.ok(cache, `level ${level} has a cache holding ${type}`);
+          g.player.body.setPosition(cache.pos.clone());
+          g.use();
+          return { g, cache };
         };
         for (const hold of ['shotgun', 'chainsaw', 'chaingun', 'rocket']) {
-          const { g, crate } = walk(hold, 0);
-          assert.equal(crate.taken, true, `level ${level} ${type} crate is collected while holding ${hold}`);
-          assert.equal(g.player[pool], AMMO_TYPES[pool].bonus, `level ${level} ${type} crate fills the ${pool} pool`);
+          const { g, cache } = open(hold, 0);
+          assert.equal(cache.contents.includes(type), false, `level ${level} ${type} leaves the cache while holding ${hold}`);
+          assert.ok(g.player[pool] >= AMMO_TYPES[pool].bonus, `level ${level} ${type} cache fills the ${pool} pool`);
         }
-        const { g, crate } = walk('chainsaw', AMMO_TYPES[pool].max);
-        assert.equal(crate.taken, false, `level ${level} ${type} crate stays when ${pool} are full`);
-        assert.equal(g.message.text, `${AMMO_TYPES[pool].label} full`, `level ${level} ${type} crate says ${pool} are full`);
+        const { g, cache } = open('chainsaw', AMMO_TYPES[pool].max);
+        assert.equal(cache.contents.includes(type), true, `level ${level} ${type} stays in the cache when ${pool} are full`);
+        assert.equal(g.message.text, `${AMMO_TYPES[pool].label} full`, `level ${level} ${type} cache says ${pool} are full`);
       }
     const capped = fresh();
     clearEnemies(capped);
     capped.player.shells = AMMO_TYPES.shells.max - 3;
-    const crate = capped.pickups.find((p) => p.type === 'ammo');
+    const crate = capped.addPickup('ammo', capped.player.pos.clone());
     capped.touch(crate.body);
     assert.equal(capped.player.shells, AMMO_TYPES.shells.max, 'shells never exceed their cap');
     const full = fresh();
     clearEnemies(full);
     full.player.weapon = 'chainsaw';
     full.player.shells = AMMO_TYPES.shells.max;
-    const crate2 = full.pickups.find((p) => p.type === 'ammo');
+    const crate2 = full.addPickup('ammo', full.player.pos.clone());
     full.touch(crate2.body);
     assert.equal(crate2.taken, false, 'a crate is left alone when shells are full');
     assert.equal(full.message.text, 'SHELLS full', 'a refused crate says why');
@@ -1817,7 +1827,7 @@ const tests = {
     assert.equal(game.events.filter((e) => e.type === 'doorClose').length, 1);
 
     game.events.length = 0;
-    const ammo = game.pickups.find((p) => p.type === 'ammo');
+    const ammo = game.addPickup('ammo', game.player.pos.clone());
     game.player.ammo = 5;
     game.player.body.setPosition(ammo.pos.clone());
     run(game, 0.1);
@@ -3753,8 +3763,8 @@ const tests = {
     // 2. Every level places both Chaingun (C) and Rocket Launcher (M) pickups
     for (let i = 0; i < LEVELS.length; i++) {
       const g = fresh(i);
-      assert.ok(g.pickups.some((p) => p.type === 'chaingun'), `level ${i} has chaingun pickup`);
-      assert.ok(g.pickups.some((p) => p.type === 'rocket'), `level ${i} has rocket launcher pickup`);
+      assert.ok(g.caches.some((c) => c.contents.includes('chaingun')), `level ${i} has a chaingun cache`);
+      assert.ok(g.caches.some((c) => c.contents.includes('rocket')), `level ${i} has a rocket launcher cache`);
     }
 
     // 3. Starting inventory, weapon switching (1-4), and picking up Chaingun & Rocket Launcher
@@ -3848,7 +3858,8 @@ const tests = {
     game.player.angle = 0;
 
     // Picking up Chaingun unlocks slot 3, grants ammo, and auto-equips when newly unlocked
-    const cgPickup = game.pickups.find((p) => p.type === 'chaingun');
+    assert.ok(game.caches.some((c) => c.contents.includes('chaingun')), 'every level hides a chaingun in a cache');
+    const cgPickup = game.addPickup('chaingun', game.player.pos.clone());
     game.events.length = 0;
     game.touch(cgPickup.body);
     assert.equal(game.player.weapons.chaingun, true, 'chaingun unlocked on pickup');
@@ -3934,7 +3945,8 @@ const tests = {
     game.player.spinDown = 0;
 
     // Picking up Rocket Launcher unlocks slot 4, grants ammo, and auto-equips
-    const rlPickup = game.pickups.find((p) => p.type === 'rocket');
+    assert.ok(game.caches.some((c) => c.contents.includes('rocket')), 'every level hides a rocket launcher in a cache');
+    const rlPickup = game.addPickup('rocket', game.player.pos.clone());
     game.touch(rlPickup.body);
     assert.equal(game.player.weapons.rocket, true, 'rocket launcher unlocked on pickup');
     assert.equal(game.player.weapon, 'rocket', 'rocket launcher auto-equipped on first pickup');
@@ -5625,18 +5637,18 @@ const tests = {
     game.player.cooldown = 0;
 
     // 3. Opening entry (cols 1..6, rows 1..4) has the shotgun on the floor followed by 2 shotgun shell packs (no chaingun bullet pack)
-    const room1Pickups = game.pickups.filter((p) => p.pos.x < 7 * 64 && p.pos.y < 5 * 64);
-    const floorShotgun = room1Pickups.find((p) => p.type === 'shotgun');
-    const floorShellPacks = room1Pickups.filter((p) => p.type === 'ammo');
-    const floorBullets = room1Pickups.find((p) => p.type === 'bullets');
-    assert.ok(floorShotgun, 'shotgun pickup is on the floor in the first room of Level 1');
-    assert.equal(floorShellPacks.length, 3, 'three shotgun ammo pickups are on the floor in the opening of Level 1');
-    assert.equal(floorBullets, undefined, 'no chaingun bullet pack in the first room of Level 1');
+    const room1Caches = game.caches.filter((c) => c.pos.x < 7 * 64 && c.pos.y < 5 * 64);
+    const shotgunCache = room1Caches.find((c) => c.contents.includes('shotgun'));
+    const shellCaches = room1Caches.filter((c) => c.contents.includes('ammo'));
+    assert.deepEqual(shotgunCache.contents, ['shotgun'], 'the first room holds the shotgun in a cache');
+    assert.equal(game.level.grid.getCell(shotgunCache.pos), 2 * game.level.width + 2, 'the shotgun cache sits on tile (2, 2)');
+    assert.equal(shellCaches.length, 2, 'two shotgun ammo caches are in the opening of Level 1');
+    assert.equal(room1Caches.some((c) => c.contents.includes('bullets')), false, 'no chaingun bullet pack in the first room of Level 1');
 
-    // Walk over the floor shotgun: unlocks and equips shotgun with ZERO ammo
-    game.touch(floorShotgun.body);
-    assert.equal(game.player.weapons.shotgun, true, 'picking up floor shotgun unlocks shotgun');
-    assert.equal(game.player.weapon, 'shotgun', 'picking up floor shotgun auto-equips shotgun');
+    // Open the shotgun cache: unlocks and equips shotgun with ZERO ammo
+    game.openCache(shotgunCache);
+    assert.equal(game.player.weapons.shotgun, true, 'opening the shotgun cache unlocks shotgun');
+    assert.equal(game.player.weapon, 'shotgun', 'opening the shotgun cache auto-equips shotgun');
     assert.equal(game.player.shells, 0, 'picking up the first shotgun grants 0 ammo');
     assert.equal(game.player.bullets, 0, 'bullets remain 0');
 
@@ -5648,24 +5660,22 @@ const tests = {
     assert.ok(game.events.some((e) => e.type === 'dry'), 'dry-firing emits dry click');
 
     // Then pick up the 2 shotgun ammo packs in the first room
-    game.touch(floorShellPacks[0].body);
+    game.openCache(shellCaches[0]);
     assert.equal(game.player.shells, AMMO_TYPES.shells.bonus, 'first ammo pack loads shotgun shells');
-    game.touch(floorShellPacks[1].body);
+    game.openCache(shellCaches[1]);
     assert.equal(game.player.shells, AMMO_TYPES.shells.bonus * 2, 'second ammo pack adds another crate of shotgun shells');
 
     // 4. Chainsaw is hidden in the center of the top-right secret room of Level 1 (col 52, row 3), directly in the line of sight of secret door S at (49, 3)
-    const secretChainsaw = game.pickups.find((p) => p.type === 'chainsaw');
-    assert.ok(secretChainsaw, 'chainsaw pickup exists in Level 1');
-    const csCol = Math.floor(secretChainsaw.pos.x / 64);
-    const csRow = Math.floor(secretChainsaw.pos.y / 64);
-    assert.equal(csCol, 52, 'chainsaw sits 3 tiles inside the secret room so the player sees it rotating before reaching it');
-    assert.equal(csRow, 3, 'chainsaw is aligned on row 3 directly in front of the secret push-wall at (49, 3)');
+    const secretChainsaw = game.caches.find((c) => c.contents.includes('chainsaw'));
+    assert.ok(secretChainsaw, 'chainsaw cache exists in Level 1');
+    assert.ok(secretChainsaw.tiles.includes(3 * game.level.width + 52), 'chainsaw cache covers column 52, row 3');
+    assert.deepEqual(secretChainsaw.contents, ['health', 'chainsaw'], 'the chainsaw shares its cache with the adjacent health pack');
     const secretDoor = game.level.doors.get(3 * game.level.width + 49);
     assert.ok(secretDoor?.secret, 'top-right secret room is guarded by secret push-wall at (49, 3)');
     assert.equal(game.level.doors.has(5 * game.level.width + 50), false, 'top-right secret room has no back door on row 5');
 
     // Pick up the hidden chainsaw: unlocks and auto-equips chainsaw, and slot 1 toggles between chainsaw and knife
-    game.touch(secretChainsaw.body);
+    game.openCache(secretChainsaw);
     assert.equal(game.player.weapons.chainsaw, true, 'picking up secret chainsaw unlocks chainsaw');
     assert.equal(game.player.weapon, 'chainsaw', 'picking up secret chainsaw auto-equips chainsaw');
     game.selectWeapon(1);
@@ -5845,16 +5855,16 @@ const tests = {
     game.state = 'play';
     clearEnemies(game);
 
-    const room1Pickups = game.pickups.filter((p) => p.pos.x < 5 * 64 && p.pos.y < 5 * 64);
-    const floorShotgun = room1Pickups.find((p) => p.type === 'shotgun');
-    const floorShellPacks = room1Pickups.filter((p) => p.type === 'ammo');
+    const room1Caches = game.caches.filter((c) => c.pos.x < 5 * 64 && c.pos.y < 5 * 64);
+    const shotgunCache = room1Caches.find((c) => c.contents.includes('shotgun'));
+    const shellCache = game.caches.find((c) => c.contents.includes('ammo'));
 
-    // Picking up the 0-ammo floor shotgun does not flash shells
-    game.touch(floorShotgun.body);
+    // Opening the 0-ammo shotgun cache does not flash shells
+    game.openCache(shotgunCache);
     assert.equal(game.player.ammoFlash.shells, 0, '0-ammo shotgun pickup does not trigger shell flash');
 
-    // Picking up the first shell crate triggers ammoFlash on shells from 0 -> 8
-    game.touch(floorShellPacks[0].body);
+    // Opening the first shell cache triggers ammoFlash on shells from 0 -> 8
+    game.openCache(shellCache);
     assert.equal(game.player.shells, 8);
     assert.equal(game.player.ammoFrom.shells, 0);
     assert.equal(game.player.ammoDelta.shells, 8);
@@ -7509,6 +7519,383 @@ const tests = {
     assert.ok(section.includes('ZQSD'));
     const log = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
     assert.ok(log.includes('#21') && log.includes('doomr.keyboardLayout'));
+  },
+
+  'AC-1 supply chests cluster authored supplies by 4-connected tiles'() {
+    const expected = [22, 19, 14, 20, 20];
+    const supply = new Set(CACHE_TYPES);
+    for (let i = 0; i < LEVELS.length; i++) {
+      const game = fresh(i);
+      assert.equal(game.caches.length, expected[i], `level ${i} has ${expected[i]} caches`);
+      const inCaches = game.caches.flatMap((c) => c.contents).sort();
+      const authored = game.level.pickups.filter((p) => supply.has(p.type)).map((p) => p.type).sort();
+      assert.deepEqual(inCaches, authored, `level ${i} caches hold every authored supply exactly once`);
+      for (const cache of game.caches) {
+        assert.ok(cache.tiles.includes(cache.idx), 'the anchor is a member tile');
+        assert.equal(cache.state, 'closed');
+        assert.equal(cache.lid, 0);
+      }
+      assert.equal(game.pickups.some((p) => supply.has(p.type)), false, `level ${i} keeps no supply on the floor`);
+      assert.ok(game.pickups.every((p) => p.initial), 'only authored non-supply pickups start on the floor');
+      assert.equal(game.totalItems, game.level.pickups.length, 'the item tally still counts every authored item');
+    }
+    const game = new Game();
+    game.load({
+      name: 'Cluster test',
+      rows: [
+        '###########',
+        '#P........#',
+        '#.ha..ha..#',
+        '#......m..#',
+        '#.........#',
+        '#.h.......#',
+        '#..a......#',
+        '#........h#',
+        '#a........#',
+        '###########',
+      ],
+    });
+    const holding = (...types) => game.caches.filter((c) => c.contents.join() === types.join());
+    assert.equal(game.caches.length, 6);
+    assert.equal(holding('health', 'ammo').length, 1, 'a horizontal pair merges');
+    assert.equal(holding('health', 'ammo', 'bullets').length, 1, 'an L-shaped cluster keeps authored order');
+    assert.equal(holding('health').length, 2, 'diagonal neighbours stay apart');
+    assert.equal(holding('ammo').length, 2, 'row ends never merge with the next row start');
+  },
+
+  'AC-2 use opens the targeted chest once and animates the lid'() {
+    const level = {
+      name: 'Use test',
+      rows: ['##########', '#........#', '#P...a...#', '#........#', '##########'],
+    };
+    const place = (game, dx, angle) => {
+      game.player.body.setPosition(new Vec2(game.caches[0].pos.x + dx, game.caches[0].pos.y));
+      game.player.angle = angle;
+      game.events.length = 0;
+    };
+    const opens = (game) => game.events.filter((e) => e.type === 'cacheOpen');
+    const game = new Game();
+    game.load(level);
+    game.state = 'play';
+    const cache = game.caches[0];
+    assert.equal(game.caches.length, 1);
+
+    place(game, 130, 0);
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(opens(game).length, 0, 'beyond 96 units nothing opens');
+    place(game, -60, Math.PI);
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(opens(game).length, 0, 'behind the player nothing opens');
+    assert.equal(cache.state, 'closed');
+
+    place(game, -60, 0);
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(opens(game).length, 1, 'facing a chest in range opens it once');
+    assert.deepEqual([opens(game)[0].x, opens(game)[0].y], [cache.pos.x, cache.pos.y]);
+    assert.equal(cache.state, 'opening');
+    assert.ok(cache.lid > 0 && cache.lid < 1);
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(opens(game).length, 1, 'using again does not reopen a chest');
+    run(game, CACHE_LID_TIME + 2 / 60);
+    assert.equal(cache.lid, 1, 'the lid finishes lifting');
+    assert.ok(cache.state === 'open' || cache.state === 'emptied');
+
+    const near = new Game();
+    near.load(level);
+    near.state = 'play';
+    place(near, 20, Math.PI);
+    near.update(1 / 60, input({ use: true }));
+    assert.equal(opens(near).length, 1, 'standing within half a tile opens a chest whichever way the player faces');
+
+    const tie = new Game();
+    tie.load({
+      name: 'Door tie test',
+      rows: ['#########', '#.......#', '#..D.a..#', '#...P...#', '#########'],
+    });
+    tie.state = 'play';
+    tie.player.angle = -Math.PI / 2;
+    tie.events.length = 0;
+    tie.update(1 / 60, input({ use: true }));
+    const door = [...tie.level.doors.values()][0];
+    assert.equal(door.target, 1, 'an equally distant door wins');
+    assert.equal(tie.caches[0].state, 'closed', 'the chest stays closed');
+  },
+
+  'AC-3 opening a chest grants contents with the existing award rules'() {
+    const game = new Game();
+    game.load({ name: 'Award test', rows: ['#######', '#P....#', '#######'] });
+    game.state = 'play';
+    game.totalItems = 10;
+    const player = game.player;
+    player.health = 90;
+    player.shells = 0;
+    player.weapons.shotgun = false;
+    const cache = game.addCache([1 * game.level.width + 3], ['health', 'ammo', 'shotgun']);
+    game.events.length = 0;
+    game.openCache(cache);
+    assert.equal(player.health, 100, 'health is capped at 100');
+    assert.equal(player.shells, AMMO_TYPES.shells.bonus, 'the first shotgun adds no ammo of its own');
+    assert.equal(player.weapons.shotgun, true);
+    assert.equal(player.weapon, 'shotgun', 'new weapons are auto-selected');
+    assert.equal(game.events.filter((e) => e.type === 'pickup').length, 2);
+    assert.equal(game.events.filter((e) => e.type === 'weaponPickup').length, 1);
+    assert.equal(game.message.text.split(' · ').length, 3, 'the message joins every granted line');
+    assert.equal(game.itemsPicked, 3);
+    assert.equal(player.ammoFlash.shells, AMMO_FLASH_DURATION);
+    assert.equal(cache.contents.length, 0);
+
+    player.weapons.chaingun = true;
+    player.bullets = 0;
+    const dup = game.addCache([1 * game.level.width + 4], ['chaingun']);
+    game.openCache(dup);
+    assert.equal(player.bullets, AMMO_TYPES.bullets.weaponBonus, 'a duplicate weapon grants its ammo bonus');
+  },
+
+  'AC-4 refused contents stay in the chest until they can be taken'() {
+    const game = new Game();
+    game.load({ name: 'Refuse test', rows: ['##########', '#P.ha.m..#', '##########'] });
+    game.state = 'play';
+    const player = game.player;
+    assert.equal(game.totalItems, 3);
+    assert.equal(game.caches.length, 2);
+    const cache = game.caches.find((c) => c.contents.length === 2);
+    const other = game.caches.find((c) => c !== cache);
+    const stand = (c) => {
+      player.body.setPosition(c.pos.clone());
+      game.events.length = 0;
+    };
+    player.health = 100;
+    player.shells = AMMO_TYPES.shells.max;
+    stand(cache);
+    game.update(1 / 60, input({ use: true }));
+    run(game, CACHE_LID_TIME + 2 / 60);
+    assert.equal(cache.state, 'open');
+    assert.deepEqual(cache.contents, ['health', 'ammo']);
+    assert.ok(game.message.text.includes('full'));
+    assert.equal(game.itemsPicked, 0);
+
+    player.health = 50;
+    game.use();
+    assert.deepEqual(cache.contents, ['ammo'], 'health is taken once there is room');
+    assert.equal(player.health, 75);
+    assert.equal(cache.state, 'open');
+
+    player.shells = 0;
+    game.events.length = 0;
+    game.use();
+    assert.equal(cache.state, 'emptied');
+    assert.equal(game.events.filter((e) => e.type === 'cacheEmpty').length, 1);
+    game.events.length = 0;
+    game.use();
+    assert.equal(game.events.length, 0, 'an emptied chest is no longer a use target');
+
+    stand(other);
+    player.bullets = 0;
+    game.use();
+    run(game, CACHE_LID_TIME + 2 / 60);
+    assert.equal(other.state, 'emptied');
+    assert.equal(game.itemsPicked, game.totalItems, 'the 100% item tally is reachable');
+  },
+
+  'AC-5 enemy drops stay floor pickups and chests ignore movement and weapons'() {
+    const game = new Game();
+    game.load({
+      name: 'Passive test',
+      rows: ['############', '#P...a.....#', '#..........#', '#..........#', '############'],
+    });
+    game.state = 'play';
+    game.totalItems = 5;
+    const player = game.player;
+    const cache = game.caches[0];
+    const snapshot = () => JSON.stringify([cache.state, cache.lid, cache.contents]);
+    const before = snapshot();
+
+    const boss = game.addEnemy('boss', new Vec2(9 * 64 + 32, 3 * 64 + 32));
+    game.damageEnemy(boss, 99999);
+    const drop = game.pickups.find((p) => p.type === 'health');
+    assert.ok(drop, 'a boss always drops health');
+    assert.equal(drop.initial, false);
+    player.health = 50;
+    player.body.setPosition(drop.pos.clone());
+    run(game, 0.1);
+    assert.equal(drop.taken, true, 'the drop is collected by overlap');
+    assert.equal(player.health, 75, 'with unchanged amounts');
+    assert.equal(game.itemsPicked, 0, 'and no item credit');
+
+    player.body.setPosition(new Vec2(64 + 32, 64 + 32));
+    player.angle = 0;
+    run(game, 2, input({ forward: 1 }));
+    assert.ok(player.pos.x > cache.pos.x + 20, 'the player walks through the chest tile');
+    assert.equal(snapshot(), before);
+
+    player.body.setPosition(new Vec2(cache.pos.x - 100, cache.pos.y));
+    player.angle = 0;
+    player.cooldown = 0;
+    game.fire();
+    player.weapons.rocket = true;
+    player.weapon = 'rocket';
+    player.rockets = 5;
+    player.cooldown = 0;
+    game.fire();
+    game.addGrenade(player.pos, new Vec2(1, 0));
+    game.addBarrel(new Vec2(cache.pos.x + 40, cache.pos.y));
+    game.hitBarrel(game.barrels.at(-1), 99);
+    run(game, 2);
+    assert.equal(snapshot(), before, 'shots, rockets, grenades, and barrel blasts leave the chest alone');
+  },
+
+  'AC-6 chest views follow cache state, lid, and GPU lifecycle'() {
+    const atlas = chestAtlas();
+    assert.equal(atlas.width, CHEST_CELL * CHEST_FRAMES);
+    assert.equal(atlas.width & (atlas.width - 1), 0);
+    assert.equal(atlas.height & (atlas.height - 1), 0);
+    for (let i = 3; i < atlas.data.length; i += 4)
+      assert.equal(atlas.data[i], 255, 'the atlas is fully opaque');
+    for (const mesh of [chestBodyMesh(), chestLidMesh()]) {
+      assert.equal(mesh.vertices.length / 3, mesh.uvs.length / 2);
+      assert.equal((mesh.vertices.length / 3) % 3, 0);
+    }
+    const lid = chestLidMesh();
+    for (let i = 2; i < lid.vertices.length; i += 3)
+      assert.ok(lid.vertices[i] >= 0 && lid.vertices[i] <= 27, 'lid z stays within the hinge-to-front span');
+
+    const game = new Game();
+    game.load({ name: 'View test', rows: ['#########', '#P.h.a.m#', '#########'] });
+    game.state = 'play';
+    assert.equal(game.caches.length, 3);
+    const addProgram = Mesh.prototype.addProgram;
+    Mesh.prototype.addProgram = () => true;
+    const noop = () => {};
+    const world = Object.assign(Object.create(World.prototype), {
+      level: game.level,
+      cutaway: true,
+      syncStamp: 0,
+      camera: { position: new Vec3(96, EYE, 160) },
+      gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, viewport() {}, UNSIGNED_SHORT: 5123 },
+      doorViews: new Map(),
+      crusherViews: new Map(),
+      enemyViews: new Map(),
+      pickupViews: new Map(),
+      cacheViews: new Map(),
+      barrelViews: new Map(),
+      shotViews: new Map(),
+      effectViews: new Map(),
+      ceilingLights: [],
+      lightFixtures: [],
+      updateCamera: noop,
+      updateKnife: noop,
+      updateChainsaw: noop,
+      updateChaingun: noop,
+      updateShotgun: noop,
+      updateRocketLauncher: noop,
+      syncBlood: noop,
+      bindAtlasTexture: noop,
+      sharedTexture: () => ({}),
+      sharedTexturedMeshes: [],
+      discard: noop,
+      scene: { addMesh() {}, clear() {}, render() {} },
+      target: { bind() {}, unbind() {} },
+      glowTarget: { bind() {}, unbind() {} },
+      down: { clear() {}, render() {} },
+      post: { clear() {}, render() {} },
+      overlay: { glow: { render() {} }, crisp: { render() {} } },
+    });
+    try {
+      world.render(game);
+      assert.equal(world.cacheViews.size, game.caches.length);
+      for (const cache of game.caches) {
+        const view = world.cacheViews.get(cache);
+        assert.equal(view.yaw, Trigo.halfpi - cache.angle);
+      }
+      const opened = game.caches[0];
+      const emptiedCache = game.caches[1];
+      emptiedCache.contents.length = 0;
+      emptiedCache.state = 'emptied';
+      opened.state = 'opening';
+      opened.lid = 0.5;
+      world.render(game);
+      assert.equal(world.cacheViews.get(opened).lastLid, 0.5, 'the lid view tracks the cache lid');
+      assert.equal(world.cacheViews.get(opened).lastState, 'opening');
+      assert.equal(world.cacheViews.get(emptiedCache).lastState, 'emptied');
+      assert.ok(Math.abs(world.cacheViews.get(opened).lid.rotation.x + 0.5 * CHEST_LID_OPEN_ANGLE) < 1e-6, 'the lid tilts by lid * open angle');
+      assert.equal(world.cacheViews.get(game.caches[2]).lastState, 'closed');
+      assert.equal(world.cacheViews.get(emptiedCache).bodyMaterial.diffuse.x, CHEST_TINTS.emptied.x, 'only emptied caches are tinted');
+      assert.equal(world.cacheViews.get(opened).bodyMaterial.diffuse.x, CHEST_TINTS.closed.x);
+      assert.equal(world.cacheViews.size, game.caches.length, 'one view per cache');
+    } finally {
+      Mesh.prototype.addProgram = addProgram;
+    }
+  },
+
+  'AC-7 chest open sound routes spatially and the automap marks chests'() {
+    const played = [];
+    const sound = new Sound();
+    sound.play = (name, opts) => played.push({ name, ...opts });
+    sound.handle({ type: 'cacheOpen', x: 10, y: 20, visible: true });
+    assert.equal(played.length, 1);
+    assert.equal(played[0].name, 'cacheOpen');
+    assert.equal(played[0].local, undefined, 'the chest sound is spatial');
+    assert.deepEqual([played[0].x, played[0].y], [10, 20]);
+    sound.handle({ type: 'cacheEmpty', x: 10, y: 20 });
+    assert.equal(played.length, 1, 'emptying a chest is silent');
+    assert.equal(typeof RECIPES.cacheOpen, 'function');
+
+    const game = fresh(0);
+    game.state = 'play';
+    const [weaponCache, supplyCache, emptied, hidden] = [
+      game.caches.find((c) => c.hasWeapon),
+      game.caches.find((c) => !c.hasWeapon),
+      game.caches.filter((c) => !c.hasWeapon)[1],
+      game.caches.filter((c) => !c.hasWeapon)[2],
+    ];
+    emptied.contents.length = 0;
+    emptied.state = 'emptied';
+    game.fog.explored.fill(1);
+    game.fog.visible.fill(1);
+    game.fog.explored[hidden.idx] = 0;
+    const markers = [];
+    const mockCanvas = { width: 0, height: 0, getContext: () => ({ setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText() {} }) };
+    const mockOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: {
+        fillRect() {},
+        rectLine(x, y, w, h, col, alpha) { markers.push({ x, y, w, h, col, alpha }); },
+        line() {},
+        circleLine() {},
+        weapon: { quad() {} },
+        sprites: { quad() {} },
+        face: { quad() {} },
+      },
+    };
+    const hud = new Hud(mockCanvas, mockOverlay);
+    hud.resize(1280, 760, 1);
+    hud.toggleAutomap(game);
+    hud.render(game);
+    const square = (cache) => {
+      const found = markers.filter((m) => m.w === m.h && m.w > 0);
+      return found;
+    };
+    assert.ok(square(weaponCache).some((m) => m.col[0] > 0.9 && m.col[1] > 0.5 && m.col[2] < 0.4 && m.alpha === 0.95), 'a weapon chest is highlighted in orange');
+    assert.ok(markers.some((m) => m.alpha === 0.85 && m.col[1] > 0.7 && m.col[0] < 0.3), 'a supply chest draws green');
+    assert.ok(markers.some((m) => m.alpha === 0.3), 'an emptied chest draws dimmed');
+    assert.equal(supplyCache.state, 'closed');
+  },
+
+  'AC-8 chest editor exports mirror the runtime assets'() {
+    const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
+    const model = read('../src/models/prop-supply-chest.polygun.json');
+    assert.equal(model.format, 'polygun');
+    assert.equal(model.id, 'prop-supply-chest');
+    assert.deepEqual(model.nodes.map((n) => n.id), ['root', 'body', 'lid']);
+    assert.deepEqual(model.animations.map((a) => a.id), ['closed', 'open', 'emptied']);
+    const atlas = chestAtlas();
+    const pixels = read('../src/textures/chest_atlas.pixelgun.json');
+    assert.equal(pixels.format, 'pixelgun');
+    assert.equal([pixels.width, pixels.height].join('x'), `${atlas.width}x${atlas.height}`);
+    assert.ok(Buffer.from(pixels.rgbaBase64, 'base64').equals(Buffer.from(atlas.data)), 'the exported atlas matches chestAtlas() byte for byte');
+    assert.ok(Buffer.from(model.atlas.dataBase64, 'base64').equals(Buffer.from(atlas.data)));
+    assert.deepEqual(validateSong(read('../src/songs/sfx-pickups-chest-open.groovr.json')), []);
   },
 };
 

@@ -7,7 +7,11 @@
  * - Carve rooms and corridors out of solid `#` void using `.` for floor tiles.
  * - Use `D` for doors in 1-tile doorways, `o` for waist-high futuristic cover crates, and `T` for paired teleporter pads.
  * - Keep the first and last row (and leftmost/rightmost column) solid `#`.
- * - Every enemy (`i`, `b`, `s`, `c`, `w`, `r`, `B`) and pickup (`h`, `a`, `x`) must sit on a reachable floor tile.
+ * - Supply glyphs (`h`, `a`, `m`, `q`, `W`, `G`, `C`, `M`) are packed into openable supply chests; the player opens a
+ *   chest with E / Space and takes what is inside. Supply glyphs on orthogonally adjacent tiles merge into one chest, so
+ *   leave one non-supply tile between them to keep chests separate.
+ * - Every enemy (`i`, `b`, `s`, `c`, `w`, `r`, `B`), pickup (`h`, `a`, `m`, `q`, `W`, `G`, `C`, `M`, `k`, `y`, `u`, `g`, `A`,
+ *   `O`, `Z`, `V`), and barrel (`x`) must sit on a reachable floor tile.
  *
  * LEGEND:
  *   `#`  standard bulkhead wall (64 high)
@@ -24,17 +28,17 @@
  *   `~`  toxic radioactive slime / nukage floor (periodic acid damage + green hazard flash)
  *   `^`  crushing ceiling piston trap (slams down rhythmically, gibbing anything underneath)
  *   `P`  player spawn
- *   `h`  medikit (+25 health)
- *   `a`  shotgun shell crate (+8 shells)
- *   `m`  bullet ammo box (+20 bullets)
- *   `q`  rocket ordnance crate (+5 rockets)
+ *   `h`  medikit (+25 health) (supply chest content)
+ *   `a`  shotgun shell crate (+8 shells) (supply chest content)
+ *   `m`  bullet ammo box (+20 bullets) (supply chest content)
+ *   `q`  rocket ordnance crate (+5 rockets) (supply chest content)
  *   `k`  red security keycard
  *   `y`  yellow security keycard
  *   `u`  blue security keycard
- *   `W`  heavy motorized chainsaw pickup
- *   `G`  pump-action combat shotgun pickup
- *   `C`  heavy rotary chaingun pickup (+20 bullets)
- *   `M`  shoulder-fired rocket launcher pickup (+5 rockets)
+ *   `W`  heavy motorized chainsaw pickup (supply chest content)
+ *   `G`  pump-action combat shotgun pickup (supply chest content)
+ *   `C`  heavy rotary chaingun pickup (+20 bullets) (supply chest content)
+ *   `M`  shoulder-fired rocket launcher pickup (+5 rockets) (supply chest content)
  *   `g`  green security armor vest (100 armor, absorbs 33% damage)
  *   `A`  blue combat megaarmor vest (200 armor, absorbs 50% damage)
  *   `O`  Soulsphere supercharge orb (+100 health up to 200%)

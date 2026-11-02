@@ -658,6 +658,14 @@ export const RECIPES = {
     arpeggio(ctx, out, t + 0.04, [330, 440, 659], { spacing: 0.055, length: 0.16, gain: 0.22, type: 'triangle' });
     return { duration: 0.36, wet: 0.25 };
   },
+  cacheOpen(ctx, out, t) {
+    noise(ctx, out, t, { duration: 0.04, gain: 0.3, filter: 'bandpass', from: 2200, to: 1200, q: 3 });
+    tone(ctx, out, t, { type: 'square', from: 520, to: 260, duration: 0.03, gain: 0.14 });
+    noise(ctx, out, t + 0.05, { duration: 0.25, gain: 0.14, filter: 'highpass', from: 5000, to: 2500, attack: 0.03 });
+    tone(ctx, out, t + 0.3, { type: 'triangle', from: 110, to: 50, duration: 0.14, gain: 0.3 });
+    noise(ctx, out, t + 0.3, { duration: 0.12, gain: 0.2, filter: 'lowpass', from: 700, to: 200 });
+    return { duration: 0.5, wet: 0.25 };
+  },
   weaponSwitch(ctx, out, t) {
     noise(ctx, out, t, { duration: 0.05, gain: 0.22, filter: 'bandpass', from: 2100, to: 900, q: 3.5 });
     tone(ctx, out, t + 0.03, { type: 'triangle', from: 240, to: 360, duration: 0.08, gain: 0.18 });
@@ -749,6 +757,7 @@ const MIN_INTERVAL = {
   chaingun: 0.07,
   rocketFire: 0.12,
   weaponPickup: 0.08,
+  cacheOpen: 0.1,
   weaponSwitch: 0.06,
   armor: 0.08,
   powerup: 0.08,
@@ -800,6 +809,7 @@ function route(event) {
     case 'death': return [{ name: 'death', local: true }];
     case 'heartbeat': return [{ name: 'heartbeat', local: true }];
     case 'pickup': return [{ name: event.kind === 'health' ? 'pickupHealth' : 'pickupAmmo', local: true }];
+    case 'cacheOpen': return [{ name: 'cacheOpen' }];
     case 'doorOpen': return [{ name: 'doorOpen' }];
     case 'doorClose': return [{ name: 'doorClose' }];
     case 'step': return [{ name: event.wet ? 'stepWet' : 'step', pitch: true }];
