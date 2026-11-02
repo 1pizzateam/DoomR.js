@@ -68,6 +68,8 @@ export const DIFFICULTIES = {
 const LEAP_SPEED = 470;
 
 const PLAYER_RADIUS = 14;
+const KICK_EPSILON = 1e-5;
+const KICK_FALLBACK_HALF_LIFE = 0.05;
 const GRID_CELL = TILE * 2;
 const PLAYER_CROUCH = 95;
 const PLAYER_WALK = 160;
@@ -369,6 +371,7 @@ export class Game {
   }
 
   startIntermission() {
+    this.resetKick();
     const killsPct = this.totalEnemies > 0 ? Math.min(100, Math.round((this.kills / this.totalEnemies) * 100)) : 100;
     const itemsPct = this.totalItems > 0 ? Math.min(100, Math.round((this.itemsPicked / this.totalItems) * 100)) : 100;
     const secretsPct = this.totalSecrets > 0 ? Math.min(100, Math.round((this.secretsFound / this.totalSecrets) * 100)) : 100;
@@ -569,6 +572,7 @@ export class Game {
       dryFire: false,
       triggerHeld: false,
       spinDown: 0,
+      kick: { pitch: 0, yaw: 0, roll: 0, fov: 0, heat: 0, shots: 0, burst: 0 },
       shootFace: 0,
       flash: 0,
       recoil: 0,
@@ -1267,6 +1271,7 @@ export class Game {
     this.blood.floorSplat(player.pos.x + this.rand.float(-18, 18), player.pos.y + this.rand.float(-18, 18), this.rand.float(6, 12));
     if (!player.health) {
       this.state = 'dead';
+      this.resetKick();
       player.body.setVelocity(this.zero);
       for (const enemy of this.enemies) {
         if (enemy.state === 'dead')
@@ -1485,6 +1490,7 @@ export class Game {
     player.dryFire = true;
     player.triggerHeld = false;
     player.spinDown = 0;
+    this.resetKick();
     player.chainsawIdle = 0.24;
     this.emit('weaponSwitch', null, { weapon: target });
     return true;
@@ -1628,9 +1634,65 @@ export class Game {
     this.resolveGibs();
   }
 
+  /** Zeroes the render-only gun kick in place. */
+  resetKick() {
+    const kick = this.player.kick;
+    kick.pitch = 0;
+    kick.yaw = 0;
+    kick.roll = 0;
+    kick.fov = 0;
+    kick.heat = 0;
+    kick.shots = 0;
+    kick.burst = 0;
+  }
+
+  /** Adds one shot's camera kick. Render-only: never read by aiming, raycasts or this.rand. */
+  applyKick(feel) {
+    const kick = this.player.kick;
+    kick.shots += 1;
+    const side = kick.shots & 1 ? 1 : -1;
+    const climb = 1 + feel.climb * kick.heat;
+    kick.pitch = Math.min(feel.cap, kick.pitch + feel.pitch * climb);
+    kick.yaw = Utils.clamp(kick.yaw + feel.yaw * side, -feel.cap, feel.cap);
+    kick.roll = Utils.clamp(kick.roll + feel.roll * (feel.yaw > 0 ? side : 1), -feel.cap, feel.cap);
+    kick.fov = Math.max(kick.fov, feel.fov);
+    kick.heat = Math.min(1, kick.heat + feel.heatGain);
+  }
+
+  /** Frame-rate independent exponential relaxation of the kick. */
+  relaxKick(dt) {
+    const kick = this.player.kick;
+    const feel = WEAPONS[this.player.weapon]?.feel;
+    const k = Math.exp((-dt * Math.LN2) / (feel ? feel.halfLife : KICK_FALLBACK_HALF_LIFE));
+    const h = Math.exp((-dt * Math.LN2) / (feel ? feel.heatHalfLife : KICK_FALLBACK_HALF_LIFE));
+    kick.pitch *= k;
+    kick.yaw *= k;
+    kick.roll *= k;
+    kick.fov *= k;
+    kick.heat *= h;
+    if (Math.abs(kick.pitch) < KICK_EPSILON)
+      kick.pitch = 0;
+    if (Math.abs(kick.yaw) < KICK_EPSILON)
+      kick.yaw = 0;
+    if (Math.abs(kick.roll) < KICK_EPSILON)
+      kick.roll = 0;
+    if (Math.abs(kick.fov) < KICK_EPSILON)
+      kick.fov = 0;
+    if (Math.abs(kick.heat) < KICK_EPSILON)
+      kick.heat = 0;
+  }
+
+  /** Emits the chaingun spin-down once when a burst ends. */
+  endBurst() {
+    const kick = this.player.kick;
+    this.emit('chaingunSpin', null, { heat: kick.heat });
+    kick.burst = 0;
+  }
+
   fireShotgun() {
     const player = this.player;
     player.shells = Math.max(0, player.shells - 1);
+    this.applyKick(WEAPONS.shotgun.feel);
     this.emit('fire', null, { pump: player.shells > 0 });
     player.cooldown = FIRE_COOLDOWN;
     player.dryFire = false;
@@ -1691,7 +1753,9 @@ export class Game {
     const player = this.player;
     const def = WEAPONS.chaingun;
     player.bullets = Math.max(0, player.bullets - def.ammoCost);
-    this.emit('chaingun');
+    player.kick.burst += 1;
+    this.applyKick(def.feel);
+    this.emit('chaingun', null, { heat: player.kick.heat });
     player.cooldown = def.cooldown;
     player.dryFire = false;
     player.triggerHeld = true;
@@ -1699,7 +1763,6 @@ export class Game {
     player.shootFace = 0.42;
     player.flash = 0.06;
     player.recoil = 0.55;
-    this.shake = Math.max(this.shake, 0.12);
 
     for (const enemy of this.enemies)
       enemy.volley = 0;
@@ -1745,13 +1808,13 @@ export class Game {
     const player = this.player;
     const def = WEAPONS.rocket;
     player.rockets = Math.max(0, player.rockets - def.ammoCost);
+    this.applyKick(def.feel);
     this.emit('rocketFire');
     player.cooldown = def.cooldown;
     player.dryFire = false;
     player.shootFace = 0.42;
     player.flash = 0.14;
     player.recoil = 1.15;
-    this.shake = Math.max(this.shake, 0.35);
 
     const direction = new Vec2(1, 0).setRadian(player.angle);
     const start = player.pos.clone().addScaledVector(direction, PLAYER_RADIUS + 8);
@@ -2305,6 +2368,7 @@ export class Game {
     player.recoil = Math.max(0, player.recoil - dt * 3.5);
     player.hurt = Math.max(0, player.hurt - dt);
     player.hitMarker = Math.max(0, player.hitMarker - dt);
+    this.relaxKick(dt);
 
     const floor = this.playerFloorHeight();
     if (player.z < floor) {
@@ -2359,6 +2423,8 @@ export class Game {
       this.use();
     if (input.grenade)
       this.addGrenade(player.pos, this.scratch.setScalar(cos, sin));
+    if (player.kick.burst > 0 && !input.fire)
+      this.endBurst();
     player.triggerHeld = Boolean(input.fire);
     if (input.fire && player.cooldown <= 0) {
       const def = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
@@ -2372,6 +2438,8 @@ export class Game {
         player.triggerHeld = false;
         player.spinDown = 0;
         player.shootFace = 0;
+        if (player.kick.burst > 0)
+          this.endBurst();
         this.emit('dry');
         this.say(`Out of ${pool.label.toLowerCase()}`, 1);
       }

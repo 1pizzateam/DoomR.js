@@ -4,6 +4,7 @@ import { mulberry32 } from './rng.js';
 import { GLOW, LIGHT, LIGHT_GLSL, METAL, mix, periodicField, plate, rivet, SHADOW, Tile } from './floor.js';
 import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
 import { SOLID_ALPHA } from './quads.js';
+import { WEAPONS } from './weapon.js';
 
 const scratchPt = new Vec2();
 const scratchPixel = new Vec2();
@@ -492,7 +493,7 @@ export function collectDynamicLights(game, cameraPos, time = 0, maxRadius = Infi
   if (player && (player.flash ?? 0) > 0 && game.state !== 'dead' && game.state !== 'title') {
     const weapon = player.weapon ?? 'shotgun';
     if (weapon !== 'fist' && weapon !== 'knife' && weapon !== 'chainsaw') {
-      const flashRatio = Math.min(1, player.flash / 0.12);
+      const flashRatio = Math.min(1, player.flash / (WEAPONS[weapon]?.feel?.flash ?? 0.12));
       const mult = weapon === 'rocket' ? 1.18 : weapon === 'chaingun' ? 0.92 : 1.02;
       const mx = player.pos.x + Math.cos(player.angle) * 24;
       const my = (player.eye ?? 28) - 4;

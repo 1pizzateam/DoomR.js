@@ -1,4 +1,5 @@
 import { Mat4x3, Quat, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
+import { SHOTGUN_PUMP } from './weapon.js';
 
 const smoothStep = Utils.smoothstep;
 
@@ -2729,6 +2730,7 @@ export function shotgunPose(
       : Math.min(1, recoil * 0.75);
 
   // Deliberate pump-action reload cycle (elapsed 0.16..0.96 when shells remain):
+  // Contact times come from SHOTGUN_PUMP (shared with the pump sound).
   // 1. `reach`: marine's left hand & muscular forearm sweep up from bottom-left onto the walnut forend (0.16..0.26),
   //    stay locked on the forend through the entire pump stroke (0.26..0.86), and release downward (0.86..0.96)
   // 2. `raise`: subtle brace while keeping the barrel horizontal toward enemies
@@ -2737,27 +2739,27 @@ export function shotgunPose(
   let raise = 0;
   let rack = 0;
   let rackJolt = 0;
-  if (hasAmmo && elapsed >= 0.16 && elapsed < 0.96) {
-    if (elapsed < 0.26)
-      reach = smoothStep(0.16, 0.26, elapsed);
-    else if (elapsed < 0.86)
+  if (hasAmmo && elapsed >= SHOTGUN_PUMP.reach && elapsed < SHOTGUN_PUMP.release) {
+    if (elapsed < SHOTGUN_PUMP.pull)
+      reach = smoothStep(SHOTGUN_PUMP.reach, SHOTGUN_PUMP.pull, elapsed);
+    else if (elapsed < SHOTGUN_PUMP.close)
       reach = 1;
     else
-      reach = 1 - smoothStep(0.86, 0.96, elapsed);
+      reach = 1 - smoothStep(SHOTGUN_PUMP.close, SHOTGUN_PUMP.release, elapsed);
 
     if (elapsed >= 0.2 && elapsed < 0.36)
       raise = smoothStep(0.2, 0.36, elapsed);
     else if (elapsed >= 0.36 && elapsed < 0.76)
       raise = 1;
     else if (elapsed >= 0.76)
-      raise = 1 - smoothStep(0.76, 0.96, elapsed);
+      raise = 1 - smoothStep(0.76, SHOTGUN_PUMP.release, elapsed);
 
-    if (elapsed >= 0.26 && elapsed < 0.48)
-      rack = smoothStep(0.26, 0.48, elapsed);
-    else if (elapsed >= 0.48 && elapsed < 0.64)
+    if (elapsed >= SHOTGUN_PUMP.pull && elapsed < SHOTGUN_PUMP.open)
+      rack = smoothStep(SHOTGUN_PUMP.pull, SHOTGUN_PUMP.open, elapsed);
+    else if (elapsed >= SHOTGUN_PUMP.open && elapsed < SHOTGUN_PUMP.push)
       rack = 1;
-    else if (elapsed >= 0.64 && elapsed < 0.86)
-      rack = 1 - smoothStep(0.64, 0.86, elapsed);
+    else if (elapsed >= SHOTGUN_PUMP.push && elapsed < SHOTGUN_PUMP.close)
+      rack = 1 - smoothStep(SHOTGUN_PUMP.push, SHOTGUN_PUMP.close, elapsed);
 
     // Tactile mechanical snap at full rear stroke (~0.48s) and forward chamber lockup (~0.84s)
     if (elapsed >= 0.44 && elapsed < 0.56)

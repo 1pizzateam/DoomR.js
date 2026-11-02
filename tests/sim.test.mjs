@@ -2,17 +2,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Mat4 } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
-import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
+import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { ACID_PIT_DEPTH, CACHE_LID_TIME, CACHE_TYPES, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
 import { BLOOD } from '../src/blood.js';
-import { RECIPES, Sound, spatial } from '../src/audio.js';
+import { DUCK_FLOOR, RECIPES, Sound, spatial } from '../src/audio.js';
 import { validateSong } from '@1pizzateam/groovr';
 import { FADE_IN, FADE_OUT, Music, SONGS } from '../src/music.js';
 import { HOLE_VARIANTS, holeQuad, IMPACT_CELL_COUNT, IMPACT_CELLS, impactAtlas, impactCellUv, SLASH_VARIANTS, SPARK_FRAMES, SPARK_VARIANTS } from '../src/impacts.js';
 import { LEVELS } from '../src/levels.js';
 import { FACE_CELL_H, FACE_CELL_W, FACE_DEAD_FRAME, FACE_FRAME_COUNT, FACE_POSE_COUNT, FACE_POSES, faceAtlas, faceCellUv, faceFrame, facePlacement } from '../src/face.js';
-import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON_ORDER, WEAPON_SLOTS, WEAPON_TIMES, WEAPONS, arsenalAtlas, weaponAtlas, weaponCellUv, weaponFrame, weaponPlacement } from '../src/weapon.js';
+import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON_ORDER, WEAPON_SLOTS, WEAPON_TIMES, WEAPONS, SHOTGUN_PUMP, arsenalAtlas, weaponAtlas, weaponCellUv, weaponFrame, weaponPlacement } from '../src/weapon.js';
 import { ARSENAL_CELL, ARSENAL_FRAMES, CHAINSAW_TOOTH_PITCH, chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, KNIFE_ATTACKS, knifeAtlas, knifeMesh, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from '../src/arsenal.js';
 import { AMMO_FLASH_DURATION, FIRE_COOLDOWN } from '../src/game.js';
 import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DYNAMIC_LIGHT_ATTENUATION, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
@@ -7896,6 +7896,303 @@ const tests = {
     assert.ok(Buffer.from(pixels.rgbaBase64, 'base64').equals(Buffer.from(atlas.data)), 'the exported atlas matches chestAtlas() byte for byte');
     assert.ok(Buffer.from(model.atlas.dataBase64, 'base64').equals(Buffer.from(atlas.data)));
     assert.deepEqual(validateSong(read('../src/songs/sfx-pickups-chest-open.groovr.json')), []);
+  },
+
+  'AC-1 shotgun kick is capped, render-only, and leaves seeded outcomes identical'() {
+    const make = () => {
+      const game = fresh(0);
+      clearEnemies(game);
+      game.rand = Rand.create(7);
+      game.player.weapon = 'shotgun';
+      game.player.shells = 10;
+      game.player.cooldown = 0;
+      game.player.angle = 0;
+      const { x, y } = game.player.pos;
+      game.addEnemy('imp', new Vec2(x + 120, y));
+      game.addEnemy('imp', new Vec2(x + 200, y + 10));
+      return game;
+    };
+    const a = make();
+    const b = make();
+    Object.assign(b.player.kick, { pitch: 0.05, yaw: 0.02, roll: 0.01, fov: 0.03 });
+    a.update(1 / 60, input({ fire: true }));
+    b.update(1 / 60, input({ fire: true }));
+    assert.ok(a.player.kick.pitch > 0 && a.player.kick.pitch <= WEAPONS.shotgun.feel.cap + 1e-12, 'AC-1 pitch within cap');
+    assert.ok(b.player.kick.pitch <= WEAPONS.shotgun.feel.cap + 1e-12, 'AC-1 pre-loaded pitch stays within cap');
+    assert.ok(a.player.kick.fov > 0, 'AC-1 fov punch');
+    assert.equal(a.player.angle, b.player.angle, 'AC-1 kick never changes aim');
+    assert.deepEqual(a.enemies.map((e) => e.hp), b.enemies.map((e) => e.hp), 'AC-1 enemy outcomes identical');
+    assert.equal(a.rand.float(), b.rand.float(), 'AC-1 rand stream identical');
+  },
+
+  'AC-2 kick relaxation is frame-rate independent and monotone'() {
+    for (const weapon of ['shotgun', 'rocket']) {
+      const make = () => {
+        const game = fresh(0);
+        clearEnemies(game);
+        game.player.weapons.rocket = true;
+        game.player.rockets = 5;
+        game.player.weapon = weapon;
+        game.player.cooldown = 0;
+        game.update(1 / 60, input({ fire: true }));
+        return game;
+      };
+      const a = make();
+      const b = make();
+      let last = a.player.kick.pitch;
+      assert.ok(last > 0, `AC-2 ${weapon} kicked`);
+      for (let i = 0; i < 36; i++) {
+        a.update(1 / 60, input({}));
+        assert.ok(a.player.kick.pitch <= last && a.player.kick.pitch >= 0, `AC-2 ${weapon} pitch monotone`);
+        last = a.player.kick.pitch;
+      }
+      for (let i = 0; i < 6; i++)
+        b.update(0.1, input({}));
+      for (const key of ['pitch', 'roll', 'fov'])
+        assert.ok(Math.abs(a.player.kick[key] - b.player.kick[key]) < 1e-6, `AC-2 ${weapon} ${key} frame-rate independent`);
+      for (let i = 0; i < 90; i++)
+        a.update(1 / 60, input({}));
+      for (const key of ['pitch', 'yaw', 'roll', 'fov'])
+        assert.equal(a.player.kick[key], 0, `AC-2 ${weapon} ${key} fully relaxed`);
+    }
+  },
+
+  'AC-3 sustained chaingun fire plateaus under the cap and spins down once on release'() {
+    const game = fresh(0);
+    clearEnemies(game);
+    game.player.weapons.chaingun = true;
+    game.player.weapon = 'chaingun';
+    game.player.bullets = 500;
+    game.player.cooldown = 0;
+    const cap = WEAPONS.chaingun.feel.cap;
+    let maxPitch = 0;
+    let lateMax = 0;
+    const yawSigns = [];
+    for (let i = 0; i < 180; i++) {
+      game.events.length = 0;
+      game.update(1 / 60, input({ fire: true }));
+      const kick = game.player.kick;
+      maxPitch = Math.max(maxPitch, kick.pitch);
+      if (i >= 120)
+        lateMax = Math.max(lateMax, kick.pitch);
+      if (game.events.some((e) => e.type === 'chaingun'))
+        yawSigns.push(Math.sign(kick.yaw));
+    }
+    assert.ok(maxPitch <= cap + 1e-9, 'AC-3 pitch capped');
+    assert.ok(lateMax > cap / 2, 'AC-3 pitch plateaus above half the cap');
+    for (let i = 1; i < yawSigns.length; i++)
+      assert.notEqual(yawSigns[i], yawSigns[i - 1], 'AC-3 yaw alternates between rounds');
+    game.events.length = 0;
+    for (let i = 0; i < 15; i++)
+      game.update(1 / 60, input({}));
+    const spins = game.events.filter((e) => e.type === 'chaingunSpin');
+    assert.equal(spins.length, 1, 'AC-3 exactly one spin-down');
+    assert.ok(spins[0].heat > 0 && spins[0].heat <= 1, 'AC-3 spin heat in range');
+    assert.equal(game.player.kick.burst, 0);
+    assert.ok(game.player.kick.pitch < 0.15 * cap, 'AC-3 pitch falls within 0.25 s');
+    for (let i = 0; i < 30; i++)
+      game.update(1 / 60, input({}));
+    assert.equal(game.events.filter((e) => e.type === 'chaingunSpin').length, 1, 'AC-3 no extra spin-down');
+  },
+
+  'AC-4 dry fire, melee, switching, death, and intermission leave no kick'() {
+    const zero = (game, message) => {
+      for (const key of ['pitch', 'yaw', 'roll', 'fov', 'heat', 'burst'])
+        assert.equal(game.player.kick[key], 0, `AC-4 ${message}: ${key}`);
+    };
+    const setup = () => {
+      const game = fresh(0);
+      clearEnemies(game);
+      game.player.weapons.chaingun = true;
+      game.player.bullets = 500;
+      game.player.cooldown = 0;
+      return game;
+    };
+    let game = setup();
+    game.player.shells = 0;
+    game.player.cooldown = 0;
+    game.events.length = 0;
+    game.update(1 / 60, input({ fire: true }));
+    zero(game, 'dry pull');
+    assert.ok(game.events.some((e) => e.type === 'dry'));
+    assert.ok(!game.events.some((e) => e.type === 'fire' || e.type === 'chaingunSpin'));
+
+    game = setup();
+    game.selectWeapon('knife');
+    game.player.cooldown = 0;
+    game.update(1 / 60, input({ fire: true }));
+    zero(game, 'knife');
+
+    game = setup();
+    game.player.weapon = 'chaingun';
+    game.update(1 / 60, input({ fire: true }));
+    assert.ok(game.player.kick.pitch > 0);
+    game.events.length = 0;
+    game.selectWeapon(2);
+    zero(game, 'switch');
+    assert.ok(!game.events.some((e) => e.type === 'chaingunSpin'), 'AC-4 switching emits no spin-down');
+
+    game = setup();
+    game.update(1 / 60, input({ fire: true }));
+    assert.ok(game.player.kick.pitch > 0);
+    game.hurtPlayer(9999);
+    assert.equal(game.state, 'dead');
+    zero(game, 'death');
+
+    game = setup();
+    game.update(1 / 60, input({ fire: true }));
+    game.startIntermission();
+    zero(game, 'intermission');
+
+    game = setup();
+    game.player.weapon = 'chaingun';
+    game.player.bullets = 3;
+    game.events.length = 0;
+    for (let i = 0; i < 60; i++)
+      game.update(1 / 60, input({ fire: true }));
+    assert.equal(game.events.filter((e) => e.type === 'chaingunSpin').length, 1, 'AC-4 one spin-down when ammo runs out');
+    assert.ok(game.events.some((e) => e.type === 'dry'));
+  },
+
+  'AC-5 ranged fire no longer raises Game.shake but explosions still do'() {
+    for (const weapon of ['shotgun', 'chaingun', 'rocket']) {
+      const game = fresh(0);
+      clearEnemies(game);
+      Object.assign(game.player.weapons, { chaingun: true, rocket: true });
+      Object.assign(game.player, { weapon, shells: 5, bullets: 50, rockets: 5, cooldown: 0 });
+      game.shake = 0;
+      game.fire();
+      assert.equal(game.shake, 0, `AC-5 ${weapon} fire adds no shake`);
+    }
+    const game = fresh(0);
+    clearEnemies(game);
+    for (const barrel of game.barrels)
+      game.scene.removeBody(barrel.body);
+    game.barrels = [];
+    game.addBarrel(new Vec2(game.player.pos.x + 60, game.player.pos.y));
+    game.hitBarrel(game.barrels[0], 999, 0);
+    let peak = 0;
+    for (let i = 0; i < 60; i++) {
+      game.update(1 / 60, input({}));
+      peak = Math.max(peak, game.shake);
+    }
+    assert.ok(peak > 0, 'AC-5 barrel explosion still shakes');
+  },
+
+  'AC-7 camera kick pitches, rolls, and punches FOV, then restores exactly'() {
+    const world = Object.assign(Object.create(World.prototype), {
+      camera: new PerspectiveCamera(60, new Vec2(1, 4000)),
+      baseFov: 60,
+      viewportSize: new Vec2(800, 600),
+      zoom: 1,
+      filmed: false,
+    });
+    const player = { pos: new Vec2(100, 200), angle: 0.7, bob: 0, moving: 0, crouch: 0, hurt: 0, teleFlash: 0, eye: EYE, kick: { pitch: 0.05, yaw: 0, roll: 0.02, fov: 0.03 } };
+    const game = { state: 'play', shake: 0, cam: null, player };
+    world.updateCamera(game);
+    const { camera } = world;
+    assert.ok(camera.target.y > camera.position.y, 'AC-7 camera pitches up');
+    const heading = Math.atan2(camera.target.z - camera.position.z, camera.target.x - camera.position.x);
+    assert.ok(Math.abs(heading - 0.7) < 1e-9, 'AC-7 heading unchanged');
+    assert.ok(camera.up.y < 1, 'AC-7 up tilts');
+    assert.ok(Math.abs(Math.hypot(camera.up.x, camera.up.y, camera.up.z) - 1) < 1e-9, 'AC-7 up stays unit');
+    assert.ok(Math.abs(camera.fov - 60 * 1.03) < 1e-9, 'AC-7 fov punch');
+    assert.equal(player.angle, 0.7);
+    Object.assign(player.kick, { pitch: 0, yaw: 0, roll: 0, fov: 0 });
+    world.updateCamera(game);
+    assert.ok(camera.up.x === 0 && camera.up.y === 1 && camera.up.z === 0, 'AC-7 up restored exactly');
+    assert.equal(camera.fov, 60, 'AC-7 fov restored exactly');
+  },
+
+  'AC-7 muzzle light normalizes by weapon flash duration'() {
+    const game = fresh(0);
+    clearEnemies(game);
+    const camPos = new Vec3(game.player.pos.x, EYE, game.player.pos.y);
+    for (const [weapon, flash, expected] of [['chaingun', 0.06, 0.92], ['shotgun', 0.1, 1.02]]) {
+      game.player.weapon = weapon;
+      game.player.flash = flash;
+      const lights = collectDynamicLights(game, camPos, 1.0).filter((l) => l.kind === 'muzzle');
+      assert.equal(lights.length, 1);
+      assert.ok(Math.abs(lights[0].strength - expected) < 1e-9, `AC-7 ${weapon} muzzle strength`);
+    }
+  },
+
+  'AC-6 pump sound and pose share SHOTGUN_PUMP contact times'() {
+    const sound = new Sound();
+    const played = [];
+    sound.play = (name, opts) => played.push({ name, ...opts });
+    sound.handle({ type: 'fire', pump: true, x: 0, y: 0 });
+    assert.equal(played.find((p) => p.name === 'pump').delay, SHOTGUN_PUMP.open, 'AC-6 pump delay');
+    assert.equal(played.find((p) => p.name === 'fire').duck, WEAPONS.shotgun.feel.duck);
+    played.length = 0;
+    sound.handle({ type: 'chaingunSpin', heat: 0.6 });
+    assert.equal(played[0].local, true);
+    assert.equal(played[0].params.heat, 0.6);
+
+    const starts = [];
+    const param = () => ({ setValueAtTime() {}, exponentialRampToValueAtTime() {}, value: 0 });
+    const ctx = {
+      sampleRate: 44100,
+      createBuffer: (ch, len) => ({ getChannelData: () => new Float32Array(len) }),
+      createWaveShaper: () => ({ curve: null, connect() {} }),
+      createOscillator: () => ({ type: 'sine', frequency: param(), connect() {}, start(t) { starts.push(t); }, stop() {} }),
+      createGain: () => ({ gain: param(), connect() {} }),
+      createBiquadFilter: () => ({ type: 'lowpass', frequency: param(), Q: param(), connect() {} }),
+      createBufferSource: () => ({ buffer: null, connect() {}, start(t) { starts.push(t); }, stop() {} }),
+    };
+    RECIPES.pump(ctx, { connect() {} }, 2, {});
+    const forward = 2 + (SHOTGUN_PUMP.close - SHOTGUN_PUMP.open);
+    assert.ok(starts.some((t) => Math.abs(t - forward) < 1e-9), 'AC-6 forward stroke at close - open');
+    assert.ok(!starts.some((t) => t > 2 + 1e-9 && t < forward - 1e-9), 'AC-6 nothing between back and forward stroke');
+
+    const open = shotgunPose({ elapsed: SHOTGUN_PUMP.open, hasAmmo: true });
+    const held = shotgunPose({ elapsed: SHOTGUN_PUMP.push - 1e-6, hasAmmo: true });
+    assert.ok(Math.abs(open.pumpPos.z - held.pumpPos.z) < 1e-6, 'AC-6 full rack at open');
+    const idle = shotgunPose({ elapsed: -1, hasAmmo: true });
+    const closed = shotgunPose({ elapsed: SHOTGUN_PUMP.close + 1e-6, hasAmmo: true });
+    assert.ok(Math.abs(closed.pumpPos.z - idle.pumpPos.z) < 1e-9, 'AC-6 rack back to zero at close');
+  },
+
+  'AC-8 firearm reports duck the beds within the floor and recover'() {
+    const log = [];
+    const param = () => ({ setValueAtTime() {}, exponentialRampToValueAtTime() {}, value: 0 });
+    const ctx = {
+      state: 'running',
+      currentTime: 5,
+      sampleRate: 44100,
+      createBuffer: (ch, len) => ({ getChannelData: () => new Float32Array(len) }),
+      createWaveShaper: () => ({ curve: null, connect() {} }),
+      createOscillator: () => ({ type: 'sine', frequency: param(), connect() {}, start() {}, stop() {} }),
+      createGain: () => ({ gain: param(), connect() {} }),
+      createBiquadFilter: () => ({ type: 'lowpass', frequency: param(), Q: param(), connect() {} }),
+      createBufferSource: () => ({ buffer: null, connect() {}, start() {}, stop() {} }),
+      createStereoPanner: () => ({ pan: { value: 0 }, connect() {} }),
+    };
+    const sound = new Sound();
+    sound.ctx = ctx;
+    sound.master = { connect() {} };
+    sound.reverb = { connect() {} };
+    sound.duck = {
+      gain: {
+        cancelScheduledValues: (t) => log.push(['cancel', t]),
+        setTargetAtTime: (v, t, tau) => log.push(['target', v, t, tau]),
+      },
+    };
+    sound.muted = false;
+    sound.handle({ type: 'rocketFire', x: 0, y: 0 });
+    const targets = log.filter((e) => e[0] === 'target');
+    assert.equal(targets[0][1], Math.max(DUCK_FLOOR, 1 - WEAPONS.rocket.feel.duck), 'AC-8 duck depth');
+    assert.ok(targets[0][1] >= 0.5, 'AC-8 duck respects floor');
+    assert.ok(targets.some((e) => e[1] === 1 && e[2] > 5 && e[3] > 0), 'AC-8 recovery scheduled');
+    log.length = 0;
+    ctx.currentTime += 0.01;
+    sound.handle({ type: 'chaingun', heat: 0 });
+    assert.equal(log.filter((e) => e[0] === 'target').length, 0, 'AC-8 shallower duck does not weaken an active deeper one');
+    sound.muted = true;
+    log.length = 0;
+    ctx.currentTime += 1;
+    sound.handle({ type: 'rocketFire', x: 0, y: 0 });
+    assert.equal(log.length, 0, 'AC-8 muted schedules no duck');
   },
 };
 
