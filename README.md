@@ -14,6 +14,8 @@
 
 Controls adapt to your keyboard layout (QWERTY, AZERTY, QWERTZ, Dvorak). Positional keys stay in the same physical place on every layout, so WASD on QWERTY is ZQSD on AZERTY. Mnemonic keys follow the letter printed on the keycap. The on-screen labels adapt automatically (from the Keyboard Map API, or learned from your key presses), and `F2` cycles Auto → QWERTY → AZERTY → QWERTZ → Dvorak, stored as `doomr.keyboardLayout`.
 
+Every action can be rebound. Open the CONTROLS page with `F1`, or click CONTROLS on the title or pause screen. Each action has two slots (KEY 1 / KEY 2) and accepts keyboard keys or mouse buttons (MOUSE L/M/R/4/5). A key taken from another action is announced, and actions left without a key are flagged UNBOUND in red. `Del` clears a slot, `R` resets a row, and RESET ALL needs a second press. `Esc` and `Enter` are reserved. Customised keys are physical keys labelled with your own keycap glyph. Bindings are saved in the browser as `doomr.controls`.
+
 | Key (QWERTY) | Action | Follows |
 | :-- | :-- | :-- |
 | W A S D | move (ZQSD on AZERTY) | position |
@@ -34,6 +36,7 @@ Controls adapt to your keyboard layout (QWERTY, AZERTY, QWERTZ, Dvorak). Positio
 | P / Esc | pause | printed letter / position |
 | F2 | cycle keyboard layout labels | position |
 | F3 | show fps and render scale | position |
+| F1 | open the controls page (rebind any action) | position |
 
 ## Tests
 
