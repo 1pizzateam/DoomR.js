@@ -21,6 +21,7 @@ import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAm
 import { keycardAtlas, keycardMesh } from './keycard.js';
 import { CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from './cache.js';
 import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, knifeAtlas, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from './arsenal.js';
+import { WEAPONS } from './weapon.js';
 import { armorAtlas, armorMesh } from './armor.js';
 import { berserkAtlas, berserkMesh, nightvisionAtlas, nightvisionMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from './powerups.js';
 
@@ -567,7 +568,36 @@ const scratchForward = new Vec3();
 const scratchRight = new Vec3();
 const scratchUp = new Vec3();
 const scratchQuat = new Quat();
-const scratchLocalQuat = new Quat();
+const ZERO_KICK = Object.freeze({ pitch: 0, yaw: 0, roll: 0, fov: 0 });
+const SHOTGUN_FLASH = WEAPONS.shotgun.feel.flash;
+const ROCKET_FLASH = WEAPONS.rocket.feel.flash;
+
+/** Writes the kicked view basis into scratchForward / scratchRight / scratchUp. */
+function writeViewBasis(angle, kick) {
+  const a = angle + kick.yaw;
+  const cosA = Math.cos(a);
+  const sinA = Math.sin(a);
+  const cosP = Math.cos(kick.pitch);
+  const sinP = Math.sin(kick.pitch);
+  const cosR = Math.cos(kick.roll);
+  const sinR = Math.sin(kick.roll);
+  scratchForward.setScalar(cosA * cosP, sinP, sinA * cosP);
+  const upX = -cosA * sinP;
+  const upZ = -sinA * sinP;
+  scratchUp.setScalar(upX * cosR + -sinA * sinR, cosP * cosR, upZ * cosR + cosA * sinR);
+  scratchRight.setScalar(-sinA * cosR - upX * sinR, -cosP * sinR, cosA * cosR - upZ * sinR);
+}
+
+/** Writes the kicked viewmodel root rotation into scratchQuat. */
+function writeViewQuat(angle, kick, rotation) {
+  scratchQuat
+    .setFromEuler(scratchRot.setScalar(0, Trigo.halfpi - (angle + kick.yaw), 0))
+    .rotateX(-kick.pitch)
+    .rotateZ(kick.roll)
+    .rotateY(rotation.y)
+    .rotateX(rotation.x)
+    .rotateZ(rotation.z);
+}
 const scratchFog = new Vec2();
 const scratchCam2d = new Vec2();
 const EMPTY = Object.freeze([]);
@@ -3041,11 +3071,8 @@ export class World {
       view.pose
     );
 
-    const cosA = Math.cos(player.angle);
-    const sinA = Math.sin(player.angle);
-    scratchForward.setScalar(cosA, 0, sinA);
-    scratchRight.setScalar(-sinA, 0, cosA);
-    scratchUp.setScalar(0, 1, 0);
+    const kick = player.kick ?? ZERO_KICK;
+    writeViewBasis(player.angle, kick);
 
     scratchPos
       .copy(this.camera.position)
@@ -3054,11 +3081,7 @@ export class World {
       .addScaledVector(scratchForward, pose.offset.z);
     view.root.setPosition(scratchPos);
 
-    scratchRot.setScalar(0, Trigo.halfpi - player.angle + pose.rotation.y, 0);
-    scratchQuat.setFromEuler(scratchRot);
-    scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
-    scratchLocalQuat.setFromEuler(scratchRot);
-    scratchQuat.multiply(scratchLocalQuat);
+    writeViewQuat(player.angle, kick, pose.rotation);
     view.root.setQuaternion(scratchQuat);
 
     view.topChain.setPosition(pose.topChainPos);
@@ -3097,15 +3120,12 @@ export class World {
       view.pose
     );
 
-    const flashBoost = attacking && (player.flash ?? 0) > 0 ? Math.min(1, player.flash / 0.08) * 0.38 : 0;
+    const flashBoost = attacking && (player.flash ?? 0) > 0 ? Math.min(1, player.flash / WEAPONS.chaingun.feel.flash) * 0.38 : 0;
     tintScratch.setScalar(1 + flashBoost, 1 + flashBoost * 0.78, 1 + flashBoost * 0.42);
     view.material.setDiffuse(tintScratch);
 
-    const cosA = Math.cos(player.angle);
-    const sinA = Math.sin(player.angle);
-    scratchForward.setScalar(cosA, 0, sinA);
-    scratchRight.setScalar(-sinA, 0, cosA);
-    scratchUp.setScalar(0, 1, 0);
+    const kick = player.kick ?? ZERO_KICK;
+    writeViewBasis(player.angle, kick);
 
     scratchPos
       .copy(this.camera.position)
@@ -3114,11 +3134,7 @@ export class World {
       .addScaledVector(scratchForward, pose.offset.z);
     view.root.setPosition(scratchPos);
 
-    scratchRot.setScalar(0, Trigo.halfpi - player.angle + pose.rotation.y, 0);
-    scratchQuat.setFromEuler(scratchRot);
-    scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
-    scratchLocalQuat.setFromEuler(scratchRot);
-    scratchQuat.multiply(scratchLocalQuat);
+    writeViewQuat(player.angle, kick, pose.rotation);
     view.root.setQuaternion(scratchQuat);
 
     view.rotor.setRotation(pose.rotorRot);
@@ -3139,7 +3155,7 @@ export class World {
     view.root.setActive();
     const switchOffset = player.switchOffset ?? Math.min(1, (player.switchTimer ?? 0) / 0.22);
     const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
-    const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? 1.05 - player.cooldown : -1;
+    const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? WEAPONS.shotgun.cooldown - player.cooldown : -1;
     const hasAmmo = (player.shells ?? player.ammo ?? 1) >= 1;
     const pose = shotgunPose(
       {
@@ -3155,17 +3171,14 @@ export class World {
     );
 
     const flashBoost =
-      isFiring && ((player.flash ?? 0) > 0 || (elapsed >= 0 && elapsed < 0.1))
-        ? Math.max(Math.min(1, (player.flash ?? 0) / 0.1), elapsed >= 0 && elapsed < 0.1 ? 1 - elapsed / 0.1 : 0) * 0.45
+      isFiring && ((player.flash ?? 0) > 0 || (elapsed >= 0 && elapsed < SHOTGUN_FLASH))
+        ? Math.max(Math.min(1, (player.flash ?? 0) / SHOTGUN_FLASH), elapsed >= 0 && elapsed < SHOTGUN_FLASH ? 1 - elapsed / SHOTGUN_FLASH : 0) * 0.45
         : 0;
     tintScratch.setScalar(1 + flashBoost, 1 + flashBoost * 0.78, 1 + flashBoost * 0.42);
     view.material.setDiffuse(tintScratch);
 
-    const cosA = Math.cos(player.angle);
-    const sinA = Math.sin(player.angle);
-    scratchForward.setScalar(cosA, 0, sinA);
-    scratchRight.setScalar(-sinA, 0, cosA);
-    scratchUp.setScalar(0, 1, 0);
+    const kick = player.kick ?? ZERO_KICK;
+    writeViewBasis(player.angle, kick);
 
     scratchPos
       .copy(this.camera.position)
@@ -3174,11 +3187,7 @@ export class World {
       .addScaledVector(scratchForward, pose.offset.z);
     view.root.setPosition(scratchPos);
 
-    scratchRot.setScalar(0, Trigo.halfpi - player.angle + pose.rotation.y, 0);
-    scratchQuat.setFromEuler(scratchRot);
-    scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
-    scratchLocalQuat.setFromEuler(scratchRot);
-    scratchQuat.multiply(scratchLocalQuat);
+    writeViewQuat(player.angle, kick, pose.rotation);
     view.root.setQuaternion(scratchQuat);
 
     view.pump.setPosition(pose.pumpPos);
@@ -3202,7 +3211,7 @@ export class World {
     view.root.setActive();
     const switchOffset = player.switchOffset ?? Math.min(1, (player.switchTimer ?? 0) / 0.22);
     const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
-    const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? 0.78 - player.cooldown : -1;
+    const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? WEAPONS.rocket.cooldown - player.cooldown : -1;
     const hasAmmo = (player.rockets ?? player.ammo ?? 1) >= 1;
     const pose = rocketLauncherPose(
       {
@@ -3218,17 +3227,14 @@ export class World {
     );
 
     const flashBoost =
-      isFiring && ((player.flash ?? 0) > 0 || (elapsed >= 0 && elapsed < 0.14))
-        ? Math.max(Math.min(1, (player.flash ?? 0) / 0.12), elapsed >= 0 && elapsed < 0.14 ? 1 - elapsed / 0.14 : 0) * 0.5
+      isFiring && ((player.flash ?? 0) > 0 || (elapsed >= 0 && elapsed < ROCKET_FLASH))
+        ? Math.max(Math.min(1, (player.flash ?? 0) / ROCKET_FLASH), elapsed >= 0 && elapsed < ROCKET_FLASH ? 1 - elapsed / ROCKET_FLASH : 0) * 0.5
         : 0;
     tintScratch.setScalar(1 + flashBoost, 1 + flashBoost * 0.78, 1 + flashBoost * 0.42);
     view.material.setDiffuse(tintScratch);
 
-    const cosA = Math.cos(player.angle);
-    const sinA = Math.sin(player.angle);
-    scratchForward.setScalar(cosA, 0, sinA);
-    scratchRight.setScalar(-sinA, 0, cosA);
-    scratchUp.setScalar(0, 1, 0);
+    const kick = player.kick ?? ZERO_KICK;
+    writeViewBasis(player.angle, kick);
 
     scratchPos
       .copy(this.camera.position)
@@ -3237,11 +3243,7 @@ export class World {
       .addScaledVector(scratchForward, pose.offset.z);
     view.root.setPosition(scratchPos);
 
-    scratchRot.setScalar(0, Trigo.halfpi - player.angle + pose.rotation.y, 0);
-    scratchQuat.setFromEuler(scratchRot);
-    scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
-    scratchLocalQuat.setFromEuler(scratchRot);
-    scratchQuat.multiply(scratchLocalQuat);
+    writeViewQuat(player.angle, kick, pose.rotation);
     view.root.setQuaternion(scratchQuat);
 
     view.warhead.setPosition(pose.warheadPos);
@@ -3261,7 +3263,7 @@ export class World {
     view.root.setActive();
     const switchOffset = player.switchOffset ?? Math.min(1, (player.switchTimer ?? 0) / 0.22);
     const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
-    const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? 0.3 - player.cooldown : -1;
+    const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? WEAPONS.knife.cooldown - player.cooldown : -1;
     const pose = knifePose(
       {
         time: game.time ?? 0,
@@ -3275,11 +3277,8 @@ export class World {
       view.pose
     );
 
-    const cosA = Math.cos(player.angle);
-    const sinA = Math.sin(player.angle);
-    scratchForward.setScalar(cosA, 0, sinA);
-    scratchRight.setScalar(-sinA, 0, cosA);
-    scratchUp.setScalar(0, 1, 0);
+    const kick = player.kick ?? ZERO_KICK;
+    writeViewBasis(player.angle, kick);
 
     scratchPos
       .copy(this.camera.position)
@@ -3288,11 +3287,7 @@ export class World {
       .addScaledVector(scratchForward, pose.offset.z);
     view.root.setPosition(scratchPos);
 
-    scratchRot.setScalar(0, Trigo.halfpi - player.angle + pose.rotation.y, 0);
-    scratchQuat.setFromEuler(scratchRot);
-    scratchRot.setScalar(pose.rotation.x, 0, pose.rotation.z);
-    scratchLocalQuat.setFromEuler(scratchRot);
-    scratchQuat.multiply(scratchLocalQuat);
+    writeViewQuat(player.angle, kick, pose.rotation);
     view.root.setQuaternion(scratchQuat);
   }
 
@@ -3341,14 +3336,14 @@ export class World {
     const bob = Math.sin(player.bob * 2) * 1.6 * player.moving * (1 - 0.35 * crouch);
     const shake = Math.max(player.hurt > 0 ? player.hurt * 5 : 0, game.shake * 6);
     const { camera } = this;
+    const kick = player.kick ?? ZERO_KICK;
     const teleFlash = player.teleFlash ?? 0;
-    if (teleFlash > 0) {
-      const warp = Math.min(1, teleFlash / 0.65);
-      camera.fov = this.baseFov * (1 + warp * warp * 0.2);
+    const warp = teleFlash > 0 ? Math.min(1, teleFlash / 0.65) : 0;
+    const desired = this.baseFov * (1 + warp * warp * 0.2) * (1 + kick.fov);
+    if (Math.abs(desired - camera.fov) > 1e-3) {
+      camera.fov = desired;
       camera.setProjectionMatrix(this.viewportSize);
-      this.teleWarped = true;
-    } else if (this.teleWarped) {
-      this.teleWarped = false;
+    } else if (warp === 0 && kick.fov === 0 && camera.fov !== this.baseFov) {
       camera.fov = this.baseFov;
       camera.setProjectionMatrix(this.viewportSize);
     }
@@ -3359,11 +3354,13 @@ export class World {
       eyeY + Rand.float(-0.5, 0.5) * shake,
       player.pos.y + Rand.float(-0.5, 0.5) * shake
     );
+    writeViewBasis(player.angle, kick);
     camera.target.setScalar(
-      camera.position.x + Math.cos(player.angle) * 100,
-      eyeY - (dead ? drop * 2 : 0),
-      camera.position.z + Math.sin(player.angle) * 100
+      camera.position.x + scratchForward.x * 100,
+      eyeY - (dead ? drop * 2 : 0) + scratchForward.y * 100,
+      camera.position.z + scratchForward.z * 100
     );
+    camera.up.copy(scratchUp);
     camera.setViewMatrix();
   }
 }

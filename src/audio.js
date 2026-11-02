@@ -10,6 +10,13 @@
  */
 import { Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { Music } from './music.js';
+import { SHOTGUN_PUMP, WEAPONS } from './weapon.js';
+
+// Bed ducking under firearm reports: lowest bed gain, and attack / hold / release in seconds.
+export const DUCK_FLOOR = 0.5;
+export const DUCK_ATTACK = 0.012;
+export const DUCK_HOLD = 0.06;
+export const DUCK_RELEASE = 0.09;
 
 const clamp = Utils.clamp;
 const rand = Rand.float;
@@ -151,21 +158,24 @@ const arpeggio = (ctx, out, t, notes, { spacing, length, gain, type = 'triangle'
 export const RECIPES = {
   // the shotgun: a bright crack, a body of mid noise, a deep boom and a sub thump
   fire(ctx, out, t) {
-    noise(ctx, out, t, { duration: 0.5, gain: 0.45, from: 9000, to: 400 });
+    noise(ctx, out, t, { duration: 0.015, gain: 0.2, filter: 'highpass', from: 7000 });
+    noise(ctx, out, t, { duration: 0.7, gain: 0.45, from: 9000, to: 400 });
     noise(ctx, out, t, { duration: 0.26, gain: 0.3, filter: 'bandpass', from: 1800, to: 300, q: 0.8 });
     noise(ctx, out, t + 0.03, { duration: 0.08, gain: 0.18, filter: 'highpass', from: 3000 });
     tone(ctx, out, t, { from: 150, to: 38, duration: 0.36, gain: 0.45 });
     tone(ctx, out, t, { type: 'triangle', from: 72, to: 30, duration: 0.42, gain: 0.3 });
-    return { duration: 0.6, wet: 0.5 };
+    tone(ctx, out, t, { from: 60, to: 28, duration: 0.5, gain: 0.3 });
+    return { duration: 0.8, wet: 0.55 };
   },
   // the pump: a back stroke, then a forward stroke with a heavier clunk
   pump(ctx, out, t) {
     noise(ctx, out, t, { duration: 0.06, gain: 0.3, filter: 'highpass', from: 2500, to: 1500 });
     tone(ctx, out, t, { type: 'square', from: 1200, to: 600, duration: 0.05, gain: 0.1 });
-    noise(ctx, out, t + 0.28, { duration: 0.07, gain: 0.34, filter: 'highpass', from: 1800, to: 900 });
-    tone(ctx, out, t + 0.28, { from: 230, to: 110, duration: 0.1, gain: 0.28 });
-    tone(ctx, out, t + 0.28, { type: 'square', from: 800, to: 400, duration: 0.06, gain: 0.08 });
-    return { duration: 0.48, wet: 0.1 };
+    const forward = t + (SHOTGUN_PUMP.close - SHOTGUN_PUMP.open);
+    noise(ctx, out, forward, { duration: 0.07, gain: 0.34, filter: 'highpass', from: 1800, to: 900 });
+    tone(ctx, out, forward, { from: 230, to: 110, duration: 0.1, gain: 0.28 });
+    tone(ctx, out, forward, { type: 'square', from: 800, to: 400, duration: 0.06, gain: 0.08 });
+    return { duration: SHOTGUN_PUMP.close - SHOTGUN_PUMP.open + 0.2, wet: 0.1 };
   },
   dry(ctx, out, t) {
     tone(ctx, out, t, { type: 'square', from: 2800, to: 1800, duration: 0.035, gain: 0.2 });
@@ -640,17 +650,27 @@ export const RECIPES = {
     tone(ctx, out, t + 0.012, { type: 'sine', from: 320 * pitch, to: 130 * pitch, duration: 0.13, gain: 0.14, attack: 0.018 });
     return { duration: 0.22, wet: 0.12 };
   },
-  chaingun(ctx, out, t, { pitch = 1 } = {}) {
+  chaingun(ctx, out, t, { pitch = 1, heat = 0 } = {}) {
+    const body = pitch * (1 + 0.12 * Utils.clamp(heat, 0, 1));
+    noise(ctx, out, t, { duration: 0.02, gain: 0.16, filter: 'highpass', from: 7000 });
     noise(ctx, out, t, { duration: 0.08, gain: 0.38, from: 5200, to: 420 });
-    tone(ctx, out, t, { from: 140 * pitch, to: 46 * pitch, duration: 0.11, gain: 0.42 });
+    tone(ctx, out, t, { from: 140 * body, to: 46 * body, duration: 0.11, gain: 0.42 });
     noise(ctx, out, t + 0.02, { duration: 0.06, gain: 0.18, filter: 'bandpass', from: 2600, to: 1400, q: 3 });
     return { duration: 0.18, wet: 0.3 };
+  },
+  // the barrels winding down after a burst; a hotter gun spins down longer
+  chaingunSpin(ctx, out, t, { heat = 0 } = {}) {
+    const h = Utils.clamp(heat, 0, 1);
+    tone(ctx, out, t, { type: 'triangle', from: 520 + 380 * h, to: 90, duration: 0.35 + 0.35 * h, gain: 0.08 + 0.08 * h });
+    noise(ctx, out, t, { duration: 0.3 + 0.2 * h, gain: 0.05 + 0.05 * h, filter: 'bandpass', from: 2200, to: 400, q: 2 });
+    return { duration: 0.75, wet: 0.15 };
   },
   rocketFire(ctx, out, t) {
     tone(ctx, out, t, { from: 120, to: 32, duration: 0.34, gain: 0.46 });
     noise(ctx, out, t, { duration: 0.38, gain: 0.38, from: 2800, to: 220, attack: 0.01 });
     noise(ctx, out, t + 0.04, { duration: 0.32, gain: 0.22, filter: 'bandpass', from: 1600, to: 480, q: 1.8 });
-    return { duration: 0.46, wet: 0.45 };
+    tone(ctx, out, t, { from: 70, to: 24, duration: 0.5, gain: 0.3, attack: 0.01 });
+    return { duration: 0.56, wet: 0.45 };
   },
   weaponPickup(ctx, out, t) {
     noise(ctx, out, t, { duration: 0.06, gain: 0.26, filter: 'bandpass', from: 1800, to: 900, q: 3 });
@@ -716,6 +736,7 @@ export async function renderRecipe(name, params = {}, sampleRate = 44100, second
 
 /** Never play the same sound again sooner than this, so a shotgun volley is not 6 impacts at once. */
 const MIN_INTERVAL = {
+  chaingunSpin: 0.2,
   impactWall: 0.03,
   impactDoor: 0.03,
   flesh: 0.04,
@@ -771,13 +792,14 @@ function route(event) {
   // monsters speak with the voice of their kind: the recipes are named dieImp, painSkull, alertBoss...
   const voice = event.kind ? event.kind[0].toUpperCase() + event.kind.slice(1) : 'Imp';
   switch (event.type) {
-    case 'fire': return [{ name: 'fire', local: true }, ...(event.pump ? [{ name: 'pump', local: true, delay: 0.44 }] : [])];
+    case 'fire': return [{ name: 'fire', local: true, duck: WEAPONS.shotgun.feel.duck }, ...(event.pump ? [{ name: 'pump', local: true, delay: SHOTGUN_PUMP.open }] : [])];
     case 'knife': return [{ name: 'knife', local: true, pitch: true }];
     case 'chainsaw': return [{ name: 'chainsaw', local: true, pitch: true, params: { hit: Boolean(event.hit) } }];
     case 'chainsawIdle': return [{ name: 'chainsawIdle', local: true, pitch: true }];
     case 'chainsawUp': return [{ name: 'chainsawUp', local: true, pitch: true }];
-    case 'chaingun': return [{ name: 'chaingun', local: true, pitch: true }];
-    case 'rocketFire': return [{ name: 'rocketFire', local: true }];
+    case 'chaingun': return [{ name: 'chaingun', local: true, pitch: true, duck: WEAPONS.chaingun.feel.duck, params: { heat: event.heat ?? 0 } }];
+    case 'chaingunSpin': return [{ name: 'chaingunSpin', local: true, params: { heat: event.heat ?? 0 } }];
+    case 'rocketFire': return [{ name: 'rocketFire', local: true, duck: WEAPONS.rocket.feel.duck }];
     case 'weaponPickup': return [{ name: 'weaponPickup', local: true }];
     case 'weaponSwitch':
       return event.weapon === 'chainsaw'
@@ -849,6 +871,9 @@ export class Sound {
   constructor() {
     this.ctx = null;
     this.master = null;
+    this.duck = null;
+    this.duckDepth = 0;
+    this.duckUntil = 0;
     this.reverb = null;
     this.ambient = null;
     this.music = null;
@@ -884,6 +909,10 @@ export class Sound {
     limiter.attack.value = 0.003;
     limiter.release.value = 0.2;
     this.master.connect(limiter);
+    // music and ambient pass through this node so firearm reports can dip them without touching the reports
+    this.duck = ctx.createGain();
+    this.duck.gain.value = 1;
+    this.duck.connect(this.master);
     limiter.connect(ctx.destination);
 
     // a small generated room: noise that decays, used as the reverb for loud sounds
@@ -902,7 +931,7 @@ export class Sound {
     reverbLevel.connect(this.master);
 
     this.buildAmbient();
-    this.music = new Music(ctx, this.master);
+    this.music = new Music(ctx, this.duck);
     this.setScene(this.scene, this.currentLevel);
   }
 
@@ -915,7 +944,7 @@ export class Sound {
     filter.type = 'lowpass';
     filter.frequency.value = 220;
     filter.connect(level);
-    level.connect(this.master);
+    level.connect(this.duck);
     for (const [type, freq] of [['sine', 49], ['sine', 49.6], ['triangle', 98.4]]) {
       const osc = ctx.createOscillator();
       osc.type = type;
@@ -1017,7 +1046,21 @@ export class Sound {
       this.play(play.name, { ...play, x: event.x, y: event.y, visible: event.visible !== false });
   }
 
-  play(name, { x = 0, y = 0, local = false, delay = 0, visible = true, pitch = false, params = {} } = {}) {
+  /** Briefly dips the music and ambient beds; a shallower dip never weakens an active deeper one. */
+  duckBeds(depth, now) {
+    if (!this.duck || depth <= 0)
+      return;
+    if (now < this.duckUntil && depth <= this.duckDepth)
+      return;
+    this.duckDepth = depth;
+    this.duckUntil = now + DUCK_HOLD;
+    const { gain } = this.duck;
+    gain.cancelScheduledValues(now);
+    gain.setTargetAtTime(Math.max(DUCK_FLOOR, 1 - depth), now, DUCK_ATTACK);
+    gain.setTargetAtTime(1, now + DUCK_HOLD, DUCK_RELEASE);
+  }
+
+  play(name, { x = 0, y = 0, local = false, delay = 0, visible = true, pitch = false, params = {}, duck = 0 } = {}) {
     const { ctx } = this;
     if (!ctx || this.muted || ctx.state !== 'running')
       return;
@@ -1057,5 +1100,7 @@ export class Sound {
       bus.connect(send);
       send.connect(this.reverb);
     }
+    if (duck > 0)
+      this.duckBeds(duck, now + delay);
   }
 }
