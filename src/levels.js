@@ -8,8 +8,9 @@
  * - Use `D` for doors in 1-tile doorways, `o` for waist-high futuristic cover crates, and `T` for paired teleporter pads.
  * - Keep the first and last row (and leftmost/rightmost column) solid `#`.
  * - Supply glyphs (`h`, `a`, `m`, `q`, `W`, `G`, `C`, `M`) are packed into openable supply chests; the player opens a
- *   chest with E / Space and takes what is inside. Supply glyphs on orthogonally adjacent tiles merge into one chest, so
- *   leave one non-supply tile between them to keep chests separate.
+ *   chest with E / Space and takes what is inside. Supply glyphs in the same door-bounded room share one chest (secret
+ *   closets keep their own; outdoors, supplies within 6 walking tiles share one). The chest is placed automatically
+ *   against the room's nearest suitable full wall, away from doors.
  * - Every enemy (`i`, `b`, `s`, `c`, `w`, `r`, `B`), pickup (`h`, `a`, `m`, `q`, `W`, `G`, `C`, `M`, `k`, `y`, `u`, `g`, `A`,
  *   `O`, `Z`, `V`), and barrel (`x`) must sit on a reachable floor tile.
  *
