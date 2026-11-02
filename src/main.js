@@ -15,6 +15,8 @@ const WORLD_RATIO_CAP = 1.5;
 
 // the HUD canvas is on top, so it receives the mouse and keyboard
 const input = new Input(hudCanvas);
+const keymap = input.keymap;
+let hintVersion = -1;
 const game = new Game();
 const urlLevel = new URLSearchParams(window.location.search).get('level');
 if (urlLevel) {
@@ -64,7 +66,7 @@ function start() {
 }
 
 function confirmed() {
-  return input.took('Enter') || input.took('Click') || (game.state === 'play' ? false : input.took('Space'));
+  return input.took('confirm') || input.took('Click') || (game.state === 'play' ? false : input.took('jump'));
 }
 
 document.addEventListener('pointerlockchange', () => {
@@ -73,30 +75,37 @@ document.addEventListener('pointerlockchange', () => {
 });
 
 function control(dt) {
-  if (input.took('KeyM'))
+  if (keymap.version !== hintVersion) {
+    hud.controlHints = keymap.hintLines;
+    hud.selectHint = keymap.selectHint;
+    hintVersion = keymap.version;
+  }
+  if (input.took('layoutCycle'))
+    game.say(keymap.cycleOverride(), 1.5);
+  if (input.took('music'))
     game.say(sound.toggleMusic(game.levelIndex), 1.5);
-  if (input.took('KeyV'))
+  if (input.took('map'))
     hud.showMap = !hud.showMap;
-  if (input.took('Tab') && game.state === 'play')
+  if (input.took('automap') && game.state === 'play')
     hud.toggleAutomap(game);
   if (hud.automap && game.state === 'play') {
-    if (input.took('Equal') || input.took('NumpadAdd'))
+    if (input.took('zoomIn'))
       hud.zoomAutomap(0.25);
-    if (input.took('Minus') || input.took('NumpadSubtract'))
+    if (input.took('zoomOut'))
       hud.zoomAutomap(-0.25);
-    if (input.took('KeyG'))
+    if (input.took('automapGrid'))
       hud.toggleAutomapGrid();
   }
-  if (input.took('Semicolon') || input.took('KeyB'))
+  if (input.took('sound'))
     game.say(sound.toggleMute() ? 'Sound off' : 'Sound on', 1.5);
-  if (input.took('F3')) {
+  if (input.took('diagnostics')) {
     showDiagnostics = !showDiagnostics;
     hud.diagnostics = '';
   }
   if (game.state === 'play' || game.state === 'paused') {
-    if (input.took('BracketLeft'))
+    if (input.took('levelPrev'))
       game.cycleLevel(-1);
-    if (input.took('BracketRight'))
+    if (input.took('levelNext'))
       game.cycleLevel(1);
   }
 
@@ -110,25 +119,25 @@ function control(dt) {
           game.selectingDifficulty = true;
         break;
       }
-      if (input.took('Escape')) {
+      if (input.took('menu')) {
         game.selectingDifficulty = false;
         break;
       }
-      if (input.took('ArrowUp') || input.took('KeyW'))
+      if (input.took('moveForward'))
         game.cycleDifficulty(-1);
-      if (input.took('ArrowDown') || input.took('KeyS'))
+      if (input.took('moveBack'))
         game.cycleDifficulty(1);
-      if (input.took('ArrowLeft') || input.took('KeyA') || input.took('BracketLeft'))
+      if (input.took('turnLeft') || input.took('strafeLeft') || input.took('levelPrev'))
         game.cycleLevel(-1);
-      if (input.took('ArrowRight') || input.took('KeyD') || input.took('BracketRight'))
+      if (input.took('turnRight') || input.took('strafeRight') || input.took('levelNext'))
         game.cycleLevel(1);
-      if (input.took('Digit1'))
+      if (input.took('weapon1'))
         game.setDifficulty(0);
-      if (input.took('Digit2'))
+      if (input.took('weapon2'))
         game.setDifficulty(1);
-      if (input.took('Digit3'))
+      if (input.took('weapon3'))
         game.setDifficulty(2);
-      if (input.took('Digit4'))
+      if (input.took('weapon4'))
         game.setDifficulty(3);
       if (input.mouseMoved) {
         const hovered = hud.difficultyAt(input.mousePos);
@@ -155,7 +164,7 @@ function control(dt) {
         start();
       break;
     case 'play':
-      if (input.took('Escape') || input.took('KeyP')) {
+      if (input.took('menu') || input.took('pause')) {
         game.state = 'paused';
         input.unlock();
       } else if (input.took('Click') && !input.locked)
