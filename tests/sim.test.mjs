@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { Mat4 } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PointLight, Rand, Vec2, Vec3 } from '@1pizzateam/roostr';
@@ -7208,6 +7209,131 @@ const tests = {
       globalThis.document = prevDoc;
       globalThis.window = prevWin;
     }
+  },
+
+  'AC-1 AC-2 AC-3 Semicolon toggles sound one-shot while N stays night vision and B stays a mute alias'() {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    globalThis.document = { addEventListener() {}, pointerLockElement: null };
+    globalThis.window = { addEventListener() {} };
+    const down = (e) => globalThis.document.onkeydown({ repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, preventDefault() {}, ...e });
+    const up = (e) => globalThis.document.onkeyup({ metaKey: false, ...e });
+    try {
+      const inp = new Input({ addEventListener() {} });
+      for (const ev of [{ code: 'Semicolon', which: 186 }, { which: 59 }, { which: 186 }]) {
+        down(ev);
+        assert.equal(inp.took('Semicolon'), true, 'AC-1 physical Semicolon records a one-shot Semicolon press');
+        assert.equal(inp.took('KeyN'), false, 'AC-1 Semicolon is not N');
+        assert.equal(inp.took('KeyB'), false, 'AC-1 Semicolon is not B');
+        assert.equal(inp.poll().nightVision, false, 'AC-1 Semicolon does not toggle night vision');
+        up(ev);
+        inp.endFrame();
+      }
+
+      down({ code: 'Semicolon', which: 186 });
+      inp.poll();
+      inp.endFrame();
+      down({ code: 'Semicolon', which: 186, repeat: true });
+      down({ code: 'Semicolon', which: 186, repeat: true });
+      assert.equal(inp.took('Semicolon'), false, 'AC-2 held Semicolon repeats are ignored');
+      inp.endFrame();
+      up({ code: 'Semicolon', which: 186 });
+      down({ code: 'Semicolon', which: 186 });
+      assert.equal(inp.took('Semicolon'), true, 'AC-2 fresh press after release is a new one-shot');
+      inp.endFrame();
+      assert.equal(inp.took('Semicolon'), false, 'AC-2 one-shot clears at frame end');
+      up({ code: 'Semicolon', which: 186 });
+
+      down({ code: 'KeyN', which: 78 });
+      assert.equal(inp.poll().nightVision, true, 'AC-3 N toggles night vision');
+      assert.equal(inp.took('Semicolon'), false, 'AC-3 N is not Semicolon');
+      assert.equal(inp.took('KeyB'), false, 'AC-3 N is not B');
+      up({ code: 'KeyN', which: 78 });
+      inp.endFrame();
+      down({ code: 'KeyB', which: 66 });
+      assert.equal(inp.took('KeyB'), true, 'AC-3 B stays a mute alias');
+      assert.equal(inp.poll().nightVision, false, 'AC-3 B is not night vision');
+      up({ code: 'KeyB', which: 66 });
+      inp.endFrame();
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
+  },
+
+  'AC-4 main.js routes only Semicolon and B to sound.toggleMute and never references KeyN'() {
+    const src = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    assert.equal(src.split('sound.toggleMute()').length - 1, 1, 'AC-4 exactly one toggleMute call');
+    const lines = src.split('\n');
+    const at = lines.findIndex((l) => l.includes('sound.toggleMute()'));
+    let g = at;
+    while (g >= 0 && !lines[g].includes('if ('))
+      g--;
+    assert.ok(lines[g].includes("input.took('Semicolon')") && lines[g].includes("input.took('KeyB')"), 'AC-4 guard references Semicolon and KeyB');
+    assert.ok(!src.includes('KeyN'), 'AC-4 main.js never references KeyN');
+  },
+
+  'AC-5 Sound.toggleMute persists doomr.muted and returns the new state'() {
+    const prev = globalThis.localStorage;
+    const writes = [];
+    globalThis.localStorage = { setItem(k, v) { writes.push([k, v]); }, getItem() { return null; } };
+    try {
+      const sound = new Sound();
+      sound.setMuted(false);
+      writes.length = 0;
+      assert.equal(sound.toggleMute(), true, 'AC-5 first toggle mutes');
+      assert.equal(sound.muted, true);
+      assert.deepEqual(writes.at(-1), ['doomr.muted', '1'], 'AC-5 persists 1');
+      assert.equal(sound.toggleMute(), false, 'AC-5 second toggle unmutes');
+      assert.equal(sound.muted, false);
+      assert.deepEqual(writes.at(-1), ['doomr.muted', '0'], 'AC-5 persists 0');
+    } finally {
+      if (prev === undefined)
+        delete globalThis.localStorage;
+      else
+        globalThis.localStorage = prev;
+    }
+  },
+
+  'AC-6 title screen lists semicolon for sound and N for night vision'() {
+    const texts = [];
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+          fillText(str) { texts.push(str); },
+        };
+      },
+    };
+    const fakeOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } },
+    };
+    const game = fresh(0);
+    game.state = 'title';
+    game.selectingDifficulty = false;
+    const hud = new Hud(fakeCanvas, fakeOverlay);
+    hud.resize(1024, 768, 1);
+    hud.render(game);
+    assert.ok(texts.some((t) => t.includes(';  sound')), 'AC-6 semicolon sound row');
+    assert.ok(texts.some((t) => t.includes('N  night vision')), 'AC-6 N night vision row');
+    assert.ok(!texts.some((t) => t.includes('N  sound')), 'AC-6 no N sound label');
+    assert.ok(texts.some((t) => t.includes('M  music')), 'AC-6 music label');
+    assert.ok(texts.some((t) => t.includes('ESC  pause')), 'AC-6 pause label');
+  },
+
+  'AC-7 README controls table maps semicolon to sound and N to night vision'() {
+    const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const start = md.indexOf('## Controls');
+    const rest = md.slice(start + 1);
+    const end = rest.indexOf('\n## ');
+    const lines = (end < 0 ? rest : rest.slice(0, end)).split('\n');
+    assert.ok(lines.some((l) => /^\|\s*;\s*\|[^|]*toggle sound/.test(l)), 'AC-7 ; row toggles sound');
+    assert.ok(lines.some((l) => /^\|\s*N\s*\|\s*toggle night vision\s*\|/.test(l)), 'AC-7 N row toggles night vision');
+    assert.ok(!lines.some((l) => /^\|\s*N\s*\|[^|]*sound/.test(l)), 'AC-7 no N sound row');
   },
 };
 

@@ -29,6 +29,8 @@ const KEY_BINDINGS = [
   ['KeyG', ['G']],
   ['KeyB', ['B']],
   ['KeyP', ['P']],
+  ['Semicolon', [59]],
+  ['SemicolonChrome', [1], 186, 'Semicolon'],
   ['Digit1', [49]],
   ['Digit2', [50]],
   ['Digit3', [51]],
