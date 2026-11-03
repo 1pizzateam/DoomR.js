@@ -1,4 +1,4 @@
-import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 import { field, GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile } from './floor.js';
 
@@ -209,7 +209,6 @@ const ROCK_BASE = [126, 52, 24];
 const ROCK_LIGHT = [178, 86, 38];
 const ROCK_OCHRE = [204, 108, 48];
 
-const TAU = Trigo.twopi / SIZE;
 
 function periodicGrain(x, y) {
   const ix = ((x % SIZE) + SIZE) % SIZE;

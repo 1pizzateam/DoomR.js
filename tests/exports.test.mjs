@@ -75,6 +75,40 @@ const checks = [
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'));
   }],
+  ['issue-105 AC-1 floor.js has no RUST_GLSL or rgb helper', () => {
+    const src = read('floor');
+    assert.ok(!src.includes('RUST_GLSL'));
+    assert.ok(!/\bconst rgb\b/.test(src));
+  }],
+  ['issue-105 AC-2 dead constants removed, used boulder colors kept', () => {
+    const src = read('floor');
+    assert.ok(!/\bMARS_TAU\b/.test(src));
+    for (const n of ['BOULDER_DARK', 'BOULDER_SLATE', 'BOULDER_BASE', 'BOULDER_LIGHT']) assert.ok(!new RegExp(`\\b${n}\\b`).test(src), `${n} still present`);
+    for (const n of ['BOULDER_ABYSS', 'BOULDER_HIGHLIGHT']) assert.ok(new RegExp(`^const ${n}\\b`, 'm').test(src), `${n} missing`);
+    assert.ok(!/\bTAU\b/.test(read('wall')));
+  }],
+  ['issue-105 AC-3 floor.js has no LIGHT_GLSL, quads.js keeps it', () => {
+    assert.ok(!read('floor').includes('LIGHT_GLSL'));
+    assert.ok(exported(read('quads'), 'LIGHT_GLSL'));
+  }],
+  ['issue-105 AC-4 internal floor helpers are no longer exported', () => {
+    const src = read('floor');
+    for (const n of ['RUST', 'RUST_BRIGHT', 'RUST_DARK', 'HAZARD', 'CRATE_CELLS', 'crateCellUv', 'MARS_BOULDER_CELLS', 'marsBoulderCellUv']) {
+      assert.ok(!exported(src, n), `floor.js still exports ${n}`);
+      assert.ok(new RegExp(`^(const|function)\\s+${n}\\b`, 'm').test(src), `${n} declaration missing`);
+    }
+  }],
+  ['issue-105 AC-5 floor.js and wall.js load with retained exports', async () => {
+    const mod = await import('../src/floor.js');
+    await import('../src/wall.js');
+    for (const n of ['floorAtlas', 'crateAtlas', 'slimeAtlas', 'marsDirtAtlas', 'marsBoulderAtlas', 'FLOOR_FRAGMENT', 'CRATE_FRAGMENT', 'SLIME_FRAGMENT', 'MARS_DIRT_FRAGMENT', 'MARS_ROCK_FRAGMENT', 'TILE_PIXELS', 'MARS_BOULDER_BASE_INSET']) assert.ok(n in mod, `missing ${n}`);
+    for (const n of ['RUST_GLSL', 'LIGHT_GLSL', 'RUST', 'HAZARD']) assert.ok(!(n in mod), `${n} still exported`);
+  }],
+  ['issue-105 AC-6 npm test chain still runs sim and exports suites', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.ok(pkg.scripts.test.includes('tests/sim.test.mjs'));
+    assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'));
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');

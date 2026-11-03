@@ -1,5 +1,4 @@
 import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
-import { LIGHT_GLSL } from './quads.js';
 import { mulberry32 } from './rng.js';
 import floorRustShader from './shaders/floor-rust.shadergun.json' with { type: 'json' };
 import slimeShader from './shaders/slime.shadergun.json' with { type: 'json' };
@@ -7,8 +6,6 @@ import teleporterShader from './shaders/teleporter.shadergun.json' with { type: 
 import crateShader from './shaders/crate.shadergun.json' with { type: 'json' };
 import marsDirtShader from './shaders/mars-dirt.shadergun.json' with { type: 'json' };
 import marsRockShader from './shaders/mars-rock.shadergun.json' with { type: 'json' };
-
-export { LIGHT_GLSL };
 
 const scratchPt = new Vec2();
 
@@ -29,10 +26,10 @@ export const FLOOR_CELL_COUNT = 8;
 export const METAL = [21, 27, 39];
 export const LIGHT = [44, 56, 78];
 export const SHADOW = [9, 12, 19];
-export const RUST = [72, 38, 19];
-export const RUST_BRIGHT = [112, 58, 24];
-export const RUST_DARK = [38, 21, 13];
-export const HAZARD = [160, 90, 30];
+const RUST = [72, 38, 19];
+const RUST_BRIGHT = [112, 58, 24];
+const RUST_DARK = [38, 21, 13];
+const HAZARD = [160, 90, 30];
 export const GLOW = [76, 128, 232];
 
 export const mix = (a, b, t) => [Utils.lerp(a[0], b[0], t), Utils.lerp(a[1], b[1], t), Utils.lerp(a[2], b[2], t)];
@@ -391,36 +388,6 @@ export function floorCellFor(x, y, door = false) {
   return FLOOR_CELLS.lights;
 }
 
-// ---- rust, in the shader -------------------------------------------------------------------------------------------
-//
-// Rust is not drawn in the tiles. It is worked out per pixel from where that pixel is in the world, so a patch carries
-// on across the seam between tiles and gathers along the seams of the plates, instead of stopping at the edge of one
-// tile with a clean tile beside it. There are many small patches, not a few big ones. Close up it is blocky, a pixel
-// of rust per texel of the deck; far away only the patches are left, which keeps it from crawling.
-
-const rgb = (color) => color.map((v) => (v / 255).toFixed(4)).join(', ');
-
-/** The steel and rust colours, and a hash and a smooth noise, for any shader that rusts something. */
-export const RUST_GLSL = `
-const vec3 STEEL = vec3(${rgb(METAL)});
-const vec3 RUST_DARK = vec3(${rgb(RUST_DARK)});
-const vec3 RUST = vec3(${rgb(RUST)});
-const vec3 RUST_BRIGHT = vec3(${rgb(RUST_BRIGHT)});
-
-float hash(vec2 p) {
-  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-  p3 += dot(p3, p3.yzx + 33.33);
-  return fract((p3.x + p3.y) * p3.z);
-}
-
-float noise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-`;
-
 export const FLOOR_VERTEX = floorRustShader.vertex;
 
 export const FLOOR_FRAGMENT = floorRustShader.fragment;
@@ -757,14 +724,14 @@ export const TELEPORTER_FRAGMENT = teleporterShader.fragment;
 
 export const CRATE_CELL = TILE_PIXELS;
 export const CRATE_FRAMES = 4;
-export const CRATE_CELLS = {
+const CRATE_CELLS = {
   side: 0,
   top: 1,
   frame: 2,
   trim: 3,
 };
 
-export function crateCellUv(cell = 0, v0 = 0, v1 = 1) {
+function crateCellUv(cell = 0, v0 = 0, v1 = 1) {
   const inset = 0.25 / (CRATE_CELL * CRATE_FRAMES);
   return [cell / CRATE_FRAMES + inset, v0, (cell + 1) / CRATE_FRAMES - inset, v1];
 }
@@ -1043,7 +1010,6 @@ const MARS_DIRT_OCHRE = [204, 108, 48];
 const MARS_DIRT_SHADOW = [54, 20, 10];
 const MARS_BASALT = [42, 26, 22];
 
-const MARS_TAU = Trigo.twopi / TILE_PIXELS;
 
 function periodicDirtGrain(x, y) {
   const ix = ((x % TILE_PIXELS) + TILE_PIXELS) % TILE_PIXELS;
@@ -1347,7 +1313,7 @@ export function marsDirtAtlas() {
 
 export const MARS_DIRT_FRAGMENT = marsDirtShader.fragment;
 
-export const MARS_BOULDER_CELLS = {
+const MARS_BOULDER_CELLS = {
   crag: 0,
   strata: 1,
   scoured: 2,
@@ -1356,10 +1322,6 @@ export const MARS_BOULDER_CELLS = {
 export const MARS_BOULDER_CELL_COUNT = 4;
 
 const BOULDER_ABYSS = [14, 6, 4];
-const BOULDER_DARK = [34, 15, 10];
-const BOULDER_SLATE = [68, 34, 22];
-const BOULDER_BASE = [124, 52, 26];
-const BOULDER_LIGHT = [178, 86, 38];
 const BOULDER_HIGHLIGHT = [228, 134, 64];
 
 function drawBoulderCell(t, rnd, variant) {
@@ -1429,7 +1391,7 @@ export function marsBoulderAtlas() {
   return { name: 'marsBoulder', data, width, height, cell: TILE_PIXELS, frames: MARS_BOULDER_CELL_COUNT };
 }
 
-export function marsBoulderCellUv(cell, flipV = false) {
+function marsBoulderCellUv(cell, flipV = false) {
   const inset = 0.25 / (TILE_PIXELS * MARS_BOULDER_CELL_COUNT);
   return [cell / MARS_BOULDER_CELL_COUNT + inset, flipV ? 1 : 0, (cell + 1) / MARS_BOULDER_CELL_COUNT - inset, flipV ? 0 : 1];
 }
