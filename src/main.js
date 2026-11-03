@@ -90,6 +90,7 @@ function control(dt) {
     hud.selectHint = keymap.selectHint;
     hud.setControlsStatus(keymap.actionLabel('controls'), keymap.unboundActions().length);
     hud.useKeyLabel = keymap.actionLabel('use');
+    hud.setPauseKeyLabel(keymap.actionLabel('pause'));
     hintVersion = keymap.version;
   }
   if (controlsMenu.isOpen) {
@@ -192,7 +193,7 @@ function control(dt) {
       }
       break;
     case 'paused':
-      if (confirmed())
+      if (confirmed() || input.took('pause'))
         start();
       break;
     case 'play':

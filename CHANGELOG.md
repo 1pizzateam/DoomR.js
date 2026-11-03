@@ -10,4 +10,5 @@
 
 ### Fixed
 
+- The pause key (P by default, rebindable and layout-aware) now toggles pause and resume (#31) instead of only pausing, and the pause screen names the bound key in its resume prompt.
 - The README no longer says M toggles the map, and on AZERTY the printed M plays music again instead of toggling sound.

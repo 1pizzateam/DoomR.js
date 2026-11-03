@@ -48,6 +48,7 @@ const CONTROLS_HEADER_H = 64;
 const CONTROLS_FOOTER_H = 72;
 const CONTROLS_ENTRY_TITLE_DY = 80;
 const CONTROLS_ENTRY_PAUSED_DY = 58;
+const RESUME_FALLBACK_TEXT = 'click or press ENTER to resume';
 const CONTROLS_LEGEND = '↑↓←→ select · ENTER / click rebind · DEL clear · R reset row · ESC back';
 const CONTROLS_CUE_W = 24;
 const CONTROLS_BUTTON_HALF_W = 70;
@@ -119,6 +120,16 @@ export class Hud {
     this.unboundControls = 0;
     this.controlsEntryText = 'CONTROLS · F1';
     this.unboundText = '';
+    this.pauseKeyLabel = '';
+    this.resumeText = RESUME_FALLBACK_TEXT;
+    this.setPauseKeyLabel(defaultActionLabel('pause'));
+  }
+
+  setPauseKeyLabel(label) {
+    if (label === this.pauseKeyLabel)
+      return;
+    this.pauseKeyLabel = label;
+    this.resumeText = !label || label === 'UNBOUND' ? RESUME_FALLBACK_TEXT : `press ${label}, ENTER or click to resume`;
   }
 
   setControlsStatus(label, unboundCount) {
@@ -1439,7 +1450,7 @@ export class Hud {
     } else if (state === 'paused') {
       dim(0.6);
       this.text('PAUSED', cx, cy, BLUE, { size: 40, align: 'center', weight: 800, glow: 14 });
-      this.text('click or press ENTER to resume', cx, cy + 36, GREEN, { size: 14, align: 'center' });
+      this.text(this.resumeText, cx, cy + 36, GREEN, { size: 14, align: 'center' });
       this.text(this.controlsEntryText, cx, cy + CONTROLS_ENTRY_PAUSED_DY, GREEN, { size: 13, align: 'center', alpha: 0.85 });
       this.drawControlHints(cx, cy + 76);
       if (this.unboundText)
