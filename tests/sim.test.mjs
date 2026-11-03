@@ -38,6 +38,7 @@ import { POWERUP_CELL, POWERUP_CELLS, POWERUP_FRAMES, POWERUP_TYPES, berserkAtla
 import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.js';
 import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
+import { Overlay } from '../src/overlay.js';
 import { ACTIONS, CONTROLS_STORAGE_KEY, CONTROLS_VERSION, CONTROL_GROUPS, DEFAULT_HINT_LINES, Keymap, LAYOUT_STORAGE_KEY, MAX_SLOTS, PRESETS, RESERVED_CODES } from '../src/keymap.js';
 import { ControlsMenu, TONE_RED } from '../src/controls.js';
 import { NAV_DOWN, NAV_LEFT, NAV_NONE, NAV_RIGHT, NAV_UP, RAW_RING_SIZE } from '../src/input.js';
@@ -102,6 +103,26 @@ function rocketSelfDamageGame(playerRow = '#P.......#') {
   });
   game.state = 'play';
   return game;
+}
+
+function makeOverlayWorld() {
+  const uploads = [];
+  const target = {
+    bufferSubData(bufferTarget, offset, data) { uploads.push({ target: bufferTarget, offset, data }); },
+    bindBuffer() {},
+    createBuffer: () => ({}),
+  };
+  const noop = () => ({});
+  const gl = new Proxy(target, {
+    get(obj, key) {
+      if (key in obj)
+        return obj[key];
+      if (typeof key === 'string' && key === key.toUpperCase())
+        return 1;
+      return noop;
+    },
+  });
+  return { world: { gl }, gl, uploads };
 }
 
 function withWallWorld(check) {
@@ -9727,6 +9748,196 @@ const tests = {
     const after = log.slice(log.indexOf('## Unreleased') + 1);
     const next = after.indexOf('\n## ');
     assert.ok((next < 0 ? after : after.slice(0, next)).includes('#31'));
+  },
+
+  'AC-1 overlay SpriteBuffer: packs quad positions, UVs and brightness and refuses overflow'() {
+    const overlay = new Overlay(makeOverlayWorld().world);
+    const sprite = overlay.crisp.weapon;
+    assert.equal(sprite.capacity, 6);
+    assert.equal(sprite.positions.length, 12);
+    assert.equal(sprite.brights.length, 18);
+    assert.equal(sprite.uvs.length, 12);
+    sprite.quad(10, 20, 30, 50, [0.25, 0.5, 0.75, 1], 0.5);
+    assert.equal(sprite.count, 6);
+    assert.deepEqual(Array.from(sprite.positions), [10, 50, 30, 50, 30, 20, 10, 50, 30, 20, 10, 20]);
+    assert.deepEqual(Array.from(sprite.uvs), [0.25, 0.5, 0.75, 0.5, 0.75, 1, 0.25, 0.5, 0.75, 1, 0.25, 1]);
+    for (const v of [0, 3, 6, 9, 12, 15])
+      assert.equal(sprite.brights[v], 0.5);
+    const before = [Array.from(sprite.positions), Array.from(sprite.uvs), Array.from(sprite.brights)];
+    sprite.quad(1, 2, 3, 4, [0, 0, 1, 1], 1);
+    assert.equal(sprite.count, 6);
+    assert.deepEqual([Array.from(sprite.positions), Array.from(sprite.uvs), Array.from(sprite.brights)], before);
+    sprite.clear();
+    assert.equal(sprite.count, 0);
+    assert.equal(sprite.capacity, 6);
+    assert.equal(overlay.glow.weapon, null);
+    assert.equal(overlay.glow.face, null);
+    assert.equal(overlay.glow.sprites, null);
+    assert.equal(overlay.crisp.sprites.capacity, 128 * 6);
+  },
+
+  'AC-2 overlay Buffer: appends positions and colors, bounds capacity, and deactivates when empty on upload'() {
+    const { world, uploads } = makeOverlayWorld();
+    const overlay = new Overlay(world);
+    const { fills, lines } = overlay.glow;
+    assert.equal(fills.count, 0);
+    assert.equal(lines.count, 0);
+    assert.equal(fills.mesh.active, false);
+    assert.equal(lines.mesh.active, false);
+    fills.vertex(1, 2, [0.25, 0.5, 0.75]);
+    fills.vertex(3, 4, [1, 0, 0.5]);
+    assert.equal(fills.count, 2);
+    assert.deepEqual(Array.from(fills.positions.subarray(0, 4)), [1, 2, 3, 4]);
+    assert.deepEqual(Array.from(fills.colors.subarray(0, 6)), [0.25, 0.5, 0.75, 1, 0, 0.5]);
+    const shared = [0.5, 0.5, 0.5];
+    for (let i = 2; i < 96; i++)
+      fills.vertex(i, i, shared);
+    assert.equal(fills.count, 96);
+    fills.vertex(999, 999, shared);
+    assert.equal(fills.count, 96);
+    assert.equal(fills.positions[190], 95);
+    assert.equal(fills.positions[191], 95);
+    uploads.length = 0;
+    lines.upload();
+    assert.equal(lines.mesh.active, false);
+    assert.equal(uploads.length, 0);
+    fills.upload();
+    assert.equal(fills.mesh.active, true);
+    assert.equal(fills.mesh.subMeshes[0].count, 96);
+    assert.equal(uploads.length, 2);
+    assert.equal(uploads[0].data.length, 192);
+    assert.equal(uploads[1].data.length, 288);
+    assert.equal(uploads[0].offset, 0);
+    assert.equal(uploads[1].offset, 0);
+    fills.clear();
+    fills.upload();
+    assert.equal(fills.mesh.active, false);
+  },
+
+  'AC-3 overlay Layer: line, rectLine, circleLine, fill and fillRect emit geometry and render uploads both buffers'() {
+    const { world, uploads } = makeOverlayWorld();
+    const layer = new Overlay(world).glow;
+    const { fills, lines } = layer;
+    const pos = (buffer) => Array.from(buffer.positions.subarray(0, buffer.count * 2));
+
+    layer.line([0, 0, 10, 0, 10, 10], [1, 0.5, 0.25], 0.5);
+    assert.equal(lines.count, 4);
+    assert.deepEqual(pos(lines), [0, 0, 10, 0, 10, 0, 10, 10]);
+    for (let i = 0; i < 4; i++)
+      assert.deepEqual(Array.from(lines.colors.subarray(i * 3, i * 3 + 3)), [0.5, 0.25, 0.125]);
+    layer.clear();
+    layer.line([0, 0, 10, 0], [1, 0.5, 0.25]);
+    assert.deepEqual(Array.from(lines.colors.subarray(0, 3)), [1, 0.5, 0.25]);
+    layer.clear();
+    layer.line([0, 0, 1, 1], [1, 1, 1]);
+    assert.equal(lines.count, 2);
+    layer.clear();
+    layer.line([0, 0], [1, 1, 1]);
+    assert.equal(lines.count, 0);
+
+    layer.rectLine(2, 4, 6, 8, [1, 1, 1]);
+    assert.equal(lines.count, 8);
+    assert.deepEqual(pos(lines), [2, 4, 8, 4, 8, 4, 8, 12, 8, 12, 2, 12, 2, 12, 2, 4]);
+    layer.clear();
+
+    layer.circleLine(100, 50, 20, [1, 1, 1], 1, 8);
+    assert.equal(lines.count, 16);
+    for (let i = 0; i < lines.count; i++)
+      assert.ok(Math.abs(Math.hypot(lines.positions[i * 2] - 100, lines.positions[i * 2 + 1] - 50) - 20) < 1e-4);
+    layer.clear();
+    layer.circleLine(100, 50, 20, [1, 1, 1]);
+    assert.equal(lines.count, 20);
+    layer.clear();
+
+    layer.fill([0, 0, 4, 0, 4, 4, 0, 4], [0.5, 0.25, 1]);
+    assert.equal(fills.count, 6);
+    assert.deepEqual(pos(fills), [0, 0, 4, 0, 4, 4, 0, 0, 4, 4, 0, 4]);
+    layer.clear();
+    layer.fill([0, 0, 4, 0, 4, 4], [1, 1, 1]);
+    assert.equal(fills.count, 3);
+    layer.clear();
+    layer.fill([0, 0, 4, 0], [1, 1, 1]);
+    assert.equal(fills.count, 0);
+
+    layer.fillRect(1, 2, 3, 4, [1, 0, 0]);
+    assert.equal(fills.count, 6);
+    assert.deepEqual(pos(fills), [1, 2, 4, 2, 4, 6, 1, 2, 4, 6, 1, 6]);
+
+    const calls = [];
+    const camera = {};
+    const sceneRender = layer.scene.render;
+    layer.scene.render = (...args) => calls.push(args);
+    try {
+      uploads.length = 0;
+      layer.render(camera, 0);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0][0], camera);
+      assert.equal(calls[0][1], 0);
+      assert.equal(fills.mesh.active, true);
+      assert.equal(lines.mesh.active, false);
+      assert.equal(uploads.length, 2);
+      layer.line([0, 0, 1, 1], [1, 1, 1]);
+      layer.render(camera, 0);
+      assert.equal(lines.mesh.active, true);
+    } finally {
+      layer.scene.render = sceneRender;
+    }
+  },
+
+  'AC-4 overlay Overlay: initializes glow and crisp layers and delegates resize, clear and restore'() {
+    const overlay = new Overlay(makeOverlayWorld().world);
+    const { glow, crisp } = overlay;
+    assert.notEqual(glow, crisp);
+    assert.equal(glow.fills.capacity, 96);
+    assert.equal(glow.lines.capacity, 8192);
+    assert.equal(crisp.fills.capacity, 8192);
+    assert.equal(crisp.lines.capacity, 8192);
+    assert.equal(glow.sprites, null);
+    assert.ok(crisp.weapon && crisp.face && crisp.sprites);
+
+    const sizes = [];
+    const setCustomUniform = Mesh.prototype.setCustomUniform;
+    Mesh.prototype.setCustomUniform = function(name, value) {
+      sizes.push({ mesh: this, name, value });
+      return setCustomUniform.call(this, name, value);
+    };
+    try {
+      overlay.resize(800, 600, 1600, 1200);
+    } finally {
+      Mesh.prototype.setCustomUniform = setCustomUniform;
+    }
+    for (const layer of [glow, crisp]) {
+      assert.equal(layer.viewportSize.x, 1600);
+      assert.equal(layer.viewportSize.y, 1200);
+    }
+    assert.equal(sizes.length, 7);
+    for (const call of sizes) {
+      assert.equal(call.name, 'size');
+      assert.equal(call.value.x, 800);
+      assert.equal(call.value.y, 600);
+    }
+    const meshes = new Set(sizes.map((c) => c.mesh));
+    for (const mesh of [glow.fills.mesh, glow.lines.mesh, crisp.fills.mesh, crisp.lines.mesh, crisp.sprites.mesh, crisp.weapon.mesh, crisp.face.mesh])
+      assert.ok(meshes.has(mesh));
+
+    const buffers = [glow.fills, glow.lines, crisp.fills, crisp.lines, crisp.weapon, crisp.face, crisp.sprites];
+    glow.fills.vertex(0, 0, [1, 1, 1]);
+    glow.lines.vertex(0, 0, [1, 1, 1]);
+    crisp.fills.vertex(0, 0, [1, 1, 1]);
+    crisp.lines.vertex(0, 0, [1, 1, 1]);
+    for (const sprite of [crisp.sprites, crisp.weapon, crisp.face])
+      sprite.quad(0, 0, 1, 1, [0, 0, 1, 1], 1);
+    for (const buffer of buffers)
+      assert.ok(buffer.count > 0);
+    overlay.clear();
+    for (const buffer of buffers)
+      assert.equal(buffer.count, 0);
+
+    const restored = [0, 0];
+    glow.scene.restore = () => restored[0]++;
+    crisp.scene.restore = () => restored[1]++;
+    overlay.restore();
+    assert.deepEqual(restored, [1, 1]);
   },
 };
 
