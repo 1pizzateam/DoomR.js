@@ -37,7 +37,7 @@ export class ControlsMenu {
       for (const action of group.actions) {
         this.nameById.set(action.id, action.name);
         this.actionLines.push(lines.length);
-        lines.push({ kind: 'action', id: action.id, name: action.name, slot0: '', slot1: '', extra: 0, custom: false, unbound: false });
+        lines.push({ kind: 'action', id: action.id, name: action.name, slot0: '', slot1: '', custom: false, unbound: false });
       }
     }
     this.view = {
@@ -102,11 +102,7 @@ export class ControlsMenu {
       const line = v.lines[this.actionLines[i]];
       const slots = keymap.slotCodes(line.id);
       line.slot0 = slots.length > 0 ? keymap.codeLabel(slots[0]) : 'UNBOUND';
-      line.extra = keymap.extraCount(line.id);
-      if (slots.length < 2)
-        line.slot1 = '—';
-      else
-        line.slot1 = line.extra > 0 ? `${keymap.codeLabel(slots[1])} +${line.extra}` : keymap.codeLabel(slots[1]);
+      line.slot1 = slots.length < 2 ? '—' : keymap.codeLabel(slots[1]);
       line.custom = keymap.isCustom(line.id);
       line.unbound = slots.length === 0;
     }
