@@ -31,10 +31,10 @@ export const CEILING_CELLS = {
   hatch: 7,
 };
 export const CEILING_CELL_COUNT = 8;
-export const CEILING_LIGHT_COLOR = new Vec3(0.85, 0.96, 1.12);
+const CEILING_LIGHT_COLOR = new Vec3(0.85, 0.96, 1.12);
 export const CEILING_AMBIENT_COLOR = new Vec3(0.45, 0.5, 0.58);
 export const CEILING_LIGHT_ATTENUATION = new Vec3(1, 0.0032, 0.000018);
-export const CEILING_LIGHT_RADIUS = TILE * 11;
+const CEILING_LIGHT_RADIUS = TILE * 11;
 export const MUZZLE_LIGHT_COLOR = new Vec3(3.6, 2.35, 0.95);
 export const MUZZLE_LIGHT_ATTENUATION = new Vec3(1, 0.014, 0.0012);
 export const ROCKET_LIGHT_COLOR = new Vec3(1.48, 0.86, 0.28);
@@ -42,8 +42,8 @@ export const FIREBALL_LIGHT_COLOR = new Vec3(1.38, 0.44, 0.22);
 export const BOOM_LIGHT_COLOR = new Vec3(1.75, 0.96, 0.34);
 export const TELEPORT_LIGHT_COLOR = new Vec3(0.36, 1.48, 1.05);
 export const DYNAMIC_LIGHT_ATTENUATION = new Vec3(1, 0.0052, 0.000042);
-export const DYNAMIC_LIGHT_RADIUS = TILE * 9;
-export const MAX_DYNAMIC_LIGHTS = 4;
+const DYNAMIC_LIGHT_RADIUS = TILE * 9;
+const MAX_DYNAMIC_LIGHTS = 4;
 const SIZE = 64;
 const VOID = [5, 7, 13];
 const COFFER = [11, 15, 25];

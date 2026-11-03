@@ -2,11 +2,11 @@ export const LAYOUT_STORAGE_KEY = 'doomr.keyboardLayout';
 export const CONTROLS_STORAGE_KEY = 'doomr.controls';
 export const CONTROLS_VERSION = 1;
 export const MAX_SLOTS = 2;
-export const MAX_CODE_LENGTH = 32;
+const MAX_CODE_LENGTH = 32;
 export const RESERVED_CODES = Object.freeze(new Set(['Escape', 'Enter', 'NumpadEnter', 'MetaLeft', 'MetaRight', 'OSLeft', 'OSRight', 'ContextMenu']));
 export const MOUSE_CODES = Object.freeze(['Mouse0', 'Mouse1', 'Mouse2', 'Mouse3', 'Mouse4']);
-export const MOUSE_WHICH_BASE = 1000;
-export const LAYOUTS = Object.freeze(['auto', 'qwerty', 'azerty', 'qwertz', 'dvorak']);
+const MOUSE_WHICH_BASE = 1000;
+const LAYOUTS = Object.freeze(['auto', 'qwerty', 'azerty', 'qwertz', 'dvorak']);
 
 const LETTER_CODES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((c) => `Key${c}`);
 const LABELLED_CODES = Object.freeze([

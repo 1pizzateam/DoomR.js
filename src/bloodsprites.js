@@ -11,8 +11,8 @@ import { mulberry32 } from './rng.js';
  */
 
 export const CELL = 32;
-export const FLOOR_VARIANTS = 6;
-export const WALL_VARIANTS = 4;
+const FLOOR_VARIANTS = 6;
+const WALL_VARIANTS = 4;
 export const GIB_VARIANTS = 5;
 export const CELLS = {
   floor: 0,

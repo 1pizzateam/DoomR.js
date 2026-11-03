@@ -6,15 +6,15 @@ export const HIT_BACK = -3;
 export const HIT_SCROLL_UP = -4;
 export const HIT_SCROLL_DOWN = -5;
 
-export const TONE_BLUE = 0;
-export const TONE_GREEN = 1;
-export const TONE_ORANGE = 2;
+const TONE_BLUE = 0;
+const TONE_GREEN = 1;
+const TONE_ORANGE = 2;
 export const TONE_RED = 3;
 
-export const CAPTURE_SECONDS = 5;
-export const CONFIRM_SECONDS = 2;
-export const TOAST_SECONDS = 2.5;
-export const TIMER_EPSILON = 0.01;
+const CAPTURE_SECONDS = 5;
+const CONFIRM_SECONDS = 2;
+const TOAST_SECONDS = 2.5;
+const TIMER_EPSILON = 0.01;
 
 const MENU_SOUND = Object.freeze({ visible: true });
 const SCROLL_STEP = 3;

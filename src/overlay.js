@@ -6,13 +6,13 @@ import { arsenalAtlas } from './weapon.js';
 import hudOverlayShader from './shaders/hud-overlay.shadergun.json' with { type: 'json' };
 import hudTexturedShader from './shaders/hud-textured.shadergun.json' with { type: 'json' };
 
-export const VERTEX = hudOverlayShader.vertex;
+const VERTEX = hudOverlayShader.vertex;
 
-export const FRAGMENT = hudOverlayShader.fragment;
+const FRAGMENT = hudOverlayShader.fragment;
 
-export const TEXTURED_VERTEX = hudTexturedShader.vertex;
+const TEXTURED_VERTEX = hudTexturedShader.vertex;
 
-export const TEXTURED_FRAGMENT = hudTexturedShader.fragment;
+const TEXTURED_FRAGMENT = hudTexturedShader.fragment;
 
 /** Textured quads in screen pixels, drawn over what is behind them; a faded one is more see-through. */
 class SpriteBuffer {

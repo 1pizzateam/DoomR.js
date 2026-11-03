@@ -23,7 +23,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "start": "vite preview --host 0.0.0.0",
-    "test": "node tests/levels.test.mjs && node tests/sim.test.mjs"
+    "test": "node tests/levels.test.mjs && node tests/sim.test.mjs && node tests/exports.test.mjs"
   },
   "dependencies": {
     "@1pizzateam/bumpr": "1.2.0",

@@ -13,8 +13,8 @@ import { Vec3 } from '@1pizzateam/spock';
 
 export const CHEST_CELL = 32;
 export const CHEST_FRAMES = 4;
-export const CHEST_CELLS = { lidSeal: 0, latch: 1, sidePanel: 2, interiorGlow: 3 };
-export const CHEST_SIZE = new Vec3(40, 18, 26);
+const CHEST_CELLS = { lidSeal: 0, latch: 1, sidePanel: 2, interiorGlow: 3 };
+const CHEST_SIZE = new Vec3(40, 18, 26);
 export const CHEST_LID_HINGE = new Vec3(0, 18, -13);
 export const CHEST_LID_OPEN_ANGLE = 1.4;
 export const CHEST_TINTS = {

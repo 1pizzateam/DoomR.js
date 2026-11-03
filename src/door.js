@@ -10,8 +10,8 @@ import wallRustShader from './shaders/wall-rust.shadergun.json' with { type: 'js
  * code: the face of the door (64 x 64, one texel per world unit) and its top, side by side in a 128 x 64 image.
  */
 
-export const DOOR_FACE = 0;
-export const DOOR_TOP = 1;
+const DOOR_FACE = 0;
+const DOOR_TOP = 1;
 export const DOOR_CELLS = 2;
 export const DOOR_THICKNESS = 8;
 export const DOOR_INSET = 6;
