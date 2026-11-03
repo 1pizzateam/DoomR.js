@@ -3,7 +3,7 @@ import { CEILING, DOOR, EXIT, PILLAR, TILE } from './level.js';
 import { LEVELS } from './levels.js';
 import { screenSplatQuads } from './bloodsprites.js';
 import { faceCellUv, faceFrame, facePlacement } from './face.js';
-import { AMMO_FLASH_DURATION, DIFFICULTIES, DIFFICULTY_ORDER, FIRE_COOLDOWN } from './game.js';
+import { AMMO_FLASH_DURATION, DIFFICULTIES, DIFFICULTY_ORDER } from './game.js';
 import { AMMO_TYPES } from './ammo.js';
 import { DEFAULT_HINT_LINES, DEFAULT_SELECT_HINT, defaultActionLabel } from './keymap.js';
 import { HIT_BACK, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP } from './controls.js';
@@ -117,7 +117,6 @@ export class Hud {
     this.controlHints = DEFAULT_HINT_LINES;
     this.selectHint = DEFAULT_SELECT_HINT;
     this.controlsView = null;
-    this.unboundControls = 0;
     this.controlsEntryText = 'CONTROLS · F1';
     this.unboundText = '';
     this.pauseKeyLabel = '';
@@ -133,7 +132,6 @@ export class Hud {
   }
 
   setControlsStatus(label, unboundCount) {
-    this.unboundControls = unboundCount;
     this.controlsEntryText = `CONTROLS · ${label}`;
     this.unboundText = unboundCount > 0 ? `${unboundCount} controls unbound — open CONTROLS` : '';
   }

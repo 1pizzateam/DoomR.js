@@ -8845,6 +8845,87 @@ const tests = {
     assert.ok(log.includes('#26') && log.includes('doomr.controls'));
   },
 
+  'AC-1 hud imports: ./game.js import in src/hud.js omits FIRE_COOLDOWN'() {
+    const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
+    const line = src.split('\n').find((l) => l.includes("from './game.js'"));
+    for (const name of ['AMMO_FLASH_DURATION', 'DIFFICULTIES', 'DIFFICULTY_ORDER'])
+      assert.ok(line.includes(name), name);
+    assert.ok(!src.includes('FIRE_COOLDOWN'));
+  },
+
+  'AC-2 hud state: unboundControls is not a Hud property'() {
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ({}) }, {});
+    assert.equal(Object.hasOwn(hud, 'unboundControls'), false);
+    hud.setControlsStatus('F1', 3);
+    assert.equal(Object.hasOwn(hud, 'unboundControls'), false);
+  },
+
+  'AC-3 hud status: setControlsStatus sets entry and unbound text'() {
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ({}) }, {});
+    hud.setControlsStatus('F1', 2);
+    assert.equal(hud.controlsEntryText, 'CONTROLS · F1');
+    assert.equal(hud.unboundText, '2 controls unbound — open CONTROLS');
+  },
+
+  'AC-4 hud status: zero unbound clears the banner'() {
+    const texts = [];
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        fillText(str) { texts.push(str); },
+      }),
+    };
+    const fakeOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } },
+    };
+    const hud = new Hud(fakeCanvas, fakeOverlay);
+    hud.resize(1024, 768, 1);
+    hud.setControlsStatus('F1', 2);
+    hud.setControlsStatus('F1', 0);
+    assert.equal(hud.unboundText, '');
+    const game = fresh(0);
+    game.selectingDifficulty = false;
+    for (const state of ['title', 'paused']) {
+      texts.length = 0;
+      game.state = state;
+      hud.render(game);
+      assert.ok(!texts.some((t) => t.includes('controls unbound')), state);
+    }
+  },
+
+  'AC-5 hud banner: unbound banner still renders on title and paused'() {
+    const texts = [];
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        fillText(str) { texts.push(str); },
+      }),
+    };
+    const fakeOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } },
+    };
+    const hud = new Hud(fakeCanvas, fakeOverlay);
+    hud.resize(1024, 768, 1);
+    hud.setControlsStatus('F1', 1);
+    const game = fresh(0);
+    game.selectingDifficulty = false;
+    for (const state of ['title', 'paused']) {
+      texts.length = 0;
+      game.state = state;
+      hud.render(game);
+      assert.ok(texts.includes('1 controls unbound — open CONTROLS'), state);
+      assert.ok(texts.includes('CONTROLS · F1'), state);
+    }
+  },
+
   'AC-1 use prompt: a door in reach prompts OPEN then CLOSE and nothing out of reach'() {
     const rows = ['#######', '#.....#', '#..D..#', '#..P..#', '#.....#', '#######'];
     const make = (dy, angle) => {
