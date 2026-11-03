@@ -407,8 +407,10 @@ export function impactCellUv(cell) {
  * face runs `lo` and `hi` along its tangent, and from the floor to `top`), and the picture is cut with it, so no hole
  * hangs in the air past a corner or above a low wall. Null when nothing of it is left on the face.
  * (nx, ny) is the face normal in the game plane, z the height of the hit.
+ * With `out` ({ corners: 12, uv: 4 }) the values are written in place and `out` is returned, valid until the next call; callers that
+ * retain the quad (`cachedQuad`) must not pass `out`.
  */
-export function holeQuad({ x, y, z, nx, ny, top, seed, kind = 'hole', lo = -Infinity, hi = Infinity, slope = 0 }) {
+export function holeQuad({ x, y, z, nx, ny, top, seed, kind = 'hole', lo = -Infinity, hi = Infinity, slope = 0 }, out = null) {
   const rnd = mulberry32(seed);
   const cell = kind === 'slash'
     ? IMPACT_CELLS.slash + Math.floor(rnd() * SLASH_VARIANTS)
@@ -422,14 +424,28 @@ export function holeQuad({ x, y, z, nx, ny, top, seed, kind = 'hole', lo = -Infi
     return null;
   const tx = -ny;
   const ty = nx;
-  const at = (u, v) => {
-    const n = 0.25 - slope * v;
-    return [x + tx * u + nx * n, z + v, y + ty * u + ny * n];
-  };
-  const [a0, b0, a1, b1] = impactCellUv(cell);
-  const share = (v, from, to) => (v - from) / (to - from);
-  return {
-    corners: [...at(cu0, cv0), ...at(cu1, cv0), ...at(cu1, cv1), ...at(cu0, cv1)],
-    uv: [a0 + share(cu0, -half, half) * (a1 - a0), b0 + share(cv0, -half, half) * (b1 - b0), a0 + share(cu1, -half, half) * (a1 - a0), b0 + share(cv1, -half, half) * (b1 - b0)],
-  };
+  const n0 = 0.25 - slope * cv0;
+  const n1 = 0.25 - slope * cv1;
+  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
+  const c = dest.corners;
+  c[0] = x + tx * cu0 + nx * n0;
+  c[1] = z + cv0;
+  c[2] = y + ty * cu0 + ny * n0;
+  c[3] = x + tx * cu1 + nx * n0;
+  c[4] = z + cv0;
+  c[5] = y + ty * cu1 + ny * n0;
+  c[6] = x + tx * cu1 + nx * n1;
+  c[7] = z + cv1;
+  c[8] = y + ty * cu1 + ny * n1;
+  c[9] = x + tx * cu0 + nx * n1;
+  c[10] = z + cv1;
+  c[11] = y + ty * cu0 + ny * n1;
+  const a0 = cell / IMPACT_CELL_COUNT;
+  const a1 = (cell + 1) / IMPACT_CELL_COUNT;
+  const uv = dest.uv;
+  uv[0] = a0 + ((cu0 - -half) / (half - -half)) * (a1 - a0);
+  uv[1] = 0 + ((cv0 - -half) / (half - -half)) * (1 - 0);
+  uv[2] = a0 + ((cu1 - -half) / (half - -half)) * (a1 - a0);
+  uv[3] = 0 + ((cv1 - -half) / (half - -half)) * (1 - 0);
+  return dest;
 }
