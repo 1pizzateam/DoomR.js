@@ -227,6 +227,109 @@ function withAudio(fn) {
 }
 
 const tests = {
+  'AC-1 effects are pruned in place preserving order and array identity'() {
+    const game = fresh();
+    clearEnemies(game);
+    const effects = game.effects;
+    effects.length = 0;
+    effects.push({ id: 'a', age: 0.5, life: 0.5 }, { id: 'b', age: 0, life: 1 }, { id: 'c', age: 0.2, life: 2 });
+    game.update(1 / 60, idle);
+    assert.equal(game.effects, effects, 'array identity is kept');
+    assert.deepEqual(effects.map((e) => e.id), ['b', 'c']);
+    assert.ok(Math.abs(effects[0].age - 1 / 60) < 1e-9 && Math.abs(effects[1].age - (0.2 + 1 / 60)) < 1e-9);
+  },
+
+  'AC-2 emit uses a shared empty extra and trims the queue in place'() {
+    const game = fresh();
+    game.events.length = 0;
+    game.emit('dry');
+    assert.deepEqual(Object.keys(game.events[0]).sort(), ['pos', 'type', 'visible', 'x', 'y']);
+    assert.equal(game.events[0].pos.x, game.player.pos.x);
+    assert.equal(game.events[0].pos.y, game.player.pos.y);
+    const events = game.events;
+    events.length = 0;
+    for (let i = 0; i < 300; i++)
+      game.emit('mark', null, { n: i });
+    assert.equal(game.events, events);
+    assert.equal(events.length, 256);
+    assert.equal(events[0].n, 44);
+    assert.equal(events[255].n, 299);
+    events.length = 0;
+    game.emit('dry');
+    assert.deepEqual(Object.keys(events[0]).sort(), ['pos', 'type', 'visible', 'x', 'y']);
+  },
+
+  'AC-3 Mars weather reuses a fixed dust pool without replacing the live array'() {
+    const game = fresh(4);
+    game.state = 'play';
+    const dust = game.dust;
+    const seen = new Set();
+    for (let f = 0; f < 120; f++) {
+      game.time += 1 / 60;
+      game.updateMarsWeather(1 / 60);
+      for (const p of game.dust)
+        seen.add(p);
+    }
+    assert.equal(game.dust, dust);
+    assert.ok(game.dust.length >= 160, `population ${game.dust.length}`);
+    assert.ok(seen.size <= 240, `distinct particles ${seen.size}`);
+    for (const p of game.dust) {
+      game.scratch.setScalar(p.x, p.y);
+      assert.ok(game.level.isOutdoor(game.scratch));
+    }
+  },
+
+  'AC-4 expired dust particles are reset in place'() {
+    const game = fresh(4);
+    game.state = 'play';
+    const p = game.dust[0];
+    p.age = p.life;
+    game.time += 1 / 60;
+    game.updateMarsWeather(1 / 60);
+    if (game.dust.includes(p)) {
+      assert.ok(p.age < p.life);
+      assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z));
+      assert.equal(p.gib, false);
+      assert.equal(p.visualScale, p.scale);
+    }
+    assert.ok(game.dust.length >= 160);
+    assert.equal(new Set(game.dust).size, game.dust.length, 'no particle is duplicated');
+  },
+
+  'AC-5 actorNear honours enemy distance and dead state with reused query options'() {
+    const game = fresh();
+    clearEnemies(game);
+    game.addEnemy('imp', new Vec2(300, 200));
+    const enemy = game.enemies[0];
+    game.player.body.setPosition(new Vec2(100, 100));
+    const center = new Vec2(300, 200);
+    assert.equal(game.actorNear(center, 52, 36), true);
+    enemy.state = 'dead';
+    assert.equal(game.actorNear(center, 52, 36), false);
+    enemy.state = 'idle';
+    enemy.body.setPosition(new Vec2(300 + 45, 200));
+    assert.equal(game.actorNear(center, 52, 36), false);
+    assert.equal(game.actorNear(center, 52, 52), true);
+    assert.equal(game.actorNear(center, 52, 36), false);
+  },
+
+  'AC-6 hot-path methods contain no filter, splice, new Vec, closures or inline mask literals'() {
+    const src = readFileSync(new URL('../src/game.js', import.meta.url), 'utf8');
+    const body = (name) => {
+      const start = src.indexOf(`\n  ${name}(`);
+      assert.ok(start >= 0, name);
+      const next = src.slice(start + 1).search(/\n  (?:\/\*\*|[A-Za-z]+\()/);
+      return src.slice(start, start + 1 + next);
+    };
+    for (const name of ['update', 'emit', 'updateMarsWeather', 'actorNear']) {
+      const text = body(name);
+      for (const banned of ['.filter(', '.splice(', 'new Vec', '=>', '{ mask:'])
+        assert.ok(!text.includes(banned), `${name} contains ${banned}`);
+    }
+    assert.match(src, /^const QUERY_WALL = /m);
+    assert.match(src, /^const EMPTY_EXTRA = /m);
+  },
+
   'AC-1 F maps to a one-shot grenade action and stays out of held fire'() {
     const prevDoc = globalThis.document;
     const prevWin = globalThis.window;
