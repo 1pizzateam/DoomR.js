@@ -14,9 +14,9 @@ import { SHOTGUN_PUMP, WEAPONS } from './weapon.js';
 
 // Bed ducking under firearm reports: lowest bed gain, and attack / hold / release in seconds.
 export const DUCK_FLOOR = 0.5;
-export const DUCK_ATTACK = 0.012;
-export const DUCK_HOLD = 0.06;
-export const DUCK_RELEASE = 0.09;
+const DUCK_ATTACK = 0.012;
+const DUCK_HOLD = 0.06;
+const DUCK_RELEASE = 0.09;
 
 const clamp = Utils.clamp;
 const rand = Rand.float;
@@ -723,15 +723,6 @@ export const RECIPES = {
   },
 };
 
-/** Render one recipe offline: used to check that it is audible, does not clip and ends cleanly. */
-export async function renderRecipe(name, params = {}, sampleRate = 44100, seconds = 2.5) {
-  const ctx = new OfflineAudioContext(2, Math.round(sampleRate * seconds), sampleRate);
-  const bus = ctx.createGain();
-  bus.connect(ctx.destination);
-  const info = RECIPES[name](ctx, bus, 0, params);
-  return { buffer: await ctx.startRendering(), ...info };
-}
-
 // ---- the player-facing side -----------------------------------------------------------------
 
 /** Never play the same sound again sooner than this, so a shotgun volley is not 6 impacts at once. */
@@ -855,9 +846,9 @@ function readMuted() {
   }
 }
 
-export const LEVEL_MUSIC = ['play', 'metal', 'horror', 'boss', 'gore'];
+const LEVEL_MUSIC = ['play', 'metal', 'horror', 'boss', 'gore'];
 
-export const MUSIC_TRACKS = [
+const MUSIC_TRACKS = [
   { mode: 'play', label: 'Music: E1M1 Ambient' },
   { mode: 'metal', label: 'Music: E1M2 Industrial Metal' },
   { mode: 'horror', label: 'Music: E1M3 Horror Metal' },
