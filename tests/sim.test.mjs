@@ -7,6 +7,7 @@ import { ACID_PIT_DEPTH, CACHE_LID_TIME, CACHE_OUTDOOR_LINK, CACHE_TYPES, CACHE_
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
 import { BLOOD } from '../src/blood.js';
 import { DUCK_FLOOR, RECIPES, Sound, spatial } from '../src/audio.js';
+import * as audioModule from '../src/audio.js';
 import { validateSong } from '@1pizzateam/groovr';
 import { FADE_IN, FADE_OUT, Music, SONGS } from '../src/music.js';
 import { HOLE_VARIANTS, holeQuad, IMPACT_CELL_COUNT, IMPACT_CELLS, impactAtlas, impactCellUv, SLASH_VARIANTS, SPARK_FRAMES, SPARK_VARIANTS } from '../src/impacts.js';
@@ -8391,6 +8392,48 @@ const tests = {
     ctx.currentTime += 1;
     sound.handle({ type: 'rocketFire', x: 0, y: 0 });
     assert.equal(log.length, 0, 'AC-8 muted schedules no duck');
+  },
+
+  'AC-1 renderRecipe is not exported or defined in audio module'() {
+    assert.equal('renderRecipe' in audioModule, false);
+    assert.ok(!readFileSync(new URL('../src/audio.js', import.meta.url), 'utf8').includes('renderRecipe'));
+  },
+
+  'AC-2 dead audio constants are module-private'() {
+    for (const name of ['DUCK_ATTACK', 'DUCK_HOLD', 'DUCK_RELEASE', 'LEVEL_MUSIC', 'MUSIC_TRACKS'])
+      assert.equal(name in audioModule, false, name);
+  },
+
+  'AC-3 public audio test interfaces remain exported'() {
+    assert.equal(typeof DUCK_FLOOR, 'number');
+    assert.equal(typeof spatial, 'function');
+    assert.equal(typeof Sound, 'function');
+    for (const fn of Object.values(RECIPES))
+      assert.equal(typeof fn, 'function');
+  },
+
+  'AC-4 firearm report ducking timings and floor unchanged'() {
+    const log = [];
+    const sound = new Sound();
+    sound.muted = false;
+    sound.duck = {
+      gain: {
+        cancelScheduledValues() {},
+        setTargetAtTime: (v, t, tau) => log.push([v, t, tau]),
+      },
+    };
+    sound.duckBeds(0.9, 5);
+    assert.equal(log.length, 2);
+    assert.ok(log[0][0] >= DUCK_FLOOR);
+    assert.ok(Math.abs(log[0][2] - 0.012) < 1e-9);
+    assert.ok(Math.abs(log[1][1] - 5.06) < 1e-9);
+    assert.ok(Math.abs(log[1][2] - 0.09) < 1e-9);
+  },
+
+  'AC-5 level music selection order and fallback unchanged'() {
+    const sound = new Sound();
+    ['play', 'metal', 'horror', 'boss', 'gore'].forEach((mode, i) => assert.equal(sound.effectiveMusicMode('play', i), mode));
+    assert.equal(sound.effectiveMusicMode('play', 99), 'metal');
   },
 
   'AC-1 controls page: defaults are unchanged, F1 opens controls and left click fires'() {
