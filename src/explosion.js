@@ -740,18 +740,28 @@ export function explosion3dPose(progress, target = createExplosion3dPose()) {
 
 export const EXPLOSION_PARTICLE_COUNT = 88;
 
+const particleQuadPool = [];
+for (let i = 0; i < EXPLOSION_PARTICLE_COUNT; i++)
+  particleQuadPool.push({ corners: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], uv: [0, 0, 0, 0] });
+const particleQuadResult = [];
+
 /**
  * Generates a high-density shower of small camera-facing spark & cinder particles (`1.0..2.4` world units across,
  * matching blood droplet particle scale) and velocity-aligned spark needles around a `boom` explosion effect.
  *
  * Strictly accepts `@1pizzateam/spock` `Vec3` instances for camera `right` and `up` axes.
+ *
+ * The returned array and its quads are shared module-level storage overwritten by the next call:
+ * consume them immediately and never retain them.
  */
 export function explosionParticleQuads(effect, right, up) {
   const age = effect.age ?? 0;
   const life = effect.life ?? 0.45;
   const t = Utils.clamp(age / Math.max(0.001, life), 0, 1);
-  if (t >= 0.995)
-    return [];
+  if (t >= 0.995) {
+    particleQuadResult.length = 0;
+    return particleQuadResult;
+  }
 
   const radius = (effect.radius ?? 60) * (effect.scale ?? 1);
   const cx = effect.x ?? 0;
@@ -764,7 +774,7 @@ export function explosionParticleQuads(effect, right, up) {
   const uy = up.y;
   const uz = up.z;
 
-  const quads = [];
+  let count = 0;
   for (let i = 0; i < EXPLOSION_PARTICLE_COUNT; i++) {
     // 0..43: crisp pinpoint spark dots (half = 0.55..1.10 world units -> 1.1..2.2 units diameter)
     // 44..67: fast radial velocity-aligned spark needles (halfWidth = 0.42..0.72, halfLen = 1.8..4.0 world units)
@@ -832,7 +842,13 @@ export function explosionParticleQuads(effect, right, up) {
     // Encode quantized heat slot (1..24) in the integer part of u so the fragment shader shades white-hot -> gold -> orange -> ember
     const rawHeat = (kind === 1 ? 1.48 : kind === 0 ? 1.38 : 1.22) * (1 - 0.72 * Math.pow(pt, 1.35));
     const slot = Math.max(1, Math.min(24, Math.round(rawHeat * 16)));
-    const uv = [slot + 0.02, 0.02, slot + 0.98, 0.98];
+    const quad = particleQuadPool[count];
+    const corners = quad.corners;
+    const uv = quad.uv;
+    uv[0] = slot + 0.02;
+    uv[1] = 0.02;
+    uv[2] = slot + 0.98;
+    uv[3] = 0.98;
 
     if (kind === 1) {
       // Velocity-aligned fine spark needle: stretches along 3D velocity vector with a razor-thin camera-facing width
@@ -856,15 +872,10 @@ export function explosionParticleQuads(effect, right, up) {
       wx = (wx / wLen) * halfW;
       wy = (wy / wLen) * halfW;
       wz = (wz / wLen) * halfW;
-      quads.push({
-        corners: [
-          px - axX - wx, py - axY - wy, pz - axZ - wz,
-          px + axX - wx, py + axY - wy, pz + axZ - wz,
-          px + axX + wx, py + axY + wy, pz + axZ + wz,
-          px - axX + wx, py - axY + wy, pz - axZ + wz,
-        ],
-        uv,
-      });
+      corners[0] = px - axX - wx; corners[1] = py - axY - wy; corners[2] = pz - axZ - wz;
+      corners[3] = px + axX - wx; corners[4] = py + axY - wy; corners[5] = pz + axZ - wz;
+      corners[6] = px + axX + wx; corners[7] = py + axY + wy; corners[8] = pz + axZ + wz;
+      corners[9] = px - axX + wx; corners[10] = py - axY + wy; corners[11] = pz - axZ + wz;
     } else {
       // Small camera-facing spark dot or tumbling cinder speck (half = 0.55..1.18 world units -> 1.1..2.35 units diameter)
       const baseHalf = kind === 0
@@ -880,16 +891,14 @@ export function explosionParticleQuads(effect, right, up) {
       const ayX = rx * s + ux * c;
       const ayY = ry * s + uy * c;
       const ayZ = rz * s + uz * c;
-      quads.push({
-        corners: [
-          px - axX - ayX, py - axY - ayY, pz - axZ - ayZ,
-          px + axX - ayX, py + axY - ayY, pz + axZ - ayZ,
-          px + axX + ayX, py + axY + ayY, pz + axZ + ayZ,
-          px - axX + ayX, py - axY + ayY, pz - axZ + ayZ,
-        ],
-        uv,
-      });
+      corners[0] = px - axX - ayX; corners[1] = py - axY - ayY; corners[2] = pz - axZ - ayZ;
+      corners[3] = px + axX - ayX; corners[4] = py + axY - ayY; corners[5] = pz + axZ - ayZ;
+      corners[6] = px + axX + ayX; corners[7] = py + axY + ayY; corners[8] = pz + axZ + ayZ;
+      corners[9] = px - axX + ayX; corners[10] = py - axY + ayY; corners[11] = pz - axZ + ayZ;
     }
+    particleQuadResult[count] = quad;
+    count++;
   }
-  return quads;
+  particleQuadResult.length = count;
+  return particleQuadResult;
 }

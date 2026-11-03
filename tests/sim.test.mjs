@@ -6608,6 +6608,67 @@ const tests = {
     assert.ok(dotWidth >= 1.0 && dotWidth <= 2.6, `spark dot quad is a true small particle (${dotWidth.toFixed(2)} world units across, matching blood droplet scale)`);
     assert.ok(SPARK_PARTICLE_FRAGMENT.includes('rSq > 1.0'), 'SPARK_PARTICLE_FRAGMENT clips each quad to a crisp circular/elliptical spark');
 
+    const barrelFx = { type: 'boom', x: 100, y: 200, z: 0, age: 0.08, life: 0.45, radius: 60 };
+    const rocketFx = { type: 'boom', x: 40, y: 20, z: 12, age: 0.08, life: 0.45, radius: 90 };
+    const snap = (qs) => {
+      const out = [];
+      for (let i = 0; i < qs.length; i++)
+        out.push([Array.from(qs[i].corners), Array.from(qs[i].uv)]);
+      return out;
+    };
+    const poolA = explosionParticleQuads(barrelFx, camRight, camUp);
+    const refsA = poolA.slice();
+    const cornersA = refsA.map((q) => q.corners);
+    const uvsA = refsA.map((q) => q.uv);
+    const poolB = explosionParticleQuads(rocketFx, camRight, camUp);
+    assert.strictEqual(poolB, poolA, 'AC-1 result array is the identical shared object across calls');
+    assert.equal(poolB.length, EXPLOSION_PARTICLE_COUNT, 'AC-1 rocket blast also emits 88 quads');
+    for (let i = 0; i < EXPLOSION_PARTICLE_COUNT; i++) {
+      assert.strictEqual(poolB[i], refsA[i], `AC-1 quad descriptor ${i} is the identical object across calls`);
+      assert.strictEqual(poolB[i].corners, cornersA[i], `AC-2 corners buffer ${i} is reused`);
+      assert.strictEqual(poolB[i].uv, uvsA[i], `AC-2 uv buffer ${i} is reused`);
+      assert.equal(poolB[i].corners.length, 12, 'AC-2 corners has fixed length 12');
+      assert.equal(poolB[i].uv.length, 4, 'AC-2 uv has fixed length 4');
+      for (let k = 0; k < 12; k++)
+        assert.ok(Number.isFinite(poolB[i].corners[k]), `AC-2 corner ${i}.${k} is finite`);
+    }
+    for (const idx of [0, 50, 80])
+      assert.ok(poolB[idx].corners.every(Number.isFinite), `AC-2 dot/needle/cinder quad ${idx} has finite corners`);
+
+    const barrel1 = snap(explosionParticleQuads(barrelFx, camRight, camUp));
+    const rocket1 = snap(explosionParticleQuads(rocketFx, camRight, camUp));
+    const barrel2 = snap(explosionParticleQuads(barrelFx, camRight, camUp));
+    assert.deepStrictEqual(barrel2, barrel1, 'AC-3 alternating rocket and barrel explosions stay deterministic on the shared pool');
+    assert.notDeepStrictEqual(rocket1[0][0], barrel1[0][0], 'AC-3 rocket and barrel explosions produce different corners');
+
+    const expired = explosionParticleQuads({ ...barrelFx, age: 0.449 }, camRight, camUp);
+    assert.strictEqual(expired, poolA, 'AC-4 expired explosion returns the shared array');
+    assert.equal(expired.length, 0, 'AC-4 expired explosion returns zero quads');
+    explosionParticleQuads(barrelFx, camRight, camUp);
+    const lateQuads = explosionParticleQuads({ ...barrelFx, age: 0.36 }, camRight, camUp);
+    assert.ok(lateQuads.length > 0 && lateQuads.length < EXPLOSION_PARTICLE_COUNT, 'AC-4 late blast returns fewer quads than 88');
+    const lateSnap = snap(lateQuads);
+    explosionParticleQuads({ ...barrelFx, age: 0.449 }, camRight, camUp);
+    assert.deepStrictEqual(snap(explosionParticleQuads({ ...barrelFx, age: 0.36 }, camRight, camUp)), lateSnap, 'AC-4 late blast length and data carry no stale state from earlier calls');
+
+    const early = explosionParticleQuads(barrelFx, camRight, camUp);
+    assert.equal(early.length, EXPLOSION_PARTICLE_COUNT, 'AC-5 early blast keeps 88 quads');
+    const w0 = early[0].corners;
+    const w0Width = Math.hypot(w0[3] - w0[0], w0[4] - w0[1], w0[5] - w0[2]);
+    assert.ok(w0Width >= 1.0 && w0Width <= 2.6, 'AC-5 first quad keeps spark size');
+    for (let i = 0; i < early.length; i++) {
+      const uv = early[i].uv;
+      const slot = uv[0] - 0.02;
+      assert.ok(Math.abs(slot - Math.round(slot)) < 1e-9 && Math.round(slot) >= 1 && Math.round(slot) <= 24, `AC-5 uv slot ${i} is an integer in 1..24`);
+      assert.equal(uv[1], 0.02, 'AC-5 uv v0 is 0.02');
+      assert.equal(uv[3], 0.98, 'AC-5 uv v1 is 0.98');
+      assert.ok(Math.abs(uv[2] - uv[0] - 0.96) < 1e-9, 'AC-5 uv u span is 0.96');
+    }
+
+    const det1 = snap(explosionParticleQuads(rocketFx, camRight, camUp));
+    const det2 = snap(explosionParticleQuads(rocketFx, camRight, camUp));
+    assert.deepStrictEqual(det2, det1, 'AC-6 repeated identical calls yield identical corners and uv');
+
     const poseLate = explosion3dPose(0.92, expTarget);
     assert.ok(poseLate.dissolve > poseMid.dissolve && poseLate.dissolve > 0.75, '3D exploding mesh erodes away in the late smoke phase');
     assert.ok(poseLate.heat < earlyHeat * 0.25, '3D exploding mesh cools from bright fire into dark charcoal smoke');
