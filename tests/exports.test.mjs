@@ -50,6 +50,31 @@ const checks = [
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'));
   }],
+  ['issue-107 AC-1 world.js has no MARS_FLOOR_TINT or MARS_WALL_TINT', () => {
+    const src = read('world');
+    assert.ok(!/MARS_FLOOR_TINT/.test(src));
+    assert.ok(!/MARS_WALL_TINT/.test(src));
+  }],
+  ['issue-107 AC-2 level.js has no DIAG_NONE', () => {
+    assert.ok(!read('level').includes('DIAG_NONE'));
+  }],
+  ['issue-107 AC-3 keycard.js has no KEYCARD_COLORS but keeps cell exports', () => {
+    const src = read('keycard');
+    assert.ok(!src.includes('KEYCARD_COLORS'));
+    for (const n of ['KEYCARD_CELL', 'KEYCARD_FRAMES', 'KEYCARD_CELLS']) assert.ok(exported(src, n), `keycard.js lost export ${n}`);
+  }],
+  ['issue-107 AC-4 world.js shader constants are internal but still used', () => {
+    const src = read('world');
+    for (const n of ['MONSTER_VERTEX', 'VIEWMODEL_VERTEX', 'VIEWMODEL_FRAGMENT', 'POST_VERTEX', 'CORE_FRAGMENT', 'DOWN_FRAGMENT', 'GLOW_FRAGMENT', 'MARS_SKY_VEC']) {
+      assert.ok(!exported(src, n), `world.js still exports ${n}`);
+      assert.ok(new RegExp(`^const\\s+${n}\\b`, 'm').test(src), `${n} declaration missing`);
+      assert.ok(src.split(new RegExp(`\\b${n}\\b`)).length > 2, `${n} unused`);
+    }
+  }],
+  ['issue-107 AC-5 npm test chain still includes export-surface test', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'));
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');

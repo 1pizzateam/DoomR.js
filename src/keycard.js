@@ -11,7 +11,6 @@
 export const KEYCARD_CELL = 32;
 export const KEYCARD_FRAMES = 4;
 export const KEYCARD_CELLS = { front: 0, side: 1, top: 2, grip: 3 };
-export const KEYCARD_COLORS = ['red', 'yellow', 'blue'];
 
 const PALETTES = {
   red: [
