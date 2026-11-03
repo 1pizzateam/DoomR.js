@@ -11,6 +11,7 @@ import * as audioModule from '../src/audio.js';
 import { validateSong } from '@1pizzateam/groovr';
 import { FADE_IN, FADE_OUT, Music, SONGS } from '../src/music.js';
 import { HOLE_VARIANTS, holeQuad, IMPACT_CELL_COUNT, IMPACT_CELLS, impactAtlas, impactCellUv, SLASH_VARIANTS, SPARK_FRAMES, SPARK_VARIANTS } from '../src/impacts.js';
+import { mulberry32 } from '../src/rng.js';
 import { LEVELS } from '../src/levels.js';
 import { FACE_CELL_H, FACE_CELL_W, FACE_DEAD_FRAME, FACE_FRAME_COUNT, FACE_POSE_COUNT, FACE_POSES, faceAtlas, faceCellUv, faceFrame, facePlacement } from '../src/face.js';
 import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON_ORDER, WEAPON_SLOTS, WEAPON_TIMES, WEAPONS, SHOTGUN_PUMP, arsenalAtlas, weaponAtlas, weaponCellUv, weaponFrame, weaponPlacement } from '../src/weapon.js';
@@ -1660,6 +1661,162 @@ const tests = {
     assert.ok(solid(IMPACT_CELLS.spark).n > solid(IMPACT_CELLS.spark + SPARK_FRAMES - 1).n, 'it dies away');
     assert.ok(impactCellUv(IMPACT_CELL_COUNT - 1)[2] === 1);
   },
+
+  'AC-1 holeQuad body has no closure, spread, vertex temporaries or impactCellUv call'() {
+    const src = readFileSync(new URL('../src/impacts.js', import.meta.url), 'utf8');
+    const start = src.indexOf('export function holeQuad');
+    const next = src.indexOf('\nexport ', start + 1);
+    const body = src.slice(start, next < 0 ? undefined : next).replace(/^export function holeQuad/, '');
+    assert.ok(!body.includes('=>'), 'no arrow function');
+    assert.ok(!body.includes('...'), 'no spread');
+    assert.ok(!body.includes('function '), 'no inner function');
+    assert.ok(!body.includes('impactCellUv('), 'no impactCellUv call');
+    assert.ok(!/\bat\(/.test(body), 'no at() helper');
+  },
+
+  'AC-2 holeQuad writes into a supplied destination in place'() {
+    const out = { corners: new Array(12).fill(NaN), uv: new Array(4).fill(NaN) };
+    const { corners, uv } = out;
+    const marks = [
+      { x: 128, y: 64, z: 30, nx: 0, ny: 1, top: 64, seed: 7 },
+      { x: 40, y: 90, z: 20, nx: 1, ny: 0, top: 64, seed: 31, slope: 0.1 },
+    ];
+    for (const mark of marks) {
+      assert.equal(holeQuad(mark, out), out);
+      assert.equal(out.corners, corners);
+      assert.equal(out.uv, uv);
+      assert.equal(out.corners.length, 12);
+      assert.equal(out.uv.length, 4);
+      assert.ok(out.corners.every(Number.isFinite) && out.uv.every(Number.isFinite));
+      const fresh = holeQuad(mark);
+      assert.deepEqual(out.corners, fresh.corners);
+      assert.deepEqual(out.uv, fresh.uv);
+    }
+  },
+
+  'AC-3 syncDoorMarks has no mark spread and reuses scratch per mark'() {
+    const src = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+    const start = src.indexOf('  syncDoorMarks(');
+    const end = src.indexOf('\n  /**', start);
+    assert.ok(!src.slice(start, end).includes('...mark'), 'no mark spread');
+    const record = (list) => ({ begin() { return this; }, quad(c, u) { list.push({ corners: c.slice(), uv: u.slice() }); }, end() {}, show() {} });
+    const holeQuads = [];
+    const splatQuads = [];
+    const door = { open: 0.25, idx: 0, secret: false };
+    const mockWorld = {
+      level: { baseHeight: [20] },
+      doorMarks: new Map(),
+      doorBatch: () => record(holeQuads),
+      doorSplatBatch: () => record(splatQuads),
+    };
+    const holes = [
+      { door, x: 100, y: 50, z: 30, nx: 0, ny: 1, top: 64, seed: 3, kind: 'slash', lo: -20, hi: 20, slope: 0.1 },
+      { door, x: 110, y: 52, z: 25, nx: 1, ny: 0, top: 64, seed: 9 },
+    ];
+    const walls = [
+      { door, x: 100, y: 50, z: 30, nx: 0, ny: 1, top: 64, seed: 3, size: 8, age: 1, lo: -20, hi: 20, slope: 0.1 },
+      { door, x: 110, y: 52, z: 25, nx: 1, ny: 0, top: 64, seed: 9, size: 6 },
+    ];
+    const blood = { holes, walls, holesVersion: 1, version: 1, dripping: false };
+    World.prototype.syncDoorMarks.call(mockWorld, door, blood, true);
+    const height = 1 - door.open;
+    const drop = door.open * 20;
+    const sunkOf = (m) => ({ ...m, x: m.x - m.nx * DOOR_INSET, y: m.y - m.ny * DOOR_INSET, z: m.z - drop, top: m.top * height });
+    assert.equal(holeQuads.length, 2);
+    holes.forEach((m, i) => {
+      const want = holeQuad(sunkOf(m));
+      assert.deepEqual(holeQuads[i].corners, want.corners);
+      assert.deepEqual(holeQuads[i].uv, want.uv);
+    });
+    const firstSplat = wallSplatQuad(sunkOf(walls[0]));
+    assert.deepEqual(splatQuads[0].corners, firstSplat.corners);
+    assert.deepEqual(splatQuads[0].uv, firstSplat.uv);
+    const secondSplat = wallSplatQuad(sunkOf(walls[1]));
+    const idx = splatQuads.findIndex((q) => q.corners.every((v, k) => v === secondSplat.corners[k]));
+    assert.ok(idx > 0, 'second splat uses its own values');
+  },
+
+  'AC-4 holeQuad output is bit-identical to the reference math'() {
+    const reference = ({ x, y, z, nx, ny, top, seed, kind = 'hole', lo = -Infinity, hi = Infinity, slope = 0 }) => {
+      const rnd = mulberry32(seed);
+      const cell = kind === 'slash'
+        ? IMPACT_CELLS.slash + Math.floor(rnd() * SLASH_VARIANTS)
+        : IMPACT_CELLS.hole + Math.floor(rnd() * HOLE_VARIANTS);
+      const half = 8;
+      const cu0 = Math.max(-half, lo + 0.3);
+      const cu1 = Math.min(half, hi - 0.3);
+      const cv0 = Math.max(-half, 0.6 - z);
+      const cv1 = Math.min(half, top - 0.6 - z);
+      if (cu0 >= cu1 || cv0 >= cv1)
+        return null;
+      const tx = -ny;
+      const ty = nx;
+      const at = (u, v) => {
+        const n = 0.25 - slope * v;
+        return [x + tx * u + nx * n, z + v, y + ty * u + ny * n];
+      };
+      const [a0, b0, a1, b1] = impactCellUv(cell);
+      const share = (v, from, to) => (v - from) / (to - from);
+      return {
+        corners: [...at(cu0, cv0), ...at(cu1, cv0), ...at(cu1, cv1), ...at(cu0, cv1)],
+        uv: [a0 + share(cu0, -half, half) * (a1 - a0), b0 + share(cv0, -half, half) * (b1 - b0), a0 + share(cu1, -half, half) * (a1 - a0), b0 + share(cv1, -half, half) * (b1 - b0)],
+      };
+    };
+    const out = { corners: new Array(12), uv: new Array(4) };
+    const clips = [{}, { lo: -1, hi: 1 }, { z: 2 }, { top: 33 }, { lo: -5, hi: 0.5, z: 62 }];
+    let compared = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      for (const slope of [0, 0.1]) {
+        for (const kind of ['hole', 'slash']) {
+          for (const clip of clips) {
+            const mark = { x: 128.3, y: 64.7, z: 30.1, nx: 0.6, ny: 0.8, top: 64, seed, slope, kind, ...clip };
+            const want = reference(mark);
+            const got = holeQuad(mark);
+            const gotOut = holeQuad(mark, out);
+            if (want === null) {
+              assert.equal(got, null);
+              assert.equal(gotOut, null);
+              continue;
+            }
+            compared++;
+            for (const quad of [got, gotOut]) {
+              assert.equal(quad.corners.length, 12);
+              assert.equal(quad.uv.length, 4);
+              want.corners.forEach((v, i) => assert.ok(quad.corners[i] === v));
+              want.uv.forEach((v, i) => assert.ok(quad.uv[i] === v));
+            }
+          }
+        }
+      }
+    }
+    assert.ok(compared > 100);
+  },
+
+  'AC-5 holeQuad returns null for a fully clipped mark and leaves out untouched'() {
+    const base = { x: 128, y: 64, z: 30, nx: 0, ny: 1, top: 64, seed: 5 };
+    const out = { corners: new Array(12).fill(7), uv: new Array(4).fill(7) };
+    const snapshot = JSON.stringify(out);
+    for (const clip of [{ lo: -0.1, hi: 0.2 }, { z: 2, top: 0 }]) {
+      assert.equal(holeQuad({ ...base, ...clip }), null);
+      assert.equal(holeQuad({ ...base, ...clip }, out), null);
+      assert.equal(JSON.stringify(out), snapshot);
+    }
+    assert.equal(holeQuad(base, out), out);
+    assert.deepEqual(out, holeQuad(base));
+  },
+
+  'AC-6 holeQuad without out returns independent objects'() {
+    const mark = { x: 128, y: 64, z: 30, nx: 0, ny: 1, top: 64, seed: 5 };
+    const a = holeQuad(mark);
+    const b = holeQuad(mark);
+    assert.notEqual(a, b);
+    assert.notEqual(a.corners, b.corners);
+    assert.notEqual(a.uv, b.uv);
+    const before = b.corners[0];
+    a.corners[0] = -999;
+    assert.equal(b.corners[0], before);
+  },
+
 
   'the map starts mostly hidden and only reveals what the player can see'() {
     const game = fresh();

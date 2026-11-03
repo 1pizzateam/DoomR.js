@@ -91,6 +91,9 @@ const MARS_SKY_VEC = new Vec3(0.46, 0.18, 0.06);
 export const MARS_AMBIENT_COLOR = new Vec3(1.04, 0.86, 0.72);
 export const MARS_DUST_TINT = new Vec3(1.2, 7.5, 1.8);
 export { MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar };
+const scratchHoleMark = { x: 0, y: 0, z: 0, nx: 0, ny: 0, top: 0, seed: 0, kind: undefined, lo: undefined, hi: undefined, slope: undefined };
+const scratchHoleQuad = { corners: new Array(12).fill(0), uv: new Array(4).fill(0) };
+const scratchSplatMark = { x: 0, y: 0, z: 0, nx: 0, ny: 0, size: 0, top: 0, seed: 0, age: undefined, lo: undefined, hi: undefined, slope: undefined };
 const scratchPos = new Vec3();
 const scratchRot = new Vec3();
 const scratchScale = new Vec3();
@@ -956,13 +959,19 @@ export class World {
     for (const mark of blood.holes) {
       if (mark.door !== door)
         continue;
-      const quad = holeQuad({
-        ...mark,
-        x: mark.x - mark.nx * inset,
-        y: mark.y - mark.ny * inset,
-        z: mark.z - drop,
-        top: mark.top * height,
-      });
+      const hm = scratchHoleMark;
+      hm.x = mark.x - mark.nx * inset;
+      hm.y = mark.y - mark.ny * inset;
+      hm.z = mark.z - drop;
+      hm.top = mark.top * height;
+      hm.nx = mark.nx;
+      hm.ny = mark.ny;
+      hm.seed = mark.seed;
+      hm.kind = mark.kind;
+      hm.lo = mark.lo;
+      hm.hi = mark.hi;
+      hm.slope = mark.slope;
+      const quad = holeQuad(hm, scratchHoleQuad);
       if (quad)
         holes.quad(quad.corners, quad.uv);
     }
@@ -971,13 +980,19 @@ export class World {
     for (const mark of blood.walls) {
       if (mark.door !== door)
         continue;
-      const sunk = {
-        ...mark,
-        x: mark.x - mark.nx * inset,
-        y: mark.y - mark.ny * inset,
-        z: mark.z - drop,
-        top: mark.top * height,
-      };
+      const sunk = scratchSplatMark;
+      sunk.x = mark.x - mark.nx * inset;
+      sunk.y = mark.y - mark.ny * inset;
+      sunk.z = mark.z - drop;
+      sunk.top = mark.top * height;
+      sunk.nx = mark.nx;
+      sunk.ny = mark.ny;
+      sunk.size = mark.size;
+      sunk.seed = mark.seed;
+      sunk.age = mark.age;
+      sunk.lo = mark.lo;
+      sunk.hi = mark.hi;
+      sunk.slope = mark.slope;
       const quad = wallSplatQuad(sunk);
       if (quad)
         batch.quad(quad.corners, quad.uv);
