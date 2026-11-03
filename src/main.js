@@ -1,5 +1,5 @@
 import { Player, Quality } from '@1pizzateam/loopr';
-import { Time } from '@1pizzateam/spock';
+import { Time, Vec2 } from '@1pizzateam/spock';
 import { Game } from './game.js';
 import { Hud } from './hud.js';
 import { Sound } from './audio.js';
@@ -220,14 +220,16 @@ function control(dt) {
   }
 }
 
+const cameraEars = new Vec2();
+
 /** Hand this frame's sound events to the audio layer, from where the player is standing. */
 function hearGame() {
   const { player, cam } = game;
   // on the title screen the film's camera is the ears
   if (cam)
-    sound.setListener(cam.x, cam.y, Math.atan2(cam.lookY - cam.y, cam.lookX - cam.x));
+    sound.setListener(cameraEars.setScalar(cam.x, cam.y), Math.atan2(cam.lookY - cam.y, cam.lookX - cam.x));
   else
-    sound.setListener(player.pos.x, player.pos.y, player.angle);
+    sound.setListener(player.pos, player.angle);
   sound.setScene(game.state, game.levelIndex);
   for (const event of game.events) {
     if (cam)

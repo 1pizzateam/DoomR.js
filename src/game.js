@@ -469,10 +469,10 @@ export class Game {
       inter.pause = 0.35;
   }
 
-  /** Queue a sound event at a position (the player's, when none is given). */
+  /** Queue a sound event (carrying a `pos` Vec2 copy) at a position (the player's, when none is given). */
   emit(type, position = null, extra = {}) {
     const at = position ?? this.player.pos;
-    this.events.push({ type, x: at.x, y: at.y, visible: this.fog ? this.fog.canSee(at.x, at.y) : true, ...extra });
+    this.events.push({ type, pos: at.clone(), x: at.x, y: at.y, visible: this.fog ? this.fog.canSee(at.x, at.y) : true, ...extra });
     if (this.events.length > 256)
       this.events.splice(0, this.events.length - 256);
   }

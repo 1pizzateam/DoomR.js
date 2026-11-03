@@ -2,7 +2,7 @@
  * Sound for the game, synthesised live with the Web Audio API: there are no audio files,
  * in the same spirit as the line-only graphics.
  *
- * The game never calls this directly. It emits plain events ({ type, x, y, ... }) that
+ * The game never calls this directly. It emits plain events ({ type, pos, x, y, ... }) that
  * main.js hands to Sound.handle(), so the rules stay headless and testable.
  * A recipe draws one sound into a bus node and returns how long it lasts and how much
  * of it should go to the room reverb. They also run in an OfflineAudioContext, which is
@@ -22,16 +22,17 @@ const clamp = Utils.clamp;
 const rand = Rand.float;
 const scratchDelta = new Vec2();
 const scratchRight = new Vec2(1, 0);
+const ORIGIN = new Vec2();
 
 /**
- * Where a sound at (x, y) is heard from a listener at (x, y) looking along `angle`.
+ * Where a sound at `sourcePos` (Vec2) is heard from a listener at `listenerPos` (Vec2) looking along `angle`.
  * Sound fades with distance and pans left/right by where it is relative to the facing
  * direction. In the game's plane, "right" of a viewer looking along `angle` is (-sin, cos).
  */
-export function spatial(listener, x, y, { reference = 220, range = 1000 } = {}) {
-  scratchDelta.setScalar(x - listener.x, y - listener.y);
+export function spatial(listenerPos, sourcePos, { angle = 0, reference = 220, range = 1000 } = {}) {
+  scratchDelta.subVectors(sourcePos, listenerPos);
   const distance = scratchDelta.getMagnitude();
-  scratchRight.setRadian(listener.angle + Trigo.halfpi);
+  scratchRight.setRadian(angle + Trigo.halfpi);
   const side = distance < 1 ? 0 : scratchDelta.dotProduct(scratchRight) / distance;
   // a source right on top of the listener has no direction, so ease the pan in
   const pan = clamp(side * Math.min(1, distance / 70), -1, 1) * 0.9;
@@ -868,7 +869,7 @@ export class Sound {
     this.reverb = null;
     this.ambient = null;
     this.music = null;
-    this.listener = { x: 0, y: 0, angle: 0 };
+    this.listener = { pos: new Vec2(), angle: 0 };
     this.muted = readMuted();
     this.volume = 0.8;
     this.lastPlayed = new Map();
@@ -953,9 +954,9 @@ export class Sound {
     this.ambient = level;
   }
 
-  setListener(x, y, angle) {
-    this.listener.x = x;
-    this.listener.y = y;
+  /** `pos` is a Vec2 (copied, not retained); `angle` is the facing in radians. */
+  setListener(pos, angle) {
+    this.listener.pos.copy(pos);
     this.listener.angle = angle;
   }
 
@@ -1034,7 +1035,7 @@ export class Sound {
 
   handle(event) {
     for (const play of route(event))
-      this.play(play.name, { ...play, x: event.x, y: event.y, visible: event.visible !== false });
+      this.play(play.name, { ...play, pos: event.pos, visible: event.visible !== false });
   }
 
   /** Briefly dips the music and ambient beds; a shallower dip never weakens an active deeper one. */
@@ -1051,7 +1052,7 @@ export class Sound {
     gain.setTargetAtTime(1, now + DUCK_HOLD, DUCK_RELEASE);
   }
 
-  play(name, { x = 0, y = 0, local = false, delay = 0, visible = true, pitch = false, params = {}, duck = 0 } = {}) {
+  play(name, { pos = ORIGIN, local = false, delay = 0, visible = true, pitch = false, params = {}, duck = 0 } = {}) {
     const { ctx } = this;
     if (!ctx || this.muted || ctx.state !== 'running')
       return;
@@ -1061,7 +1062,7 @@ export class Sound {
       return;
     this.lastPlayed.set(name, now);
 
-    const place = local ? { pan: 0, gain: 1 } : spatial(this.listener, x, y);
+    const place = local ? { pan: 0, gain: 1 } : spatial(this.listener.pos, pos, this.listener);
     if (place.gain < 0.01)
       return;
 

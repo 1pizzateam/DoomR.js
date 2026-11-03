@@ -1884,23 +1884,24 @@ const tests = {
   },
 
   'sound is placed by distance and by which side of the listener it is on'() {
-    const listener = { x: 0, y: 0, angle: 0 };
+    const listener = new Vec2(0, 0);
+    const south = { angle: Math.PI / 2 };
     // facing east, "right" is south (+y) in the game's plane
-    assert.ok(spatial(listener, 200, 200).pan > 0.3, 'a sound to the right must pan right');
-    assert.ok(spatial(listener, 200, -200).pan < -0.3, 'a sound to the left must pan left');
-    assert.ok(Math.abs(spatial(listener, 300, 0).pan) < 1e-9, 'a sound dead ahead is centred');
-    assert.ok(Math.abs(spatial(listener, -300, 0).pan) < 1e-9, 'so is one dead behind');
+    assert.ok(spatial(listener, new Vec2(200, 200)).pan > 0.3, 'a sound to the right must pan right');
+    assert.ok(spatial(listener, new Vec2(200, -200)).pan < -0.3, 'a sound to the left must pan left');
+    assert.ok(Math.abs(spatial(listener, new Vec2(300, 0)).pan) < 1e-9, 'a sound dead ahead is centred');
+    assert.ok(Math.abs(spatial(listener, new Vec2(-300, 0)).pan) < 1e-9, 'so is one dead behind');
     // turning to face south, the same sound is now on the left
-    assert.ok(spatial({ ...listener, angle: Math.PI / 2 }, 200, 200).pan > 0.3 === false);
-    assert.ok(spatial({ ...listener, angle: Math.PI / 2 }, -200, 200).pan > 0.3, 'facing south, west is on the right');
+    assert.ok(spatial(listener, new Vec2(200, 200), south).pan > 0.3 === false);
+    assert.ok(spatial(listener, new Vec2(-200, 200), south).pan > 0.3, 'facing south, west is on the right');
     // louder when near, silent when out of range, and right on top of the listener it is centred and full
-    const gains = [0, 100, 300, 600, 900].map((d) => spatial(listener, d, 0).gain);
+    const gains = [0, 100, 300, 600, 900].map((d) => spatial(listener, new Vec2(d, 0)).gain);
     for (let i = 1; i < gains.length; i++)
       assert.ok(gains[i] < gains[i - 1], 'gain must fall with distance');
-    assert.equal(spatial(listener, 0, 0).gain, 1);
-    assert.equal(spatial(listener, 0, 0).pan, 0);
-    assert.equal(spatial(listener, 5000, 0).gain, 0, 'out of range is silent');
-    assert.ok(Math.abs(spatial(listener, 0, 20).pan) < 0.3, 'a source very close has a soft pan');
+    assert.equal(spatial(listener, new Vec2(0, 0)).gain, 1);
+    assert.equal(spatial(listener, new Vec2(0, 0)).pan, 0);
+    assert.equal(spatial(listener, new Vec2(5000, 0)).gain, 0, 'out of range is silent');
+    assert.ok(Math.abs(spatial(listener, new Vec2(0, 20)).pan) < 0.3, 'a source very close has a soft pan');
   },
 
   'only the player leaves bloody footprints; monsters walk through blood cleanly, and prints are capped'() {
@@ -7810,16 +7811,131 @@ const tests = {
     }
   },
 
+  'AC-1 spatial takes listener and source Vec2s and pans by side'() {
+    const listener = new Vec2(0, 0);
+    const right = spatial(listener, new Vec2(200, 200), { angle: 0 });
+    const left = spatial(listener, new Vec2(200, -200), { angle: 0 });
+    assert.ok(right.pan > 0.3);
+    assert.ok(left.pan < -0.3);
+    for (const key of ['pan', 'gain', 'distance'])
+      assert.equal(typeof right[key], 'number');
+    assert.ok(spatial.length <= 3, 'no scalar coordinate parameters');
+  },
+
+  'AC-2 setListener takes a Vec2 and copies it'() {
+    const sound = new Sound();
+    const pos = new Vec2(100, 100);
+    sound.setListener(pos, Math.PI / 2);
+    pos.setScalar(9999, 9999);
+    assert.equal(sound.listener.pos.x, 100);
+    assert.equal(sound.listener.pos.y, 100);
+    assert.equal(sound.listener.angle, Math.PI / 2);
+    assert.ok(spatial(sound.listener.pos, new Vec2(300, 100), sound.listener).pan < -0.3);
+  },
+
+  'AC-3 play places a sound by its pos Vec2'() {
+    const original = RECIPES.dry;
+    RECIPES.dry = () => ({ wet: 0 });
+    try {
+      const buses = [];
+      const makeSound = () => {
+        const sound = new Sound();
+        sound.master = { };
+        sound.ctx = {
+          currentTime: 10,
+          state: 'running',
+          createGain: () => {
+            const node = { gain: { value: 0 }, connect() {} };
+            buses.push(node);
+            return node;
+          },
+        };
+        return sound;
+      };
+      makeSound().play('dry', { pos: new Vec2(150, 0) });
+      assert.equal(buses.length, 1);
+      assert.ok(Math.abs(buses[0].gain.value - 1 / (1 + (150 / 220) ** 2)) < 1e-9);
+      buses.length = 0;
+      makeSound().play('dry', { pos: new Vec2(5000, 0) });
+      assert.equal(buses.length, 0, 'out of range creates no bus');
+      makeSound().play('dry', { pos: new Vec2(5000, 0), local: true });
+      assert.equal(buses[0].gain.value, 1, 'local ignores pos');
+      buses.length = 0;
+      makeSound().play('dry');
+      assert.equal(buses[0].gain.value, 1, 'no pos plays at the origin');
+    } finally {
+      RECIPES.dry = original;
+    }
+  },
+
+  'AC-4 distance and azimuth curves are preserved'() {
+    const listener = new Vec2(0, 0);
+    const gains = [0, 100, 300, 600, 900, 1000].map((d) => {
+      const { gain } = spatial(listener, new Vec2(d, 0));
+      assert.ok(Math.abs(gain - 1 / (1 + (d / 220) ** 2)) < 1e-12);
+      return gain;
+    });
+    for (let i = 1; i < gains.length; i++)
+      assert.ok(gains[i] < gains[i - 1]);
+    assert.equal(spatial(listener, new Vec2(1000.5, 0)).gain, 0);
+    assert.equal(spatial(listener, new Vec2(5000, 0)).gain, 0);
+    assert.equal(spatial(listener, new Vec2(0, 0)).gain, 1);
+    assert.equal(spatial(listener, new Vec2(0, 0)).pan, 0);
+    assert.ok(Math.abs(spatial(listener, new Vec2(0, 20)).pan) < 0.3);
+    assert.ok(Math.abs(spatial(listener, new Vec2(0, 70)).pan - 0.9) < 1e-9);
+  },
+
+  'AC-5 azimuth follows the listener orientation'() {
+    const listener = new Vec2(0, 0);
+    const south = { angle: Math.PI / 2 };
+    assert.ok(!(spatial(listener, new Vec2(200, 200), south).pan > 0.3));
+    assert.ok(spatial(listener, new Vec2(-200, 200), south).pan > 0.3);
+    assert.ok(Math.abs(spatial(listener, new Vec2(300, 0), { angle: 0 }).pan) < 1e-9);
+    assert.ok(Math.abs(spatial(listener, new Vec2(-300, 0), { angle: 0 }).pan) < 1e-9);
+  },
+
+  'AC-6 emit queues an independent Vec2 pos copy'() {
+    const game = fresh();
+    const at = new Vec2(320, 448);
+    game.emit('step', at);
+    const event = game.events[game.events.length - 1];
+    assert.ok(event.pos instanceof Vec2);
+    assert.equal(event.pos.x, 320);
+    assert.equal(event.pos.y, 448);
+    assert.notEqual(event.pos, at);
+    at.setScalar(0, 0);
+    assert.equal(event.pos.x, 320);
+    assert.equal(event.x, 320);
+    game.events.length = 0;
+    game.emit('step');
+    const own = game.events[0];
+    assert.equal(own.pos.x, game.player.pos.x);
+    assert.equal(own.pos.y, game.player.pos.y);
+    assert.notEqual(own.pos, game.player.pos);
+  },
+
+  'AC-7 handle routes event.pos and defaults to the origin'() {
+    const sound = new Sound();
+    const played = [];
+    sound.play = (name, opts) => played.push({ name, ...opts });
+    const pos = new Vec2(200, 0);
+    sound.handle({ type: 'cacheOpen', pos, visible: true });
+    assert.equal(played[0].pos, pos);
+    played.length = 0;
+    sound.handle({ type: 'chaingunSpin', heat: 0.6 });
+    assert.equal(played.length, 1);
+  },
+
   'AC-7 chest open sound routes spatially and the automap marks chests'() {
     const played = [];
     const sound = new Sound();
     sound.play = (name, opts) => played.push({ name, ...opts });
-    sound.handle({ type: 'cacheOpen', x: 10, y: 20, visible: true });
+    sound.handle({ type: 'cacheOpen', pos: new Vec2(10, 20), visible: true });
     assert.equal(played.length, 1);
     assert.equal(played[0].name, 'cacheOpen');
     assert.equal(played[0].local, undefined, 'the chest sound is spatial');
-    assert.deepEqual([played[0].x, played[0].y], [10, 20]);
-    sound.handle({ type: 'cacheEmpty', x: 10, y: 20 });
+    assert.deepEqual([played[0].pos.x, played[0].pos.y], [10, 20]);
+    sound.handle({ type: 'cacheEmpty', pos: new Vec2(10, 20) });
     assert.equal(played.length, 1, 'emptying a chest is silent');
     assert.equal(typeof RECIPES.cacheOpen, 'function');
 
@@ -8320,7 +8436,7 @@ const tests = {
     const sound = new Sound();
     const played = [];
     sound.play = (name, opts) => played.push({ name, ...opts });
-    sound.handle({ type: 'fire', pump: true, x: 0, y: 0 });
+    sound.handle({ type: 'fire', pump: true, pos: new Vec2(0, 0) });
     assert.equal(played.find((p) => p.name === 'pump').delay, SHOTGUN_PUMP.open, 'AC-6 pump delay');
     assert.equal(played.find((p) => p.name === 'fire').duck, WEAPONS.shotgun.feel.duck);
     played.length = 0;
@@ -8378,7 +8494,7 @@ const tests = {
       },
     };
     sound.muted = false;
-    sound.handle({ type: 'rocketFire', x: 0, y: 0 });
+    sound.handle({ type: 'rocketFire', pos: new Vec2(0, 0) });
     const targets = log.filter((e) => e[0] === 'target');
     assert.equal(targets[0][1], Math.max(DUCK_FLOOR, 1 - WEAPONS.rocket.feel.duck), 'AC-8 duck depth');
     assert.ok(targets[0][1] >= 0.5, 'AC-8 duck respects floor');
@@ -8390,7 +8506,7 @@ const tests = {
     sound.muted = true;
     log.length = 0;
     ctx.currentTime += 1;
-    sound.handle({ type: 'rocketFire', x: 0, y: 0 });
+    sound.handle({ type: 'rocketFire', pos: new Vec2(0, 0) });
     assert.equal(log.length, 0, 'AC-8 muted schedules no duck');
   },
 
