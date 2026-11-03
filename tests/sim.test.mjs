@@ -143,6 +143,67 @@ function withWallWorld(check) {
   }
 }
 
+function audioHarness() {
+  const nodes = [];
+  const param = () => ({ setValueAtTime() {}, exponentialRampToValueAtTime() {}, value: 0 });
+  const ctx = {
+    state: 'running',
+    currentTime: 100,
+    sampleRate: 44100,
+    createBuffer: (ch, len) => ({ getChannelData: () => new Float32Array(len) }),
+    createWaveShaper: () => ({ curve: null, connect() {} }),
+    createOscillator: () => ({ type: 'sine', frequency: param(), connect() {}, start() {}, stop() {} }),
+    createGain: () => {
+      const node = { gain: param(), connect() {} };
+      nodes.push({ kind: 'gain', node });
+      return node;
+    },
+    createBiquadFilter: () => {
+      const node = { type: 'lowpass', frequency: param(), Q: param(), connect() {} };
+      nodes.push({ kind: 'biquad', node });
+      return node;
+    },
+    createBufferSource: () => ({ buffer: null, connect() {}, start() {}, stop() {} }),
+    createStereoPanner: () => {
+      const node = { pan: { value: 0 }, connect() {} };
+      nodes.push({ kind: 'pan', node });
+      return node;
+    },
+  };
+  const sound = new Sound();
+  sound.ctx = ctx;
+  sound.master = { connect() {} };
+  sound.reverb = { connect() {} };
+  sound.duck = { gain: { cancelScheduledValues() {}, setTargetAtTime() {} } };
+  sound.muted = false;
+  const calls = [];
+  const originals = {};
+  const wrap = () => {
+    for (const name of Object.keys(RECIPES)) {
+      originals[name] = RECIPES[name];
+      RECIPES[name] = (c, bus, t, params) => {
+        calls.push({ name, t, params: { ...params }, bus });
+        return originals[name](c, bus, t, params);
+      };
+    }
+  };
+  const restore = () => {
+    for (const name of Object.keys(originals))
+      RECIPES[name] = originals[name];
+  };
+  return { sound, ctx, calls, nodes, wrap, restore };
+}
+
+function withAudio(fn) {
+  const h = audioHarness();
+  h.wrap();
+  try {
+    fn(h);
+  } finally {
+    h.restore();
+  }
+}
+
 const tests = {
   'AC-1 F maps to a one-shot grenade action and stays out of held fire'() {
     const prevDoc = globalThis.document;
@@ -7813,8 +7874,8 @@ const tests = {
 
   'AC-1 spatial takes listener and source Vec2s and pans by side'() {
     const listener = new Vec2(0, 0);
-    const right = spatial(listener, new Vec2(200, 200), { angle: 0 });
-    const left = spatial(listener, new Vec2(200, -200), { angle: 0 });
+    const right = { ...spatial(listener, new Vec2(200, 200), { angle: 0 }) };
+    const left = { ...spatial(listener, new Vec2(200, -200), { angle: 0 }) };
     assert.ok(right.pan > 0.3);
     assert.ok(left.pan < -0.3);
     for (const key of ['pan', 'gain', 'distance'])
@@ -7933,7 +7994,7 @@ const tests = {
     sound.handle({ type: 'cacheOpen', pos: new Vec2(10, 20), visible: true });
     assert.equal(played.length, 1);
     assert.equal(played[0].name, 'cacheOpen');
-    assert.equal(played[0].local, undefined, 'the chest sound is spatial');
+    assert.ok(!played[0].local, 'the chest sound is spatial');
     assert.deepEqual([played[0].pos.x, played[0].pos.y], [10, 20]);
     sound.handle({ type: 'cacheEmpty', pos: new Vec2(10, 20) });
     assert.equal(played.length, 1, 'emptying a chest is silent');
@@ -8508,6 +8569,143 @@ const tests = {
     ctx.currentTime += 1;
     sound.handle({ type: 'rocketFire', pos: new Vec2(0, 0) });
     assert.equal(log.length, 0, 'AC-8 muted schedules no duck');
+  },
+
+  'AC-1 spatial returns a shared scratch object updated in place'() {
+    const a = spatial(new Vec2(0, 0), new Vec2(100, 0), { angle: 0 });
+    const b = spatial(new Vec2(0, 0), new Vec2(0, 300), { angle: 0 });
+    assert.equal(a, b);
+    assert.ok(Math.abs(b.distance - 300) < 1e-9);
+    assert.deepEqual(Object.keys(b), ['pan', 'gain', 'distance']);
+  },
+
+  'AC-3 spatial matches the reference attenuation and pan formula'() {
+    const listener = new Vec2(10, -20);
+    const angle = 0.7;
+    const dirs = [[-Math.sin(angle), Math.cos(angle)], [Math.sin(angle), -Math.cos(angle)], [Math.cos(angle), Math.sin(angle)], [-Math.cos(angle), -Math.sin(angle)]];
+    for (const d of [0, 20, 100, 300, 600, 1000, 5000])
+      for (const [dx, dy] of dirs) {
+        const src = new Vec2(listener.x + dx * d, listener.y + dy * d);
+        const got = spatial(listener, src, { angle });
+        const distance = Math.hypot(src.x - listener.x, src.y - listener.y);
+        const side = distance < 1 ? 0 : ((src.x - listener.x) * -Math.sin(angle) + (src.y - listener.y) * Math.cos(angle)) / distance;
+        const pan = Math.max(-1, Math.min(1, side * Math.min(1, distance / 70))) * 0.9;
+        const gain = distance > 1000 ? 0 : 1 / (1 + (distance / 220) ** 2);
+        assert.ok(Math.abs(got.pan - pan) < 1e-12, `pan at ${d}`);
+        if (Math.abs(distance - 1000) > 1e-6)
+          assert.ok(Math.abs(got.gain - gain) < 1e-12, `gain at ${d}`);
+        assert.ok(Math.abs(got.distance - distance) < 1e-9, `distance at ${d}`);
+      }
+    assert.ok(spatial(new Vec2(0, 0), new Vec2(1000, 0)).gain > 0);
+    assert.equal(spatial(new Vec2(0, 0), new Vec2(1000.5, 0)).gain, 0);
+  },
+
+  'AC-2 handle plays the same recipes with unchanged delay duck and params'() {
+    withAudio(({ sound, ctx, calls }) => {
+      const at = (event) => {
+        calls.length = 0;
+        ctx.currentTime += 10;
+        sound.handle({ pos: new Vec2(0, 0), ...event });
+        return calls.map((c) => ({ name: c.name, params: c.params, t: c.t }));
+      };
+      const fire = at({ type: 'fire', pump: true });
+      assert.deepEqual(fire.map((c) => c.name), ['fire', 'pump']);
+      assert.ok(Math.abs(fire[1].t - fire[0].t - SHOTGUN_PUMP.open) < 1e-9);
+      assert.equal(at({ type: 'chaingun', heat: 0.6 })[0].params.heat, 0.6);
+      assert.equal(at({ type: 'chainsaw', hit: true })[0].params.hit, true);
+      assert.equal(at({ type: 'stomp', power: 0.5 })[0].params.power, 0.5);
+      assert.equal(at({ type: 'pain', kind: 'brute' })[0].name, 'painBrute');
+      assert.equal(at({ type: 'impact', surface: 'door' })[0].name, 'impactDoor');
+    });
+    const src = readFileSync(new URL('../src/audio.js', import.meta.url), 'utf8');
+    assert.ok(!/\{\s*\.\.\./.test(src.slice(src.indexOf('function route('))), 'no object spread in route/handle/play');
+  },
+
+  'AC-4 static routes are reused and dynamic params never leak'() {
+    withAudio(({ sound, ctx, calls }) => {
+      const run = (event) => {
+        calls.length = 0;
+        ctx.currentTime += 10;
+        sound.handle({ pos: new Vec2(0, 0), ...event });
+        return calls[0].params;
+      };
+      const k1 = run({ type: 'knife' });
+      const k2 = run({ type: 'knife' });
+      assert.deepEqual(Object.keys(k1), Object.keys(k2));
+      assert.equal(run({ type: 'chaingun', heat: 0.6 }).heat, 0.6);
+      assert.equal(run({ type: 'chaingun' }).heat, 0);
+      assert.equal(run({ type: 'chainsaw', hit: true }).hit, true);
+      assert.equal(run({ type: 'chainsaw' }).hit, false);
+    });
+  },
+
+  'AC-5 pump route is not sticky'() {
+    withAudio(({ sound, ctx, calls }) => {
+      const names = (event) => {
+        calls.length = 0;
+        ctx.currentTime += 10;
+        sound.handle({ pos: new Vec2(0, 0), ...event });
+        return calls.map((c) => c.name);
+      };
+      assert.deepEqual(names({ type: 'fire' }), ['fire']);
+      assert.deepEqual(names({ type: 'fire', pump: true }), ['fire', 'pump']);
+      assert.deepEqual(names({ type: 'fire' }), ['fire']);
+      assert.deepEqual(names({ type: 'knife' }), ['knife']);
+    });
+  },
+
+  'AC-6 voiced events resolve recipes by kind and unknown events are silent'() {
+    withAudio(({ sound, ctx, calls }) => {
+      for (const type of ['pain', 'die', 'alert'])
+        for (const kind of ['imp', 'brute', 'skull', 'crawler', 'swarmer', 'wraith', undefined]) {
+          const name = `${type}${kind ? kind[0].toUpperCase() + kind.slice(1) : 'Imp'}`;
+          if (typeof RECIPES[name] !== 'function')
+            continue;
+          calls.length = 0;
+          ctx.currentTime += 10;
+          sound.handle({ type, kind, pos: new Vec2(0, 0) });
+          assert.deepEqual(calls.map((c) => c.name), [name]);
+        }
+      calls.length = 0;
+      sound.handle({ type: 'nonsense', pos: new Vec2(0, 0) });
+      assert.equal(calls.length, 0);
+    });
+  },
+
+  'AC-7 world and local placement keep their bus gain and pan'() {
+    withAudio(({ sound, ctx, nodes }) => {
+      sound.listener.pos.setScalar(0, 0);
+      sound.listener.angle = 0;
+      const pos = new Vec2(0, 150);
+      const expected = spatial(sound.listener.pos, pos, sound.listener);
+      const gain = expected.gain;
+      const pan = expected.pan;
+      sound.play('impactWall', { pos, visible: false });
+      const bus = nodes.find((n) => n.kind === 'gain').node;
+      assert.ok(Math.abs(bus.gain.value - gain * 0.55) < 1e-12);
+      assert.equal(nodes.find((n) => n.kind === 'biquad').node.frequency.value, 800);
+      assert.ok(Math.abs(nodes.find((n) => n.kind === 'pan').node.pan.value - pan) < 1e-12);
+      nodes.length = 0;
+      ctx.currentTime += 10;
+      sound.play('dry', { local: true });
+      assert.equal(nodes.find((n) => n.kind === 'gain').node.gain.value, 1);
+      assert.equal(nodes.find((n) => n.kind === 'pan').node.pan.value, 0);
+    });
+  },
+
+  'AC-8 pitched sounds get a pitch in range and never leak it'() {
+    withAudio(({ sound, ctx, calls }) => {
+      for (let i = 0; i < 5; i++) {
+        calls.length = 0;
+        ctx.currentTime += 10;
+        sound.handle({ type: 'knife', pos: new Vec2(0, 0) });
+        assert.ok(calls[0].params.pitch >= 0.9 && calls[0].params.pitch <= 1.12);
+      }
+      calls.length = 0;
+      ctx.currentTime += 10;
+      sound.handle({ type: 'dry', pos: new Vec2(0, 0) });
+      assert.equal(calls[0].params.pitch, undefined);
+    });
   },
 
   'AC-1 renderRecipe is not exported or defined in audio module'() {

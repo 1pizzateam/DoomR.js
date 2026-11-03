@@ -23,6 +23,7 @@ const rand = Rand.float;
 const scratchDelta = new Vec2();
 const scratchRight = new Vec2(1, 0);
 const ORIGIN = new Vec2();
+const scratchSpatial = { pan: 0, gain: 0, distance: 0 };
 
 /**
  * Where a sound at `sourcePos` (Vec2) is heard from a listener at `listenerPos` (Vec2) looking along `angle`.
@@ -37,7 +38,10 @@ export function spatial(listenerPos, sourcePos, { angle = 0, reference = 220, ra
   // a source right on top of the listener has no direction, so ease the pan in
   const pan = clamp(side * Math.min(1, distance / 70), -1, 1) * 0.9;
   const gain = distance > range ? 0 : 1 / (1 + (distance / reference) ** 2);
-  return { pan, gain, distance };
+  scratchSpatial.pan = pan;
+  scratchSpatial.gain = gain;
+  scratchSpatial.distance = distance;
+  return scratchSpatial;
 }
 
 // ---- building blocks ------------------------------------------------------------------------
@@ -780,62 +784,92 @@ const MIN_INTERVAL = {
 };
 
 /** Which recipes an event plays, and whether it is a sound in the world or one in the player's head. */
+const LOCAL_PLACE = { pan: 0, gain: 1 };
+const EMPTY_PARAMS = {};
+const scratchPitchParams = {};
+const scratchDispatch = { pos: undefined, local: false, delay: 0, visible: true, pitch: false, params: EMPTY_PARAMS, duck: 0 };
+
+function def(name, local, pitch, delay, duck, params) {
+  return { name, local, pitch, delay, duck, params };
+}
+
+const R_FIRE = def('fire', true, false, 0, WEAPONS.shotgun.feel.duck, EMPTY_PARAMS);
+const R_PUMP = def('pump', true, false, SHOTGUN_PUMP.open, 0, EMPTY_PARAMS);
+const ROUTE_FIRE = [R_FIRE];
+const ROUTE_FIRE_PUMP = [R_FIRE, R_PUMP];
+const R_CHAINSAW = def('chainsaw', true, true, 0, 0, { hit: false });
+const ROUTE_CHAINSAW = [R_CHAINSAW];
+const R_CHAINGUN = def('chaingun', true, true, 0, WEAPONS.chaingun.feel.duck, { heat: 0 });
+const ROUTE_CHAINGUN = [R_CHAINGUN];
+const R_CHAINGUN_SPIN = def('chaingunSpin', true, false, 0, 0, { heat: 0 });
+const ROUTE_CHAINGUN_SPIN = [R_CHAINGUN_SPIN];
+const R_STOMP = def('stomp', false, false, 0, 0, { power: undefined });
+const ROUTE_STOMP = [R_STOMP];
+const R_WEAPON_SWITCH = def('weaponSwitch', true, false, 0, 0, EMPTY_PARAMS);
+const R_CHAINSAW_UP = def('chainsawUp', true, true, 0, 0, EMPTY_PARAMS);
+const ROUTE_SWITCH_SAW = [R_WEAPON_SWITCH, R_CHAINSAW_UP];
+const ROUTE_SWITCH = [R_WEAPON_SWITCH];
+const ROUTE_NONE = [];
+
+// one shared single-descriptor route per plain recipe: [local, pitch, duck]
+const STATIC_ROUTES = new Map();
+function addStatic(type, name, local = false, pitch = false, duck = 0) {
+  STATIC_ROUTES.set(type, [def(name, local, pitch, 0, duck, EMPTY_PARAMS)]);
+}
+addStatic('knife', 'knife', true, true);
+addStatic('chainsawIdle', 'chainsawIdle', true, true);
+addStatic('chainsawUp', 'chainsawUp', true, true);
+addStatic('rocketFire', 'rocketFire', true, false, WEAPONS.rocket.feel.duck);
+for (const name of ['weaponPickup', 'armor', 'powerup', 'automap', 'dry', 'hurt', 'death', 'heartbeat', 'clear', 'secret', 'tallyBoom', 'acid', 'keycard'])
+  addStatic(name, name, true);
+addStatic('wind', 'wind', true, true);
+addStatic('tallyTick', 'tallyTick', true, true);
+for (const name of ['teleport', 'flesh', 'slam', 'gib', 'leap', 'fireball', 'explode', 'boom', 'swing', 'cacheOpen', 'doorOpen', 'doorClose', 'crush', 'locked'])
+  addStatic(name, name);
+for (const name of ['rake', 'bite', 'clang'])
+  addStatic(name, name, false, true);
+addStatic('impactDoor', 'impactDoor');
+addStatic('impactWall', 'impactWall');
+addStatic('pickupHealth', 'pickupHealth', true);
+addStatic('pickupAmmo', 'pickupAmmo', true);
+addStatic('stepWet', 'stepWet', false, true);
+addStatic('step', 'step', false, true);
+
+// voiced routes (dieImp, painSkull, ...) are built once per type and kind, then reused
+const VOICED_ROUTES = new Map();
+function voicedRoute(type, kind) {
+  let byKind = VOICED_ROUTES.get(type);
+  if (!byKind)
+    VOICED_ROUTES.set(type, byKind = new Map());
+  let found = byKind.get(kind);
+  if (!found)
+    byKind.set(kind, found = [def(`${type}${kind ? kind[0].toUpperCase() + kind.slice(1) : 'Imp'}`, false, false, 0, 0, EMPTY_PARAMS)]);
+  return found;
+}
+
 function route(event) {
-  // monsters speak with the voice of their kind: the recipes are named dieImp, painSkull, alertBoss...
-  const voice = event.kind ? event.kind[0].toUpperCase() + event.kind.slice(1) : 'Imp';
   switch (event.type) {
-    case 'fire': return [{ name: 'fire', local: true, duck: WEAPONS.shotgun.feel.duck }, ...(event.pump ? [{ name: 'pump', local: true, delay: SHOTGUN_PUMP.open }] : [])];
-    case 'knife': return [{ name: 'knife', local: true, pitch: true }];
-    case 'chainsaw': return [{ name: 'chainsaw', local: true, pitch: true, params: { hit: Boolean(event.hit) } }];
-    case 'chainsawIdle': return [{ name: 'chainsawIdle', local: true, pitch: true }];
-    case 'chainsawUp': return [{ name: 'chainsawUp', local: true, pitch: true }];
-    case 'chaingun': return [{ name: 'chaingun', local: true, pitch: true, duck: WEAPONS.chaingun.feel.duck, params: { heat: event.heat ?? 0 } }];
-    case 'chaingunSpin': return [{ name: 'chaingunSpin', local: true, params: { heat: event.heat ?? 0 } }];
-    case 'rocketFire': return [{ name: 'rocketFire', local: true, duck: WEAPONS.rocket.feel.duck }];
-    case 'weaponPickup': return [{ name: 'weaponPickup', local: true }];
-    case 'weaponSwitch':
-      return event.weapon === 'chainsaw'
-        ? [{ name: 'weaponSwitch', local: true }, { name: 'chainsawUp', local: true, pitch: true }]
-        : [{ name: 'weaponSwitch', local: true }];
-    case 'armor': return [{ name: 'armor', local: true }];
-    case 'powerup': return [{ name: 'powerup', local: true }];
-    case 'automap': return [{ name: 'automap', local: true }];
-    case 'teleport': return [{ name: 'teleport' }];
-    case 'wind': return [{ name: 'wind', local: true, pitch: true }];
-    case 'dry': return [{ name: 'dry', local: true }];
-    case 'impact': return [{ name: event.surface === 'door' ? 'impactDoor' : 'impactWall' }];
-    case 'flesh': return [{ name: 'flesh' }];
-    case 'die': return [{ name: `die${voice}` }];
-    case 'pain': return [{ name: `pain${voice}` }];
-    case 'alert': return [{ name: `alert${voice}` }];
-    case 'stomp': return [{ name: 'stomp', params: { power: event.power } }];
-    case 'slam': return [{ name: 'slam' }];
-    case 'gib': return [{ name: 'gib' }];
-    case 'leap': return [{ name: 'leap' }];
-    case 'rake': return [{ name: 'rake', pitch: true }];
-    case 'bite': return [{ name: 'bite', pitch: true }];
-    case 'fireball': return [{ name: 'fireball' }];
-    case 'explode': return [{ name: 'explode' }];
-    case 'boom': return [{ name: 'boom' }];
-    case 'clang': return [{ name: 'clang', pitch: true }];
-    case 'swing': return [{ name: 'swing' }];
-    case 'hurt': return [{ name: 'hurt', local: true }];
-    case 'death': return [{ name: 'death', local: true }];
-    case 'heartbeat': return [{ name: 'heartbeat', local: true }];
-    case 'pickup': return [{ name: event.kind === 'health' ? 'pickupHealth' : 'pickupAmmo', local: true }];
-    case 'cacheOpen': return [{ name: 'cacheOpen' }];
-    case 'doorOpen': return [{ name: 'doorOpen' }];
-    case 'doorClose': return [{ name: 'doorClose' }];
-    case 'step': return [{ name: event.wet ? 'stepWet' : 'step', pitch: true }];
-    case 'clear': return [{ name: 'clear', local: true }];
-    case 'secret': return [{ name: 'secret', local: true }];
-    case 'tallyTick': return [{ name: 'tallyTick', local: true, pitch: true }];
-    case 'tallyBoom': return [{ name: 'tallyBoom', local: true }];
-    case 'acid': return [{ name: 'acid', local: true }];
-    case 'crush': return [{ name: 'crush' }];
-    case 'keycard': return [{ name: 'keycard', local: true }];
-    case 'locked': return [{ name: 'locked' }];
-    default: return [];
+    case 'fire': return event.pump ? ROUTE_FIRE_PUMP : ROUTE_FIRE;
+    case 'chainsaw':
+      R_CHAINSAW.params.hit = Boolean(event.hit);
+      return ROUTE_CHAINSAW;
+    case 'chaingun':
+      R_CHAINGUN.params.heat = event.heat ?? 0;
+      return ROUTE_CHAINGUN;
+    case 'chaingunSpin':
+      R_CHAINGUN_SPIN.params.heat = event.heat ?? 0;
+      return ROUTE_CHAINGUN_SPIN;
+    case 'weaponSwitch': return event.weapon === 'chainsaw' ? ROUTE_SWITCH_SAW : ROUTE_SWITCH;
+    case 'impact': return STATIC_ROUTES.get(event.surface === 'door' ? 'impactDoor' : 'impactWall');
+    case 'die':
+    case 'pain':
+    case 'alert': return voicedRoute(event.type, event.kind);
+    case 'stomp':
+      R_STOMP.params.power = event.power;
+      return ROUTE_STOMP;
+    case 'pickup': return STATIC_ROUTES.get(event.kind === 'health' ? 'pickupHealth' : 'pickupAmmo');
+    case 'step': return STATIC_ROUTES.get(event.wet ? 'stepWet' : 'step');
+    default: return STATIC_ROUTES.get(event.type) ?? ROUTE_NONE;
   }
 }
 
@@ -1034,8 +1068,19 @@ export class Sound {
   }
 
   handle(event) {
-    for (const play of route(event))
-      this.play(play.name, { ...play, pos: event.pos, visible: event.visible !== false });
+    const routes = route(event);
+    const visible = event.visible !== false;
+    for (let i = 0; i < routes.length; i++) {
+      const r = routes[i];
+      scratchDispatch.pos = event.pos;
+      scratchDispatch.local = r.local;
+      scratchDispatch.delay = r.delay;
+      scratchDispatch.visible = visible;
+      scratchDispatch.pitch = r.pitch;
+      scratchDispatch.params = r.params;
+      scratchDispatch.duck = r.duck;
+      this.play(r.name, scratchDispatch);
+    }
   }
 
   /** Briefly dips the music and ambient beds; a shallower dip never weakens an active deeper one. */
@@ -1052,7 +1097,7 @@ export class Sound {
     gain.setTargetAtTime(1, now + DUCK_HOLD, DUCK_RELEASE);
   }
 
-  play(name, { pos = ORIGIN, local = false, delay = 0, visible = true, pitch = false, params = {}, duck = 0 } = {}) {
+  play(name, { pos = ORIGIN, local = false, delay = 0, visible = true, pitch = false, params = EMPTY_PARAMS, duck = 0 } = {}) {
     const { ctx } = this;
     if (!ctx || this.muted || ctx.state !== 'running')
       return;
@@ -1062,7 +1107,7 @@ export class Sound {
       return;
     this.lastPlayed.set(name, now);
 
-    const place = local ? { pan: 0, gain: 1 } : spatial(this.listener.pos, pos, this.listener);
+    const place = local ? LOCAL_PLACE : spatial(this.listener.pos, pos, this.listener);
     if (place.gain < 0.01)
       return;
 
@@ -1085,7 +1130,15 @@ export class Sound {
     }
     node.connect(this.master);
 
-    const info = RECIPES[name](ctx, bus, now + delay + 0.005, pitch ? { ...params, pitch: rand(0.9, 1.12) } : params);
+    let recipeParams = params;
+    if (pitch) {
+      for (const key in scratchPitchParams)
+        delete scratchPitchParams[key];
+      Object.assign(scratchPitchParams, params);
+      scratchPitchParams.pitch = rand(0.9, 1.12);
+      recipeParams = scratchPitchParams;
+    }
+    const info = RECIPES[name](ctx, bus, now + delay + 0.005, recipeParams);
     if (info.wet > 0) {
       const send = ctx.createGain();
       send.gain.value = info.wet;
