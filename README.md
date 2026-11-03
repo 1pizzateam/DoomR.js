@@ -33,7 +33,7 @@ Every action can be rebound. Open the CONTROLS page with `F1`, or click CONTROLS
 | N | toggle night vision | printed letter |
 | Tab | automap (`G` grid, `+ / -` zoom) | position |
 | [ / ] | switch level | printed letter |
-| P / Esc | pause | printed letter / position |
+| P / Esc | P toggles pause and resume (ENTER or click also resume); Esc pauses | printed letter / position |
 | F2 | cycle keyboard layout labels | position |
 | F3 | show fps and render scale | position |
 | F1 | open the controls page (rebind any action) | position |

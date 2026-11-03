@@ -9025,7 +9025,131 @@ const tests = {
     const next = after.indexOf('\n## ');
     assert.ok((next < 0 ? after : after.slice(0, next)).includes('#28'));
   },
+
+  'AC-1 pause toggle: main.js resumes from paused on the pause action through start()'() {
+    const src = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    const paused = src.slice(src.indexOf("case 'paused':"), src.indexOf("case 'play':"));
+    assert.ok(paused.includes("input.took('pause')"));
+    assert.ok(paused.includes('start()'));
+    assert.ok(!paused.includes("game.state = 'play'"));
+    const play = src.slice(src.indexOf("case 'play':"), src.indexOf("case 'dead':"));
+    assert.ok(play.includes("input.took('menu') || input.took('pause')"));
+    assert.ok(play.includes("game.state = 'paused'"));
+    assert.ok(play.includes('input.unlock()'));
+  },
+
+  'AC-2 pause toggle: one P press is one pause edge and held repeats never flicker'() {
+    withInput((inp, down, up) => {
+      const key = { code: 'KeyP', which: 80 };
+      down(key);
+      assert.equal(inp.took('pause'), true);
+      inp.endFrame();
+      assert.equal(inp.took('pause'), false);
+      down({ ...key, repeat: true });
+      down({ ...key, repeat: true });
+      assert.equal(inp.took('pause'), false);
+      inp.endFrame();
+      up(key);
+      down(key);
+      assert.equal(inp.took('pause'), true);
+      inp.endFrame();
+      assert.equal(inp.took('pause'), false);
+    });
+  },
+
+  'AC-3 pause toggle: paused freezes the simulation and play resumes it'() {
+    const game = fresh(0);
+    game.state = 'paused';
+    const x = game.player.pos.x;
+    const y = game.player.pos.y;
+    const time = game.stats.time;
+    const dt = 1 / 60;
+    game.update(dt, input({ forward: 1 }));
+    assert.equal(game.player.pos.x, x);
+    assert.equal(game.player.pos.y, y);
+    assert.equal(game.stats.time, time);
+    game.state = 'play';
+    game.update(dt, input({ forward: 1 }));
+    assert.ok(Math.abs(game.stats.time - (time + dt)) < 1e-9);
+  },
+
+  'AC-4 pause toggle: the pause overlay names the default P key'() {
+    const { texts, hud, game } = pausedHud();
+    hud.render(game);
+    assert.ok(texts.includes('press P, ENTER or click to resume'));
+    assert.ok(texts.includes('PAUSED'));
+    assert.ok(texts.includes(hud.controlsEntryText));
+    assert.ok(!texts.includes('click or press ENTER to resume'));
+  },
+
+  'AC-5 pause toggle: the resume prompt follows rebinds and falls back when unbound'() {
+    const { texts, hud, game } = pausedHud();
+    const keymap = new Keymap({ storage: null, navigator: null });
+    keymap.setBinding('pause', 0, 'KeyK');
+    const label = keymap.actionLabel('pause');
+    assert.notEqual(label, 'P');
+    hud.setPauseKeyLabel(label);
+    hud.render(game);
+    assert.ok(texts.includes(`press ${label}, ENTER or click to resume`));
+    texts.length = 0;
+    keymap.clearBinding('pause', 0);
+    assert.equal(keymap.actionLabel('pause'), 'UNBOUND');
+    hud.setPauseKeyLabel(keymap.actionLabel('pause'));
+    hud.render(game);
+    assert.ok(texts.includes('click or press ENTER to resume'));
+    assert.ok(!texts.some((t) => t.includes('UNBOUND, ENTER')));
+  },
+
+  'AC-6 pause toggle: the resume prompt is cached and refreshed only on keymap version change'() {
+    const { hud, game } = pausedHud();
+    const before = hud.resumeText;
+    hud.render(game);
+    hud.render(game);
+    assert.equal(hud.resumeText, before);
+    hud.setPauseKeyLabel(hud.pauseKeyLabel);
+    assert.equal(hud.resumeText, before);
+    const src = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    const at = src.indexOf("hud.setPauseKeyLabel(keymap.actionLabel('pause'))");
+    assert.ok(at > src.indexOf('keymap.version !== hintVersion'));
+    assert.ok(at < src.indexOf('hintVersion = keymap.version'));
+  },
+
+  'AC-7 pause toggle: README P row and CHANGELOG document #31'() {
+    const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const rest = md.slice(md.indexOf('## Controls') + 1);
+    const end = rest.indexOf('\n## ');
+    const section = end < 0 ? rest : rest.slice(0, end);
+    assert.ok(section.split('\n').some((l) => /^\|\s*P \/ Esc\s*\|[^|]*toggles pause and resume/.test(l)));
+    const log = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+    const after = log.slice(log.indexOf('## Unreleased') + 1);
+    const next = after.indexOf('\n## ');
+    assert.ok((next < 0 ? after : after.slice(0, next)).includes('#31'));
+  },
 };
+
+function pausedHud() {
+  const texts = [];
+  const fakeCanvas = {
+    width: 0,
+    height: 0,
+    getContext() {
+      return {
+        setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        fillText(str) { texts.push(str); },
+      };
+    },
+  };
+  const fakeOverlay = {
+    clear() {},
+    glow: { line() {} },
+    crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } },
+  };
+  const game = fresh(0);
+  game.state = 'paused';
+  const hud = new Hud(fakeCanvas, fakeOverlay);
+  hud.resize(1024, 768, 1);
+  return { texts, hud, game };
+}
 
 const withInput = (fn) => {
   const prevDoc = globalThis.document;
