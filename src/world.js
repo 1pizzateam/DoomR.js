@@ -59,13 +59,13 @@ export const LINE_FRAGMENT = lineFogShader.fragment;
 // The colours of a sprite: RoostR's Sprite places it and hands over `vTextureCoord` and `vDepth`.
 export const SPRITE_FRAGMENT = spriteGoreShader.fragment;
 
-export const MONSTER_VERTEX = monster3dShader.vertex;
+const MONSTER_VERTEX = monster3dShader.vertex;
 
 export const MONSTER_FRAGMENT = monster3dShader.fragment;
 
-export const VIEWMODEL_VERTEX = viewmodel3dShader.vertex;
+const VIEWMODEL_VERTEX = viewmodel3dShader.vertex;
 
-export const VIEWMODEL_FRAGMENT = viewmodel3dShader.fragment;
+const VIEWMODEL_FRAGMENT = viewmodel3dShader.fragment;
 
 export const EXPLOSION_3D_VERTEX = explosion3dShader.vertex;
 
@@ -73,24 +73,22 @@ export const EXPLOSION_3D_FRAGMENT = explosion3dShader.fragment;
 
 export const SPARK_PARTICLE_FRAGMENT = sparkParticleShader.fragment;
 
-export const POST_VERTEX = postCoreNvgShader.vertex;
+const POST_VERTEX = postCoreNvgShader.vertex;
 
 // The neon look is made in three cheap passes instead of one expensive one:
 //  1. CORE (full resolution): thickens the 1px GL lines with four taps.
 //  2. DOWN (a small target): averages the scene into a much smaller texture, where blurring is nearly free.
 //  3. GLOW (full resolution, additive): adds that small texture back, smoothly upscaled by the GPU.
-export const CORE_FRAGMENT = postCoreNvgShader.fragment;
+const CORE_FRAGMENT = postCoreNvgShader.fragment;
 
 // Four bilinear taps average the whole span x span block of scene pixels under each small pixel.
 // The result is boosted so that faint, thin lines survive the 8-bit target; GLOW takes the boost out again.
-export const DOWN_FRAGMENT = postDownsampleShader.fragment;
+const DOWN_FRAGMENT = postDownsampleShader.fragment;
 
-export const GLOW_FRAGMENT = postGlowShader.fragment;
+const GLOW_FRAGMENT = postGlowShader.fragment;
 
-export const MARS_SKY_VEC = new Vec3(0.46, 0.18, 0.06);
+const MARS_SKY_VEC = new Vec3(0.46, 0.18, 0.06);
 export const MARS_AMBIENT_COLOR = new Vec3(1.04, 0.86, 0.72);
-export const MARS_FLOOR_TINT = new Vec3(1.52, 0.74, 0.38);
-export const MARS_WALL_TINT = new Vec3(1.36, 0.72, 0.42);
 export const MARS_DUST_TINT = new Vec3(1.2, 7.5, 1.8);
 export { MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar };
 const scratchPos = new Vec3();

@@ -12,7 +12,6 @@ export const PILLAR = 2;
 export const DOOR = 3;
 export const EXIT = 4;
 
-export const DIAG_NONE = 0;
 export const DIAG_NW = 1;
 export const DIAG_NE = 2;
 export const DIAG_SW = 3;
