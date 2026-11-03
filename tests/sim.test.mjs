@@ -37,7 +37,7 @@ import { POWERUP_CELL, POWERUP_CELLS, POWERUP_FRAMES, POWERUP_TYPES, berserkAtla
 import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.js';
 import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
-import { ACTIONS, CONTROLS_STORAGE_KEY, CONTROL_GROUPS, DEFAULT_HINT_LINES, Keymap, LAYOUT_STORAGE_KEY, PRESETS, RESERVED_CODES } from '../src/keymap.js';
+import { ACTIONS, CONTROLS_STORAGE_KEY, CONTROLS_VERSION, CONTROL_GROUPS, DEFAULT_HINT_LINES, Keymap, LAYOUT_STORAGE_KEY, MAX_SLOTS, PRESETS, RESERVED_CODES } from '../src/keymap.js';
 import { ControlsMenu, TONE_RED } from '../src/controls.js';
 import { NAV_DOWN, NAV_LEFT, NAV_NONE, NAV_RIGHT, NAV_UP, RAW_RING_SIZE } from '../src/input.js';
 
@@ -165,7 +165,7 @@ const tests = {
       assert.equal(controls.poll().grenade, true, 'a new press throws again');
       controls.endFrame();
       document.onkeyup(press);
-      for (const code of ['KeyX', 'AltLeft', 'AltRight', 'ControlLeft', 'ControlRight', 'Enter']) {
+      for (const code of ['KeyX', 'Enter']) {
         document.onkeydown({ code, repeat: false, preventDefault() {} });
         assert.equal(controls.poll().fire, true, `${code} still fires`);
         assert.equal(controls.poll().grenade, false);
@@ -7403,6 +7403,8 @@ const tests = {
       assert.ok(!inp.keys.has('music'), 'AC-4 keyup releases music despite a changed key');
       assert.equal(inp.heldWhich.size, 0);
       assert.equal(inp.downByCode.size, 0);
+      inp.keymap.setBinding('fire', 0, 'ControlLeft');
+      inp.syncBindings();
       down({ code: 'KeyX', key: 'x' });
       down({ code: 'ControlLeft', key: 'Control' });
       up({ code: 'KeyX', key: 'x' });
@@ -7423,7 +7425,7 @@ const tests = {
     assert.deepEqual(k.hintLines, DEFAULT_HINT_LINES);
     assert.deepEqual(k.hintLines.slice(0, 5), [
       'W A S D  move     mouse / ← →  turn',
-      'click / X / OPT / CTRL  fire     1-4  weapons',
+      'click / X  fire     1-4  weapons',
       'SPACE  jump     C  crouch     SHIFT  run',
       'E  open doors     [ / ]  switch level     ;  sound',
       'TAB  automap     N  night vision     M  music     ESC  pause',
@@ -8415,7 +8417,7 @@ const tests = {
     assert.deepEqual(k.hintLines.slice(0, 6), DEFAULT_HINT_LINES.slice(0, 6));
     assert.deepEqual(k.hintLines.slice(0, 5), [
       'W A S D  move     mouse / ← →  turn',
-      'click / X / OPT / CTRL  fire     1-4  weapons',
+      'click / X  fire     1-4  weapons',
       'SPACE  jump     C  crouch     SHIFT  run',
       'E  open doors     [ / ]  switch level     ;  sound',
       'TAB  automap     N  night vision     M  music     ESC  pause',
@@ -8435,6 +8437,98 @@ const tests = {
       rig.canvas.mousedown({ button: 0, clientX: 0, clientY: 0 });
       assert.equal(inp.poll().fire, true);
     });
+  },
+
+  'AC-1 fire defaults: MOUSE L then X on every layout'() {
+    for (const layout of ['qwerty', 'azerty', 'qwertz', 'dvorak']) {
+      const k = new Keymap({ storage: null, navigator: null });
+      k.applyLayoutMap(new Map(Object.entries(PRESETS[layout].glyphs)));
+      assert.deepEqual([...k.slotCodes('fire')], ['Mouse0', 'KeyX'], layout);
+      assert.deepEqual([...k.effectiveCodes('fire')], [...k.slotCodes('fire')], layout);
+      assert.equal(k.codeLabel('Mouse0'), 'MOUSE L');
+      assert.equal(k.codeLabel('KeyX'), (PRESETS[layout].glyphs.KeyX ?? 'x').toUpperCase(), layout);
+    }
+  },
+
+  'AC-2 controls page: Fire row reads MOUSE L / X with no overflow'() {
+    withRig((inp) => {
+      const menu = new ControlsMenu(inp.keymap, inp);
+      menu.open('title');
+      menu.refreshLabels();
+      const fire = menu.view.lines.find((l) => l.id === 'fire');
+      assert.equal(fire.slot0, 'MOUSE L');
+      assert.equal(fire.slot1, 'X');
+      for (const line of menu.view.lines)
+        if (line.kind === 'action') {
+          assert.ok(!/ \+\d+$/.test(line.slot1), line.id);
+          assert.equal('extra' in line, false, line.id);
+        }
+    });
+  },
+
+  'AC-3 default fire keys: bare CTRL and ALT no longer fire'() {
+    withRig((inp, rig) => {
+      for (const code of ['ControlLeft', 'ControlRight', 'AltLeft', 'AltRight']) {
+        rig.down({ code, key: '' });
+        assert.equal(inp.poll().fire, false, `${code} does not fire`);
+        assert.equal(inp.keymap.resolve({ code, key: '' }), 0, `${code} unbound`);
+        rig.up({ code, key: '' });
+        inp.endFrame();
+      }
+      for (const code of ['KeyX', 'Enter']) {
+        rig.down({ code, key: '' });
+        assert.equal(inp.poll().fire, true, `${code} fires`);
+        rig.up({ code, key: '' });
+        inp.endFrame();
+      }
+      rig.canvas.mousedown({ button: 0, clientX: 0, clientY: 0 });
+      assert.equal(inp.poll().fire, true);
+      assert.equal(inp.poll().grenade, false);
+    });
+  },
+
+  'AC-4 hint lines: default fire hint is click / X and custom fire prints one label'() {
+    assert.equal(DEFAULT_HINT_LINES[1], 'click / X  fire     1-4  weapons');
+    const k = new Keymap({ storage: null, navigator: null });
+    assert.equal(k.hintLines[1], 'click / X  fire     1-4  weapons');
+    k.setBinding('fire', 0, 'KeyJ');
+    assert.ok(k.hintLines[1].startsWith('J  fire'));
+    assert.ok(!/click|OPT|CTRL/.test(k.hintLines[1]));
+  },
+
+  'AC-5 two-slot invariant: every default action fits MAX_SLOTS'() {
+    const k = new Keymap({ storage: null, navigator: null });
+    for (const action of ACTIONS)
+      assert.ok(k.effectiveCodes(action.id).length <= MAX_SLOTS, action.id);
+    assert.equal(k.unboundActions().length, 0);
+    assert.equal(typeof k.extraCount, 'undefined');
+  },
+
+  'AC-6 rebinding CTRL to fire is visible and effective'() {
+    withRig((inp) => {
+      const k = inp.keymap;
+      assert.equal(k.setBinding('fire', 1, 'ControlRight').ok, true);
+      const menu = new ControlsMenu(k, inp);
+      menu.open('title');
+      menu.refreshLabels();
+      const fire = menu.view.lines.find((l) => l.id === 'fire');
+      assert.equal(fire.slot0, 'MOUSE L');
+      assert.equal(fire.slot1, 'CTRL');
+      const left = k.resolve({ code: 'ControlLeft', key: '' });
+      const right = k.resolve({ code: 'ControlRight', key: '' });
+      assert.ok(left > 0 && right > 0);
+      assert.equal(k.actionOf(left), 'fire');
+      assert.equal(k.actionOf(right), 'fire');
+      assert.equal(k.resolve({ code: 'AltLeft', key: '' }), 0);
+    });
+  },
+
+  'AC-7 saved overrides: customised Fire loads verbatim'() {
+    const storage = memoryStorage({ [CONTROLS_STORAGE_KEY]: '{"version":1,"bindings":{"fire":["KeyJ"]}}' });
+    const k = new Keymap({ storage, navigator: null });
+    assert.deepEqual([...k.effectiveCodes('fire')], ['KeyJ']);
+    assert.equal(CONTROLS_VERSION, 1);
+    assert.equal(MAX_SLOTS, 2);
   },
 
   'AC-2 controls page: bindings round-trip through doomr.controls'() {

@@ -54,7 +54,7 @@ export const ACTIONS = Object.freeze([
   positional('turnRight', bind('ArrowRight', 39)),
   positional('jump', bind('Space', 32)),
   positional('run', bind('ShiftLeft', 16), bind('ShiftRight', 160)),
-  positional('fire', bind('Mouse0', MOUSE_WHICH_BASE), bind('KeyX', 88), bind('ControlLeft', 17), bind('ControlRight', 162), bind('AltLeft', 18), bind('AltRight', 164)),
+  positional('fire', bind('Mouse0', MOUSE_WHICH_BASE), bind('KeyX', 88)),
   positional('confirm', bind('Enter', 13)),
   positional('crouch', bind('KeyC', 67)),
   positional('grenade', bind('KeyF', 70)),
@@ -89,7 +89,7 @@ const buildHints = (label, layoutText, custom = NO_OVERRIDES) => {
     ? `${label('weapon1')} ${label('weapon2')} ${label('weapon3')} ${label('weapon4')}`
     : '1-4';
   const turn = custom.has('turnLeft') || custom.has('turnRight') ? `mouse / ${label('turnLeft')} ${label('turnRight')}` : 'mouse / ← →';
-  const fire = custom.has('fire') ? label('fire') : `click / ${label('fire')} / OPT / CTRL`;
+  const fire = custom.has('fire') ? label('fire') : `click / ${label('fire')}`;
   const jump = custom.has('jump') ? label('jump') : 'SPACE';
   const run = custom.has('run') ? label('run') : 'SHIFT';
   const automap = custom.has('automap') ? label('automap') : 'TAB';
@@ -336,10 +336,6 @@ export class Keymap {
 
   slotCodes(id) {
     return this.slots.get(id) ?? NO_CODES;
-  }
-
-  extraCount(id) {
-    return Math.max(0, this.effectiveCodes(id).length - MAX_SLOTS);
   }
 
   unboundActions() {

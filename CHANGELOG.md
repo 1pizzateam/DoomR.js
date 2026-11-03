@@ -10,5 +10,6 @@
 
 ### Fixed
 
+- Fire defaults are now MOUSE L and X only (#29), so the CONTROLS page no longer shows `X +2`; CTRL and Option/Alt no longer fire by default and can be rebound to Fire on the CONTROLS page; the hidden overflow counter is removed; saved `doomr.controls` customisations are unaffected.
 - The pause key (P by default, rebindable and layout-aware) now toggles pause and resume (#31) instead of only pausing, and the pause screen names the bound key in its resume prompt.
 - The README no longer says M toggles the map, and on AZERTY the printed M plays music again instead of toggling sound.
