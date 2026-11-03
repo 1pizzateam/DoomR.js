@@ -269,8 +269,9 @@ export function weaponFrame(elapsed, hasAmmo = true, weapon = 'shotgun', time = 
  * Where the gun goes on a screen of `width` x `height` CSS pixels: a rectangle `{ x0, y0, x1, y1, pixel }`, y down.
  * Pixels of the art are whole screen pixels, so it stays sharp. It sways as the player walks and rises with the kick;
  * it stands a few art pixels below the edge, so the kick never shows a gap under it.
+ * The rectangle is written onto `out` (pass a reused scratch rect to avoid allocating) and `out` is returned.
  */
-export function weaponPlacement({ width, height, bob = 0, moving = 0, recoil = 0, switchOffset = 0 }) {
+export function weaponPlacement({ width, height, bob = 0, moving = 0, recoil = 0, switchOffset = 0 }, out = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 }) {
   const scale = Utils.clamp(height / 760, 0.7, 1.4);
   const pixel = Math.max(2, Math.round(2 * scale));
   const sway = Math.sin(bob) * 14 * moving * scale;
@@ -278,23 +279,39 @@ export function weaponPlacement({ width, height, bob = 0, moving = 0, recoil = 0
   const drop = Math.round(Utils.clamp(switchOffset, 0, 1) * H * pixel * 0.45);
   const x0 = Math.round(width / 2 + sway - (W / 2) * pixel);
   const y1 = Math.round(height + 16 + 8 * pixel + rise - recoil * 6 * pixel) + drop;
-  return { x0, y0: y1 - H * pixel, x1: x0 + W * pixel, y1, pixel };
+  out.x0 = x0;
+  out.y0 = y1 - H * pixel;
+  out.x1 = x0 + W * pixel;
+  out.y1 = y1;
+  out.pixel = pixel;
+  return out;
 }
 
-/** Texture coordinates of a frame, a hair inside its edges: [u0, v0, u1, v1], v1 at the top of the picture. */
+const UV_INSET_U = 0.02 / (W * WEAPON_FRAME_COUNT);
+const UV_ROWS = WEAPON_ORDER.length;
+const UV_INSET_V = 0.02 / (H * UV_ROWS);
+const WEAPON_UV_PLAIN = [];
+const WEAPON_UV_BY_WEAPON = [];
+for (let f = 0; f < WEAPON_FRAME_COUNT; f++) {
+  const u0 = f / WEAPON_FRAME_COUNT + UV_INSET_U;
+  const u1 = (f + 1) / WEAPON_FRAME_COUNT - UV_INSET_U;
+  WEAPON_UV_PLAIN.push(Object.freeze([u0, 0, u1, 1]));
+}
+for (let row = 0; row < UV_ROWS; row++) {
+  const v1 = 1 - row / UV_ROWS - UV_INSET_V;
+  const v0 = 1 - (row + 1) / UV_ROWS + UV_INSET_V;
+  const tuples = [];
+  for (let f = 0; f < WEAPON_FRAME_COUNT; f++)
+    tuples.push(Object.freeze([f / WEAPON_FRAME_COUNT + UV_INSET_U, v0, (f + 1) / WEAPON_FRAME_COUNT - UV_INSET_U, v1]));
+  WEAPON_UV_BY_WEAPON.push(tuples);
+}
+
+/** Cached texture coordinates of a frame, a hair inside its edges: [u0, v0, u1, v1], v1 at the top of the picture. */
 export function weaponCellUv(frame, weapon) {
   const f = Utils.clamp(frame | 0, 0, WEAPON_FRAME_COUNT - 1);
-  const inset = 0.02 / (W * WEAPON_FRAME_COUNT);
-  const u0 = f / WEAPON_FRAME_COUNT + inset;
-  const u1 = (f + 1) / WEAPON_FRAME_COUNT - inset;
   if (!weapon)
-    return [u0, 0, u1, 1];
-  const rowIndex = Math.max(0, WEAPON_ORDER.indexOf(weapon));
-  const rows = WEAPON_ORDER.length;
-  const vInset = 0.02 / (H * rows);
-  const v1 = 1 - rowIndex / rows - vInset;
-  const v0 = 1 - (rowIndex + 1) / rows + vInset;
-  return [u0, v0, u1, v1];
+    return WEAPON_UV_PLAIN[f];
+  return WEAPON_UV_BY_WEAPON[Math.max(0, WEAPON_ORDER.indexOf(weapon))][f];
 }
 
 // ---- drawing -------------------------------------------------------------------------------------------------------
