@@ -6115,7 +6115,7 @@ const tests = {
     const lines = [];
     const fakeHud = Object.create(Hud.prototype);
     fakeHud.text = (str, _x, _y, color, opts) => texts.push({ str, color, opts });
-    fakeHud.line = (pts, color, alpha) => lines.push({ pts, color, alpha });
+    fakeHud.rect = (x, y, w, h, color, alpha) => lines.push({ pts: [x, y, w, h], color, alpha });
 
     // Right at pickup start (flash = 0.65), shownAmmo starts at 0 and rolls upward as time advances
     assert.equal(fakeHud.shownAmmo(game.player, 'shells'), 0, 'counter starts rolling from pre-pickup value 0');
@@ -10156,6 +10156,161 @@ const tests = {
     crisp.scene.restore = () => restored[1]++;
     overlay.restore();
     assert.deepEqual(restored, [1, 1]);
+  },
+
+  'AC-1 Hud.segment and Hud.rect write exact coordinates through one reused scratch array'() {
+    const calls = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({}) },
+      { glow: { line: (pts, col, alpha) => calls.push({ ref: pts, pts: [...pts], col, alpha }) } },
+    );
+    hud.segment(1, 2, 3, 4, 0, 0.5);
+    hud.segment(5, 6, 7, 8, 1);
+    hud.rect(10, 20, 30, 40, 2, 0.25);
+    hud.rect(-1, -2, 3, 4, 3);
+    assert.deepEqual(calls[0].pts, [1, 2, 3, 4]);
+    assert.equal(calls[0].alpha, 0.5);
+    assert.deepEqual(calls[1].pts, [5, 6, 7, 8]);
+    assert.equal(calls[1].alpha, 1);
+    assert.deepEqual(calls[2].pts, [10, 20, 40, 20, 40, 60, 10, 60, 10, 20]);
+    assert.equal(calls[2].alpha, 0.25);
+    assert.deepEqual(calls[3].pts, [-1, -2, 2, -2, 2, 2, -1, 2, -1, -2]);
+    assert.notDeepEqual(calls[0].col, calls[1].col);
+    assert.equal(calls[0].ref, calls[1].ref, 'segments share one scratch array');
+    assert.equal(calls[2].ref, calls[3].ref, 'rects share one scratch array');
+  },
+
+  'AC-2 drawKeys and drawAmmo emit unchanged geometry from hoisted constants'() {
+    const calls = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({ setTransform() {}, fillText() {} }) },
+      { glow: { line: (pts, col, alpha) => calls.push({ pts: [...pts], col, alpha }) } },
+    );
+    hud.text = () => {};
+    hud.drawKeys(100, 500, { blue: true });
+    const [kx, ky] = [100, 484];
+    const seq = (x, y) => [x, y, x + 12, y, x + 16, y + 4, x + 16, y + 16, x, y + 16, x, y];
+    const badge = seq(kx, ky);
+    const blueSegs = calls.slice(0, 5).map((c) => c.pts);
+    for (let i = 0; i < 5; i++)
+      assert.deepEqual(blueSegs[i], [badge[2 * i], badge[2 * i + 1], badge[2 * i + 2], badge[2 * i + 3]]);
+    assert.equal(calls[0].alpha, 1);
+    assert.deepEqual(calls[5].pts, [kx + 3, ky + 5, kx + 13, ky + 5]);
+    assert.deepEqual(calls[6].pts, [kx + 3, ky + 9, kx + 9, ky + 9]);
+    assert.deepEqual(calls[9].pts, [kx + 3, ky + 13, kx + 3, ky + 9]);
+    assert.equal(calls.length, 10 + 10, 'two unheld cards draw only their five-segment badge outlines');
+    assert.equal(calls[10].alpha, 0.24);
+
+    calls.length = 0;
+    const player = { shells: 10, bullets: 5, rockets: 0, ammoFlash: { shells: AMMO_FLASH_DURATION, bullets: AMMO_FLASH_DURATION } };
+    hud.drawAmmo(1000, 500, player, WEAPONS.shotgun);
+    const rects = calls.filter((c) => c.pts.length === 10).map((c) => c.pts);
+    assert.deepEqual(rects[0], [846, 479, 910, 479, 910, 505, 846, 505, 846, 479]);
+    const rowY = 500 - 23;
+    assert.deepEqual(rects.find((r) => r[0] === 914), [914, rowY - 9, 1004, rowY - 9, 1004, rowY + 2, 914, rowY + 2, 914, rowY - 9]);
+    const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
+    assert.ok(!src.includes('const slots = ['));
+    assert.ok(!src.includes('const pools = ['));
+    assert.ok(/^const KEYCARD_SLOTS = /m.test(src));
+    assert.ok(/^const AMMO_POOL_KEYS = /m.test(src));
+  },
+
+  'AC-3 weaponPlacement and facePlacement fill a supplied scratch rect'() {
+    const wOpts = [
+      { width: 1280, height: 760 },
+      { width: 1280, height: 760, recoil: 1 },
+      { width: 1920, height: 1080, bob: 1.3, moving: 1 },
+      { width: 800, height: 600, switchOffset: 0.6 },
+    ];
+    const wOut = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
+    for (const o of wOpts) {
+      const expected = weaponPlacement(o);
+      assert.equal(weaponPlacement(o, wOut), wOut);
+      assert.deepEqual(wOut, expected);
+    }
+    assert.ok(wOut.pixel >= 2 && wOut.x1 - wOut.x0 === WEAPON_CELL_W * wOut.pixel);
+    const fOpts = [{ width: 1280, height: 760 }, { width: 1280, height: 760, hurt: 0.3 }, { width: 2560, height: 1440, hurt: 0.8 }];
+    const fOut = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
+    for (const o of fOpts) {
+      const expected = facePlacement(o);
+      assert.equal(facePlacement(o, fOut), fOut);
+      assert.deepEqual(fOut, expected);
+    }
+    assert.notDeepEqual(fOut, facePlacement(fOpts[0]), 'a later call overwrote the same object');
+  },
+
+  'AC-4 weaponCellUv and faceCellUv return cached identical tuples with the original values'() {
+    const inset = 0.02 / (WEAPON_CELL_W * WEAPON_FRAME_COUNT);
+    const rows = WEAPON_ORDER.length;
+    const vInset = 0.02 / (WEAPON_CELL_H * rows);
+    for (let f = 0; f < WEAPON_FRAME_COUNT; f++) {
+      const u0 = f / WEAPON_FRAME_COUNT + inset;
+      const u1 = (f + 1) / WEAPON_FRAME_COUNT - inset;
+      assert.equal(weaponCellUv(f), weaponCellUv(f));
+      assert.deepEqual([...weaponCellUv(f)], [u0, 0, u1, 1]);
+      for (let r = 0; r < rows; r++) {
+        const uv = weaponCellUv(f, WEAPON_ORDER[r]);
+        assert.equal(uv, weaponCellUv(f, WEAPON_ORDER[r]));
+        assert.deepEqual([...uv], [u0, 1 - (r + 1) / rows + vInset, u1, 1 - r / rows - vInset]);
+      }
+    }
+    const fInset = 0.02 / (FACE_CELL_W * FACE_FRAME_COUNT);
+    for (let f = 0; f < FACE_FRAME_COUNT; f++) {
+      assert.equal(faceCellUv(f), faceCellUv(f));
+      assert.deepEqual([...faceCellUv(f)], [f / FACE_FRAME_COUNT + fInset, 0, (f + 1) / FACE_FRAME_COUNT - fInset, 1]);
+    }
+  },
+
+  'AC-5 weaponCellUv clamps out-of-range frames and maps unknown weapons to the first row'() {
+    assert.equal(weaponCellUv(-3), weaponCellUv(0));
+    assert.equal(weaponCellUv(999), weaponCellUv(WEAPON_FRAME_COUNT - 1));
+    assert.equal(weaponCellUv(2.9), weaponCellUv(2));
+    assert.equal(weaponCellUv(1, 'nope'), weaponCellUv(1, WEAPON_ORDER[0]));
+    assert.equal(weaponCellUv(-1, 'nope'), weaponCellUv(0, WEAPON_ORDER[0]));
+  },
+
+  'AC-6 drawHud and drawWeapon feed placement and cached UVs to the quads on consecutive frames'() {
+    const weaponQuads = [];
+    const faceQuads = [];
+    const ctx = new Proxy({}, { get: () => () => {}, set: () => true });
+    const noop = () => {};
+    const overlay = {
+      clear: noop,
+      glow: { line: noop },
+      crisp: {
+        fillRect: noop,
+        rectLine: noop,
+        line: noop,
+        circleLine: noop,
+        weapon: { quad: (...a) => weaponQuads.push(a) },
+        sprites: { quad: noop },
+        face: { quad: (...a) => faceQuads.push(a) },
+      },
+    };
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
+    hud.resize(1280, 760, 1);
+    const game = fresh(0);
+    game.player.weapon = 'plasma';
+    const frames = [{ bob: 0.4, moving: 1, recoil: 0, hurt: 0 }, { bob: 1.7, moving: 0.5, recoil: 0.3, hurt: 0.2 }];
+    let weaponRect;
+    let faceRect;
+    for (const f of frames) {
+      Object.assign(game.player, f);
+      hud.render(game);
+      const wq = weaponQuads[weaponQuads.length - 1];
+      const fq = faceQuads[faceQuads.length - 1];
+      const wp = weaponPlacement({ width: 1280, height: 760, bob: f.bob, moving: f.moving, recoil: f.recoil, switchOffset: 0 });
+      const fp = facePlacement({ width: 1280, height: 760, hurt: f.hurt });
+      assert.deepEqual(wq.slice(0, 4), [wp.x0, wp.y0, wp.x1, wp.y1]);
+      assert.deepEqual(fq.slice(0, 4), [fp.x0, fp.y0, fp.x1, fp.y1]);
+      assert.ok(Object.isFrozen(wq[4]) && Object.isFrozen(fq[4]), 'UVs are the cached frozen tuples');
+      assert.ok(Array.from({ length: FACE_FRAME_COUNT }, (_, i) => faceCellUv(i)).includes(fq[4]));
+      assert.ok(Array.from({ length: WEAPON_FRAME_COUNT }, (_, i) => weaponCellUv(i, 'plasma')).includes(wq[4]));
+      weaponRect = wq;
+      faceRect = fq;
+    }
+    assert.notDeepEqual(weaponQuads[0].slice(0, 4), weaponRect.slice(0, 4), 'second frame moved the weapon quad');
+    assert.notDeepEqual(faceQuads[0].slice(0, 4), faceRect.slice(0, 4), 'second frame moved the face quad');
   },
 };
 

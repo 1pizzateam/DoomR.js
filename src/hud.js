@@ -64,6 +64,45 @@ const controlsSeg = (x0, y0, x1, y1) => {
   SEG4[0] = x0; SEG4[1] = y0; SEG4[2] = x1; SEG4[3] = y1;
   return SEG4;
 };
+const POLY6 = [0, 0, 0, 0, 0, 0];
+const POLY8 = [0, 0, 0, 0, 0, 0, 0, 0];
+const KEYCARD_SLOTS = Object.freeze([
+  Object.freeze(['blue', BLUE]),
+  Object.freeze(['yellow', ORANGE]),
+  Object.freeze(['red', RED]),
+]);
+const AMMO_POOL_KEYS = Object.freeze([
+  Object.freeze(['bullets', AMMO_TYPES.bullets]),
+  Object.freeze(['shells', AMMO_TYPES.shells]),
+  Object.freeze(['rockets', AMMO_TYPES.rockets]),
+]);
+const WEAPON_PLACE_OPTS = { width: 0, height: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0 };
+const WEAPON_RECT = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
+const FACE_PLACE_OPTS = { width: 0, height: 0, hurt: 0 };
+const FACE_RECT = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
+
+// Scalar drawing into a Layer through the shared scratch arrays: no per-call coordinate arrays.
+const layerSegment = (layer, x0, y0, x1, y1, color, alpha = 1) => {
+  SEG4[0] = x0; SEG4[1] = y0; SEG4[2] = x1; SEG4[3] = y1;
+  layer.line(SEG4, color, alpha);
+};
+const cornerBracket = (x0, y0, x1, y1, x2, y2) => {
+  POLY6[0] = x0; POLY6[1] = y0; POLY6[2] = x1; POLY6[3] = y1; POLY6[4] = x2; POLY6[5] = y2;
+  return POLY6;
+};
+const layerPoly3 = (layer, x0, y0, x1, y1, x2, y2, color, alpha = 1) => {
+  POLY6[0] = x0; POLY6[1] = y0; POLY6[2] = x1; POLY6[3] = y1; POLY6[4] = x2; POLY6[5] = y2;
+  layer.line(POLY6, color, alpha);
+};
+const layerTriangle = (layer, x0, y0, x1, y1, x2, y2, color, alpha = 1) => {
+  POLY8[0] = x0; POLY8[1] = y0; POLY8[2] = x1; POLY8[3] = y1; POLY8[4] = x2; POLY8[5] = y2; POLY8[6] = x0; POLY8[7] = y0;
+  layer.line(POLY8, color, alpha);
+};
+const layerDiamond = (layer, cx, cy, r, color, alpha = 1) => {
+  RECT10[0] = cx; RECT10[1] = cy - r; RECT10[2] = cx + r; RECT10[3] = cy; RECT10[4] = cx;
+  RECT10[5] = cy + r; RECT10[6] = cx - r; RECT10[7] = cy; RECT10[8] = cx; RECT10[9] = cy - r;
+  layer.line(RECT10, color, alpha);
+};
 
 /** Written by layoutControls and read by both drawing and hit-testing so they never drift. */
 const CONTROLS_LAYOUT = {
@@ -229,6 +268,21 @@ export class Hud {
     this.overlay?.glow?.line(points, RGB[color], alpha);
   }
 
+  /** One segment in the glowing layer, from scalar coordinates. */
+  segment(x0, y0, x1, y1, color, alpha = 1) {
+    SEG4[0] = x0; SEG4[1] = y0; SEG4[2] = x1; SEG4[3] = y1;
+    this.overlay?.glow?.line(SEG4, RGB[color], alpha);
+  }
+
+  /** A closed rectangle outline in the glowing layer: top-left corner, size. */
+  rect(x0, y0, w, h, color, alpha = 1) {
+    const x1 = x0 + w;
+    const y1 = y0 + h;
+    RECT10[0] = x0; RECT10[1] = y0; RECT10[2] = x1; RECT10[3] = y0; RECT10[4] = x1;
+    RECT10[5] = y1; RECT10[6] = x0; RECT10[7] = y1; RECT10[8] = x0; RECT10[9] = y0;
+    this.overlay?.glow?.line(RECT10, RGB[color], alpha);
+  }
+
   /** A polyline on the canvas, for the few frames that must sit above the dimming screens. */
   canvasLine(points, color, alpha = 1, width = 1.5, glow = 8) {
     const { ctx } = this;
@@ -284,14 +338,13 @@ export class Hud {
       return;
     const def = WEAPONS[weapon] ?? WEAPONS.shotgun;
     const switchOffset = Math.min(1, (player.switchTimer ?? 0) / 0.22);
-    const { x0, y0, x1, y1 } = weaponPlacement({
-      width: this.width,
-      height: this.height,
-      bob: player.bob,
-      moving: player.moving,
-      recoil: player.recoil,
-      switchOffset,
-    });
+    WEAPON_PLACE_OPTS.width = this.width;
+    WEAPON_PLACE_OPTS.height = this.height;
+    WEAPON_PLACE_OPTS.bob = player.bob;
+    WEAPON_PLACE_OPTS.moving = player.moving;
+    WEAPON_PLACE_OPTS.recoil = player.recoil;
+    WEAPON_PLACE_OPTS.switchOffset = switchOffset;
+    const { x0, y0, x1, y1 } = weaponPlacement(WEAPON_PLACE_OPTS, WEAPON_RECT);
     const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
     const spinDown = player.spinDown ?? player.shootFace ?? 0;
     let elapsed =
@@ -325,7 +378,7 @@ export class Hud {
     const lit = Math.ceil(value * ticks);
     for (let i = 0; i < ticks; i++) {
       const on = i < lit;
-      this.line([x + i * gap, y, x + i * gap, y - 16], on ? (value < 0.3 ? lowColor : color) : BLUE, on ? 1 : 0.22);
+      this.segment(x + i * gap, y, x + i * gap, y - 16, on ? (value < 0.3 ? lowColor : color) : BLUE, on ? 1 : 0.22);
     }
   }
 
@@ -356,21 +409,24 @@ export class Hud {
     // crosshair and hit marker
     const cx = width / 2;
     const cy = height / 2;
-    this.line([cx - 10, cy, cx - 4, cy], GREEN, 0.9);
-    this.line([cx + 4, cy, cx + 10, cy], GREEN, 0.9);
-    this.line([cx, cy - 10, cx, cy - 4], GREEN, 0.9);
-    this.line([cx, cy + 4, cx, cy + 10], GREEN, 0.9);
+    this.segment(cx - 10, cy, cx - 4, cy, GREEN, 0.9);
+    this.segment(cx + 4, cy, cx + 10, cy, GREEN, 0.9);
+    this.segment(cx, cy - 10, cx, cy - 4, GREEN, 0.9);
+    this.segment(cx, cy + 4, cx, cy + 10, GREEN, 0.9);
     if (player.hitMarker > 0) {
       const m = 8 + (0.15 - player.hitMarker) * 40;
-      this.line([cx - m, cy - m, cx - m / 2, cy - m / 2], ORANGE);
-      this.line([cx + m, cy - m, cx + m / 2, cy - m / 2], ORANGE);
-      this.line([cx - m, cy + m, cx - m / 2, cy + m / 2], ORANGE);
-      this.line([cx + m, cy + m, cx + m / 2, cy + m / 2], ORANGE);
+      this.segment(cx - m, cy - m, cx - m / 2, cy - m / 2, ORANGE);
+      this.segment(cx + m, cy - m, cx + m / 2, cy - m / 2, ORANGE);
+      this.segment(cx - m, cy + m, cx - m / 2, cy + m / 2, ORANGE);
+      this.segment(cx + m, cy + m, cx + m / 2, cy + m / 2, ORANGE);
     }
 
     this.drawUsePrompt(game, cx, cy);
 
-    const faceRect = facePlacement({ width, height, hurt: player.hurt });
+    FACE_PLACE_OPTS.width = width;
+    FACE_PLACE_OPTS.height = height;
+    FACE_PLACE_OPTS.hurt = player.hurt;
+    const faceRect = facePlacement(FACE_PLACE_OPTS, FACE_RECT);
     const weaponDef = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
     const shotElapsed =
       (player.soulFlash ?? 0) > 0 || (player.berserkTimer ?? 0) > 18.5
@@ -422,7 +478,7 @@ export class Hud {
       const blink = player.radSuit > 5 || Math.floor(player.radSuit * 4) % 2 === 0;
       if (blink) {
         const a = Math.min(0.65, 0.25 + (player.radSuit / 45) * 0.35);
-        this.line([8, 8, width - 8, 8, width - 8, height - 8, 8, height - 8, 8, 8], GREEN, a);
+        this.rect(8, 8, width - 16, height - 16, GREEN, a);
       }
     }
 
@@ -430,7 +486,7 @@ export class Hud {
       const blink = player.nightVisionBattery > 5 || Math.floor(player.nightVisionBattery * 4) % 2 === 0;
       if (blink) {
         const a = Math.min(0.72, 0.32 + (player.nightVisionBattery / 45) * 0.35);
-        this.line([12, 12, width - 12, 12, width - 12, height - 12, 12, height - 12, 12, 12], GREEN, a);
+        this.rect(12, 12, width - 24, height - 24, GREEN, a);
       }
     }
 
@@ -438,7 +494,7 @@ export class Hud {
       const a = Math.min(1, player.soulFlash / 0.5);
       for (let i = 0; i < 3; i++) {
         const inset = 5 + i * 7;
-        this.line([inset, inset, width - inset, inset, width - inset, height - inset, inset, height - inset, inset, inset], BLUE, a * (0.85 - i * 0.25));
+        this.rect(inset, inset, width - 2 * inset, height - 2 * inset, BLUE, a * (0.85 - i * 0.25));
       }
     }
 
@@ -448,7 +504,7 @@ export class Hud {
       const a = fade * (0.28 + 0.32 * pulse);
       for (let i = 0; i < 2; i++) {
         const inset = 5 + i * 6;
-        this.line([inset, inset, width - inset, inset, width - inset, height - inset, inset, height - inset, inset, inset], RED, a * (1 - i * 0.35));
+        this.rect(inset, inset, width - 2 * inset, height - 2 * inset, RED, a * (1 - i * 0.35));
       }
     }
 
@@ -456,7 +512,7 @@ export class Hud {
       const a = Math.min(1, player.radFlash / 0.35);
       for (let i = 0; i < 3; i++) {
         const inset = 6 + i * 7;
-        this.line([inset, inset, width - inset, inset, width - inset, height - inset, inset, height - inset, inset, inset], GREEN, a * (0.75 - i * 0.22));
+        this.rect(inset, inset, width - 2 * inset, height - 2 * inset, GREEN, a * (0.75 - i * 0.22));
       }
     }
 
@@ -464,7 +520,7 @@ export class Hud {
       const a = Math.min(1, player.hurt / 0.3);
       for (let i = 0; i < 3; i++) {
         const inset = 4 + i * 7;
-        this.line([inset, inset, width - inset, inset, width - inset, height - inset, inset, height - inset, inset, inset], ORANGE, a * (0.8 - i * 0.25));
+        this.rect(inset, inset, width - 2 * inset, height - 2 * inset, ORANGE, a * (0.8 - i * 0.25));
       }
     }
   }
@@ -529,7 +585,7 @@ export class Hud {
       const col = active ? ORANGE : owned ? GREEN : BLUE;
       const sx = x + (slot - 1) * 22;
       const sy = base - 16;
-      this.line([sx, sy, sx + 16, sy, sx + 16, sy + 16, sx, sy + 16, sx, sy], col, active ? 1 : owned ? 0.8 : 0.24);
+      this.rect(sx, sy, 16, 16, col, active ? 1 : owned ? 0.8 : 0.24);
       this.text(String(slot), sx + 8, base - 3, col, {
         size: 12,
         align: 'center',
@@ -543,24 +599,27 @@ export class Hud {
   /** Three security keycard slots (Blue, Yellow, Red) on the lower HUD bar. */
   drawKeys(x, base, keys) {
     this.text('KEYS', x, base - 24, BLUE, { size: 11, alpha: 0.8 });
-    const slots = [
-      ['blue', BLUE],
-      ['yellow', ORANGE],
-      ['red', RED],
-    ];
-    for (let i = 0; i < slots.length; i++) {
-      const [name, col] = slots[i];
+    for (let i = 0; i < KEYCARD_SLOTS.length; i++) {
+      const [name, col] = KEYCARD_SLOTS[i];
       const held = Boolean(keys?.[name]);
       const kx = x + i * 24;
       const ky = base - 16;
       const kw = 16;
       const kh = 16;
       // notched security badge outline
-      this.line([kx, ky, kx + kw - 4, ky, kx + kw, ky + 4, kx + kw, ky + kh, kx, ky + kh, kx, ky], col, held ? 1 : 0.24);
+      const badgeAlpha = held ? 1 : 0.24;
+      this.segment(kx, ky, kx + kw - 4, ky, col, badgeAlpha);
+      this.segment(kx + kw - 4, ky, kx + kw, ky + 4, col, badgeAlpha);
+      this.segment(kx + kw, ky + 4, kx + kw, ky + kh, col, badgeAlpha);
+      this.segment(kx + kw, ky + kh, kx, ky + kh, col, badgeAlpha);
+      this.segment(kx, ky + kh, kx, ky, col, badgeAlpha);
       if (held) {
         // inner chip & magnetic stripe when the keycard is held
-        this.line([kx + 3, ky + 5, kx + kw - 3, ky + 5], col, 0.95);
-        this.line([kx + 3, ky + 9, kx + 9, ky + 9, kx + 9, ky + 13, kx + 3, ky + 13, kx + 3, ky + 9], col, 0.95);
+        this.segment(kx + 3, ky + 5, kx + kw - 3, ky + 5, col, 0.95);
+        this.segment(kx + 3, ky + 9, kx + 9, ky + 9, col, 0.95);
+        this.segment(kx + 9, ky + 9, kx + 9, ky + 13, col, 0.95);
+        this.segment(kx + 9, ky + 13, kx + 3, ky + 13, col, 0.95);
+        this.segment(kx + 3, ky + 13, kx + 3, ky + 9, col, 0.95);
       }
     }
   }
@@ -613,20 +672,11 @@ export class Hud {
           alpha: Math.min(1, activeFlashNorm * 1.5),
           glow: 12,
         });
-      this.line(
-        [rightX - 154, base - 21, rightX - 90, base - 21, rightX - 90, base + 5, rightX - 154, base + 5, rightX - 154, base - 21],
-        activeCol,
-        0.35 + 0.55 * activeFlashNorm,
-      );
+      this.rect(rightX - 154, base - 21, 64, 26, activeCol, 0.35 + 0.55 * activeFlashNorm);
     }
 
-    const pools = [
-      ['bullets', AMMO_TYPES.bullets],
-      ['shells', AMMO_TYPES.shells],
-      ['rockets', AMMO_TYPES.rockets],
-    ];
-    for (let i = 0; i < pools.length; i++) {
-      const [key, def] = pools[i];
+    for (let i = 0; i < AMMO_POOL_KEYS.length; i++) {
+      const [key, def] = AMMO_POOL_KEYS[i];
       const count = player[key] ?? 0;
       const shown = this.shownAmmo(player, key);
       const flash = player.ammoFlash?.[key] ?? 0;
@@ -653,11 +703,7 @@ export class Hud {
         glow: rowGlow,
       });
       if (flash > 0) {
-        this.line(
-          [rightX - 86, rowY - 9, rightX + 4, rowY - 9, rightX + 4, rowY + 2, rightX - 86, rowY + 2, rightX - 86, rowY - 9],
-          flashCol,
-          0.35 + 0.55 * flashNorm,
-        );
+        this.rect(rightX - 86, rowY - 9, 90, 11, flashCol, 0.35 + 0.55 * flashNorm);
         const delta = player.ammoDelta?.[key] ?? 0;
         if (!isActive && delta > 0)
           this.text(`+${delta}`, rightX - 90, rowY, ORANGE, {
@@ -734,7 +780,7 @@ export class Hud {
           const by = oy + (df.by / TILE) * s;
           const sx = ox + (df.sx / TILE) * s;
           const sy = oy + (df.sy / TILE) * s;
-          layer.line([sx, sy, ax, ay, bx, by, sx, sy], RGB[BLUE], visible ? 0.9 : 0.35);
+          layerTriangle(layer, sx, sy, ax, ay, bx, by, RGB[BLUE], visible ? 0.9 : 0.35);
           continue;
         }
         layer.rectLine(colX + 0.5, rowY + 0.5, s - 1, s - 1, door ? doorCol : RGB[BLUE], door ? (visible ? 1 : 0.55) : (visible ? 0.9 : 0.35));
@@ -750,7 +796,7 @@ export class Hud {
     const player = game.player;
     const x = ox + (player.pos.x / TILE) * s;
     const y = oy + (player.pos.y / TILE) * s;
-    layer.line([x, y, x + Math.cos(player.angle) * 9, y + Math.sin(player.angle) * 9], RGB[GREEN]);
+    layerSegment(layer, x, y, x + Math.cos(player.angle) * 9, y + Math.sin(player.angle) * 9, RGB[GREEN]);
     layer.circleLine(x, y, 2.5, RGB[GREEN]);
   }
 
@@ -779,14 +825,14 @@ export class Hud {
     // tactical CRT dark screen backdrop and outer neon frame
     layer.fillRect(x0, y0, w, h, BACKGROUND_RGB);
     layer.rectLine(x0 + 0.5, y0 + 0.5, w - 1, h - 1, RGB[BLUE], 0.48);
-    layer.line([x0, y0 + headerH, x1, y0 + headerH], RGB[BLUE], 0.3);
-    layer.line([x0, y1 - footerH, x1, y1 - footerH], RGB[BLUE], 0.3);
+    layerSegment(layer, x0, y0 + headerH, x1, y0 + headerH, RGB[BLUE], 0.3);
+    layerSegment(layer, x0, y1 - footerH, x1, y1 - footerH, RGB[BLUE], 0.3);
 
     const arm = 14;
-    this.canvasLine([x0 - 2, y0 + arm, x0 - 2, y0 - 2, x0 + arm, y0 - 2], GREEN, 0.9, 2, 8);
-    this.canvasLine([x1 - arm, y0 - 2, x1 + 2, y0 - 2, x1 + 2, y0 + arm], GREEN, 0.9, 2, 8);
-    this.canvasLine([x0 - 2, y1 - arm, x0 - 2, y1 + 2, x0 + arm, y1 + 2], GREEN, 0.9, 2, 8);
-    this.canvasLine([x1 - arm, y1 + 2, x1 + 2, y1 + 2, x1 + 2, y1 - arm], GREEN, 0.9, 2, 8);
+    this.canvasLine(cornerBracket(x0 - 2, y0 + arm, x0 - 2, y0 - 2, x0 + arm, y0 - 2), GREEN, 0.9, 2, 8);
+    this.canvasLine(cornerBracket(x1 - arm, y0 - 2, x1 + 2, y0 - 2, x1 + 2, y0 + arm), GREEN, 0.9, 2, 8);
+    this.canvasLine(cornerBracket(x0 - 2, y1 - arm, x0 - 2, y1 + 2, x0 + arm, y1 + 2), GREEN, 0.9, 2, 8);
+    this.canvasLine(cornerBracket(x1 - arm, y1 + 2, x1 + 2, y1 + 2, x1 + 2, y1 - arm), GREEN, 0.9, 2, 8);
 
     // map viewport and zoom/pan coordinate transform
     const mapX0 = x0 + 10;
@@ -818,12 +864,12 @@ export class Hud {
       for (let gx = 0; gx <= level.width; gx++) {
         const lx = ox + gx * s;
         if (lx >= mapX0 && lx <= mapX0 + mapW && gyMax > gyMin)
-          layer.line([lx, gyMin, lx, gyMax], RGB[BLUE], gx % 4 === 0 ? 0.14 : 0.06);
+          layerSegment(layer, lx, gyMin, lx, gyMax, RGB[BLUE], gx % 4 === 0 ? 0.14 : 0.06);
       }
       for (let gy = 0; gy <= level.rowCount; gy++) {
         const ly = oy + gy * s;
         if (ly >= mapY0 && ly <= mapY0 + mapH && gxMax > gxMin)
-          layer.line([gxMin, ly, gxMax, ly], RGB[BLUE], gy % 4 === 0 ? 0.14 : 0.06);
+          layerSegment(layer, gxMin, ly, gxMax, ly, RGB[BLUE], gy % 4 === 0 ? 0.14 : 0.06);
       }
     }
 
@@ -850,7 +896,7 @@ export class Hud {
             this.text('T', tx + s * 0.5, ty + s * 0.5 + 3, GREEN, { size: Utils.clamp(Math.floor(s * 0.55), 8, 11), align: 'center', weight: 800, glow: 5 });
           } else if (isSlime) {
             layer.fillRect(tx + 1.5, ty + 1.5, Math.max(1, s - 3), Math.max(1, s - 3), visible ? SLIME_VISIBLE : SLIME_SEEN);
-            layer.line([tx + 2, ty + s - 2, tx + s - 2, ty + 2], RGB[GREEN], visible ? 0.55 : 0.3);
+            layerSegment(layer, tx + 2, ty + s - 2, tx + s - 2, ty + 2, RGB[GREEN], visible ? 0.55 : 0.3);
           } else
             layer.fillRect(tx + s * 0.5 - 0.5, ty + s * 0.5 - 0.5, 1.5, 1.5, visible ? FLOOR_VISIBLE : FLOOR_SEEN);
           if (game.discoveredSecrets?.has(idx)) {
@@ -864,8 +910,8 @@ export class Hud {
         const hiddenSecret = doorObj?.secret && !doorObj.revealed;
         if (kind === EXIT) {
           layer.rectLine(tx + 1, ty + 1, s - 2, s - 2, RGB[GREEN], 0.95);
-          layer.line([tx + 2, ty + 2, tx + s - 2, ty + s - 2], RGB[ORANGE], 0.85);
-          layer.line([tx + s - 2, ty + 2, tx + 2, ty + s - 2], RGB[ORANGE], 0.85);
+          layerSegment(layer, tx + 2, ty + 2, tx + s - 2, ty + s - 2, RGB[ORANGE], 0.85);
+          layerSegment(layer, tx + s - 2, ty + 2, tx + 2, ty + s - 2, RGB[ORANGE], 0.85);
           this.text('X', tx + s * 0.5, ty + s * 0.5 + 3, GREEN, { size: Utils.clamp(Math.floor(s * 0.55), 8, 11), align: 'center', weight: 800, glow: 6 });
           continue;
         }
@@ -885,13 +931,13 @@ export class Hud {
           layer.rectLine(tx + 1, ty + 1, s - 2, s - 2, doorCol, alpha);
           const closed = 1 - (doorObj?.open ?? 0);
           if (closed > 0.05 && isSecret)
-            layer.line([tx + 2, ty + s * 0.5, tx + 2 + (s - 4) * closed, ty + s * 0.5], doorCol, alpha);
+            layerSegment(layer, tx + 2, ty + s * 0.5, tx + 2 + (s - 4) * closed, ty + s * 0.5, doorCol, alpha);
           else if (closed > 0.05 && doorObj?.alongY) {
-            layer.line([tx + 2, ty + s * 0.28, tx + 2 + (s - 4) * closed, ty + s * 0.28], doorCol, alpha);
-            layer.line([tx + 2, ty + s * 0.72, tx + 2 + (s - 4) * closed, ty + s * 0.72], doorCol, alpha);
+            layerSegment(layer, tx + 2, ty + s * 0.28, tx + 2 + (s - 4) * closed, ty + s * 0.28, doorCol, alpha);
+            layerSegment(layer, tx + 2, ty + s * 0.72, tx + 2 + (s - 4) * closed, ty + s * 0.72, doorCol, alpha);
           } else if (closed > 0.05) {
-            layer.line([tx + s * 0.28, ty + 2, tx + s * 0.28, ty + 2 + (s - 4) * closed], doorCol, alpha);
-            layer.line([tx + s * 0.72, ty + 2, tx + s * 0.72, ty + 2 + (s - 4) * closed], doorCol, alpha);
+            layerSegment(layer, tx + s * 0.28, ty + 2, tx + s * 0.28, ty + 2 + (s - 4) * closed, doorCol, alpha);
+            layerSegment(layer, tx + s * 0.72, ty + 2, tx + s * 0.72, ty + 2 + (s - 4) * closed, doorCol, alpha);
           }
           if (isSecret)
             this.text('S', tx + s * 0.5, ty + s * 0.5 + 3, ORANGE, { size: Utils.clamp(Math.floor(s * 0.55), 8, 11), align: 'center', weight: 800, glow: 5 });
@@ -928,16 +974,16 @@ export class Hud {
           const by = oy + (df.by / TILE) * s;
           const sx = ox + (df.sx / TILE) * s;
           const sy = oy + (df.sy / TILE) * s;
-          layer.line([sx, sy, ax, ay, bx, by, sx, sy], RGB[BLUE], visible ? 0.38 : 0.2);
-          layer.line([ax, ay, bx, by], RGB[RED], edgeAlpha);
+          layerTriangle(layer, sx, sy, ax, ay, bx, by, RGB[BLUE], visible ? 0.38 : 0.2);
+          layerSegment(layer, ax, ay, bx, by, RGB[RED], edgeAlpha);
           if (level.hasCardinalFace(idx, 0) && isOpenNeighbor(x, y - 1, 0))
-            layer.line([tx, ty + 0.5, tx + s, ty + 0.5], RGB[RED], edgeAlpha);
+            layerSegment(layer, tx, ty + 0.5, tx + s, ty + 0.5, RGB[RED], edgeAlpha);
           if (level.hasCardinalFace(idx, 2) && isOpenNeighbor(x, y + 1, 2))
-            layer.line([tx, ty + s - 0.5, tx + s, ty + s - 0.5], RGB[RED], edgeAlpha);
+            layerSegment(layer, tx, ty + s - 0.5, tx + s, ty + s - 0.5, RGB[RED], edgeAlpha);
           if (level.hasCardinalFace(idx, 3) && isOpenNeighbor(x - 1, y, 3))
-            layer.line([tx + 0.5, ty, tx + 0.5, ty + s], RGB[RED], edgeAlpha);
+            layerSegment(layer, tx + 0.5, ty, tx + 0.5, ty + s, RGB[RED], edgeAlpha);
           if (level.hasCardinalFace(idx, 1) && isOpenNeighbor(x + 1, y, 1))
-            layer.line([tx + s - 0.5, ty, tx + s - 0.5, ty + s], RGB[RED], edgeAlpha);
+            layerSegment(layer, tx + s - 0.5, ty, tx + s - 0.5, ty + s, RGB[RED], edgeAlpha);
           continue;
         }
 
@@ -945,13 +991,13 @@ export class Hud {
         // subtle blue block outline + classic Doom red vector boundary lines against open space
         layer.rectLine(tx + 0.5, ty + 0.5, s - 1, s - 1, RGB[BLUE], visible ? 0.38 : 0.2);
         if (isOpenNeighbor(x, y - 1, 0))
-          layer.line([tx, ty + 0.5, tx + s, ty + 0.5], RGB[RED], edgeAlpha);
+          layerSegment(layer, tx, ty + 0.5, tx + s, ty + 0.5, RGB[RED], edgeAlpha);
         if (isOpenNeighbor(x, y + 1, 2))
-          layer.line([tx, ty + s - 0.5, tx + s, ty + s - 0.5], RGB[RED], edgeAlpha);
+          layerSegment(layer, tx, ty + s - 0.5, tx + s, ty + s - 0.5, RGB[RED], edgeAlpha);
         if (isOpenNeighbor(x - 1, y, 3))
-          layer.line([tx + 0.5, ty, tx + 0.5, ty + s], RGB[RED], edgeAlpha);
+          layerSegment(layer, tx + 0.5, ty, tx + 0.5, ty + s, RGB[RED], edgeAlpha);
         if (isOpenNeighbor(x + 1, y, 1))
-          layer.line([tx + s - 0.5, ty, tx + s - 0.5, ty + s], RGB[RED], edgeAlpha);
+          layerSegment(layer, tx + s - 0.5, ty, tx + s - 0.5, ty + s, RGB[RED], edgeAlpha);
       }
 
     // ceiling crushers on explored tiles
@@ -964,8 +1010,8 @@ export class Hud {
         if (cx + s < mapX0 || cx > mapX0 + mapW || cy + s < mapY0 || cy > mapY0 + mapH)
           continue;
         layer.rectLine(cx + 2, cy + 2, Math.max(2, s - 4), Math.max(2, s - 4), RGB[RED], 0.8);
-        layer.line([cx + 2, cy + 2, cx + s - 2, cy + s - 2], RGB[ORANGE], 0.75);
-        layer.line([cx + s - 2, cy + 2, cx + 2, cy + s - 2], RGB[ORANGE], 0.75);
+        layerSegment(layer, cx + 2, cy + 2, cx + s - 2, cy + s - 2, RGB[ORANGE], 0.75);
+        layerSegment(layer, cx + s - 2, cy + 2, cx + 2, cy + s - 2, RGB[ORANGE], 0.75);
       }
 
     // uncollected keycards and high-value pickups on explored tiles
@@ -995,7 +1041,7 @@ export class Hud {
               ? RGB[BLUE]
               : RGB[GREEN];
         const r = isKey ? Math.max(3.5, s * 0.28) : Math.max(2.5, s * 0.2);
-        layer.line([sx, sy - r, sx + r, sy, sx, sy + r, sx - r, sy, sx, sy - r], col, 0.95);
+        layerDiamond(layer, sx, sy, r, col, 0.95);
       }
 
     // supply chests on explored tiles: weapon chests stand out, emptied ones fade
@@ -1023,7 +1069,7 @@ export class Hud {
       if (ex < mapX0 || ex > mapX0 + mapW || ey < mapY0 || ey > mapY0 + mapH)
         continue;
       const r = Math.max(3, s * 0.24);
-      layer.line([ex, ey - r, ex + r, ey, ex, ey + r, ex - r, ey, ex, ey - r], RGB[ORANGE], 0.95);
+      layerDiamond(layer, ex, ey, r, RGB[ORANGE], 0.95);
     }
 
     // classic Doom vector player arrow + subtle FOV cone
@@ -1036,8 +1082,8 @@ export class Hud {
       const perpX = -sin;
       const perpY = cos;
       const coneLen = Math.max(18, s * 2.1);
-      layer.line([px, py, px + Math.cos(a - 0.62) * coneLen, py + Math.sin(a - 0.62) * coneLen], RGB[GREEN], 0.22);
-      layer.line([px, py, px + Math.cos(a + 0.62) * coneLen, py + Math.sin(a + 0.62) * coneLen], RGB[GREEN], 0.22);
+      layerSegment(layer, px, py, px + Math.cos(a - 0.62) * coneLen, py + Math.sin(a - 0.62) * coneLen, RGB[GREEN], 0.22);
+      layerSegment(layer, px, py, px + Math.cos(a + 0.62) * coneLen, py + Math.sin(a + 0.62) * coneLen, RGB[GREEN], 0.22);
 
       const arrowR = Utils.clamp(s * 0.65, 6, 13);
       const tipX = px + cos * arrowR * 1.25;
@@ -1045,17 +1091,17 @@ export class Hud {
       const tailX = px - cos * arrowR * 0.95;
       const tailY = py - sin * arrowR * 0.95;
       // main shaft
-      layer.line([tailX, tailY, tipX, tipY], RGB[GREEN], 1);
+      layerSegment(layer, tailX, tailY, tipX, tipY, RGB[GREEN], 1);
       // arrowhead barbs
       const headBackX = tipX - cos * arrowR * 0.75;
       const headBackY = tipY - sin * arrowR * 0.75;
       const wing = arrowR * 0.52;
-      layer.line([headBackX + perpX * wing, headBackY + perpY * wing, tipX, tipY, headBackX - perpX * wing, headBackY - perpY * wing], RGB[GREEN], 1);
+      layerPoly3(layer, headBackX + perpX * wing, headBackY + perpY * wing, tipX, tipY, headBackX - perpX * wing, headBackY - perpY * wing, RGB[GREEN], 1);
       // classic Doom tail fletching
       const fletchX = tailX + cos * arrowR * 0.35;
       const fletchY = tailY + sin * arrowR * 0.35;
       const fWing = arrowR * 0.38;
-      layer.line([fletchX + perpX * fWing, fletchY + perpY * fWing, tailX, tailY, fletchX - perpX * fWing, fletchY - perpY * fWing], RGB[GREEN], 0.9);
+      layerPoly3(layer, fletchX + perpX * fWing, fletchY + perpY * fWing, tailX, tailY, fletchX - perpX * fWing, fletchY - perpY * fWing, RGB[GREEN], 0.9);
     }
 
     // header telemetry: sector code/name + live KILLS / ITEMS / SECRETS / TIME

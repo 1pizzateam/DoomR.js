@@ -174,8 +174,9 @@ export function faceFrame({ health = 100, hurt = 0, shotElapsed = -1, time = 0 }
 
 /**
  * Screen rectangle `{ x0, y0, x1, y1, pixel }` for the HUD portrait box at the bottom-left of the screen.
+ * The rectangle is written onto `out` (pass a reused scratch rect to avoid allocating) and `out` is returned.
  */
-export function facePlacement({ width, height, hurt = 0 } = {}) {
+export function facePlacement({ width, height, hurt = 0 } = {}, out = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 }) {
   const scale = Utils.clamp(height / 760, 0.75, 1.35);
   const pixel = Math.max(1, Math.round(1.5 * scale));
   const w = W * pixel;
@@ -184,13 +185,22 @@ export function facePlacement({ width, height, hurt = 0 } = {}) {
   const joltY = hurt > 0 ? Math.round(hurt * 4 * pixel) : 0;
   const x0 = 24 + joltX;
   const y1 = height - 18 + joltY;
-  return { x0, y0: y1 - h, x1: x0 + w, y1, pixel };
+  out.x0 = x0;
+  out.y0 = y1 - h;
+  out.x1 = x0 + w;
+  out.y1 = y1;
+  out.pixel = pixel;
+  return out;
 }
 
-/** Texture coordinates `[u0, v0, u1, v1]` for a frame in `faceAtlas()`. */
+const FACE_UV_INSET = 0.02 / (W * FACE_FRAME_COUNT);
+const FACE_UV = [];
+for (let f = 0; f < FACE_FRAME_COUNT; f++)
+  FACE_UV.push(Object.freeze([f / FACE_FRAME_COUNT + FACE_UV_INSET, 0, (f + 1) / FACE_FRAME_COUNT - FACE_UV_INSET, 1]));
+
+/** Cached texture coordinates `[u0, v0, u1, v1]` for a frame in `faceAtlas()`. */
 export function faceCellUv(frame) {
-  const inset = 0.02 / (W * FACE_FRAME_COUNT);
-  return [frame / FACE_FRAME_COUNT + inset, 0, (frame + 1) / FACE_FRAME_COUNT - inset, 1];
+  return FACE_UV[frame] ?? [frame / FACE_FRAME_COUNT + FACE_UV_INSET, 0, (frame + 1) / FACE_FRAME_COUNT - FACE_UV_INSET, 1];
 }
 
 class Art {
