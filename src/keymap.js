@@ -254,7 +254,6 @@ export class Keymap {
     this.effective = new Map();
     this.slots = new Map();
     this.unbound = Object.freeze([]);
-    this.saveFailed = false;
     this.lastChange = { ok: false, stolenFrom: null, swapped: false, saved: false, code: '' };
     this.bindingsVersion = 0;
     this.layoutGlyphs = new Map();
@@ -397,7 +396,6 @@ export class Keymap {
       }
       result = this.writeStorage(CONTROLS_STORAGE_KEY, JSON.stringify({ version: CONTROLS_VERSION, bindings }));
     }
-    this.saveFailed = !result;
     return result;
   }
 
@@ -611,7 +609,6 @@ export class Keymap {
     this.version++;
     change.ok = true;
     change.saved = this.removeStorage(CONTROLS_STORAGE_KEY);
-    this.saveFailed = !change.saved;
     return change;
   }
 

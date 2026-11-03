@@ -42,7 +42,6 @@ export class Input {
     this.mousePos = new Vec2(-1, -1);
     this.mouseMoved = false;
     this.pressed = new Set();
-    this.onAction = () => {};
     this.navBits = 0;
     this.releaseScratch = [];
     this.mouseDispatch = { which: 0, ctrlKey: false, altKey: false, shiftKey: false, preventDefault: noop };
