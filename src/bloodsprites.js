@@ -1,4 +1,4 @@
-import { Bezier, NumArray, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Bezier, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 
 /**
@@ -520,29 +520,45 @@ const DRIP_SEED = 0x9e3779b9;
  * pointed, slanted, needle or frayed ends, stubs and long runs, and runs that slow, stutter or creep.
  */
 export function wallDrips(seed, size) {
-  const rnd = mulberry32((seed ^ DRIP_SEED) >>> 0);
-  const count = (rnd() < 0.15 ? 1 : 2 + Math.floor(rnd() * 3)) + (size > 8 ? 1 : 0);
   const drips = [];
-  for (let i = 0; i < count; i++) {
-    const stub = rnd() < 0.25;
-    drips.push({
-      u: (rnd() - 0.5) * size * 1.1,
-      length: stub ? 4 + rnd() * 6 : 9 + rnd() * (14 + size * 3),
-      delay: rnd() * 1.1,
-      duration: 1.8 + rnd() * 4.2,
-      // units of the wall per pixel of the drip's picture: slender and proportional to the scaled-down splats
-      pixel: (0.26 + size * 0.018) * (0.75 + rnd() * 0.55),
-      stem: Math.floor(rnd() * STEM_KINDS),
-      tip: Math.floor(rnd() * TIP_KINDS),
-      profile: Math.floor(rnd() * 4),
-    });
-  }
+  fillDrips(seed, size, drips);
   return drips;
 }
 
+/** The drips of `wallDrips` written into `out`, reusing the objects already in it; returns how many there are. */
+function fillDrips(seed, size, out) {
+  const rnd = mulberry32((seed ^ DRIP_SEED) >>> 0);
+  const count = (rnd() < 0.15 ? 1 : 2 + Math.floor(rnd() * 3)) + (size > 8 ? 1 : 0);
+  for (let i = 0; i < count; i++) {
+    const d = out[i] ?? (out[i] = { u: 0, length: 0, delay: 0, duration: 0, pixel: 0, stem: 0, tip: 0, profile: 0 });
+    const stub = rnd() < 0.25;
+    d.u = (rnd() - 0.5) * size * 1.1;
+    d.length = stub ? 4 + rnd() * 6 : 9 + rnd() * (14 + size * 3);
+    d.delay = rnd() * 1.1;
+    d.duration = 1.8 + rnd() * 4.2;
+    // units of the wall per pixel of the drip's picture: slender and proportional to the scaled-down splats
+    d.pixel = (0.26 + size * 0.018) * (0.75 + rnd() * 0.55);
+    d.stem = Math.floor(rnd() * STEM_KINDS);
+    d.tip = Math.floor(rnd() * TIP_KINDS);
+    d.profile = Math.floor(rnd() * 4);
+  }
+  return count;
+}
+
+const SCRATCH_DRIPS = [];
+const COLS = [0, 0];
+
 /** How long, in seconds, until every drip of a splat has stopped. */
 export function dripTime(seed, size) {
-  return NumArray.max(wallDrips(seed, size).map((d) => d.delay + d.duration));
+  const count = fillDrips(seed, size, SCRATCH_DRIPS);
+  let end = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const d = SCRATCH_DRIPS[i];
+    const t = d.delay + d.duration;
+    if (t > end)
+      end = t;
+  }
+  return end;
 }
 
 /** How far a drip has run, 0..1, `t` of the way through its time: some slow steadily, some stutter, some creep. */
@@ -571,6 +587,22 @@ function stack(top, bottom, segment) {
   return out;
 }
 
+/** `columns` written into `COLS`, without allocating. */
+function columnsInto(cell) {
+  const uv = cellUv(cell);
+  const share = (uv[2] - uv[0]) / CELL;
+  COLS[0] = uv[0] + share * STEM_FROM;
+  COLS[1] = uv[0] + share * STEM_TO;
+}
+
+/**
+ * Reusable output for `wallDripQuads` and `screenSplatQuads`: `quads` is a growing pool of descriptors owned by the
+ * target. The next call overwrites them, and only the first `count` are valid.
+ */
+export function createQuadTarget() {
+  return { quads: [], count: 0 };
+}
+
 /** The part of a cell the drips use: its middle 12 columns. */
 function columns(cell) {
   const [a0, , a1] = cellUv(cell);
@@ -578,23 +610,49 @@ function columns(cell) {
   return [a0 + share * STEM_FROM, a0 + share * STEM_TO];
 }
 
+/** Corner of a wall quad at (u, v) across and up the face, written into `corners[o..o + 2]`. */
+function writeCorner(corners, o, x, y, z, tx, ty, nx, ny, slope, u, v) {
+  const n = 0.45 - slope * v;
+  corners[o] = x + tx * u + nx * n;
+  corners[o + 1] = z + v;
+  corners[o + 2] = y + ty * u + ny * n;
+}
+
+function dripSlot(target, i) {
+  return target.quads[i] ?? (target.quads[i] = { corners: new Array(12).fill(0), uv: [0, 0, 0, 0] });
+}
+
+function pushDripQuad(target, x, y, z, tx, ty, nx, ny, slope, u0, v0, u1, v1, a0, b0, a1, b1) {
+  const q = dripSlot(target, target.count++);
+  const c = q.corners;
+  writeCorner(c, 0, x, y, z, tx, ty, nx, ny, slope, u0, v0);
+  writeCorner(c, 3, x, y, z, tx, ty, nx, ny, slope, u1, v0);
+  writeCorner(c, 6, x, y, z, tx, ty, nx, ny, slope, u1, v1);
+  writeCorner(c, 9, x, y, z, tx, ty, nx, ny, slope, u0, v1);
+  const uv = q.uv;
+  uv[0] = a0;
+  uv[1] = b0;
+  uv[2] = a1;
+  uv[3] = b1;
+}
+
 /**
  * The drips of a splat on a wall at the age it has now, as quads: a stem running down from the splat and a small tip at
  * its end. A drip starts fast and slows as the blood thickens, then stays where it stopped. They are cut where the face
- * ends and stop at the floor, like the splat itself. Each is `{ corners, uv }`.
+ * ends and stop at the floor, like the splat itself. Each is `{ corners, uv }`. Without a `target` the quads are fresh
+ * and returned as an array; with a `createQuadTarget()` they are written into it (overwritten by the next call, valid
+ * up to `target.count`) and the target is returned.
  */
-export function wallDripQuads({ x, y, z, nx, ny, size, top, seed, age = 0, lo = -Infinity, hi = Infinity, slope = 0 }) {
-  const out = [];
+export function wallDripQuads({ x, y, z, nx, ny, size, top, seed, age = 0, lo = -Infinity, hi = Infinity, slope = 0 }, target = null) {
+  const out = target ?? createQuadTarget();
+  out.count = 0;
   const tx = -ny;
   const ty = nx;
-  const at = (u, v) => {
-    const n = 0.45 - slope * v;
-    return [x + tx * u + nx * n, z + v, y + ty * u + ny * n];
-  };
-  const quad = (u0, v0, u1, v1, uv) => out.push({ corners: [...at(u0, v0), ...at(u1, v0), ...at(u1, v1), ...at(u0, v1)], uv });
   const floor = 0.6 - z;
   const start = -size * 0.3;
-  for (const drip of wallDrips(seed, size)) {
+  const count = fillDrips(seed, size, SCRATCH_DRIPS);
+  for (let i = 0; i < count; i++) {
+    const drip = SCRATCH_DRIPS[i];
     const t = Math.min(1, (age - drip.delay) / drip.duration);
     if (t <= 0)
       continue;
@@ -605,14 +663,22 @@ export function wallDripQuads({ x, y, z, nx, ny, size, top, seed, age = 0, lo = 
     const tipHeight = TIP_HEIGHTS[drip.tip] * px;
     // the end of the stem, resting on the floor when it gets there
     const head = Math.max(floor + tipHeight - px, start - drip.length * progress(t, drip.profile));
-    const [s0, s1] = columns(CELLS.stems + drip.stem);
-    for (const part of stack(start, head + px, CELL * px))
-      quad(drip.u - half, part.bottom, drip.u + half, part.top, [s0, 1 - part.part, s1, 1]);
-    const [t0, t1] = columns(CELLS.tips + drip.tip);
-    const rows = TIP_HEIGHTS[drip.tip] / CELL;
-    quad(drip.u - half, head + px - tipHeight, drip.u + half, head + px, [t0, 1 - rows, t1, 1]);
+    columnsInto(CELLS.stems + drip.stem);
+    const s0 = COLS[0];
+    const s1 = COLS[1];
+    const segment = CELL * px;
+    const bottom = head + px;
+    for (let top2 = start; top2 > bottom + 1e-6; top2 -= segment) {
+      const partBottom = Math.max(bottom, top2 - segment);
+      pushDripQuad(out, x, y, z, tx, ty, nx, ny, slope, drip.u - half, partBottom, drip.u + half, top2, s0, 1 - (top2 - partBottom) / segment, s1, 1);
+    }
+    columnsInto(CELLS.tips + drip.tip);
+    pushDripQuad(out, x, y, z, tx, ty, nx, ny, slope, drip.u - half, head + px - tipHeight, drip.u + half, head + px, COLS[0], 1 - TIP_HEIGHTS[drip.tip] / CELL, COLS[1], 1);
   }
-  return out;
+  if (target)
+    return target;
+  out.quads.length = out.count;
+  return out.quads;
 }
 
 /**
@@ -664,16 +730,21 @@ export function particleQuad({ x, y, z, gib, variant = 0, scale = 1, visualScale
 
 /**
  * Blood on the player's view, as flat 2D quads in screen pixels: a starburst that grows out, and a drip that slides
- * down from it, all fading with `fade`. Each quad is `{ x0, y0, x1, y1, uv }`, y down. It is the same atlas as the
- * blood in the world, so the same red pixels are on the glass.
+ * down from it, all fading with `fade`. Each quad is `{ x0, y0, x1, y1, uv, fade }`, y down. It is the same atlas as
+ * the blood in the world, so the same red pixels are on the glass. Without a `target` the quads are fresh and returned
+ * as an array; with a `createQuadTarget()` they are written into it (overwritten by the next call, valid up to
+ * `target.count`) and the target is returned.
  */
-export function screenSplatQuads({ x, y, size, age, drip, seed }, width, height, fade) {
+export function screenSplatQuads({ x, y, size, age, drip, seed }, width, height, fade, target = null) {
+  const out = target ?? createQuadTarget();
+  out.count = 0;
   const rnd = mulberry32(seed);
   const grow = 1 - Math.pow(1 - Math.min(1, age * 7), 3);
   const half = size * (0.35 + 0.65 * grow) * 1.4;
   const cx = x * width;
   const cy = y * height;
-  const quads = [{ x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half, uv: cellUv(CELLS.floor + Math.floor(rnd() * FLOOR_VARIANTS)), fade }];
+  const burst = cellUv(CELLS.floor + Math.floor(rnd() * FLOOR_VARIANTS));
+  setScreenQuad(out, cx - half, cy - half, cx + half, cy + half, burst[0], burst[1], burst[2], burst[3], fade);
   const run = drip * Math.min(1, age * 0.9);
   if (run > 4) {
     // the drip on the glass is the ribbon kind, with a slanted or pointed tip; slender screen-pixel scale
@@ -681,13 +752,35 @@ export function screenSplatQuads({ x, y, size, age, drip, seed }, width, height,
     const px = 0.55;
     const top = cy + size * 0.2;
     const half = ((STEM_TO - STEM_FROM) / 2) * px * 2;
-    const [s0, s1] = columns(CELLS.stems + 1);
+    columnsInto(CELLS.stems + 1);
+    const s0 = COLS[0];
+    const s1 = COLS[1];
     const tip = rnd() < 0.5 ? 0 : 1;
-    const [t0, t1] = columns(CELLS.tips + tip);
-    for (const part of stack(0, -run, CELL * px * 2))
-      quads.push({ x0: dx - half, y0: top - part.top, x1: dx + half, y1: top - part.bottom, uv: [s0, 1 - part.part, s1, 1], fade });
+    const segment = CELL * px * 2;
+    for (let y0 = 0; y0 > -run + 1e-6; y0 -= segment) {
+      const bottom = Math.max(-run, y0 - segment);
+      setScreenQuad(out, dx - half, top - y0, dx + half, top - bottom, s0, 1 - (y0 - bottom) / segment, s1, 1, fade);
+    }
+    columnsInto(CELLS.tips + tip);
     const tipHeight = TIP_HEIGHTS[tip] * px * 2;
-    quads.push({ x0: dx - half, y0: top + run - px * 2, x1: dx + half, y1: top + run - px * 2 + tipHeight, uv: [t0, 1 - TIP_HEIGHTS[tip] / CELL, t1, 1], fade });
+    setScreenQuad(out, dx - half, top + run - px * 2, dx + half, top + run - px * 2 + tipHeight, COLS[0], 1 - TIP_HEIGHTS[tip] / CELL, COLS[1], 1, fade);
   }
-  return quads;
+  if (target)
+    return target;
+  out.quads.length = out.count;
+  return out.quads;
+}
+
+function setScreenQuad(target, x0, y0, x1, y1, u0, v0, u1, v1, fade) {
+  const q = target.quads[target.count] ?? (target.quads[target.count] = { x0: 0, y0: 0, x1: 0, y1: 0, uv: [0, 0, 0, 0], fade: 0 });
+  target.count++;
+  q.x0 = x0;
+  q.y0 = y0;
+  q.x1 = x1;
+  q.y1 = y1;
+  q.uv[0] = u0;
+  q.uv[1] = v0;
+  q.uv[2] = u1;
+  q.uv[3] = v1;
+  q.fade = fade;
 }

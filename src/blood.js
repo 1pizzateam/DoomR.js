@@ -43,6 +43,8 @@ export class Blood {
     this.rand = rand;
     this.severRand = Rand.create(997);
     this.particles = [];
+    this.pool = [];
+    this.spawnBuf = [];
     this.floor = [];
     this.gibs = [];
     this.walls = [];
@@ -61,29 +63,55 @@ export class Blood {
     return this.rand.float(min, max);
   }
 
+  /** A recycled (or new) particle with the full stable shape; callers assign every field. */
+  acquire() {
+    const p = this.pool.pop();
+    if (p)
+      return p;
+    return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, age: 0, life: 0, gib: false, sever: false, scale: 1, visualScale: 1, variant: 0, bounces: 0, bleedTimer: 99 };
+  }
+
+  release(p) {
+    this.pool.push(p);
+  }
+
+  /** Drop the oldest particles beyond capacity, returning them to the pool. */
+  trim() {
+    const { particles } = this;
+    const excess = particles.length - BLOOD.particles;
+    if (excess <= 0)
+      return;
+    for (let i = 0; i < excess; i++)
+      this.release(particles[i]);
+    const kept = particles.length - excess;
+    for (let i = 0; i < kept; i++)
+      particles[i] = particles[i + excess];
+    particles.length = kept;
+  }
+
   /** Spray droplets (or gibs) from a point, mostly along a direction plus a random spread. */
   spray(x, y, z, dirX, dirY, count, { speed = 200, spread = 110, up = 170, gib = false, scale = 1 } = {}) {
     for (let i = 0; i < count; i++) {
       const s = speed * this.float(0.35, 1);
-      this.particles.push({
-        x,
-        y,
-        z,
-        vx: dirX * s + this.float(-spread, spread),
-        vy: dirY * s + this.float(-spread, spread),
-        vz: this.float(-20, up) * (gib ? 1.35 : 1),
-        age: 0,
-        life: gib ? 2.1 : 2.5,
-        gib,
-        scale,
-        visualScale: (gib ? 1.35 : 0.95) * scale,
-        variant: gib ? (i + this.rand.integer(0, GIB_VARIANTS - 1)) % GIB_VARIANTS : 0,
-        bounces: gib ? 2 : 0,
-        bleedTimer: gib ? 0.04 : 99,
-      });
+      const p = this.acquire();
+      p.x = x;
+      p.y = y;
+      p.z = z;
+      p.vx = dirX * s + this.float(-spread, spread);
+      p.vy = dirY * s + this.float(-spread, spread);
+      p.vz = this.float(-20, up) * (gib ? 1.35 : 1);
+      p.age = 0;
+      p.life = gib ? 2.1 : 2.5;
+      p.gib = gib;
+      p.sever = false;
+      p.scale = scale;
+      p.visualScale = (gib ? 1.35 : 0.95) * scale;
+      p.variant = gib ? (i + this.rand.integer(0, GIB_VARIANTS - 1)) % GIB_VARIANTS : 0;
+      p.bounces = gib ? 2 : 0;
+      p.bleedTimer = gib ? 0.04 : 99;
+      this.particles.push(p);
     }
-    if (this.particles.length > BLOOD.particles)
-      this.particles.splice(0, this.particles.length - BLOOD.particles);
+    this.trim();
   }
 
   /** A pellet hitting flesh: spray out of the back, a little back at the shooter, plus occasional torn meat shreds. */
@@ -125,48 +153,47 @@ export class Blood {
     for (let i = 0; i < dropCount; i++) {
       const spd = 220 * rng.float(0.35, 1);
       const spread = 170 * sizeScale;
-      this.particles.push({
-        x,
-        y,
-        z,
-        vx: dirX * spd + rng.float(-spread, spread),
-        vy: dirY * spd + rng.float(-spread, spread),
-        vz: rng.float(-20, 170),
-        age: 0,
-        life: 2.5,
-        gib: false,
-        sever: true,
-        scale: sizeScale,
-        visualScale: 0.95 * sizeScale,
-        variant: 0,
-        bounces: 0,
-        bleedTimer: 99,
-      });
+      const p = this.acquire();
+      p.x = x;
+      p.y = y;
+      p.z = z;
+      p.vx = dirX * spd + rng.float(-spread, spread);
+      p.vy = dirY * spd + rng.float(-spread, spread);
+      p.vz = rng.float(-20, 170);
+      p.age = 0;
+      p.life = 2.5;
+      p.gib = false;
+      p.sever = true;
+      p.scale = sizeScale;
+      p.visualScale = 0.95 * sizeScale;
+      p.variant = 0;
+      p.bounces = 0;
+      p.bleedTimer = 99;
+      this.particles.push(p);
     }
     const gibCount = Math.max(3, Math.round(4 * scale));
     for (let i = 0; i < gibCount; i++) {
       const spd = 175 * rng.float(0.4, 1);
       const spread = 180 * sizeScale;
-      this.particles.push({
-        x,
-        y,
-        z,
-        vx: dirX * spd + rng.float(-spread, spread),
-        vy: dirY * spd + rng.float(-spread, spread),
-        vz: rng.float(-15, 170),
-        age: 0,
-        life: 2.1,
-        gib: true,
-        sever: true,
-        scale: sizeScale,
-        visualScale: 1.35 * sizeScale,
-        variant: (i + rng.integer(0, GIB_VARIANTS - 1)) % GIB_VARIANTS,
-        bounces: 2,
-        bleedTimer: 0.04,
-      });
+      const p = this.acquire();
+      p.x = x;
+      p.y = y;
+      p.z = z;
+      p.vx = dirX * spd + rng.float(-spread, spread);
+      p.vy = dirY * spd + rng.float(-spread, spread);
+      p.vz = rng.float(-15, 170);
+      p.age = 0;
+      p.life = 2.1;
+      p.gib = true;
+      p.sever = true;
+      p.scale = sizeScale;
+      p.visualScale = 1.35 * sizeScale;
+      p.variant = (i + rng.integer(0, GIB_VARIANTS - 1)) % GIB_VARIANTS;
+      p.bounces = 2;
+      p.bleedTimer = 0.04;
+      this.particles.push(p);
     }
-    if (this.particles.length > BLOOD.particles)
-      this.particles.splice(0, this.particles.length - BLOOD.particles);
+    this.trim();
     const gx = x + dirX * 10;
     const gy = y + dirY * 10;
     const dissolving = Boolean(this.level?.slimeAt?.(gx, gy));
@@ -549,7 +576,9 @@ export class Blood {
     const oy = Math.floor(p.y / TILE);
     const tx = Math.floor(nx / TILE);
     const ty = Math.floor(ny / TILE);
-    for (const [dtx, dty] of [[ox, oy], [tx, ty]]) {
+    for (let k = 0; k < 2; k++) {
+      const dtx = k === 0 ? ox : tx;
+      const dty = k === 0 ? oy : ty;
       if (!level.inBounds(dtx, dty))
         continue;
       const didx = dty * level.width + dtx;
@@ -631,9 +660,12 @@ export class Blood {
   update(dt) {
     const g = BLOOD.gravity;
     let keep = 0;
-    const spawned = [];
+    const { spawnBuf } = this;
+    spawnBuf.length = 0;
+    const n = this.particles.length;
     const mainRand = this.rand;
-    for (const p of this.particles) {
+    for (let i = 0; i < n; i++) {
+      const p = this.particles[i];
       this.rand = p.sever ? this.severRand : mainRand;
       p.age += dt;
       p.vz -= g * dt;
@@ -646,21 +678,25 @@ export class Blood {
         p.bleedTimer = (p.bleedTimer ?? 0.05) - dt;
         if (p.bleedTimer <= 0) {
           p.bleedTimer = 0.065;
-          if (this.particles.length + spawned.length < BLOOD.particles)
-            spawned.push({
-              x: p.x,
-              y: p.y,
-              z: p.z,
-              vx: p.vx * 0.2 + this.float(-28, 28),
-              vy: p.vy * 0.2 + this.float(-28, 28),
-              vz: this.float(-15, 25),
-              age: 0,
-              life: 1.4,
-              gib: false,
-              sever: p.sever,
-              scale: p.scale ?? 1,
-              visualScale: 0.8 * (p.scale ?? 1),
-            });
+          if (n + spawnBuf.length < BLOOD.particles) {
+            const d = this.acquire();
+            d.x = p.x;
+            d.y = p.y;
+            d.z = p.z;
+            d.vx = p.vx * 0.2 + this.float(-28, 28);
+            d.vy = p.vy * 0.2 + this.float(-28, 28);
+            d.vz = this.float(-15, 25);
+            d.age = 0;
+            d.life = 1.4;
+            d.gib = false;
+            d.sever = Boolean(p.sever);
+            d.scale = p.scale ?? 1;
+            d.visualScale = 0.8 * d.scale;
+            d.variant = 0;
+            d.bounces = 0;
+            d.bleedTimer = 99;
+            spawnBuf.push(d);
+          }
         }
       }
       const nx = p.x + p.vx * dt;
@@ -680,6 +716,7 @@ export class Blood {
           continue;
         }
         this.land(p);
+        this.release(p);
         continue;
       }
       if (this.blocked(nx, ny, nz)) {
@@ -700,6 +737,7 @@ export class Blood {
             this.particles[keep++] = p;
           continue;
         }
+        this.release(p);
         continue;
       }
       // thrown up as far as the ceiling, it sticks there (not over the warden's room, which has none)
@@ -710,9 +748,12 @@ export class Blood {
           p.bounces--;
           p.z = CEILING - 1;
           p.vz = -Math.abs(p.vz) * 0.3;
-          if (p.age < p.life)
+          if (p.age < p.life) {
             this.particles[keep++] = p;
+            continue;
+          }
         }
+        this.release(p);
         continue;
       }
       p.x = nx;
@@ -720,12 +761,17 @@ export class Blood {
       p.z = nz;
       if (p.age < p.life)
         this.particles[keep++] = p;
+      else
+        this.release(p);
     }
     this.rand = mainRand;
     this.particles.length = keep;
-    for (const drop of spawned)
+    for (let i = 0; i < spawnBuf.length; i++)
       if (this.particles.length < BLOOD.particles)
-        this.particles.push(drop);
+        this.particles.push(spawnBuf[i]);
+      else
+        this.release(spawnBuf[i]);
+    spawnBuf.length = 0;
 
     // blood, gibs, and footprints that landed in liquid acid dissolve and disperse over time
     if (this.hasDissolving) {
@@ -809,7 +855,25 @@ export class Blood {
       splat.age += dt;
       for (const at of splat.drops)
         if (before < at && splat.age >= at && this.particles.length < BLOOD.particles)
-          this.particles.push({ x: splat.x + ((splat.seed % 7) - 3), y: splat.y + ((splat.seed % 5) - 2), z: CEILING - 1.8, vx: 0, vy: 0, vz: 0, age: 0, life: 2.5, gib: false });
+        {
+          const d = this.acquire();
+          d.x = splat.x + ((splat.seed % 7) - 3);
+          d.y = splat.y + ((splat.seed % 5) - 2);
+          d.z = CEILING - 1.8;
+          d.vx = 0;
+          d.vy = 0;
+          d.vz = 0;
+          d.age = 0;
+          d.life = 2.5;
+          d.gib = false;
+          d.sever = false;
+          d.scale = 1;
+          d.visualScale = 1;
+          d.variant = 0;
+          d.bounces = 0;
+          d.bleedTimer = 99;
+          this.particles.push(d);
+        }
     }
 
     for (const splat of this.splats)

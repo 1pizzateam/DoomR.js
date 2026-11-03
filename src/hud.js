@@ -1,7 +1,7 @@
 import { Trigo, Utils } from '@1pizzateam/spock';
 import { CEILING, DOOR, EXIT, PILLAR, TILE } from './level.js';
 import { LEVELS } from './levels.js';
-import { screenSplatQuads } from './bloodsprites.js';
+import { createQuadTarget, screenSplatQuads } from './bloodsprites.js';
 import { faceCellUv, faceFrame, facePlacement } from './face.js';
 import { AMMO_FLASH_DURATION, DIFFICULTIES, DIFFICULTY_ORDER } from './game.js';
 import { AMMO_TYPES } from './ammo.js';
@@ -138,6 +138,7 @@ export class Hud {
     this.canvas = canvas;
     this.overlay = overlay;
     this.ctx = canvas.getContext('2d');
+    this.bloodQuads = createQuadTarget();
     this.width = 0;
     this.height = 0;
     this.ratio = 1;
@@ -368,8 +369,11 @@ export class Hud {
     const { sprites } = this.overlay.crisp;
     for (const splat of game.blood.splats) {
       const fade = Utils.clamp((splat.life - splat.age) / (splat.life * 0.6), 0, 1) * SCREEN_BLOOD_ALPHA;
-      for (const q of screenSplatQuads(splat, width, height, fade))
+      const target = screenSplatQuads(splat, width, height, fade, this.bloodQuads);
+      for (let i = 0; i < target.count; i++) {
+        const q = target.quads[i];
         sprites.quad(q.x0, q.y0, q.x1, q.y1, q.uv, q.fade);
+      }
     }
   }
 

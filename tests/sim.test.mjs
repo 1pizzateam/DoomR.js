@@ -5,7 +5,7 @@ import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { ACID_PIT_DEPTH, CACHE_LID_TIME, CACHE_OUTDOOR_LINK, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
-import { BLOOD } from '../src/blood.js';
+import { BLOOD, Blood } from '../src/blood.js';
 import { DUCK_FLOOR, RECIPES, Sound, spatial } from '../src/audio.js';
 import * as audioModule from '../src/audio.js';
 import { validateSong } from '@1pizzateam/groovr';
@@ -24,7 +24,7 @@ import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAtlas, barrelExplosionPose, bar
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
 import { CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
 import { LIGHT_GLSL, PARTICLE_FRAGMENT, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT } from '../src/quads.js';
-import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads, screenSplatQuads, bloodAtlas, CELL, cellUv, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallSplatQuad } from '../src/bloodsprites.js';
+import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads, screenSplatQuads, createQuadTarget, bloodAtlas, CELL, cellUv, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallSplatQuad } from '../src/bloodsprites.js';
 import { CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { Fog } from '../src/fog.js';
 import { MONSTER_SKIN_CELL, MONSTER_SKIN_CELLS, MONSTER_SKIN_FRAMES, MONSTERS, monsterGoreSkinAtlas, monsterMesh, monsterParts, monsterSkinAtlas } from '../src/monsters.js';
@@ -1468,6 +1468,133 @@ const tests = {
       assert.ok(Math.abs(w.nx) + Math.abs(w.ny) === 1, 'normal must be an axis');
       assert.ok(w.z > 0 && w.z < 110, `bad height ${w.z}`);
     }
+  },
+
+  'AC-1 mid-air gib droplets spawn without exceeding capacity or allocating a spawned array'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood } = game;
+    blood.reset(game.level, game.rand);
+    blood.spray(4 * 64 + 32, 4 * 64 + 32, 30, 0, 0, 6, { speed: 0, spread: 20, up: 150, gib: true });
+    let droplets = 0;
+    for (let i = 0; i < 60; i++) {
+      blood.update(1 / 60);
+      assert.ok(blood.particles.length <= BLOOD.particles);
+      for (const p of blood.particles)
+        if (p.life === 1.4 && !p.gib)
+          droplets++;
+    }
+    assert.ok(droplets > 0, 'bleeding gibs should drop micro-droplets');
+    assert.ok(!/spawned\s*=\s*\[\s*\]/.test(Blood.prototype.update.toString()));
+  },
+
+  'AC-2 hitWall has no nested array literals and still splats walls'() {
+    assert.ok(!Blood.prototype.hitWall.toString().includes('[['));
+    const game = fresh();
+    clearEnemies(game);
+    const { blood } = game;
+    blood.reset(game.level, game.rand);
+    const y = 4 * 64 + 32;
+    const axis = blood.hitWall({ x: 5 * 64 - 10, y, z: 30, vx: 100, vy: 0, gib: true }, 5 * 64 + 5, y);
+    assert.equal(axis, 'x');
+    assert.ok(blood.walls.length > 0, 'a gib hitting a wall leaves a splat');
+  },
+
+  'AC-3 spray recycles pooled particles and resets every field'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood } = game;
+    blood.reset(game.level, game.rand);
+    blood.spray(4 * 64 + 32, 4 * 64 + 32, 30, 0, 0, 20, { speed: 50, spread: 30, up: 60, gib: true });
+    const before = new Set(blood.particles);
+    for (const p of blood.particles) {
+      p.bounces = 7;
+      p.bleedTimer = -3;
+      p.sever = true;
+      p.age = 9;
+    }
+    for (let i = 0; i < 400 && blood.particles.length; i++)
+      blood.update(1 / 30);
+    assert.equal(blood.particles.length, 0, 'every particle eventually dies');
+    blood.spray(4 * 64 + 32, 4 * 64 + 32, 30, 0, 0, 20, { speed: 50, spread: 30, up: 60 });
+    const reused = blood.particles.filter((p) => before.has(p));
+    assert.ok(reused.length > 0, 'dead particles are recycled');
+    for (const p of reused) {
+      assert.equal(p.age, 0);
+      assert.equal(p.bounces, 0);
+      assert.equal(p.bleedTimer, 99);
+      assert.equal(p.sever, false);
+      assert.equal(p.variant, 0);
+      assert.equal(p.gib, false);
+    }
+    blood.spray(4 * 64 + 32, 4 * 64 + 32, 30, 0, 0, BLOOD.particles + 50);
+    assert.ok(blood.particles.length <= BLOOD.particles);
+    assert.equal(new Set(blood.particles).size, blood.particles.length, 'no particle is listed twice');
+    assert.ok(blood.particles.every((p) => !blood.pool.includes(p)), 'a live particle is never in the pool');
+  },
+
+  'AC-4 screenSplatQuads and wallDripQuads reuse target storage and match fresh results'() {
+    const splat = { x: 0.4, y: 0.3, size: 90, drip: 120, seed: 1234 };
+    const screenTarget = createQuadTarget();
+    for (const age of [0, 1.5, 3]) {
+      const input = { ...splat, age };
+      const expected = screenSplatQuads(input, 800, 600, 0.7);
+      screenSplatQuads(input, 800, 600, 0.7, screenTarget);
+      const refs = screenTarget.quads.slice(0, screenTarget.count);
+      const uvs = refs.map((q) => q.uv);
+      assert.equal(screenSplatQuads(input, 800, 600, 0.7, screenTarget), screenTarget);
+      assert.equal(screenTarget.count, expected.length);
+      refs.forEach((q, i) => {
+        assert.equal(screenTarget.quads[i], q);
+        assert.equal(q.uv, uvs[i]);
+        assert.deepEqual(q, expected[i]);
+      });
+    }
+    const wall = { x: 100, y: 200, z: 40, nx: 1, ny: 0, size: 10, top: 110, seed: 77, slope: 0.01 };
+    const dripTarget = createQuadTarget();
+    const end = dripTime(wall.seed, wall.size);
+    for (const age of [0, 1.5, 3, end]) {
+      const input = { ...wall, age };
+      const expected = wallDripQuads(input);
+      wallDripQuads(input, dripTarget);
+      const refs = dripTarget.quads.slice(0, dripTarget.count);
+      const parts = refs.map((q) => [q.corners, q.uv]);
+      wallDripQuads(input, dripTarget);
+      assert.equal(dripTarget.count, expected.length);
+      refs.forEach((q, i) => {
+        assert.equal(dripTarget.quads[i], q);
+        assert.equal(q.corners, parts[i][0]);
+        assert.equal(q.uv, parts[i][1]);
+        assert.deepEqual(Array.from(q.corners), Array.from(expected[i].corners));
+        assert.deepEqual(Array.from(q.uv), Array.from(expected[i].uv));
+      });
+    }
+    assert.ok(wallDripQuads({ ...wall, age: end }).length > 0);
+  },
+
+  'AC-5 dripping and splat quad builders avoid map and dripTime equals the longest drip'() {
+    for (const fn of [screenSplatQuads, wallDripQuads, dripTime])
+      assert.ok(!fn.toString().includes('.map('), `${fn.name} still maps`);
+    for (const seed of [1, 7, 99, 12345, 0xdeadbeef])
+      for (const size of [4, 8, 12]) {
+        const expected = Math.max(...wallDrips(seed, size).map((d) => d.delay + d.duration));
+        assert.equal(dripTime(seed, size), expected);
+      }
+  },
+
+  'AC-6 syncDrips keeps finished drip caches independent of the reusable target'() {
+    const wall = { x: 100, y: 200, z: 40, nx: 1, ny: 0, size: 10, top: 110, seed: 77, age: 0 };
+    const finished = wallDripQuads({ ...wall, age: dripTime(wall.seed, wall.size) });
+    const snapshot = JSON.stringify(finished);
+    const target = createQuadTarget();
+    wallDripQuads({ ...wall, seed: 5, age: 2 }, target);
+    wallDripQuads({ ...wall, seed: 9, age: 4 }, target);
+    assert.equal(JSON.stringify(finished), snapshot);
+    const splat = { x: 0.5, y: 0.5, size: 60, drip: 80, seed: 3, age: 1 };
+    const quads = screenSplatQuads(splat, 640, 480, 0.5);
+    const hudTarget = screenSplatQuads(splat, 640, 480, 0.5, createQuadTarget());
+    for (let i = 0; i < quads.length; i++)
+      assert.deepEqual(hudTarget.quads[i], quads[i]);
   },
 
   'blood respects its caps even when hammered'() {

@@ -2,7 +2,7 @@ import { CustomMesh, Cylinder, FullscreenQuad, Grid, Material, Mesh, Perspective
 import { BLOOD } from './blood.js';
 import { ACID_PIT_DEPTH } from './game.js';
 import { barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
-import { bloodAtlas, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
+import { bloodAtlas, createQuadTarget, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
 import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
 import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, MARS_SKY_FRAGMENT, MARS_SKY_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, marsSkyAtlas, marsSkyMesh, updateCeilingLights } from './ceiling.js';
 import { WALL_CELLS, diagWallFaceQuads, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
@@ -354,6 +354,7 @@ export class World {
     this.splatVersion = -1;
     this.splatCache = new WeakMap();
     this.dripCache = new WeakMap();
+    this.dripTarget = createQuadTarget();
     this.syncStamp = 0;
     this.lightFixtures = [];
     this.ceilingLights = [];
@@ -996,8 +997,9 @@ export class World {
       const quad = wallSplatQuad(sunk);
       if (quad)
         batch.quad(quad.corners, quad.uv);
-      for (const drip of wallDripQuads(sunk))
-        batch.quad(drip.corners, drip.uv);
+      const drips = wallDripQuads(sunk, this.dripTarget);
+      for (let i = 0; i < drips.count; i++)
+        batch.quad(drips.quads[i].corners, drips.quads[i].uv);
     }
     batch.end();
   }
@@ -1118,17 +1120,19 @@ export class World {
     for (const splat of blood.walls) {
       if (splat.door)
         continue;
-      let quads;
       if (splat.age >= splat.dripTime) {
-        quads = this.dripCache.get(splat);
+        let quads = this.dripCache.get(splat);
         if (!quads) {
           quads = wallDripQuads(splat);
           this.dripCache.set(splat, quads);
         }
-      } else
-        quads = wallDripQuads(splat);
-      for (const drip of quads)
-        batch.quad(drip.corners, drip.uv);
+        for (const drip of quads)
+          batch.quad(drip.corners, drip.uv);
+      } else {
+        const drips = wallDripQuads(splat, this.dripTarget);
+        for (let i = 0; i < drips.count; i++)
+          batch.quad(drips.quads[i].corners, drips.quads[i].uv);
+      }
     }
     batch.end();
   }
