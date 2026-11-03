@@ -52,13 +52,14 @@ const checks = [
   }],
 ];
 
+console.log('# file: tests/exports.test.mjs');
 let failed = 0;
 for (const [name, fn] of checks)
   try {
     await fn();
-    console.log(`ok - ${name}`);
+    console.log(`ok   ${name}`);
   } catch (e) {
     failed++;
-    console.error(`not ok - ${name}\n${e.message}`);
+    console.log(`FAIL ${name}\n     ${e.message}`);
   }
 if (failed) process.exit(1);
