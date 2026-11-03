@@ -14,6 +14,15 @@ import { defaultActionLabel } from './keymap.js';
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
 
+// shared read-only query options: BumpR only reads them
+const QUERY_WALL = Object.freeze({ mask: CAT.WALL });
+const QUERY_PLAYER = Object.freeze({ mask: CAT.PLAYER });
+const QUERY_ENEMY = Object.freeze({ mask: CAT.ENEMY });
+const QUERY_BARREL = Object.freeze({ mask: CAT.BARREL });
+const QUERY_MELEE = Object.freeze({ mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
+const EMPTY_EXTRA = Object.freeze({});
+const DUST_COUNT = 240;
+
 /** Explosive barrels: a couple of pellets set one off, and the blast sets off its neighbours. */
 const BARREL = { hp: 6, radius: 10, blast: 175, fuse: 0.08 };
 
@@ -149,6 +158,12 @@ export class Game {
     this.toPlayer = new Vec2();
     this.awardRef = { type: '', initial: false, taken: false };
     this.move = new Vec2();
+    this.actorPoint = new Vec2();
+    this.actorDistance = 0;
+    this.actorFilter = (body) => body.ref?.state !== 'dead' && body.position.getDistance(this.actorPoint) < this.actorDistance;
+    this.actorQuery = { mask: CAT.ENEMY, filter: this.actorFilter };
+    this.dustPool = [];
+    this.dustFree = [];
     this.blood = new Blood();
     // sound events for main.js to hand to the audio layer; the rules never touch audio themselves
     this.events = [];
@@ -281,6 +296,7 @@ export class Game {
     this.heartbeat = 0;
     this.windTimer = 0;
     this.dust = [];
+    this.dustFree.length = 0;
     this.enemies = [];
     this.pickups = [];
     this.caches = [];
@@ -469,12 +485,19 @@ export class Game {
       inter.pause = 0.35;
   }
 
+  canReach(from, target) {
+    return this.scene.hasLineOfSight(from, target, QUERY_WALL);
+  }
+
   /** Queue a sound event (carrying a `pos` Vec2 copy) at a position (the player's, when none is given). */
-  emit(type, position = null, extra = {}) {
+  emit(type, position = null, extra = EMPTY_EXTRA) {
     const at = position ?? this.player.pos;
     this.events.push({ type, pos: at.clone(), x: at.x, y: at.y, visible: this.fog ? this.fog.canSee(at.x, at.y) : true, ...extra });
-    if (this.events.length > 256)
-      this.events.splice(0, this.events.length - 256);
+    const overflow = this.events.length - 256;
+    if (overflow > 0) {
+      this.events.copyWithin(0, overflow);
+      this.events.length = 256;
+    }
   }
 
   /** An idle enemy that notices the player (or a shot) wakes up, and says so. */
@@ -487,9 +510,9 @@ export class Game {
     this.emit('alert', enemy.pos, { kind: enemy.type });
     // a pack wakes as one
     if (enemy.type === 'swarmer')
-      for (const body of this.scene.queryCircle(enemy.pos, 240, { mask: CAT.ENEMY })) {
+      for (const body of this.scene.queryCircle(enemy.pos, 240, QUERY_ENEMY)) {
         const other = body.ref;
-        if (other?.type === 'swarmer' && other.state === 'idle' && this.scene.hasLineOfSight(other.pos, enemy.pos, { mask: CAT.WALL }))
+        if (other?.type === 'swarmer' && other.state === 'idle' && this.scene.hasLineOfSight(other.pos, enemy.pos, QUERY_WALL))
           other.state = 'chase';
       }
     if (enemy.type === 'boss') {
@@ -1064,7 +1087,7 @@ export class Game {
     else if ((!directRef || directRef.kind === 'wall') && shot.dir) {
       const from = pos.clone().addScaledVector(shot.dir, -16);
       const to = pos.clone().addScaledVector(shot.dir, 16);
-      const wallHit = this.scene.raycast(from, to, { mask: CAT.WALL });
+      const wallHit = this.scene.raycast(from, to, QUERY_WALL);
       if (wallHit) {
         const nx = Math.abs(wallHit.normal.x) > 0.9 ? Math.round(wallHit.normal.x) : wallHit.normal.x;
         const ny = Math.abs(wallHit.normal.y) > 0.9 ? Math.round(wallHit.normal.y) : wallHit.normal.y;
@@ -1072,24 +1095,23 @@ export class Game {
       }
     }
 
-    const reaches = (target) => this.scene.hasLineOfSight(pos, target, { mask: CAT.WALL });
     const away = this.player.pos.getDistance(pos);
     this.shake = Math.max(this.shake, Utils.clamp(1 - away / 520, 0, 1) * 1.15);
-    if (away < shot.radius && reaches(this.player.pos))
+    if (away < shot.radius && this.canReach(pos, this.player.pos))
       this.hurtPlayer(Math.round(6 + 26 * (1 - away / shot.radius)));
 
-    for (const body of this.scene.queryCircle(pos, shot.radius, { mask: CAT.ENEMY })) {
+    for (const body of this.scene.queryCircle(pos, shot.radius, QUERY_ENEMY)) {
       const enemy = body.ref;
       if (!enemy || enemy.state === 'dead')
         continue;
       const d = enemy.pos.getDistance(pos);
-      if (d >= shot.radius + enemy.def.radius || !reaches(enemy.pos))
+      if (d >= shot.radius + enemy.def.radius || !this.canReach(pos, enemy.pos))
         continue;
       enemy.volley = 1e6;
       this.damageEnemy(enemy, Math.round(8 + shot.splash * Math.max(0, 1 - d / shot.radius)));
     }
     for (const enemy of this.enemies) {
-      if (enemy.state !== 'dead' || !enemy.body.overlapsCircle(pos, shot.radius) || !reaches(enemy.pos))
+      if (enemy.state !== 'dead' || !enemy.body.overlapsCircle(pos, shot.radius) || !this.canReach(pos, enemy.pos))
         continue;
       const dir = this.scratch.subVectors(enemy.pos, pos);
       if (dir.getMagnitude(true) > 0)
@@ -1098,10 +1120,10 @@ export class Game {
         dir.setScalar(1, 0);
       this.mutilateCorpse(enemy, dir.x, dir.y, true);
     }
-    for (const body of this.scene.queryCircle(pos, shot.radius, { mask: CAT.BARREL })) {
+    for (const body of this.scene.queryCircle(pos, shot.radius, QUERY_BARREL)) {
       const barrel = body.ref;
       const d = barrel.pos.getDistance(pos);
-      if (!barrel.gone && d < shot.radius && reaches(barrel.pos))
+      if (!barrel.gone && d < shot.radius && this.canReach(pos, barrel.pos))
         this.hitBarrel(barrel, BARREL.hp, 0.08 + 0.2 * (d / shot.radius));
     }
     this.resolveGibs();
@@ -1144,27 +1166,26 @@ export class Game {
     barrel.deadTime = 0;
     this.scene.removeBody(barrel.body);
     const { x, y } = barrel.pos;
-    const reaches = (target) => this.scene.hasLineOfSight(barrel.pos, target, { mask: CAT.WALL });
     this.burst(x, y, 0, 'boom');
     this.emit('boom', barrel.pos);
 
     const away = this.player.pos.getDistance(barrel.pos);
     this.shake = Math.max(this.shake, Utils.clamp(1 - away / 520, 0, 1) * 1.1);
-    if (away < BARREL.blast && reaches(this.player.pos))
+    if (away < BARREL.blast && this.canReach(barrel.pos, this.player.pos))
       this.hurtPlayer(Math.round(8 + 42 * (1 - away / BARREL.blast)));
 
-    for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, { mask: CAT.ENEMY })) {
+    for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_ENEMY)) {
       const enemy = body.ref;
       if (!enemy || enemy.state === 'dead')
         continue;
       const d = enemy.pos.getDistance(barrel.pos);
-      if (d >= BARREL.blast + enemy.def.radius || !reaches(enemy.pos))
+      if (d >= BARREL.blast + enemy.def.radius || !this.canReach(barrel.pos, enemy.pos))
         continue;
       enemy.volley = 1e6; // anything a blast kills is blown apart
       this.damageEnemy(enemy, 6 + 30 * Math.max(0, 1 - d / BARREL.blast));
     }
     for (const enemy of this.enemies) {
-      if (enemy.state !== 'dead' || !enemy.body.overlapsCircle(barrel.pos, BARREL.blast) || !reaches(enemy.pos))
+      if (enemy.state !== 'dead' || !enemy.body.overlapsCircle(barrel.pos, BARREL.blast) || !this.canReach(barrel.pos, enemy.pos))
         continue;
       const dir = this.scratch.subVectors(enemy.pos, barrel.pos);
       if (dir.getMagnitude(true) > 0)
@@ -1173,10 +1194,10 @@ export class Game {
         dir.setScalar(1, 0);
       this.mutilateCorpse(enemy, dir.x, dir.y, true);
     }
-    for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, { mask: CAT.BARREL })) {
+    for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_BARREL)) {
       const other = body.ref;
       const d = other.pos.getDistance(barrel.pos);
-      if (!other.gone && d < BARREL.blast && reaches(other.pos))
+      if (!other.gone && d < BARREL.blast && this.canReach(barrel.pos, other.pos))
         this.hitBarrel(other, BARREL.hp, 0.12 + 0.25 * (d / BARREL.blast));
     }
     this.resolveGibs();
@@ -1671,7 +1692,7 @@ export class Game {
     const cos = Math.cos(player.angle);
     const sin = Math.sin(player.angle);
     const end = this.scratch.setScalar(player.pos.x + cos * def.reach, player.pos.y + sin * def.reach);
-    const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
+    const hit = this.scene.raycast(player.pos, end, QUERY_MELEE);
     this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 10, Boolean(player.berserk));
 
     const dmg = def.damage * (player.berserk ? POWERUP_TYPES.berserk.multiplier : 1);
@@ -1722,7 +1743,7 @@ export class Game {
     const cos = Math.cos(player.angle);
     const sin = Math.sin(player.angle);
     const end = this.scratch.setScalar(player.pos.x + cos * def.reach, player.pos.y + sin * def.reach);
-    const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
+    const hit = this.scene.raycast(player.pos, end, QUERY_MELEE);
     this.emit('chainsaw', null, { hit: Boolean(hit) });
     this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 10, true);
 
@@ -1839,7 +1860,7 @@ export class Game {
       const cos = Math.cos(angle);
       const sin = Math.sin(angle);
       end.setScalar(player.pos.x + cos * 1600, player.pos.y + sin * 1600);
-      const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
+      const hit = this.scene.raycast(player.pos, end, QUERY_MELEE);
       const maxDist = hit ? hit.point.getDistance(player.pos) : 1600;
       this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 6);
       if (!hit)
@@ -1898,7 +1919,7 @@ export class Game {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     const end = this.scratch.setScalar(player.pos.x + cos * 1600, player.pos.y + sin * 1600);
-    const hit = this.scene.raycast(player.pos, end, { mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
+    const hit = this.scene.raycast(player.pos, end, QUERY_MELEE);
     const maxDist = hit ? hit.point.getDistance(player.pos) : 1600;
     this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 6);
     if (!hit)
@@ -2053,12 +2074,11 @@ export class Game {
   }
 
   actorNear(point, distance, enemyDistance = distance) {
-    if (this.scene.queryCircleFirst(point, Math.max(0, distance - PLAYER_RADIUS), { mask: CAT.PLAYER }))
+    if (this.scene.queryCircleFirst(point, Math.max(0, distance - PLAYER_RADIUS), QUERY_PLAYER))
       return true;
-    return Boolean(this.scene.queryCircleFirst(point, enemyDistance, {
-      mask: CAT.ENEMY,
-      filter: (body) => body.ref?.state !== 'dead' && body.position.getDistance(point) < enemyDistance,
-    }));
+    this.actorPoint.copy(point);
+    this.actorDistance = enemyDistance;
+    return Boolean(this.scene.queryCircleFirst(point, enemyDistance, this.actorQuery));
   }
 
   updateDoors(dt) {
@@ -2229,7 +2249,7 @@ export class Game {
     enemy.losTimer -= dt;
     if (enemy.losTimer <= 0) {
       enemy.losTimer = 0.15;
-      enemy.los = distance < enemy.def.sight && this.scene.hasLineOfSight(enemy.pos, player.pos, { mask: CAT.WALL });
+      enemy.los = distance < enemy.def.sight && this.scene.hasLineOfSight(enemy.pos, player.pos, QUERY_WALL);
     }
 
     if (enemy.state === 'idle') {
@@ -2738,7 +2758,7 @@ export class Game {
           this.shake = Math.max(this.shake, 0.35 * (1 - dist / 420));
       }
       if (crusher.low < 24) {
-        for (const body of this.scene.queryCircle(crusher.center, TILE * 0.45, { mask: CAT.ENEMY })) {
+        for (const body of this.scene.queryCircle(crusher.center, TILE * 0.45, QUERY_ENEMY)) {
           const enemy = body.ref;
           if (!enemy || enemy.state === 'dead')
             continue;
@@ -2751,7 +2771,7 @@ export class Game {
               this.mutilateCorpse(enemy, 1, 0, true);
         this.resolveGibs();
       }
-      if (this.state === 'play' && crusher.low < player.eye + 4 && crusher.hurtCooldown <= 0 && this.scene.queryCircleFirst(crusher.center, TILE * 0.42, { mask: CAT.PLAYER })) {
+      if (this.state === 'play' && crusher.low < player.eye + 4 && crusher.hurtCooldown <= 0 && this.scene.queryCircleFirst(crusher.center, TILE * 0.42, QUERY_PLAYER)) {
         crusher.hurtCooldown = 0.35;
         this.hurtPlayer(18, crusher.center);
         this.blood.spray(player.pos.x, player.pos.y, player.eye * 0.6, 0, 0, 14);
@@ -2792,7 +2812,7 @@ export class Game {
       this.shake = Math.max(this.shake, 0.45);
 
       let telefragged = false;
-      for (const body of this.scene.queryCircle(pad.target, PLAYER_RADIUS + 10, { mask: CAT.ENEMY })) {
+      for (const body of this.scene.queryCircle(pad.target, PLAYER_RADIUS + 10, QUERY_ENEMY)) {
         const enemy = body.ref;
         if (!enemy || enemy.state === 'dead')
           continue;
@@ -2815,7 +2835,7 @@ export class Game {
         continue;
       if (pad.target.getDistance(player.pos) + 12 >= pad.center.getDistance(player.pos))
         continue;
-      if (this.scene.queryCircleFirst(pad.target, enemy.def.radius + 12, { mask: CAT.PLAYER }) ||
+      if (this.scene.queryCircleFirst(pad.target, enemy.def.radius + 12, QUERY_PLAYER) ||
           this.scene.queryCircleFirst(pad.target, enemy.def.radius + 8, { mask: CAT.ENEMY, ignoreBody: enemy.body }))
         continue;
       this.burst(pad.center.x, pad.center.y, EYE - 4, 'teleport');
@@ -2830,15 +2850,22 @@ export class Game {
     const { level, weatherRand } = this;
     if (level.planet !== 'mars' || !level.outdoor)
       return;
+    while (this.dustPool.length < DUST_COUNT)
+      this.dustPool.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, age: 0, life: 1, gib: false, scale: 1, visualScale: 1 });
+    for (let i = 0; i < DUST_COUNT; i++)
+      this.dustFree.push(this.dustPool[i]);
     const center = this.player ? this.player.pos : level.playerStart;
-    for (let i = 0; i < 240; i++) {
-      const p = this.spawnDustParticle(center, weatherRand);
-      if (p)
+    for (let i = 0; i < DUST_COUNT; i++) {
+      const p = this.dustFree.pop();
+      if (this.spawnDustParticle(center, weatherRand, p))
         this.dust.push(p);
+      else
+        this.dustFree.push(p);
     }
   }
 
-  spawnDustParticle(center, rng = this.weatherRand) {
+  /** Refills `particle` in place with a fresh outdoor mote; null when no outdoor spot turned up. */
+  spawnDustParticle(center, rng, particle) {
     const { level } = this;
     for (let attempt = 0; attempt < 12; attempt++) {
       const x = center.x + rng.float(-520, 520);
@@ -2847,19 +2874,18 @@ export class Game {
       if (!level.isOutdoor(this.scratch))
         continue;
       const scale = rng.float(0.65, 1.75);
-      return {
-        x,
-        y,
-        z: rng.float(2, 60),
-        vx: level.wind.x * rng.float(0.75, 1.35) + rng.float(-35, 35),
-        vy: level.wind.y * rng.float(0.75, 1.35) + rng.float(-35, 35),
-        vz: rng.float(-18, 22),
-        age: rng.float(0, 1.2),
-        life: rng.float(1.4, 2.8),
-        gib: false,
-        scale,
-        visualScale: scale,
-      };
+      particle.x = x;
+      particle.y = y;
+      particle.z = rng.float(2, 60);
+      particle.vx = level.wind.x * rng.float(0.75, 1.35) + rng.float(-35, 35);
+      particle.vy = level.wind.y * rng.float(0.75, 1.35) + rng.float(-35, 35);
+      particle.vz = rng.float(-18, 22);
+      particle.age = rng.float(0, 1.2);
+      particle.life = rng.float(1.4, 2.8);
+      particle.gib = false;
+      particle.scale = scale;
+      particle.visualScale = scale;
+      return particle;
     }
     return null;
   }
@@ -2884,15 +2910,21 @@ export class Game {
         d.vz = -Math.abs(d.vz) * 0.6;
       }
       this.scratch.setScalar(d.x, d.y);
-      if (d.age < d.life && this.scratch.getDistance(center, true) < 580 * 580 && level.isOutdoor(this.scratch))
+      if (d.age < d.life && this.scratch.getDistance(center, true) < 580 * 580 && level.isOutdoor(this.scratch)) {
+        this.dust[i] = this.dust[keep];
         this.dust[keep++] = d;
+      }
     }
+    for (let i = keep; i < this.dust.length; i++)
+      this.dustFree.push(this.dust[i]);
     this.dust.length = keep;
-    while (this.dust.length < 240) {
-      const spawned = this.spawnDustParticle(center, weatherRand);
-      if (!spawned)
+    while (this.dust.length < DUST_COUNT && this.dustFree.length > 0) {
+      const particle = this.dustFree.pop();
+      if (!this.spawnDustParticle(center, weatherRand, particle)) {
+        this.dustFree.push(particle);
         break;
-      this.dust.push(spawned);
+      }
+      this.dust.push(particle);
     }
     let airlockOpen = false;
     for (const door of level.doors.values())
@@ -2917,9 +2949,15 @@ export class Game {
       this.usePrompt.fade = 0;
     this.blood.update(dt);
     this.updateMarsWeather(dt);
-    for (const effect of this.effects)
+    const effects = this.effects;
+    let keepEffects = 0;
+    for (let i = 0; i < effects.length; i++) {
+      const effect = effects[i];
       effect.age += dt;
-    this.effects = this.effects.filter((effect) => effect.age < effect.life);
+      if (effect.age < effect.life)
+        effects[keepEffects++] = effect;
+    }
+    effects.length = keepEffects;
 
     if (this.state === 'cleared') {
       this.updateIntermission(dt);
