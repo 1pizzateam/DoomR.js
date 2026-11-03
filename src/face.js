@@ -14,7 +14,7 @@ import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 
 export const FACE_CELL_W = 48;
 export const FACE_CELL_H = 56;
-export const FACE_TIERS = 5;
+const FACE_TIERS = 5;
 export const FACE_POSES = { center: 0, left: 1, right: 2, shoot: 3, pain: 4 };
 export const FACE_POSE_COUNT = 5;
 export const FACE_DEAD_FRAME = FACE_TIERS * FACE_POSE_COUNT;

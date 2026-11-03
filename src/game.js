@@ -15,7 +15,7 @@ import { defaultActionLabel } from './keymap.js';
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
 
 /** Explosive barrels: a couple of pellets set one off, and the blast sets off its neighbours. */
-export const BARREL = { hp: 6, radius: 10, blast: 175, fuse: 0.08 };
+const BARREL = { hp: 6, radius: 10, blast: 175, fuse: 0.08 };
 
 /**
  * gait: radians of leg swing per unit walked, so one footfall is PI / gait units whatever the monster.
@@ -101,7 +101,7 @@ const CACHE_WEAPONS = new Set(['chainsaw', 'shotgun', 'chaingun', 'rocket']);
 const USE_RANGE = 96;
 const USE_DOT = 0.35;
 const CACHE_TOUCH_RANGE = TILE * 0.5;
-export const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', take: 'TAKE', locked: 'LOCKED' });
+const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', take: 'TAKE', locked: 'LOCKED' });
 // seconds for a full 0 to 1 (in) or 1 to 0 (out) ramp of the use prompt
 const USE_PROMPT_FADE_IN = 0.12;
 const USE_PROMPT_FADE_OUT = 0.2;

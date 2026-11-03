@@ -10,7 +10,7 @@ const scratchPt = new Vec2();
  * are a short animation on a sprite that faces the camera.
  */
 
-export const IMPACT_CELL = 32;
+const IMPACT_CELL = 32;
 export const IMPACT_CELL_COUNT = 64;
 export const HOLE_VARIANTS = 12;
 export const SLASH_VARIANTS = 6;

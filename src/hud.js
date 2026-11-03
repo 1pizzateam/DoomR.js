@@ -66,7 +66,7 @@ const controlsSeg = (x0, y0, x1, y1) => {
 };
 
 /** Written by layoutControls and read by both drawing and hit-testing so they never drift. */
-export const CONTROLS_LAYOUT = {
+const CONTROLS_LAYOUT = {
   boxX: 0, boxY: 0, boxW: 0, boxH: 0, rowsTop: 0, footerTop: 0, visibleRows: 4, rowH: CONTROLS_ROW_H,
   nameX: 0, slot0X: 0, slot1X: 0, slotHalf: 0, resetX: 0, backX: 0, buttonY: 0,
 };

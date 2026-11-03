@@ -1135,7 +1135,7 @@ export function wraithAtlas() {
   return packAtlas('wraith', frames);
 }
 
-export function impAtlas() {
+function impAtlas() {
   return buildFleshAtlas('imp', drawImp, [
     { stride: -1, reach: 0, jaw: 0.1, lean: 0, hurt: 0 },
     { stride: 1, reach: 0.15, jaw: 0.25, lean: 0, hurt: 0 },
@@ -1144,7 +1144,7 @@ export function impAtlas() {
   ], { stride: 0, reach: 0.9, jaw: 1, lean: 2.5, hurt: 1 });
 }
 
-export function bruteAtlas() {
+function bruteAtlas() {
   return buildFleshAtlas('brute', drawBrute, [
     { stride: -1, slam: 0, jaw: 0.1, lean: 0, hurt: 0 },
     { stride: 1, slam: 0.1, jaw: 0.3, lean: 0, hurt: 0 },
@@ -1153,7 +1153,7 @@ export function bruteAtlas() {
   ], { stride: 0, slam: 0.7, jaw: 1, lean: 2, hurt: 1 });
 }
 
-export function bossAtlas() {
+function bossAtlas() {
   return buildFleshAtlas('boss', drawBoss, [
     { stride: -1, slam: 0, spread: 0, jaw: 0.15, lean: 0 },
     { stride: 1, slam: 0.1, spread: 0.2, jaw: 0.35, lean: 0 },
@@ -1162,7 +1162,7 @@ export function bossAtlas() {
   ], { stride: 0, slam: 0.6, spread: 0.7, jaw: 1, lean: 2 });
 }
 
-export function skullAtlas() {
+function skullAtlas() {
   return buildFleshAtlas('skull', drawSkull, [
     { chatter: 0, flame: 0, sway: -1, hurt: 0 },
     { chatter: 0.35, flame: 0.15, sway: 1, hurt: 0 },
@@ -1171,7 +1171,7 @@ export function skullAtlas() {
   ], { chatter: 1, flame: 0.5, sway: 2, hurt: 1 });
 }
 
-export function crawlerAtlas() {
+function crawlerAtlas() {
   return buildFleshAtlas('crawler', drawCrawler, [
     { skitter: -1, lunge: 0, mandible: 0.1, hurt: 0 },
     { skitter: 1, lunge: 0.1, mandible: 0.35, hurt: 0 },
@@ -1180,7 +1180,7 @@ export function crawlerAtlas() {
   ], { skitter: 1, lunge: 0.4, mandible: 1, hurt: 1 });
 }
 
-export function swarmerAtlas() {
+function swarmerAtlas() {
   return buildFleshAtlas('swarmer', drawSwarmer, [
     { scurry: -1, bite: 0.1, hurt: 0 },
     { scurry: 1, bite: 0.35, hurt: 0 },
