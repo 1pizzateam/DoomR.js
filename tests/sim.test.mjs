@@ -9174,6 +9174,77 @@ const tests = {
     assert.equal(Object.hasOwn(hud, 'unboundControls'), false);
   },
 
+  'AC-1 prune write-only: Hud has no unboundControls and keeps unbound text'() {
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ({}) }, {});
+    assert.equal(Object.hasOwn(hud, 'unboundControls'), false);
+    hud.setControlsStatus('F1', 3);
+    assert.equal(Object.hasOwn(hud, 'unboundControls'), false);
+    assert.ok(hud.unboundText.includes('3'));
+    assert.equal(hud.controlsEntryText, 'CONTROLS · F1');
+  },
+
+  'AC-2 prune write-only: Input has no onAction'() {
+    const src = readFileSync(new URL('../src/input.js', import.meta.url), 'utf8');
+    assert.ok(!src.includes('onAction'));
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    globalThis.document = { addEventListener() {}, pointerLockElement: null };
+    globalThis.window = { addEventListener() {} };
+    try {
+      const inp = new Input({ addEventListener() {} });
+      assert.equal(Object.hasOwn(inp, 'onAction'), false);
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
+  },
+
+  'AC-3 prune write-only: Keymap has no saveFailed'() {
+    const src = readFileSync(new URL('../src/keymap.js', import.meta.url), 'utf8');
+    assert.ok(!src.includes('saveFailed'));
+    const failing = { getItem: () => null, setItem() { throw new Error('x'); }, removeItem() { throw new Error('x'); } };
+    for (const storage of [memoryStorage(), failing]) {
+      const k = new Keymap({ storage, navigator: null });
+      assert.equal(Object.hasOwn(k, 'saveFailed'), false);
+      k.save();
+      assert.equal(Object.hasOwn(k, 'saveFailed'), false);
+      k.setBinding('jump', 0, 'KeyJ');
+      assert.equal(Object.hasOwn(k, 'saveFailed'), false);
+      k.resetAll();
+      assert.equal(Object.hasOwn(k, 'saveFailed'), false);
+    }
+  },
+
+  'AC-4 prune write-only: save and reset return values survive'() {
+    const failing = { getItem: () => null, setItem() { throw new Error('x'); }, removeItem() { throw new Error('x'); } };
+    const k = new Keymap({ storage: failing, navigator: null });
+    assert.equal(k.save(), false);
+    const v = k.version;
+    const b = k.bindingsVersion;
+    const change = k.resetAll();
+    assert.equal(change.ok, true);
+    assert.equal(change.saved, false);
+    assert.equal(k.version, v + 1);
+    assert.equal(k.bindingsVersion, b + 1);
+  },
+
+  'AC-5 prune write-only: zero unbound count clears warning'() {
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ({}) }, {});
+    hud.setControlsStatus('F1', 0);
+    assert.equal(hud.unboundText, '');
+    hud.setControlsStatus('F1', 2);
+    assert.ok(hud.unboundText.length > 0);
+  },
+
+  'AC-6 prune write-only: input and keymap rebinding still work'() {
+    const k = new Keymap({ storage: memoryStorage(), navigator: null });
+    assert.equal(k.setBinding('jump', 0, 'KeyJ').ok, true);
+    assert.equal(k.actionOf(k.resolve({ code: 'KeyJ', key: 'j' })), 'jump');
+    k.resetAll();
+    assert.equal(k.resolve({ code: 'KeyJ', key: 'j' }), 0);
+    assert.equal(k.resolve({ code: 'Space', key: ' ' }), 32);
+  },
+
   'AC-3 hud status: setControlsStatus sets entry and unbound text'() {
     const hud = new Hud({ width: 0, height: 0, getContext: () => ({}) }, {});
     hud.setControlsStatus('F1', 2);
