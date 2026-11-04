@@ -406,11 +406,16 @@ export function impactCellUv(cell) {
  * A bullet hole or chainsaw slash on a wall face, as a flat quad just in front of it. The quad is cut where it would leave the face (the
  * face runs `lo` and `hi` along its tangent, and from the floor to `top`), and the picture is cut with it, so no hole
  * hangs in the air past a corner or above a low wall. Null when nothing of it is left on the face.
- * (nx, ny) is the face normal in the game plane, z the height of the hit.
+ * `pos` is a Vec3 (x, y in the game plane, z the height of the hit) and `normal` a Vec2 face normal in the game plane.
  * With `out` ({ corners: 12, uv: 4 }) the values are written in place and `out` is returned, valid until the next call; callers that
  * retain the quad (`cachedQuad`) must not pass `out`.
  */
-export function holeQuad({ x, y, z, nx, ny, top, seed, kind = 'hole', lo = -Infinity, hi = Infinity, slope = 0 }, out = null) {
+export function holeQuad({ pos, normal, top, seed, kind = 'hole', lo = -Infinity, hi = Infinity, slope = 0 }, out = null) {
+  const x = pos.x;
+  const y = pos.y;
+  const z = pos.z;
+  const nx = normal.x;
+  const ny = normal.y;
   const rnd = mulberry32(seed);
   const cell = kind === 'slash'
     ? IMPACT_CELLS.slash + Math.floor(rnd() * SLASH_VARIANTS)

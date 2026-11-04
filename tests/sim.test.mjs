@@ -12,6 +12,8 @@ import { validateSong } from '@1pizzateam/groovr';
 import { FADE_IN, FADE_OUT, Music, SONGS } from '../src/music.js';
 import { HOLE_VARIANTS, holeQuad, IMPACT_CELL_COUNT, IMPACT_CELLS, impactAtlas, impactCellUv, SLASH_VARIANTS, SPARK_FRAMES, SPARK_VARIANTS } from '../src/impacts.js';
 import { mulberry32 } from '../src/rng.js';
+
+const vecMark = ({ x, y, z, nx, ny, ...rest }) => ({ pos: new Vec3(x, y, z), normal: new Vec2(nx, ny), ...rest });
 import { LEVELS } from '../src/levels.js';
 import { FACE_CELL_H, FACE_CELL_W, FACE_DEAD_FRAME, FACE_FRAME_COUNT, FACE_POSE_COUNT, FACE_POSES, faceAtlas, faceCellUv, faceFrame, facePlacement } from '../src/face.js';
 import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON_ORDER, WEAPON_SLOTS, WEAPON_TIMES, WEAPONS, SHOTGUN_PUMP, arsenalAtlas, weaponAtlas, weaponCellUv, weaponFrame, weaponPlacement } from '../src/weapon.js';
@@ -796,7 +798,7 @@ const tests = {
       return level.inBounds(wx, wy) && level.heights[wy * level.width + wx] > 0;
     };
     for (const mark of blood.holes) {
-      const quad = holeQuad(mark);
+      const quad = holeQuad(vecMark(mark));
       if (!quad)
         continue;
       const v = quad.corners;
@@ -844,7 +846,7 @@ const tests = {
       }
       return [min, max];
     };
-    const at = (mark, open) => holeQuad({ ...mark, z: mark.z - open * 64, top: mark.top * (1 - open) });
+    const at = (mark, open) => holeQuad(vecMark({ ...mark, z: mark.z - open * 64, top: mark.top * (1 - open) }));
     const [closedLow, closedHigh] = bounds(at(hole, 0), 1);
     const [halfLow, halfHigh] = bounds(at(hole, 0.25), 1);
     assert.ok(Math.abs((closedHigh - closedLow) - (halfHigh - halfLow)) < 1e-6, 'hole changed size');
@@ -1814,8 +1816,8 @@ const tests = {
 
   'a bullet hole is a small sprite on the wall plane, cut at the edges of its face, and sparks are a short animation'() {
     const hole = { x: 128, y: 64, z: 30, nx: 0, ny: 1, top: 64, seed: 99 };
-    const quad = holeQuad(hole);
-    const slash = holeQuad({ ...hole, kind: 'slash' });
+    const quad = holeQuad(vecMark(hole));
+    const slash = holeQuad(vecMark({ ...hole, kind: 'slash' }));
     const splat = wallSplatQuad({ ...hole, size: 10 });
     const drips = wallDripQuads({ ...hole, size: 10, age: 2 });
     for (let i = 0; i < 12; i += 3) {
@@ -1829,15 +1831,15 @@ const tests = {
     }
     // near the top of a low wall nothing may poke above it, and the picture is cut by the same share
     for (const seed of [1, 2, 3, 4, 5]) {
-      const low = holeQuad({ ...hole, z: 25, top: 26, seed });
+      const low = holeQuad(vecMark({ ...hole, z: 25, top: 26, seed }));
       for (let i = 1; i < low.corners.length; i += 3)
         assert.ok(low.corners[i] <= 26, 'hole pokes above the wall');
       assert.ok(low.uv[3] < 1, 'the picture is cut with the quad');
     }
     // a face that ends beside it cuts it, a face that is too narrow leaves nothing
-    const cut = holeQuad({ ...hole, lo: -3, hi: 3 });
+    const cut = holeQuad(vecMark({ ...hole, lo: -3, hi: 3 }));
     assert.ok(cut.corners[0] >= 128 - 3 + 0.3 - 1e-9 && cut.corners[3] <= 128 + 3 - 0.3 + 1e-9, 'cut at the ends of its face');
-    assert.equal(holeQuad({ ...hole, lo: -0.1, hi: 0.2 }), null);
+    assert.equal(holeQuad(vecMark({ ...hole, lo: -0.1, hi: 0.2 })), null);
 
     const atlas = impactAtlas();
     assert.equal(atlas.width, 32 * IMPACT_CELL_COUNT);
@@ -1912,13 +1914,13 @@ const tests = {
       { x: 40, y: 90, z: 20, nx: 1, ny: 0, top: 64, seed: 31, slope: 0.1 },
     ];
     for (const mark of marks) {
-      assert.equal(holeQuad(mark, out), out);
+      assert.equal(holeQuad(vecMark(mark), out), out);
       assert.equal(out.corners, corners);
       assert.equal(out.uv, uv);
       assert.equal(out.corners.length, 12);
       assert.equal(out.uv.length, 4);
       assert.ok(out.corners.every(Number.isFinite) && out.uv.every(Number.isFinite));
-      const fresh = holeQuad(mark);
+      const fresh = holeQuad(vecMark(mark));
       assert.deepEqual(out.corners, fresh.corners);
       assert.deepEqual(out.uv, fresh.uv);
     }
@@ -1954,7 +1956,7 @@ const tests = {
     const sunkOf = (m) => ({ ...m, x: m.x - m.nx * DOOR_INSET, y: m.y - m.ny * DOOR_INSET, z: m.z - drop, top: m.top * height });
     assert.equal(holeQuads.length, 2);
     holes.forEach((m, i) => {
-      const want = holeQuad(sunkOf(m));
+      const want = holeQuad(vecMark(sunkOf(m)));
       assert.deepEqual(holeQuads[i].corners, want.corners);
       assert.deepEqual(holeQuads[i].uv, want.uv);
     });
@@ -2001,8 +2003,8 @@ const tests = {
           for (const clip of clips) {
             const mark = { x: 128.3, y: 64.7, z: 30.1, nx: 0.6, ny: 0.8, top: 64, seed, slope, kind, ...clip };
             const want = reference(mark);
-            const got = holeQuad(mark);
-            const gotOut = holeQuad(mark, out);
+            const got = holeQuad(vecMark(mark));
+            const gotOut = holeQuad(vecMark(mark), out);
             if (want === null) {
               assert.equal(got, null);
               assert.equal(gotOut, null);
@@ -2027,18 +2029,18 @@ const tests = {
     const out = { corners: new Array(12).fill(7), uv: new Array(4).fill(7) };
     const snapshot = JSON.stringify(out);
     for (const clip of [{ lo: -0.1, hi: 0.2 }, { z: 2, top: 0 }]) {
-      assert.equal(holeQuad({ ...base, ...clip }), null);
-      assert.equal(holeQuad({ ...base, ...clip }, out), null);
+      assert.equal(holeQuad(vecMark({ ...base, ...clip })), null);
+      assert.equal(holeQuad(vecMark({ ...base, ...clip }), out), null);
       assert.equal(JSON.stringify(out), snapshot);
     }
-    assert.equal(holeQuad(base, out), out);
-    assert.deepEqual(out, holeQuad(base));
+    assert.equal(holeQuad(vecMark(base), out), out);
+    assert.deepEqual(out, holeQuad(vecMark(base)));
   },
 
   'AC-6 holeQuad without out returns independent objects'() {
     const mark = { x: 128, y: 64, z: 30, nx: 0, ny: 1, top: 64, seed: 5 };
-    const a = holeQuad(mark);
-    const b = holeQuad(mark);
+    const a = holeQuad(vecMark(mark));
+    const b = holeQuad(vecMark(mark));
     assert.notEqual(a, b);
     assert.notEqual(a.corners, b.corners);
     assert.notEqual(a.uv, b.uv);
@@ -2047,6 +2049,140 @@ const tests = {
     assert.equal(b.corners[0], before);
   },
 
+
+  'AC-1 holeQuad accepts a Vec3 position and Vec2 normal'() {
+    const quad = holeQuad({ pos: new Vec3(128, 64, 30), normal: new Vec2(0, 1), top: 64, seed: 99 });
+    assert.equal(quad.corners.length, 12);
+    assert.equal(quad.uv.length, 4);
+    for (const i of [2, 5, 8, 11])
+      assert.ok(Math.abs(quad.corners[i] - 64.25) < 1e-6);
+    for (const i of [1, 4, 7, 10])
+      assert.ok(quad.corners[i] > 0 && quad.corners[i] < 64);
+  },
+
+  'AC-2 holeQuad public options expose pos and normal, not scalar coordinates'() {
+    const src = readFileSync(new URL('../src/impacts.js', import.meta.url), 'utf8');
+    const start = src.indexOf('export function holeQuad(') + 'export function holeQuad('.length;
+    const sig = src.slice(start, src.indexOf(') {', start));
+    assert.ok(/\bpos\b/.test(sig) && /\bnormal\b/.test(sig));
+    assert.ok(!/\bx\b|\by\b|\bz\b|\bnx\b|\bny\b/.test(sig), 'no scalar coordinate options');
+    assert.throws(() => holeQuad({ x: 128, y: 64, z: 30, nx: 0, ny: 1, top: 64, seed: 5 }));
+  },
+
+  'AC-3 holeQuad vector output matches the scalar reference geometry'() {
+    const reference = ({ x, y, z, nx, ny, top, seed, kind = 'hole', lo = -Infinity, hi = Infinity, slope = 0 }) => {
+      const rnd = mulberry32(seed);
+      const cell = kind === 'slash'
+        ? IMPACT_CELLS.slash + Math.floor(rnd() * SLASH_VARIANTS)
+        : IMPACT_CELLS.hole + Math.floor(rnd() * HOLE_VARIANTS);
+      const half = 8;
+      const cu0 = Math.max(-half, lo + 0.3);
+      const cu1 = Math.min(half, hi - 0.3);
+      const cv0 = Math.max(-half, 0.6 - z);
+      const cv1 = Math.min(half, top - 0.6 - z);
+      if (cu0 >= cu1 || cv0 >= cv1)
+        return null;
+      const tx = -ny;
+      const ty = nx;
+      const at = (u, v) => {
+        const n = 0.25 - slope * v;
+        return [x + tx * u + nx * n, z + v, y + ty * u + ny * n];
+      };
+      const a0 = cell / IMPACT_CELL_COUNT;
+      const a1 = (cell + 1) / IMPACT_CELL_COUNT;
+      return {
+        corners: [...at(cu0, cv0), ...at(cu1, cv0), ...at(cu1, cv1), ...at(cu0, cv1)],
+        uv: [a0 + ((cu0 + half) / (2 * half)) * (a1 - a0), (cv0 + half) / (2 * half), a0 + ((cu1 + half) / (2 * half)) * (a1 - a0), (cv1 + half) / (2 * half)],
+      };
+    };
+    const out = { corners: new Array(12), uv: new Array(4) };
+    const clips = [{}, { lo: -1, hi: 1 }, { z: 2 }, { top: 33 }, { lo: -5, hi: 0.5, z: 62 }];
+    let compared = 0;
+    for (let seed = 1; seed <= 12; seed++)
+      for (const slope of [0, 0.1])
+        for (const kind of ['hole', 'slash'])
+          for (const clip of clips) {
+            const mark = { x: 128.3, y: 64.7, z: 30.1, nx: 0.6, ny: 0.8, top: 64, seed, slope, kind, ...clip };
+            const want = reference(mark);
+            const got = holeQuad(vecMark(mark));
+            const gotOut = holeQuad(vecMark(mark), out);
+            if (want === null) {
+              assert.equal(got, null);
+              assert.equal(gotOut, null);
+              continue;
+            }
+            compared++;
+            for (const quad of [got, gotOut]) {
+              want.corners.forEach((v, i) => assert.ok(quad.corners[i] === v));
+              want.uv.forEach((v, i) => assert.ok(quad.uv[i] === v));
+            }
+          }
+    assert.ok(compared > 100);
+  },
+
+  'AC-4 holeQuad with a vector mark returns null when clipped and reuses out'() {
+    const base = { x: 128, y: 64, z: 30, nx: 0, ny: 1, top: 64, seed: 5 };
+    const out = { corners: new Array(12).fill(7), uv: new Array(4).fill(7) };
+    const snapshot = JSON.stringify(out);
+    for (const clip of [{ lo: -0.1, hi: 0.2 }, { top: 10 }]) {
+      assert.equal(holeQuad(vecMark({ ...base, ...clip }), out), null);
+      assert.equal(JSON.stringify(out), snapshot);
+    }
+    const { corners, uv } = out;
+    assert.equal(holeQuad(vecMark(base), out), out);
+    assert.equal(out.corners, corners);
+    assert.equal(out.uv, uv);
+  },
+
+  'AC-5 syncDoorMarks emits sunk vector hole quads'() {
+    const record = (list) => ({ begin() { return this; }, quad(c, u) { list.push({ corners: c.slice(), uv: u.slice() }); }, end() {}, show() {} });
+    const holeQuads = [];
+    const door = { open: 0.25, idx: 0, secret: false };
+    const mockWorld = { level: { baseHeight: [20] }, doorMarks: new Map(), doorBatch: () => record(holeQuads), doorSplatBatch: () => record([]) };
+    const holes = [
+      { door, x: 100, y: 50, z: 30, nx: 0, ny: 1, top: 64, seed: 3, kind: 'slash', lo: -20, hi: 20, slope: 0.1 },
+      { door, x: 110, y: 52, z: 25, nx: 1, ny: 0, top: 64, seed: 9 },
+    ];
+    World.prototype.syncDoorMarks.call(mockWorld, door, { holes, walls: [], holesVersion: 1, version: 1, dripping: false }, true);
+    assert.equal(holeQuads.length, 2);
+    holes.forEach((m, i) => {
+      const want = holeQuad({ ...m, pos: new Vec3(m.x - m.nx * DOOR_INSET, m.y - m.ny * DOOR_INSET, m.z - door.open * 20), normal: new Vec2(m.nx, m.ny), top: m.top * (1 - door.open) });
+      assert.deepEqual(holeQuads[i].corners, want.corners);
+      assert.deepEqual(holeQuads[i].uv, want.uv);
+    });
+  },
+
+  'AC-6 holeQuad does not mutate its vector arguments or allocate in its body'() {
+    const pos = new Vec3(128.3, 64.7, 30.1);
+    const normal = new Vec2(0.6, 0.8);
+    holeQuad({ pos, normal, top: 64, seed: 4, slope: 0.1 }, { corners: new Array(12), uv: new Array(4) });
+    assert.deepEqual([pos.x, pos.y, pos.z, normal.x, normal.y], [128.3, 64.7, 30.1, 0.6, 0.8]);
+    const src = readFileSync(new URL('../src/impacts.js', import.meta.url), 'utf8');
+    const start = src.indexOf('export function holeQuad');
+    const next = src.indexOf('\nexport ', start + 1);
+    const body = src.slice(start, next < 0 ? undefined : next).replace(/^export function holeQuad/, '');
+    for (const bad of ['=>', '...', 'function ', 'impactCellUv('])
+      assert.ok(!body.includes(bad), `body contains ${bad}`);
+  },
+
+  'AC-7 syncHoles submits cached vector hole quads'() {
+    const quads = [];
+    const batch = { quad(c, u) { quads.push({ corners: c.slice(), uv: u.slice() }); }, end() {} };
+    const wall = { x: 128, y: 64, z: 30, nx: 0, ny: 1, top: 64, seed: 7 };
+    const doorHole = { ...wall, door: {} };
+    const mockWorld = { holes: { begin: () => batch }, splatCache: new Map(), cachedQuad: World.prototype.cachedQuad };
+    const blood = { holes: [wall, doorHole] };
+    World.prototype.syncHoles.call(mockWorld, blood);
+    assert.equal(quads.length, 1);
+    const want = holeQuad(vecMark(wall));
+    assert.deepEqual(quads[0].corners, want.corners);
+    assert.deepEqual(quads[0].uv, want.uv);
+    const cached = [...mockWorld.splatCache.values()];
+    World.prototype.syncHoles.call(mockWorld, blood);
+    assert.equal(quads.length, 2);
+    assert.deepEqual([...mockWorld.splatCache.values()], cached);
+    assert.ok([...mockWorld.splatCache.values()].every((v, i) => v === cached[i]));
+  },
 
   'the map starts mostly hidden and only reveals what the player can see'() {
     const game = fresh();
@@ -4303,8 +4439,8 @@ const tests = {
     assert.equal(game.blood.holes.length, holesBeforeSaw + 1, 'chainsaw leaves a permanent mark on the wall face');
     const sawMark = game.blood.holes[game.blood.holes.length - 1];
     assert.equal(sawMark.kind, 'slash', 'chainsaw wall mark has slash kind rather than firearm hole');
-    const sawQuad = holeQuad({ ...sawMark, top: 64 });
-    const gunQuad = holeQuad({ ...sawMark, kind: 'hole', top: 64 });
+    const sawQuad = holeQuad(vecMark({ ...sawMark, top: 64 }));
+    const gunQuad = holeQuad(vecMark({ ...sawMark, kind: 'hole', top: 64 }));
     const slashMinU = impactCellUv(IMPACT_CELLS.slash)[0];
     const slashMaxU = impactCellUv(IMPACT_CELLS.slash + SLASH_VARIANTS - 1)[2];
     assert.ok(sawQuad.uv[0] >= slashMinU && sawQuad.uv[2] <= slashMaxU, 'chainsaw wall quad maps to IMPACT_CELLS.slash atlas cells');
@@ -6874,7 +7010,7 @@ const tests = {
     assert.equal(bHole.slope, MARS_BOULDER_SLOPE, 'boulder bullet hole carries MARS_BOULDER_SLOPE');
     const expectedFaceY = (bty + 0.5) * 64 + (32 - MARS_BOULDER_BASE_INSET - MARS_BOULDER_SLOPE * 16);
     assert.ok(Math.abs(bHole.y - expectedFaceY) < 1e-4, 'boulder bullet hole is recessed onto the sloped rock surface');
-    const hQuad = holeQuad(bHole);
+    const hQuad = holeQuad(vecMark(bHole));
     assert.ok(hQuad, 'holeQuad produces a valid quad on the sloped boulder');
     // South face (ny = +1): top corners (indices 2, 3 -> z offset +2, +5, +8, +11) must lean inward (smaller world Z) than bottom corners
     assert.ok(hQuad.corners[8] < hQuad.corners[2] && hQuad.corners[11] < hQuad.corners[5], 'boulder bullet hole quad tilts inward along the rock slope');

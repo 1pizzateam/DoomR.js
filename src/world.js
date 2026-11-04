@@ -91,8 +91,27 @@ const MARS_SKY_VEC = new Vec3(0.46, 0.18, 0.06);
 export const MARS_AMBIENT_COLOR = new Vec3(1.04, 0.86, 0.72);
 export const MARS_DUST_TINT = new Vec3(1.2, 7.5, 1.8);
 export { MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar };
-const scratchHoleMark = { x: 0, y: 0, z: 0, nx: 0, ny: 0, top: 0, seed: 0, kind: undefined, lo: undefined, hi: undefined, slope: undefined };
+const scratchHolePos = new Vec3();
+const scratchHoleNormal = new Vec2();
+const scratchHoleMark = { pos: scratchHolePos, normal: scratchHoleNormal, top: 0, seed: 0, kind: undefined, lo: undefined, hi: undefined, slope: undefined };
 const scratchHoleQuad = { corners: new Array(12).fill(0), uv: new Array(4).fill(0) };
+
+/** Builds the quad of a stored scalar hole mark; with no `out` it returns a fresh quad that callers may retain. */
+function wallHoleQuad(mark, out = null) {
+  const hm = scratchHoleMark;
+  hm.pos.x = mark.x;
+  hm.pos.y = mark.y;
+  hm.pos.z = mark.z;
+  hm.normal.x = mark.nx;
+  hm.normal.y = mark.ny;
+  hm.top = mark.top;
+  hm.seed = mark.seed;
+  hm.kind = mark.kind;
+  hm.lo = mark.lo;
+  hm.hi = mark.hi;
+  hm.slope = mark.slope;
+  return holeQuad(hm, out);
+}
 const scratchSplatMark = { x: 0, y: 0, z: 0, nx: 0, ny: 0, size: 0, top: 0, seed: 0, age: undefined, lo: undefined, hi: undefined, slope: undefined };
 const scratchChainsawOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, attacking: false };
 const scratchChaingunOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, attacking: false, spinDown: 0 };
@@ -915,7 +934,7 @@ export class World {
     for (const hole of blood.holes) {
       if (hole.door)
         continue;
-      const quad = this.cachedQuad(hole, holeQuad);
+      const quad = this.cachedQuad(hole, wallHoleQuad);
       if (quad)
         batch.quad(quad.corners, quad.uv);
     }
@@ -970,12 +989,12 @@ export class World {
       if (mark.door !== door)
         continue;
       const hm = scratchHoleMark;
-      hm.x = mark.x - mark.nx * inset;
-      hm.y = mark.y - mark.ny * inset;
-      hm.z = mark.z - drop;
+      hm.pos.x = mark.x - mark.nx * inset;
+      hm.pos.y = mark.y - mark.ny * inset;
+      hm.pos.z = mark.z - drop;
       hm.top = mark.top * height;
-      hm.nx = mark.nx;
-      hm.ny = mark.ny;
+      hm.normal.x = mark.nx;
+      hm.normal.y = mark.ny;
       hm.seed = mark.seed;
       hm.kind = mark.kind;
       hm.lo = mark.lo;
