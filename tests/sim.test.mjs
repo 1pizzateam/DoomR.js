@@ -10412,7 +10412,7 @@ const tests = {
       game.usePrompt.fade = 1;
       hidden(state);
     }
-    game.state = 'playing';
+    game.state = 'play';
     game.message.age = 99;
     game.usePrompt.fade = 0;
     const base = hud.computeHudTextKey(game, false);
@@ -11119,6 +11119,146 @@ const tests = {
     assert.equal(r2.gain, 0);
     assert.equal(r2.distance, 5000);
     assert.ok(firstPan > 0.3);
+  },
+
+  'AC-1 computeHudTextKey is non-empty and stable in the play state'() {
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({}) },
+      { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } },
+    );
+    hud.resize(1024, 768, 1);
+    const game = fresh(0);
+    game.state = 'play';
+    game.message.age = 99;
+    game.player.ammoFlash = { bullets: 0, shells: 0, rockets: 0 };
+    const key1 = hud.computeHudTextKey(game, false);
+    const key2 = hud.computeHudTextKey(game, false);
+    assert.ok(key1.length > 0, 'key must not be empty');
+    assert.equal(key1, key2, 'consecutive calls with unchanged telemetry return identical keys');
+  },
+
+  'AC-2 computeHudTextKey changes with telemetry and is empty outside play or in automap'() {
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({}) },
+      { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } },
+    );
+    hud.resize(1024, 768, 1);
+    const game = fresh(0);
+    game.state = 'play';
+    game.message.age = 99;
+    game.player.ammoFlash = { bullets: 0, shells: 0, rockets: 0 };
+    const baseKey = hud.computeHudTextKey(game, false);
+    assert.ok(baseKey.length > 0);
+
+    game.player.health = 80;
+    const healthKey = hud.computeHudTextKey(game, false);
+    assert.notEqual(healthKey, baseKey);
+    game.player.health = 100;
+
+    game.kills = (game.kills ?? 0) + 1;
+    const killsKey = hud.computeHudTextKey(game, false);
+    assert.notEqual(killsKey, baseKey);
+    game.kills = 0;
+
+    game.player.bullets = (game.player.bullets ?? 0) + 5;
+    const bulletsKey = hud.computeHudTextKey(game, false);
+    assert.notEqual(bulletsKey, baseKey);
+    game.player.bullets = 50;
+
+    for (const st of ['paused', 'dead', 'title']) {
+      game.state = st;
+      assert.equal(hud.computeHudTextKey(game, false), '', `state ${st} returns empty key`);
+    }
+    game.state = 'play';
+    assert.equal(hud.computeHudTextKey(game, true), '', 'showAutomap true returns empty key');
+  },
+
+  'AC-3 drawBar draws every tick through one shared scratch array'() {
+    const calls = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({}) },
+      { glow: { line: (pts, col, alpha) => calls.push({ ref: pts, pts: [...pts], col, alpha }) } },
+    );
+    const GREEN = 1;
+    const ORANGE = 2;
+    hud.drawBar(10, 100, 160, 20, 0.5, GREEN, ORANGE);
+    assert.equal(calls.length, 20);
+    const firstRef = calls[0].ref;
+    for (const c of calls) {
+      assert.equal(c.ref, firstRef);
+      assert.equal(c.pts.length, 4);
+    }
+    assert.equal(calls[19].pts[0], 10 + 19 * 8);
+    const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
+    assert.ok(!src.includes('.line(['));
+  },
+
+  'AC-4 drawHud reuses scratch options and rect for face placement and frame'() {
+    const faceQuads = [];
+    const ctx = new Proxy({}, { get: () => () => {}, set: () => true });
+    const noop = () => {};
+    const overlay = {
+      clear: noop,
+      glow: { line: noop },
+      crisp: {
+        fillRect: noop,
+        rectLine: noop,
+        line: noop,
+        circleLine: noop,
+        weapon: { quad: noop },
+        sprites: { quad: noop },
+        face: { quad: (...a) => faceQuads.push(a) },
+      },
+    };
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
+    hud.resize(1280, 760, 1);
+    const game = fresh(0);
+    const frames = [
+      { health: 100, hurt: 0, time: 1.0 },
+      { health: 50, hurt: 0.3, time: 2.0 },
+    ];
+    for (const f of frames) {
+      game.player.health = f.health;
+      game.player.hurt = f.hurt;
+      game.time = f.time;
+      hud.render(game);
+      const quad = faceQuads[faceQuads.length - 1];
+      const expectedPlacement = facePlacement({ width: 1280, height: 760, hurt: f.hurt });
+      const expectedFrame = faceFrame({ health: f.health, hurt: f.hurt, shotElapsed: -1, time: f.time });
+      assert.deepEqual(quad.slice(0, 4), [expectedPlacement.x0, expectedPlacement.y0, expectedPlacement.x1, expectedPlacement.y1]);
+      assert.deepEqual(quad[4], faceCellUv(expectedFrame));
+    }
+    assert.notDeepEqual(faceQuads[0].slice(0, 4), faceQuads[1].slice(0, 4));
+    assert.notDeepEqual(faceQuads[0][4], faceQuads[1][4]);
+
+    const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
+    assert.ok(/^const FACE_FRAME_OPTS = /m.test(src));
+    assert.ok(/faceFrame\(FACE_FRAME_OPTS\)/.test(src));
+    assert.ok(!src.includes('faceFrame({'));
+  },
+
+  'AC-5 circleLine emits the same ring segments without per-segment arrays'() {
+    const vertices = [];
+    const layer = new Overlay(makeOverlayWorld().world).glow;
+    layer.lines.vertex = (x, y, col) => vertices.push({ x, y, col: [...col] });
+    layer.circleLine(50, 60, 10, [1, 1, 1], 1, 8);
+    assert.equal(vertices.length, 16);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Trigo.twopi;
+      const b = ((i + 1) / 8) * Trigo.twopi;
+      const ax = 50 + Math.cos(a) * 10;
+      const ay = 60 + Math.sin(a) * 10;
+      const bx = 50 + Math.cos(b) * 10;
+      const by = 60 + Math.sin(b) * 10;
+      assert.ok(Math.abs(vertices[i * 2].x - ax) < 1e-9);
+      assert.ok(Math.abs(vertices[i * 2].y - ay) < 1e-9);
+      assert.ok(Math.abs(vertices[i * 2 + 1].x - bx) < 1e-9);
+      assert.ok(Math.abs(vertices[i * 2 + 1].y - by) < 1e-9);
+      assert.deepEqual(vertices[i * 2].col, [1, 1, 1]);
+      assert.deepEqual(vertices[i * 2 + 1].col, [1, 1, 1]);
+    }
+    const overlaySrc = readFileSync(new URL('../src/overlay.js', import.meta.url), 'utf8');
+    assert.ok(!overlaySrc.includes('this.line(['));
   },
 };
 
