@@ -8,6 +8,7 @@ import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEIL
 import { WALL_CELLS, diagWallFaceQuads, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
 import { createExplosion3dPose, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from './explosion.js';
 import { FIREBALL_FRAMES, fireballAtlas } from './fireball.js';
+import { grenadeAtlas, grenadeParts } from './grenade.js';
 import { CRATE_FRAGMENT, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
 import { CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
 import { FOG_FAR, FOG_NEAR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar } from './fog.js';
@@ -25,7 +26,6 @@ import { WEAPONS } from './weapon.js';
 import { armorAtlas, armorMesh } from './armor.js';
 import { berserkAtlas, berserkMesh, nightvisionAtlas, nightvisionMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from './powerups.js';
 import lineFogShader from './shaders/line-fog.shadergun.json' with { type: 'json' };
-import spriteGoreShader from './shaders/sprite-gore.shadergun.json' with { type: 'json' };
 import monster3dShader from './shaders/monster-3d.shadergun.json' with { type: 'json' };
 import viewmodel3dShader from './shaders/viewmodel-3d.shadergun.json' with { type: 'json' };
 import explosion3dShader from './shaders/explosion-3d.shadergun.json' with { type: 'json' };
@@ -57,7 +57,7 @@ export const LINE_VERTEX = lineFogShader.vertex;
 export const LINE_FRAGMENT = lineFogShader.fragment;
 
 // The colours of a sprite: RoostR's Sprite places it and hands over `vTextureCoord` and `vDepth`.
-export const SPRITE_FRAGMENT = spriteGoreShader.fragment;
+export const SPRITE_FRAGMENT = TEXTURED_FRAGMENT;
 
 const MONSTER_VERTEX = monster3dShader.vertex;
 
@@ -405,6 +405,9 @@ export class World {
   sharedTexture(atlas, options = {}) {
     if (!atlas || !this.gl)
       return null;
+    if (typeof this.gl.createTexture !== 'function')
+      return {};
+    this.textureCache ??= new WeakMap();
     const { gl } = this;
     const magFilter = options.magFilter ?? gl.NEAREST;
     const minFilter = options.minFilter ?? gl.NEAREST;
@@ -2337,21 +2340,36 @@ export class World {
 
   buildShot(shot) {
     if (shot?.kind === 'grenade') {
-      const bodyMaterial = this.material('green');
-      const detailMaterial = this.material('orange');
-      const geometry = new Cylinder(new Vec2(3.6, 4.4), 10, 12, 1, false);
-      const root = new Mesh(this.gl, geometry);
-      root.addProgram(LINE_VERTEX, LINE_FRAGMENT, bodyMaterial);
-      const addPart = (geometry, position, material) => {
-        const mesh = new Mesh(this.gl, geometry);
-        mesh.addProgram(LINE_VERTEX, LINE_FRAGMENT, material);
+      const atlas = (this.grenadePixels ??= grenadeAtlas());
+      const texOptions = { flipY: false };
+      const sharedTexture = this.sharedTexture(atlas, texOptions);
+      const parts = (this.grenadeGeo ??= grenadeParts());
+      const material = new Material({ diffuse: new Vec3(1, 1, 1) });
+      const makePart = (geometry) => {
+        const mesh = texturedMesh(this.gl, geometry, {
+          atlas,
+          sharedTexture,
+          material,
+          textureOptions: texOptions,
+          fragment: SOLID_TEXTURED_FRAGMENT,
+        });
+        if (sharedTexture && this.sharedTexturedMeshes) {
+          mesh.sharedAtlas = atlas;
+          mesh.sharedTexOptions = texOptions;
+          this.sharedTexturedMeshes.push(mesh);
+        }
+        return mesh;
+      };
+      const root = makePart(parts.body);
+      const addPart = (geometry, position) => {
+        const mesh = makePart(geometry);
         mesh.position.copy(position);
         root.addChild(mesh);
       };
-      for (let i = 0; i < 4; i++)
-        addPart(new Cylinder(new Vec2(5.2, 5.2), 0.8, 12, 1, false), new Vec3(0, -3.6 + i * 2.4, 0), bodyMaterial);
-      addPart(new Cylinder(new Vec2(2, 2), 2, 12, 1, false), new Vec3(0, 6, 0), detailMaterial);
-      addPart(new Cylinder(new Vec2(0.7, 0.7), 2, 8, 1, false), new Vec3(0, 8, 0), detailMaterial);
+      for (let i = 0; i < parts.ridges.length; i++)
+        addPart(parts.ridges[i].geometry, parts.ridges[i].position);
+      addPart(parts.neck.geometry, parts.neck.position);
+      addPart(parts.fuse.geometry, parts.fuse.position);
       this.scene.addMesh(root);
       return { root };
     }

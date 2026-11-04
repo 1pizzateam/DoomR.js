@@ -39,6 +39,7 @@ import { KEYCARD_CELL, KEYCARD_CELLS, KEYCARD_FRAMES, keycardAtlas, keycardMesh 
 import { ARMOR_CELL, ARMOR_CELLS, ARMOR_COLORS, ARMOR_FRAMES, ARMOR_TYPES, armorAtlas, armorMesh } from '../src/armor.js';
 import { POWERUP_CELL, POWERUP_CELLS, POWERUP_FRAMES, POWERUP_TYPES, berserkAtlas, berserkMesh, nightvisionAtlas, nightvisionMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from '../src/powerups.js';
 import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.js';
+import { GRENADE_CELL, GRENADE_FRAMES, grenadeAtlas, grenadeParts, skinGrenadeCylinder } from '../src/grenade.js';
 import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
 import { Overlay } from '../src/overlay.js';
@@ -507,20 +508,84 @@ const tests = {
   },
 
   'AC-5 grenade mesh has valid indexed triangles, body ridges, a neck and a fuse'() {
+    const programs = [];
     const addProgram = Mesh.prototype.addProgram;
-    Mesh.prototype.addProgram = () => true;
+    Mesh.prototype.addProgram = function(vertex, fragment) {
+      programs.push({ mesh: this, vertex, fragment });
+      return true;
+    };
     const world = Object.assign(Object.create(World.prototype), {
       gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, UNSIGNED_SHORT: 5123 },
       scene: { addMesh() {} },
     });
     try {
+      const atlas = grenadeAtlas();
+      assert.equal(atlas.width, GRENADE_CELL * GRENADE_FRAMES, 'grenade atlas is 128px wide (4 cells x 32px)');
+      assert.equal(atlas.height, GRENADE_CELL, 'grenade atlas is 32px tall');
+      assert.equal(atlas.data.length, atlas.width * atlas.height * 4);
+      for (let i = 3; i < atlas.data.length; i += 4)
+        assert.equal(atlas.data[i], 255, 'every grenade atlas texel is opaque');
+      const sampleCell = (cell, x, y) => {
+        const o = (y * atlas.width + cell * GRENADE_CELL + x) * 4;
+        return [atlas.data[o], atlas.data[o + 1], atlas.data[o + 2]];
+      };
+      const [bodyR, bodyG, bodyB] = sampleCell(0, 8, 22);
+      assert.ok(bodyG > bodyR && bodyG > bodyB && bodyG - bodyR <= 12, 'cell 0 has dark olive-drab ordnance steel without triggering cyan glow');
+      const [stripeR, stripeG, stripeB] = sampleCell(0, 8, 9);
+      assert.ok(stripeR > 180 && stripeR > stripeG * 2 && stripeR > stripeB * 2, 'cell 0 includes the Half-Life 2 crimson identification stripe');
+      const [stencilR, stencilG, stencilB] = sampleCell(0, 4, 18);
+      assert.ok(stencilR > 200 && stencilG > 150 && stencilB < 80, 'cell 0 includes yellow-ochre military stencil markings');
+      const [ribNotchR] = sampleCell(1, 0, 15);
+      const [ribTickR, ribTickG] = sampleCell(1, 2, 15);
+      assert.ok(ribNotchR < 40 && ribTickR > 180 && ribTickR > ribTickG * 2, 'cell 1 has serrated vertical notches and crimson hazard ticks');
+      const [pinR, pinG, pinB] = sampleCell(2, 22, 12);
+      assert.ok(pinR > 180 && pinG > 140 && pinB < 110, 'cell 2 includes the brass pull-pin ring on the gunmetal collar');
+      const [ledR, ledG, ledB] = sampleCell(3, 15, 15);
+      assert.ok(ledR === 255 && ledG >= 150 && ledR - ledB > 60, 'cell 3 has the glowing red-orange HL2 electronic timer fuse core');
+
+      const rawParts = grenadeParts();
+      assert.equal(rawParts.ridges.length, 4);
+      assert.equal(skinGrenadeCylinder(rawParts.body, 12, 0, 0), rawParts.body);
+
+      const pixelgun = JSON.parse(readFileSync(new URL('../src/textures/grenade_atlas.pixelgun.json', import.meta.url), 'utf8'));
+      assert.equal(pixelgun.width, atlas.width);
+      assert.equal(pixelgun.height, atlas.height);
+      assert.deepEqual(new Uint8Array(Buffer.from(pixelgun.rgbaBase64, 'base64')), atlas.data);
+      const polygun = JSON.parse(readFileSync(new URL('../src/models/projectile-grenade.polygun.json', import.meta.url), 'utf8'));
+      assert.equal(polygun.id, 'projectile-grenade');
+      assert.deepEqual(new Uint8Array(Buffer.from(polygun.atlas.dataBase64, 'base64')), atlas.data);
+
       const { root } = world.buildShot({ kind: 'grenade' });
       assert.equal(root.children.length, 6, 'four ridges, neck and fuse are attached to the body');
       const parts = [root, ...root.children];
-      for (const part of parts) {
+      assert.equal(programs.length, parts.length, 'every grenade part registers a shader program');
+      for (const entry of programs) {
+        assert.equal(entry.vertex, TEXTURED_VERTEX, 'grenade parts use textured vertex shader');
+        assert.equal(entry.fragment, SOLID_TEXTURED_FRAGMENT, 'grenade parts use lit solid textured fragment shader');
+      }
+      const expectedCells = [
+        [0, 0],
+        [1, 0],
+        [1, 0],
+        [1, 0],
+        [1, 0],
+        [2, 2],
+        [3, 3],
+      ];
+      for (let p = 0; p < parts.length; p++) {
+        const part = parts[p];
+        const [sideCell, capCell] = expectedCells[p];
+        const minCell = Math.min(sideCell, capCell) / GRENADE_FRAMES;
+        const maxCell = (Math.max(sideCell, capCell) + 1) / GRENADE_FRAMES;
         assert.ok(part.vertices.length > 0 && part.vertices.length % 3 === 0);
         assert.ok(part.indices?.length > 0 && part.indices.length % 3 === 0, 'cylinder topology is retained for triangle rendering');
         assert.ok(part.vertices.every(Number.isFinite), 'mesh positions are finite');
+        assert.equal(part.uvs?.length, (part.vertices.length / 3) * 2, 'every grenade vertex has UV coordinates');
+        assert.ok(part.uvs.every(Number.isFinite), 'grenade UVs are finite');
+        for (let u = 0; u < part.uvs.length; u += 2) {
+          assert.ok(part.uvs[u] >= minCell && part.uvs[u] <= maxCell, 'grenade part U coordinate stays within its assigned atlas cells');
+          assert.ok(part.uvs[u + 1] >= 0 && part.uvs[u + 1] <= 1, 'grenade part V coordinate stays within [0, 1]');
+        }
         for (let i = 0; i < part.indices.length; i += 3) {
           const triangle = [];
           for (let j = 0; j < 3; j++) {
@@ -770,9 +835,8 @@ const tests = {
         assert.equal(world.doorViews.get(door), mesh, 'door view remains registered');
         assert.ok(mesh.vertices.length > 0 && mesh.uvs.length > 0, 'door geometry and UVs remain populated');
       }
-      assert.match(DOOR_VERTEX, /vDepth = -v.z;\s*v.z \+= 1.2 \+ vDepth \* 0.01;/);
-      assert.match(DOOR_VERTEX, /gl_Position = uProjectionMatrix \* v;/);
-      assert.doesNotMatch(DOOR_VERTEX, /clip.z/);
+      assert.match(DOOR_VERTEX, /vDepth = -v.z;/);
+      assert.match(DOOR_VERTEX, /vec4 clip = uProjectionMatrix \* v;\s*clip.z -= 0.00001 \* clip.w;\s*gl_Position = clip;/);
     });
   },
 
@@ -3641,7 +3705,7 @@ const tests = {
       world.slimeBatch = World.prototype.slimeBatch;
       World.prototype.buildStatic.call(world, game.level);
       const acid = programs.find(({ fragment }) => fragment === SLIME_FRAGMENT);
-      const floors = programs.filter(({ fragment }) => fragment === FLOOR_FRAGMENT);
+      const floors = programs.filter(({ fragment, mesh }) => fragment === FLOOR_FRAGMENT && Math.abs(mesh.vertices[7] + 0.2) < 1e-5);
       assert.ok(acid && floors.length > 0, 'actual acid and adjoining floor batches are built');
       assert.equal(acid.mesh.used, 9, 'one recessed surface per acid tile, with no gaps inside the pool');
       assert.equal(acid.vertex, FLOOR_VERTEX);

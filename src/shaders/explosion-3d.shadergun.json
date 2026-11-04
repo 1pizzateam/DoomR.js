@@ -1,20 +1,85 @@
 {
   "kind": "shadergun.project",
   "version": 3,
-  "exportedAt": "2026-11-02T16:48:45.851Z",
+  "exportedAt": "2026-11-04T11:16:48.783Z",
   "name": "explosion-3d",
   "title": "3D Volumetric Fireball Explosion",
   "category": "3D Entities & VFX",
+  "previewTime": 1.6,
   "selectedLayer": 0,
   "layers": [
     {
       "shader": "explosion-3d",
       "vertex": "\nprecision mediump float;\nattribute vec3 aVertexPosition;\nattribute vec3 aVertexNormal;\nattribute vec2 aTextureCoord;\nuniform mat4 uModelMatrix;\nuniform mat4 uViewMatrix;\nuniform mat4 uProjectionMatrix;\nuniform mat3 uNormalMatrix;\nuniform float uProgress; // 0.0 1.0 0.35 0.01\nuniform float uPhase; // 0.0 6.28 0.8 0.05\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vNormal;\nvarying vec3 vViewNormal;\nvarying vec3 vViewDir;\nvarying vec3 vLocalPos;\nvarying vec3 vBillowPos;\n\nfloat wave3(vec3 p) {\n  return sin(p.x) * cos(p.y) + sin(p.y * 1.3 + p.z) * cos(p.z * 0.9 - p.x);\n}\n\nvoid main(void) {\n  vec3 nObj = normalize(aVertexNormal);\n  vec3 flowPos = aVertexPosition * 2.8 - vec3(0.0, uProgress * 4.6, 0.0) + vec3(uPhase, uPhase * 1.37, -uPhase * 0.83);\n  float turb = 0.55 * wave3(flowPos) + 0.28 * wave3(flowPos * 2.15 + vec3(1.9));\n  float dispAmp = (0.07 + 0.10 * uProgress) * clamp(aVertexPosition.y + 0.65, 0.15, 1.2);\n  vec3 displaced = aVertexPosition + nObj * (turb * dispAmp);\n\n  vec4 world = uModelMatrix * vec4(displaced, 1.0);\n  vec4 v = uViewMatrix * world;\n  vDepth = -v.z;\n  v.z += 1.2 + vDepth * 0.01;\n  vTextureCoord = vec2(aTextureCoord.x, clamp(aTextureCoord.y + (uProgress - 0.5) * 0.08, 0.01, 0.99));\n  vLocalPos = displaced;\n  vBillowPos = displaced * 3.2 - vec3(0.0, uProgress * 4.2, 0.0) + vec3(uPhase, -uPhase * 0.7, uPhase * 1.3);\n  vNormal = normalize(uNormalMatrix * nObj);\n  vViewNormal = normalize((uViewMatrix * vec4(vNormal, 0.0)).xyz);\n  vViewDir = normalize(-v.xyz);\n  gl_Position = uProjectionMatrix * v;\n}\n",
-      "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec3 uMaterialDiffuse;\nuniform float uDissolve; // 0.0 1.0 0.15 0.01\nuniform float uHeat; // 0.0 1.5 1.05 0.01\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vNormal;\nvarying vec3 vViewNormal;\nvarying vec3 vViewDir;\nvarying vec3 vLocalPos;\nvarying vec3 vBillowPos;\n\nfloat gyroid(vec3 p) {\n  return dot(sin(p), cos(p.yzx));\n}\n\nfloat fbmBillow(vec3 p) {\n  float f1 = abs(gyroid(p)) * 0.52;\n  float f2 = abs(gyroid(p * 2.13 + vec3(1.7, -2.3, 0.9))) * 0.28;\n  float f3 = abs(gyroid(p * 4.41 - vec3(0.8, 3.1, -1.4))) * 0.14;\n  return clamp((f1 + f2 + f3) / 1.45, 0.0, 1.0);\n}\n\nvec3 evalBlackbody(float t) {\n  vec3 soot = vec3(0.11, 0.09, 0.10);\n  vec3 charRed = vec3(0.42, 0.07, 0.04);\n  vec3 lava = vec3(0.88, 0.18, 0.03);\n  vec3 orange = vec3(1.02, 0.48, 0.08);\n  vec3 gold = vec3(1.08, 0.82, 0.24);\n  vec3 plasma = vec3(1.16, 1.05, 0.72);\n\n  if (t < 0.20)\n    return mix(soot, charRed, clamp(t / 0.20, 0.0, 1.0));\n  if (t < 0.42)\n    return mix(charRed, lava, (t - 0.20) / 0.22);\n  if (t < 0.68)\n    return mix(lava, orange, (t - 0.42) / 0.26);\n  if (t < 0.94)\n    return mix(orange, gold, (t - 0.68) / 0.26);\n  return mix(gold, plasma, clamp((t - 0.94) / 0.38, 0.0, 1.0));\n}\n\nvoid main(void) {\n  vec4 texel = texture2D(uSampler, vTextureCoord);\n  if (texel.a < 0.25)\n    discard;\n\n  vec3 nWorld = normalize(vNormal);\n  vec3 nView = normalize(vViewNormal);\n  vec3 vDir = normalize(vViewDir);\n  // Two-sided facing ratio clamped strictly inside (0.02, 0.98) with NaN-free algebraic curves\n  float ndv = clamp(abs(dot(nView, vDir)), 0.02, 0.98);\n  float sqrtNdv = sqrt(ndv);\n  float invNdv = 1.0 - ndv;\n\n  // 3D volumetric cauliflower billow & magma crevice field\n  float billow = fbmBillow(vBillowPos);\n  float invBillow = clamp(1.0 - billow, 0.0, 1.0);\n  float crevice = invBillow * invBillow;\n  float texHeat = dot(texel.rgb, vec3(0.45, 0.4, 0.15));\n\n  // Organic 3D silhouette & wisp erosion: grazing edges erode first as uDissolve rises\n  float silhouetteWeight = 0.34 + 0.66 * sqrtNdv;\n  float density = (0.48 * texHeat + 0.52 * (0.35 + 0.65 * billow)) * silhouetteWeight * texel.a;\n  if (density < uDissolve)\n    discard;\n\n  // Glowing ember rim along the tearing erosion boundary\n  float dissolveEdge = 1.0 - smoothstep(0.0, 0.09, density - uDissolve);\n  float edgeEmber = dissolveEdge * clamp(uHeat * 0.85, 0.15, 0.85) * 0.38;\n\n  // Radial optical depth: center of the 3D volume is hotter than the cooling outer billow crust\n  float coreDepth = mix(0.46, 1.12, sqrtNdv);\n  float fissureGlow = crevice * (0.58 + 0.42 * texHeat);\n  float localTemp = uHeat * (0.54 * coreDepth + 0.46 * texHeat) + fissureGlow * (0.34 + 0.56 * uHeat) - (1.0 - clamp(uHeat, 0.0, 1.0)) * billow * 0.30 + edgeEmber;\n  localTemp = clamp(localTemp, 0.0, 1.32);\n\n  vec3 fireColor = evalBlackbody(localTemp);\n\n  // Volumetric smoke shading: cool outer soot domes receive warm orange-red internal bounce lighting from the blast core below\n  vec3 lightVec = vLocalPos + vec3(0.0, 0.45, 0.0);\n  vec3 coreLightDir = lightVec / max(length(lightVec), 0.001);\n  float internalBounce = clamp(dot(nWorld, -coreLightDir) * 0.5 + 0.5, 0.0, 1.0);\n  float topAmbient = 0.55 + 0.45 * clamp(nWorld.y, -0.4, 1.0);\n  float rimScatter = invNdv * invNdv * clamp(uHeat, 0.15, 1.0);\n  vec3 smokeLit = vec3(0.14, 0.12, 0.13) * topAmbient + vec3(0.78, 0.26, 0.07) * (internalBounce * clamp(uHeat * 0.8, 0.08, 0.7) + rimScatter * 0.38);\n\n  float smokeBlend = smoothstep(0.42, 0.12, localTemp);\n  vec3 color = mix(fireColor, smokeLit, smokeBlend * 0.72);\n  color *= mix(vec3(1.0), normalize(max(uMaterialDiffuse, vec3(0.2))), 0.18);\n\n  float fogFade = 0.0;\n  if (uHasFog == 1) {\n    fogFade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);\n    color = mix(color, uFogColor, fogFade);\n  }\n  gl_FragColor = vec4(color, localTemp * (1.0 - fogFade) > 0.68 ? 1.0 : 0.5);\n}\n",
+      "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec3 uMaterialDiffuse;\nuniform float uDissolve; // 0.0 1.0 0.15 0.01\nuniform float uHeat; // 0.0 1.5 1.15 0.01\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vNormal;\nvarying vec3 vViewNormal;\nvarying vec3 vViewDir;\nvarying vec3 vLocalPos;\nvarying vec3 vBillowPos;\n\nfloat gyroid(vec3 p) {\n  return dot(sin(p), cos(p.yzx));\n}\n\nfloat fbmBillow(vec3 p) {\n  float f1 = abs(gyroid(p)) * 0.52;\n  float f2 = abs(gyroid(p * 2.13 + vec3(1.7, -2.3, 0.9))) * 0.28;\n  float f3 = abs(gyroid(p * 4.41 - vec3(0.8, 3.1, -1.4))) * 0.14;\n  return clamp((f1 + f2 + f3) / 1.45, 0.0, 1.0);\n}\n\nvec3 evalBlackbody(float t) {\n  vec3 soot = vec3(0.11, 0.09, 0.10);\n  vec3 charRed = vec3(0.42, 0.07, 0.04);\n  vec3 lava = vec3(0.88, 0.18, 0.03);\n  vec3 orange = vec3(1.02, 0.48, 0.08);\n  vec3 gold = vec3(1.08, 0.82, 0.24);\n  vec3 plasma = vec3(1.16, 1.05, 0.72);\n\n  if (t < 0.20)\n    return mix(soot, charRed, clamp(t / 0.20, 0.0, 1.0));\n  if (t < 0.42)\n    return mix(charRed, lava, (t - 0.20) / 0.22);\n  if (t < 0.68)\n    return mix(lava, orange, (t - 0.42) / 0.26);\n  if (t < 0.94)\n    return mix(orange, gold, (t - 0.68) / 0.26);\n  return mix(gold, plasma, clamp((t - 0.94) / 0.38, 0.0, 1.0));\n}\n\nvoid main(void) {\n  vec4 texel = texture2D(uSampler, vTextureCoord);\n  if (texel.a < 0.25)\n    discard;\n\n  vec3 nWorld = normalize(vNormal);\n  vec3 nView = normalize(vViewNormal);\n  vec3 vDir = normalize(vViewDir);\n  // Two-sided facing ratio clamped strictly inside (0.02, 0.98) with NaN-free algebraic curves\n  float ndv = clamp(abs(dot(nView, vDir)), 0.02, 0.98);\n  float sqrtNdv = sqrt(ndv);\n  float invNdv = 1.0 - ndv;\n\n  // 3D volumetric cauliflower billow & magma crevice field\n  float billow = fbmBillow(vBillowPos);\n  float invBillow = clamp(1.0 - billow, 0.0, 1.0);\n  float crevice = invBillow * invBillow;\n  float texHeat = dot(texel.rgb, vec3(0.45, 0.4, 0.15));\n\n  // Organic 3D silhouette & wisp erosion: grazing edges erode first as uDissolve rises\n  float silhouetteWeight = 0.34 + 0.66 * sqrtNdv;\n  float density = (0.48 * texHeat + 0.52 * (0.35 + 0.65 * billow)) * silhouetteWeight * texel.a;\n  if (density < uDissolve)\n    discard;\n\n  // Glowing ember rim along the tearing erosion boundary\n  float dissolveEdge = 1.0 - smoothstep(0.0, 0.09, density - uDissolve);\n  float edgeEmber = dissolveEdge * clamp(uHeat * 0.85, 0.15, 0.85) * 0.38;\n\n  // Radial optical depth: center of the 3D volume is hotter than the cooling outer billow crust\n  float coreDepth = mix(0.46, 1.12, sqrtNdv);\n  float fissureGlow = crevice * (0.58 + 0.42 * texHeat);\n  float localTemp = uHeat * (0.54 * coreDepth + 0.46 * texHeat) + fissureGlow * (0.34 + 0.56 * uHeat) - (1.0 - clamp(uHeat, 0.0, 1.0)) * billow * 0.30 + edgeEmber;\n  localTemp = clamp(localTemp, 0.0, 1.32);\n\n  vec3 fireColor = evalBlackbody(localTemp);\n\n  // Volumetric smoke shading: cool outer soot domes receive warm orange-red internal bounce lighting from the blast core below\n  vec3 lightVec = vLocalPos + vec3(0.0, 0.45, 0.0);\n  vec3 coreLightDir = lightVec / max(length(lightVec), 0.001);\n  float internalBounce = clamp(dot(nWorld, -coreLightDir) * 0.5 + 0.5, 0.0, 1.0);\n  float topAmbient = 0.55 + 0.45 * clamp(nWorld.y, -0.4, 1.0);\n  float rimScatter = invNdv * invNdv * clamp(uHeat, 0.15, 1.0);\n  vec3 smokeLit = vec3(0.14, 0.12, 0.13) * topAmbient + vec3(0.78, 0.26, 0.07) * (internalBounce * clamp(uHeat * 0.8, 0.08, 0.7) + rimScatter * 0.38);\n\n  float smokeBlend = smoothstep(0.42, 0.12, localTemp);\n  vec3 color = mix(fireColor, smokeLit, smokeBlend * 0.72);\n  color *= mix(vec3(1.0), normalize(max(uMaterialDiffuse, vec3(0.2))), 0.18);\n\n  float fogFade = 0.0;\n  if (uHasFog == 1) {\n    fogFade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);\n    color = mix(color, uFogColor, fogFade);\n  }\n  gl_FragColor = vec4(color, localTemp * (1.0 - fogFade) > 0.68 ? 1.0 : 0.5);\n}\n",
       "camera": null,
-      "uniformTracks": {},
-      "mesh": "sphere",
-      "texture": "fireball_atlas",
+      "uniformTracks": {
+        "uProgress": [
+          {
+            "time": 0,
+            "value": 0.08,
+            "easing": "smooth"
+          },
+          {
+            "time": 2,
+            "value": 0.42,
+            "easing": "smooth"
+          },
+          {
+            "time": 4.2,
+            "value": 0.88,
+            "easing": "smooth"
+          }
+        ],
+        "uPhase": [
+          {
+            "time": 0,
+            "value": 0.2,
+            "easing": "linear"
+          },
+          {
+            "time": 4.2,
+            "value": 4.8,
+            "easing": "linear"
+          }
+        ],
+        "uDissolve": [
+          {
+            "time": 0,
+            "value": 0.02,
+            "easing": "smooth"
+          },
+          {
+            "time": 2,
+            "value": 0.16,
+            "easing": "smooth"
+          },
+          {
+            "time": 4.2,
+            "value": 0.72,
+            "easing": "smooth"
+          }
+        ],
+        "uHeat": [
+          {
+            "time": 0,
+            "value": 1.45,
+            "easing": "smooth"
+          },
+          {
+            "time": 2,
+            "value": 1.12,
+            "easing": "smooth"
+          },
+          {
+            "time": 4.2,
+            "value": 0.38,
+            "easing": "smooth"
+          }
+        ]
+      },
+      "mesh": "fireball",
+      "texture": "explosion3d_atlas",
       "visible": true,
       "opacity": 1,
       "blend": "normal",
@@ -27,11 +92,75 @@
   ],
   "shader": "explosion-3d",
   "vertex": "\nprecision mediump float;\nattribute vec3 aVertexPosition;\nattribute vec3 aVertexNormal;\nattribute vec2 aTextureCoord;\nuniform mat4 uModelMatrix;\nuniform mat4 uViewMatrix;\nuniform mat4 uProjectionMatrix;\nuniform mat3 uNormalMatrix;\nuniform float uProgress; // 0.0 1.0 0.35 0.01\nuniform float uPhase; // 0.0 6.28 0.8 0.05\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vNormal;\nvarying vec3 vViewNormal;\nvarying vec3 vViewDir;\nvarying vec3 vLocalPos;\nvarying vec3 vBillowPos;\n\nfloat wave3(vec3 p) {\n  return sin(p.x) * cos(p.y) + sin(p.y * 1.3 + p.z) * cos(p.z * 0.9 - p.x);\n}\n\nvoid main(void) {\n  vec3 nObj = normalize(aVertexNormal);\n  vec3 flowPos = aVertexPosition * 2.8 - vec3(0.0, uProgress * 4.6, 0.0) + vec3(uPhase, uPhase * 1.37, -uPhase * 0.83);\n  float turb = 0.55 * wave3(flowPos) + 0.28 * wave3(flowPos * 2.15 + vec3(1.9));\n  float dispAmp = (0.07 + 0.10 * uProgress) * clamp(aVertexPosition.y + 0.65, 0.15, 1.2);\n  vec3 displaced = aVertexPosition + nObj * (turb * dispAmp);\n\n  vec4 world = uModelMatrix * vec4(displaced, 1.0);\n  vec4 v = uViewMatrix * world;\n  vDepth = -v.z;\n  v.z += 1.2 + vDepth * 0.01;\n  vTextureCoord = vec2(aTextureCoord.x, clamp(aTextureCoord.y + (uProgress - 0.5) * 0.08, 0.01, 0.99));\n  vLocalPos = displaced;\n  vBillowPos = displaced * 3.2 - vec3(0.0, uProgress * 4.2, 0.0) + vec3(uPhase, -uPhase * 0.7, uPhase * 1.3);\n  vNormal = normalize(uNormalMatrix * nObj);\n  vViewNormal = normalize((uViewMatrix * vec4(vNormal, 0.0)).xyz);\n  vViewDir = normalize(-v.xyz);\n  gl_Position = uProjectionMatrix * v;\n}\n",
-  "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec3 uMaterialDiffuse;\nuniform float uDissolve; // 0.0 1.0 0.15 0.01\nuniform float uHeat; // 0.0 1.5 1.05 0.01\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vNormal;\nvarying vec3 vViewNormal;\nvarying vec3 vViewDir;\nvarying vec3 vLocalPos;\nvarying vec3 vBillowPos;\n\nfloat gyroid(vec3 p) {\n  return dot(sin(p), cos(p.yzx));\n}\n\nfloat fbmBillow(vec3 p) {\n  float f1 = abs(gyroid(p)) * 0.52;\n  float f2 = abs(gyroid(p * 2.13 + vec3(1.7, -2.3, 0.9))) * 0.28;\n  float f3 = abs(gyroid(p * 4.41 - vec3(0.8, 3.1, -1.4))) * 0.14;\n  return clamp((f1 + f2 + f3) / 1.45, 0.0, 1.0);\n}\n\nvec3 evalBlackbody(float t) {\n  vec3 soot = vec3(0.11, 0.09, 0.10);\n  vec3 charRed = vec3(0.42, 0.07, 0.04);\n  vec3 lava = vec3(0.88, 0.18, 0.03);\n  vec3 orange = vec3(1.02, 0.48, 0.08);\n  vec3 gold = vec3(1.08, 0.82, 0.24);\n  vec3 plasma = vec3(1.16, 1.05, 0.72);\n\n  if (t < 0.20)\n    return mix(soot, charRed, clamp(t / 0.20, 0.0, 1.0));\n  if (t < 0.42)\n    return mix(charRed, lava, (t - 0.20) / 0.22);\n  if (t < 0.68)\n    return mix(lava, orange, (t - 0.42) / 0.26);\n  if (t < 0.94)\n    return mix(orange, gold, (t - 0.68) / 0.26);\n  return mix(gold, plasma, clamp((t - 0.94) / 0.38, 0.0, 1.0));\n}\n\nvoid main(void) {\n  vec4 texel = texture2D(uSampler, vTextureCoord);\n  if (texel.a < 0.25)\n    discard;\n\n  vec3 nWorld = normalize(vNormal);\n  vec3 nView = normalize(vViewNormal);\n  vec3 vDir = normalize(vViewDir);\n  // Two-sided facing ratio clamped strictly inside (0.02, 0.98) with NaN-free algebraic curves\n  float ndv = clamp(abs(dot(nView, vDir)), 0.02, 0.98);\n  float sqrtNdv = sqrt(ndv);\n  float invNdv = 1.0 - ndv;\n\n  // 3D volumetric cauliflower billow & magma crevice field\n  float billow = fbmBillow(vBillowPos);\n  float invBillow = clamp(1.0 - billow, 0.0, 1.0);\n  float crevice = invBillow * invBillow;\n  float texHeat = dot(texel.rgb, vec3(0.45, 0.4, 0.15));\n\n  // Organic 3D silhouette & wisp erosion: grazing edges erode first as uDissolve rises\n  float silhouetteWeight = 0.34 + 0.66 * sqrtNdv;\n  float density = (0.48 * texHeat + 0.52 * (0.35 + 0.65 * billow)) * silhouetteWeight * texel.a;\n  if (density < uDissolve)\n    discard;\n\n  // Glowing ember rim along the tearing erosion boundary\n  float dissolveEdge = 1.0 - smoothstep(0.0, 0.09, density - uDissolve);\n  float edgeEmber = dissolveEdge * clamp(uHeat * 0.85, 0.15, 0.85) * 0.38;\n\n  // Radial optical depth: center of the 3D volume is hotter than the cooling outer billow crust\n  float coreDepth = mix(0.46, 1.12, sqrtNdv);\n  float fissureGlow = crevice * (0.58 + 0.42 * texHeat);\n  float localTemp = uHeat * (0.54 * coreDepth + 0.46 * texHeat) + fissureGlow * (0.34 + 0.56 * uHeat) - (1.0 - clamp(uHeat, 0.0, 1.0)) * billow * 0.30 + edgeEmber;\n  localTemp = clamp(localTemp, 0.0, 1.32);\n\n  vec3 fireColor = evalBlackbody(localTemp);\n\n  // Volumetric smoke shading: cool outer soot domes receive warm orange-red internal bounce lighting from the blast core below\n  vec3 lightVec = vLocalPos + vec3(0.0, 0.45, 0.0);\n  vec3 coreLightDir = lightVec / max(length(lightVec), 0.001);\n  float internalBounce = clamp(dot(nWorld, -coreLightDir) * 0.5 + 0.5, 0.0, 1.0);\n  float topAmbient = 0.55 + 0.45 * clamp(nWorld.y, -0.4, 1.0);\n  float rimScatter = invNdv * invNdv * clamp(uHeat, 0.15, 1.0);\n  vec3 smokeLit = vec3(0.14, 0.12, 0.13) * topAmbient + vec3(0.78, 0.26, 0.07) * (internalBounce * clamp(uHeat * 0.8, 0.08, 0.7) + rimScatter * 0.38);\n\n  float smokeBlend = smoothstep(0.42, 0.12, localTemp);\n  vec3 color = mix(fireColor, smokeLit, smokeBlend * 0.72);\n  color *= mix(vec3(1.0), normalize(max(uMaterialDiffuse, vec3(0.2))), 0.18);\n\n  float fogFade = 0.0;\n  if (uHasFog == 1) {\n    fogFade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);\n    color = mix(color, uFogColor, fogFade);\n  }\n  gl_FragColor = vec4(color, localTemp * (1.0 - fogFade) > 0.68 ? 1.0 : 0.5);\n}\n",
+  "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec3 uMaterialDiffuse;\nuniform float uDissolve; // 0.0 1.0 0.15 0.01\nuniform float uHeat; // 0.0 1.5 1.15 0.01\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\nvarying vec2 vTextureCoord;\nvarying vec3 vNormal;\nvarying vec3 vViewNormal;\nvarying vec3 vViewDir;\nvarying vec3 vLocalPos;\nvarying vec3 vBillowPos;\n\nfloat gyroid(vec3 p) {\n  return dot(sin(p), cos(p.yzx));\n}\n\nfloat fbmBillow(vec3 p) {\n  float f1 = abs(gyroid(p)) * 0.52;\n  float f2 = abs(gyroid(p * 2.13 + vec3(1.7, -2.3, 0.9))) * 0.28;\n  float f3 = abs(gyroid(p * 4.41 - vec3(0.8, 3.1, -1.4))) * 0.14;\n  return clamp((f1 + f2 + f3) / 1.45, 0.0, 1.0);\n}\n\nvec3 evalBlackbody(float t) {\n  vec3 soot = vec3(0.11, 0.09, 0.10);\n  vec3 charRed = vec3(0.42, 0.07, 0.04);\n  vec3 lava = vec3(0.88, 0.18, 0.03);\n  vec3 orange = vec3(1.02, 0.48, 0.08);\n  vec3 gold = vec3(1.08, 0.82, 0.24);\n  vec3 plasma = vec3(1.16, 1.05, 0.72);\n\n  if (t < 0.20)\n    return mix(soot, charRed, clamp(t / 0.20, 0.0, 1.0));\n  if (t < 0.42)\n    return mix(charRed, lava, (t - 0.20) / 0.22);\n  if (t < 0.68)\n    return mix(lava, orange, (t - 0.42) / 0.26);\n  if (t < 0.94)\n    return mix(orange, gold, (t - 0.68) / 0.26);\n  return mix(gold, plasma, clamp((t - 0.94) / 0.38, 0.0, 1.0));\n}\n\nvoid main(void) {\n  vec4 texel = texture2D(uSampler, vTextureCoord);\n  if (texel.a < 0.25)\n    discard;\n\n  vec3 nWorld = normalize(vNormal);\n  vec3 nView = normalize(vViewNormal);\n  vec3 vDir = normalize(vViewDir);\n  // Two-sided facing ratio clamped strictly inside (0.02, 0.98) with NaN-free algebraic curves\n  float ndv = clamp(abs(dot(nView, vDir)), 0.02, 0.98);\n  float sqrtNdv = sqrt(ndv);\n  float invNdv = 1.0 - ndv;\n\n  // 3D volumetric cauliflower billow & magma crevice field\n  float billow = fbmBillow(vBillowPos);\n  float invBillow = clamp(1.0 - billow, 0.0, 1.0);\n  float crevice = invBillow * invBillow;\n  float texHeat = dot(texel.rgb, vec3(0.45, 0.4, 0.15));\n\n  // Organic 3D silhouette & wisp erosion: grazing edges erode first as uDissolve rises\n  float silhouetteWeight = 0.34 + 0.66 * sqrtNdv;\n  float density = (0.48 * texHeat + 0.52 * (0.35 + 0.65 * billow)) * silhouetteWeight * texel.a;\n  if (density < uDissolve)\n    discard;\n\n  // Glowing ember rim along the tearing erosion boundary\n  float dissolveEdge = 1.0 - smoothstep(0.0, 0.09, density - uDissolve);\n  float edgeEmber = dissolveEdge * clamp(uHeat * 0.85, 0.15, 0.85) * 0.38;\n\n  // Radial optical depth: center of the 3D volume is hotter than the cooling outer billow crust\n  float coreDepth = mix(0.46, 1.12, sqrtNdv);\n  float fissureGlow = crevice * (0.58 + 0.42 * texHeat);\n  float localTemp = uHeat * (0.54 * coreDepth + 0.46 * texHeat) + fissureGlow * (0.34 + 0.56 * uHeat) - (1.0 - clamp(uHeat, 0.0, 1.0)) * billow * 0.30 + edgeEmber;\n  localTemp = clamp(localTemp, 0.0, 1.32);\n\n  vec3 fireColor = evalBlackbody(localTemp);\n\n  // Volumetric smoke shading: cool outer soot domes receive warm orange-red internal bounce lighting from the blast core below\n  vec3 lightVec = vLocalPos + vec3(0.0, 0.45, 0.0);\n  vec3 coreLightDir = lightVec / max(length(lightVec), 0.001);\n  float internalBounce = clamp(dot(nWorld, -coreLightDir) * 0.5 + 0.5, 0.0, 1.0);\n  float topAmbient = 0.55 + 0.45 * clamp(nWorld.y, -0.4, 1.0);\n  float rimScatter = invNdv * invNdv * clamp(uHeat, 0.15, 1.0);\n  vec3 smokeLit = vec3(0.14, 0.12, 0.13) * topAmbient + vec3(0.78, 0.26, 0.07) * (internalBounce * clamp(uHeat * 0.8, 0.08, 0.7) + rimScatter * 0.38);\n\n  float smokeBlend = smoothstep(0.42, 0.12, localTemp);\n  vec3 color = mix(fireColor, smokeLit, smokeBlend * 0.72);\n  color *= mix(vec3(1.0), normalize(max(uMaterialDiffuse, vec3(0.2))), 0.18);\n\n  float fogFade = 0.0;\n  if (uHasFog == 1) {\n    fogFade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);\n    color = mix(color, uFogColor, fogFade);\n  }\n  gl_FragColor = vec4(color, localTemp * (1.0 - fogFade) > 0.68 ? 1.0 : 0.5);\n}\n",
   "camera": null,
-  "uniformTracks": {},
-  "mesh": "sphere",
-  "texture": "fireball_atlas",
+  "uniformTracks": {
+    "uProgress": [
+      {
+        "time": 0,
+        "value": 0.08,
+        "easing": "smooth"
+      },
+      {
+        "time": 2,
+        "value": 0.42,
+        "easing": "smooth"
+      },
+      {
+        "time": 4.2,
+        "value": 0.88,
+        "easing": "smooth"
+      }
+    ],
+    "uPhase": [
+      {
+        "time": 0,
+        "value": 0.2,
+        "easing": "linear"
+      },
+      {
+        "time": 4.2,
+        "value": 4.8,
+        "easing": "linear"
+      }
+    ],
+    "uDissolve": [
+      {
+        "time": 0,
+        "value": 0.02,
+        "easing": "smooth"
+      },
+      {
+        "time": 2,
+        "value": 0.16,
+        "easing": "smooth"
+      },
+      {
+        "time": 4.2,
+        "value": 0.72,
+        "easing": "smooth"
+      }
+    ],
+    "uHeat": [
+      {
+        "time": 0,
+        "value": 1.45,
+        "easing": "smooth"
+      },
+      {
+        "time": 2,
+        "value": 1.12,
+        "easing": "smooth"
+      },
+      {
+        "time": 4.2,
+        "value": 0.38,
+        "easing": "smooth"
+      }
+    ]
+  },
+  "mesh": "fireball",
+  "texture": "explosion3d_atlas",
   "visible": true,
   "opacity": 1,
   "blend": "normal",

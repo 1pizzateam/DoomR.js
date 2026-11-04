@@ -1,20 +1,49 @@
 {
   "kind": "shadergun.project",
   "version": 3,
-  "exportedAt": "2026-11-02T16:48:45.852Z",
+  "exportedAt": "2026-11-04T11:16:48.783Z",
   "name": "post-core-nvg",
   "title": "Post-FX Composite (Lines + Night Vision)",
   "category": "Post-Processing & HUD",
+  "previewTime": 1.2,
   "selectedLayer": 0,
   "layers": [
     {
       "shader": "post-core-nvg",
       "vertex": "\nattribute vec2 aVertexPosition;\nattribute vec2 aTextureCoord;\nvarying vec2 vTextureCoord;\n\nvoid main(void) {\n  vTextureCoord = aTextureCoord;\n  gl_Position = vec4(aVertexPosition, 0.0, 1.0);\n}\n",
-      "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec2 uScreenResolution;\nuniform float uNightVision; // 0.0 1.0 0.0 0.01\nuniform float uTime;\nvarying vec2 vTextureCoord;\n\nconst vec3 BG = vec3(0.02745, 0.03529, 0.05882);\n\n// solid surfaces (floor, walls, doors, barrels) are marked in alpha and are neither thickened nor made to glow\nbool solid(vec4 texel) {\n  return texel.a > 0.25 && texel.a < 0.75;\n}\n\nvec3 tap(vec2 offset) {\n  vec4 texel = texture2D(uSampler, vTextureCoord + offset / uScreenResolution);\n  return solid(texel) ? vec3(0.0) : max(texel.rgb - BG, 0.0);\n}\n\nvec3 applyNightVision(vec3 col) {\n  float lum = dot(col, vec3(0.32, 0.54, 0.14));\n  float boosted = clamp(pow(max(lum, 0.0), 0.62) * 1.65 + 0.06, 0.0, 1.35);\n  float scan = 0.92 + 0.08 * sin(vTextureCoord.y * uScreenResolution.y * 1.45);\n  float grain = fract(sin(dot(vTextureCoord * uScreenResolution + vec2(uTime * 37.0, uTime * 19.0), vec2(12.9898, 78.233))) * 43758.5453);\n  vec3 phosphor = vec3(0.09, 0.96, 0.36) * boosted + vec3(0.44, 1.0, 0.68) * pow(max(boosted - 0.35, 0.0), 1.8) * 0.55;\n  phosphor = (phosphor + (grain - 0.5) * 0.045) * scan;\n  float dl = length((vTextureCoord - vec2(0.32, 0.5)) * vec2(1.18, 1.42));\n  float dr = length((vTextureCoord - vec2(0.68, 0.5)) * vec2(1.18, 1.42));\n  float tubeDist = min(dl, dr);\n  float vig = 1.0 - smoothstep(0.52, 0.88, tubeDist) * 0.68;\n  return mix(col, phosphor * vig, clamp(uNightVision, 0.0, 1.0));\n}\n\nvoid main(void) {\n  vec4 here = texture2D(uSampler, vTextureCoord);\n  vec3 outCol;\n  if (solid(here)) {\n    outCol = here.rgb;\n  } else {\n    float s = max(uScreenResolution.y / 760.0, 1.0);\n    vec3 line = max(here.rgb - BG, 0.0);\n    line = max(line, tap(vec2(1.0, 0.0) * s) * 0.9);\n    line = max(line, tap(vec2(-1.0, 0.0) * s) * 0.9);\n    line = max(line, tap(vec2(0.0, 1.0) * s) * 0.9);\n    line = max(line, tap(vec2(0.0, -1.0) * s) * 0.9);\n    outCol = BG + line;\n  }\n  if (uNightVision > 0.001)\n    outCol = applyNightVision(outCol);\n  gl_FragColor = vec4(outCol, 1.0);\n}\n",
+      "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec2 uScreenResolution;\nuniform float uNightVision; // 0.0 1.0 0.25 0.01\nuniform float uTime;\nvarying vec2 vTextureCoord;\n\nconst vec3 BG = vec3(0.02745, 0.03529, 0.05882);\n\n// solid surfaces (floor, walls, doors, barrels) are marked in alpha and are neither thickened nor made to glow\nbool solid(vec4 texel) {\n  return texel.a > 0.25 && texel.a < 0.75;\n}\n\nvec3 tap(vec2 offset) {\n  vec4 texel = texture2D(uSampler, vTextureCoord + offset / uScreenResolution);\n  return solid(texel) ? vec3(0.0) : max(texel.rgb - BG, 0.0);\n}\n\nvec3 applyNightVision(vec3 col) {\n  float lum = dot(col, vec3(0.32, 0.54, 0.14));\n  float boosted = clamp(pow(max(lum, 0.0), 0.62) * 1.65 + 0.06, 0.0, 1.35);\n  float scan = 0.92 + 0.08 * sin(vTextureCoord.y * uScreenResolution.y * 1.45);\n  float grain = fract(sin(dot(vTextureCoord * uScreenResolution + vec2(uTime * 37.0, uTime * 19.0), vec2(12.9898, 78.233))) * 43758.5453);\n  vec3 phosphor = vec3(0.09, 0.96, 0.36) * boosted + vec3(0.44, 1.0, 0.68) * pow(max(boosted - 0.35, 0.0), 1.8) * 0.55;\n  phosphor = (phosphor + (grain - 0.5) * 0.045) * scan;\n  float dl = length((vTextureCoord - vec2(0.32, 0.5)) * vec2(1.18, 1.42));\n  float dr = length((vTextureCoord - vec2(0.68, 0.5)) * vec2(1.18, 1.42));\n  float tubeDist = min(dl, dr);\n  float vig = 1.0 - smoothstep(0.52, 0.88, tubeDist) * 0.68;\n  return mix(col, phosphor * vig, clamp(uNightVision, 0.0, 1.0));\n}\n\nvoid main(void) {\n  vec4 here = texture2D(uSampler, vTextureCoord);\n  vec3 outCol;\n  if (solid(here)) {\n    outCol = here.rgb;\n  } else {\n    float s = max(uScreenResolution.y / 760.0, 1.0);\n    vec3 line = max(here.rgb - BG, 0.0);\n    line = max(line, tap(vec2(1.0, 0.0) * s) * 0.9);\n    line = max(line, tap(vec2(-1.0, 0.0) * s) * 0.9);\n    line = max(line, tap(vec2(0.0, 1.0) * s) * 0.9);\n    line = max(line, tap(vec2(0.0, -1.0) * s) * 0.9);\n    outCol = BG + line;\n  }\n  if (uNightVision > 0.001)\n    outCol = applyNightVision(outCol);\n  gl_FragColor = vec4(outCol, 1.0);\n}\n",
       "camera": null,
-      "uniformTracks": {},
+      "uniformTracks": {
+        "uNightVision": [
+          {
+            "time": 0,
+            "value": 0,
+            "easing": "smooth"
+          },
+          {
+            "time": 1.8,
+            "value": 0,
+            "easing": "smooth"
+          },
+          {
+            "time": 2.6,
+            "value": 1,
+            "easing": "smooth"
+          },
+          {
+            "time": 4.2,
+            "value": 1,
+            "easing": "smooth"
+          },
+          {
+            "time": 5,
+            "value": 0,
+            "easing": "smooth"
+          }
+        ]
+      },
       "mesh": "quad",
-      "texture": "wall_atlas",
+      "texture": "doomr_scene_preview",
       "visible": true,
       "opacity": 1,
       "blend": "normal",
@@ -27,11 +56,39 @@
   ],
   "shader": "post-core-nvg",
   "vertex": "\nattribute vec2 aVertexPosition;\nattribute vec2 aTextureCoord;\nvarying vec2 vTextureCoord;\n\nvoid main(void) {\n  vTextureCoord = aTextureCoord;\n  gl_Position = vec4(aVertexPosition, 0.0, 1.0);\n}\n",
-  "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec2 uScreenResolution;\nuniform float uNightVision; // 0.0 1.0 0.0 0.01\nuniform float uTime;\nvarying vec2 vTextureCoord;\n\nconst vec3 BG = vec3(0.02745, 0.03529, 0.05882);\n\n// solid surfaces (floor, walls, doors, barrels) are marked in alpha and are neither thickened nor made to glow\nbool solid(vec4 texel) {\n  return texel.a > 0.25 && texel.a < 0.75;\n}\n\nvec3 tap(vec2 offset) {\n  vec4 texel = texture2D(uSampler, vTextureCoord + offset / uScreenResolution);\n  return solid(texel) ? vec3(0.0) : max(texel.rgb - BG, 0.0);\n}\n\nvec3 applyNightVision(vec3 col) {\n  float lum = dot(col, vec3(0.32, 0.54, 0.14));\n  float boosted = clamp(pow(max(lum, 0.0), 0.62) * 1.65 + 0.06, 0.0, 1.35);\n  float scan = 0.92 + 0.08 * sin(vTextureCoord.y * uScreenResolution.y * 1.45);\n  float grain = fract(sin(dot(vTextureCoord * uScreenResolution + vec2(uTime * 37.0, uTime * 19.0), vec2(12.9898, 78.233))) * 43758.5453);\n  vec3 phosphor = vec3(0.09, 0.96, 0.36) * boosted + vec3(0.44, 1.0, 0.68) * pow(max(boosted - 0.35, 0.0), 1.8) * 0.55;\n  phosphor = (phosphor + (grain - 0.5) * 0.045) * scan;\n  float dl = length((vTextureCoord - vec2(0.32, 0.5)) * vec2(1.18, 1.42));\n  float dr = length((vTextureCoord - vec2(0.68, 0.5)) * vec2(1.18, 1.42));\n  float tubeDist = min(dl, dr);\n  float vig = 1.0 - smoothstep(0.52, 0.88, tubeDist) * 0.68;\n  return mix(col, phosphor * vig, clamp(uNightVision, 0.0, 1.0));\n}\n\nvoid main(void) {\n  vec4 here = texture2D(uSampler, vTextureCoord);\n  vec3 outCol;\n  if (solid(here)) {\n    outCol = here.rgb;\n  } else {\n    float s = max(uScreenResolution.y / 760.0, 1.0);\n    vec3 line = max(here.rgb - BG, 0.0);\n    line = max(line, tap(vec2(1.0, 0.0) * s) * 0.9);\n    line = max(line, tap(vec2(-1.0, 0.0) * s) * 0.9);\n    line = max(line, tap(vec2(0.0, 1.0) * s) * 0.9);\n    line = max(line, tap(vec2(0.0, -1.0) * s) * 0.9);\n    outCol = BG + line;\n  }\n  if (uNightVision > 0.001)\n    outCol = applyNightVision(outCol);\n  gl_FragColor = vec4(outCol, 1.0);\n}\n",
+  "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec2 uScreenResolution;\nuniform float uNightVision; // 0.0 1.0 0.25 0.01\nuniform float uTime;\nvarying vec2 vTextureCoord;\n\nconst vec3 BG = vec3(0.02745, 0.03529, 0.05882);\n\n// solid surfaces (floor, walls, doors, barrels) are marked in alpha and are neither thickened nor made to glow\nbool solid(vec4 texel) {\n  return texel.a > 0.25 && texel.a < 0.75;\n}\n\nvec3 tap(vec2 offset) {\n  vec4 texel = texture2D(uSampler, vTextureCoord + offset / uScreenResolution);\n  return solid(texel) ? vec3(0.0) : max(texel.rgb - BG, 0.0);\n}\n\nvec3 applyNightVision(vec3 col) {\n  float lum = dot(col, vec3(0.32, 0.54, 0.14));\n  float boosted = clamp(pow(max(lum, 0.0), 0.62) * 1.65 + 0.06, 0.0, 1.35);\n  float scan = 0.92 + 0.08 * sin(vTextureCoord.y * uScreenResolution.y * 1.45);\n  float grain = fract(sin(dot(vTextureCoord * uScreenResolution + vec2(uTime * 37.0, uTime * 19.0), vec2(12.9898, 78.233))) * 43758.5453);\n  vec3 phosphor = vec3(0.09, 0.96, 0.36) * boosted + vec3(0.44, 1.0, 0.68) * pow(max(boosted - 0.35, 0.0), 1.8) * 0.55;\n  phosphor = (phosphor + (grain - 0.5) * 0.045) * scan;\n  float dl = length((vTextureCoord - vec2(0.32, 0.5)) * vec2(1.18, 1.42));\n  float dr = length((vTextureCoord - vec2(0.68, 0.5)) * vec2(1.18, 1.42));\n  float tubeDist = min(dl, dr);\n  float vig = 1.0 - smoothstep(0.52, 0.88, tubeDist) * 0.68;\n  return mix(col, phosphor * vig, clamp(uNightVision, 0.0, 1.0));\n}\n\nvoid main(void) {\n  vec4 here = texture2D(uSampler, vTextureCoord);\n  vec3 outCol;\n  if (solid(here)) {\n    outCol = here.rgb;\n  } else {\n    float s = max(uScreenResolution.y / 760.0, 1.0);\n    vec3 line = max(here.rgb - BG, 0.0);\n    line = max(line, tap(vec2(1.0, 0.0) * s) * 0.9);\n    line = max(line, tap(vec2(-1.0, 0.0) * s) * 0.9);\n    line = max(line, tap(vec2(0.0, 1.0) * s) * 0.9);\n    line = max(line, tap(vec2(0.0, -1.0) * s) * 0.9);\n    outCol = BG + line;\n  }\n  if (uNightVision > 0.001)\n    outCol = applyNightVision(outCol);\n  gl_FragColor = vec4(outCol, 1.0);\n}\n",
   "camera": null,
-  "uniformTracks": {},
+  "uniformTracks": {
+    "uNightVision": [
+      {
+        "time": 0,
+        "value": 0,
+        "easing": "smooth"
+      },
+      {
+        "time": 1.8,
+        "value": 0,
+        "easing": "smooth"
+      },
+      {
+        "time": 2.6,
+        "value": 1,
+        "easing": "smooth"
+      },
+      {
+        "time": 4.2,
+        "value": 1,
+        "easing": "smooth"
+      },
+      {
+        "time": 5,
+        "value": 0,
+        "easing": "smooth"
+      }
+    ]
+  },
   "mesh": "quad",
-  "texture": "wall_atlas",
+  "texture": "doomr_scene_preview",
   "visible": true,
   "opacity": 1,
   "blend": "normal",

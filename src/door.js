@@ -1,8 +1,6 @@
 import { Utils } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
-import { GLOW, LIGHT, METAL, mix, plate, rivet, SHADOW, Tile } from './floor.js';
-import doorRustShader from './shaders/door-rust.shadergun.json' with { type: 'json' };
-import wallRustShader from './shaders/wall-rust.shadergun.json' with { type: 'json' };
+import { FLOOR_FRAGMENT, FLOOR_VERTEX, GLOW, LIGHT, METAL, mix, plate, rivet, SHADOW, Tile } from './floor.js';
 
 /**
  * The doors of an old space base: heavy sliding blast doors in two leaves, with a hazard-striped frame, recessed
@@ -277,11 +275,11 @@ export function secretDoorBox(dimensions, wallCells = 8) {
 // face), so it does not slide off the door as it sinks into the floor. Each door has its own, from where it stands.
 // What is below the floor is not drawn.
 
-export const DOOR_VERTEX = doorRustShader.vertex;
+export const DOOR_VERTEX = FLOOR_VERTEX;
 
 // Unlike doors, wall quads must keep their screen coverage aligned with the solid backing at grazing angles.
-export const WALL_VERTEX = wallRustShader.vertex;
+export const WALL_VERTEX = FLOOR_VERTEX;
 
-export const DOOR_FRAGMENT = doorRustShader.fragment;
+export const DOOR_FRAGMENT = FLOOR_FRAGMENT;
 // walls are bigger and nearer than doors, so their patches are smaller and there are fewer of them
-export const WALL_FRAGMENT = wallRustShader.fragment;
+export const WALL_FRAGMENT = FLOOR_FRAGMENT;

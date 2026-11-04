@@ -1,10 +1,11 @@
 {
   "kind": "shadergun.project",
   "version": 3,
-  "exportedAt": "2026-11-02T16:48:45.852Z",
+  "exportedAt": "2026-11-04T11:16:48.784Z",
   "name": "hud-overlay",
   "title": "HUD Untextured Quad Overlay",
   "category": "Post-Processing & HUD",
+  "previewTime": 1,
   "selectedLayer": 0,
   "layers": [
     {
@@ -13,7 +14,7 @@
       "fragment": "\nprecision mediump float;\nvarying vec3 vColor;\n\nvoid main(void) {\n  gl_FragColor = vec4(vColor, 1.0);\n}\n",
       "camera": null,
       "uniformTracks": {},
-      "mesh": "quad",
+      "mesh": "hud",
       "texture": "none",
       "visible": true,
       "opacity": 1,
@@ -30,7 +31,7 @@
   "fragment": "\nprecision mediump float;\nvarying vec3 vColor;\n\nvoid main(void) {\n  gl_FragColor = vec4(vColor, 1.0);\n}\n",
   "camera": null,
   "uniformTracks": {},
-  "mesh": "quad",
+  "mesh": "hud",
   "texture": "none",
   "visible": true,
   "opacity": 1,

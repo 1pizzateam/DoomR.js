@@ -3,8 +3,8 @@ import { Trigo, Utils } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 import { GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile } from './floor.js';
 import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
+import { SOLID_TEXTURED_FRAGMENT } from './quads.js';
 import { WEAPONS } from './weapon.js';
-import ceilingShader from './shaders/ceiling.shadergun.json' with { type: 'json' };
 import ceilingConeShader from './shaders/ceiling-cone.shadergun.json' with { type: 'json' };
 import marsSkyShader from './shaders/mars-sky.shadergun.json' with { type: 'json' };
 
@@ -391,7 +391,7 @@ export function ceilingCellFor(x, y) {
  * Instead it deepens the recessed overhead coffer cavities, shades girder seams with dark industrial soot, and keeps
  * the fluorescent light diffusers and cyan status beacons crisp and self-lit.
  */
-export const CEILING_FRAGMENT = ceilingShader.fragment;
+export const CEILING_FRAGMENT = SOLID_TEXTURED_FRAGMENT;
 
 
 /**

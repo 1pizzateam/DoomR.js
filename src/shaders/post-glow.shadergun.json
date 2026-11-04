@@ -1,10 +1,11 @@
 {
   "kind": "shadergun.project",
   "version": 3,
-  "exportedAt": "2026-11-02T16:48:45.852Z",
+  "exportedAt": "2026-11-04T11:16:48.783Z",
   "name": "post-glow",
   "title": "Post-FX Bloom Glow Extract",
   "category": "Post-Processing & HUD",
+  "previewTime": 1.8,
   "selectedLayer": 0,
   "layers": [
     {
@@ -14,7 +15,7 @@
       "camera": null,
       "uniformTracks": {},
       "mesh": "quad",
-      "texture": "explosion_atlas",
+      "texture": "doomr_scene_preview",
       "visible": true,
       "opacity": 1,
       "blend": "normal",
@@ -31,7 +32,7 @@
   "camera": null,
   "uniformTracks": {},
   "mesh": "quad",
-  "texture": "explosion_atlas",
+  "texture": "doomr_scene_preview",
   "visible": true,
   "opacity": 1,
   "blend": "normal",

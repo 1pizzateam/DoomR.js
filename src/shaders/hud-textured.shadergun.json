@@ -1,10 +1,11 @@
 {
   "kind": "shadergun.project",
   "version": 3,
-  "exportedAt": "2026-11-02T16:48:45.852Z",
+  "exportedAt": "2026-11-04T11:16:48.784Z",
   "name": "hud-textured",
   "title": "HUD Textured Quad Overlay",
   "category": "Post-Processing & HUD",
+  "previewTime": 1,
   "selectedLayer": 0,
   "layers": [
     {
@@ -13,7 +14,7 @@
       "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nvarying float vBright;\nvarying vec2 vTextureCoord;\n\nvoid main(void) {\n  vec4 texel = texture2D(uSampler, vTextureCoord);\n  if (texel.a < 0.5)\n    discard;\n  // it is a picture on the glass: it fades by being see-through, not by being added to what is behind it\n  gl_FragColor = vec4(texel.rgb, vBright);\n}\n",
       "camera": null,
       "uniformTracks": {},
-      "mesh": "quad",
+      "mesh": "hud",
       "texture": "face_atlas",
       "visible": true,
       "opacity": 1,
@@ -30,7 +31,7 @@
   "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nvarying float vBright;\nvarying vec2 vTextureCoord;\n\nvoid main(void) {\n  vec4 texel = texture2D(uSampler, vTextureCoord);\n  if (texel.a < 0.5)\n    discard;\n  // it is a picture on the glass: it fades by being see-through, not by being added to what is behind it\n  gl_FragColor = vec4(texel.rgb, vBright);\n}\n",
   "camera": null,
   "uniformTracks": {},
-  "mesh": "quad",
+  "mesh": "hud",
   "texture": "face_atlas",
   "visible": true,
   "opacity": 1,

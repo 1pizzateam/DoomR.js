@@ -1,10 +1,11 @@
 {
   "kind": "shadergun.project",
   "version": 3,
-  "exportedAt": "2026-11-02T16:48:45.851Z",
+  "exportedAt": "2026-11-04T11:16:48.782Z",
   "name": "line-fog",
   "title": "Wireframe / Laser Line Fog",
   "category": "Sprites & Particles",
+  "previewTime": 1.7,
   "selectedLayer": 0,
   "layers": [
     {
@@ -13,7 +14,7 @@
       "fragment": "\nprecision mediump float;\nuniform vec3 uMaterialDiffuse;\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\n\nvoid main(void) {\n  vec3 color = uMaterialDiffuse;\n  if (uHasFog == 1) {\n    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);\n    color = mix(color, uFogColor, fade);\n  }\n  gl_FragColor = vec4(color, 0.5);\n}\n",
       "camera": null,
       "uniformTracks": {},
-      "mesh": "cube",
+      "mesh": "line",
       "texture": "none",
       "visible": true,
       "opacity": 1,
@@ -30,7 +31,7 @@
   "fragment": "\nprecision mediump float;\nuniform vec3 uMaterialDiffuse;\nuniform int uHasFog;\nuniform vec3 uFogColor;\nuniform float uFogNear;\nuniform float uFogFar;\nvarying float vDepth;\n\nvoid main(void) {\n  vec3 color = uMaterialDiffuse;\n  if (uHasFog == 1) {\n    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);\n    color = mix(color, uFogColor, fade);\n  }\n  gl_FragColor = vec4(color, 0.5);\n}\n",
   "camera": null,
   "uniformTracks": {},
-  "mesh": "cube",
+  "mesh": "line",
   "texture": "none",
   "visible": true,
   "opacity": 1,

@@ -1,20 +1,39 @@
 {
   "kind": "shadergun.project",
   "version": 3,
-  "exportedAt": "2026-11-02T16:48:45.852Z",
+  "exportedAt": "2026-11-04T11:16:48.783Z",
   "name": "post-downsample",
   "title": "Post-FX Bloom Downsample",
   "category": "Post-Processing & HUD",
+  "previewTime": 1.8,
   "selectedLayer": 0,
   "layers": [
     {
       "shader": "post-downsample",
       "vertex": "\nattribute vec2 aVertexPosition;\nattribute vec2 aTextureCoord;\nvarying vec2 vTextureCoord;\n\nvoid main(void) {\n  vTextureCoord = aTextureCoord;\n  gl_Position = vec4(aVertexPosition, 0.0, 1.0);\n}\n",
-      "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec2 uSourceTexel;\nuniform float uSpan; // 0.5 4.0 1.5 0.1\nvarying vec2 vTextureCoord;\n\nconst vec3 BG = vec3(0.02745, 0.03529, 0.05882);\n\nvec3 tap(vec2 offset) {\n  vec4 texel = texture2D(uSampler, vTextureCoord + offset * uSourceTexel);\n  // a solid surface (marked in alpha) gives no glow\n  return texel.a > 0.25 && texel.a < 0.75 ? vec3(0.0) : max(texel.rgb - BG, 0.0);\n}\n\nvoid main(void) {\n  float h = uSpan * 0.25;\n  vec3 sum = tap(vec2(-h, -h)) + tap(vec2(h, -h)) + tap(vec2(-h, h)) + tap(vec2(h, h));\n  gl_FragColor = vec4(min(sum * 0.25 * 8.0, 1.0), 1.0);\n}\n",
+      "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec2 uSourceTexel;\nuniform float uSpan; // 0.5 4.0 1.75 0.05\nvarying vec2 vTextureCoord;\n\nconst vec3 BG = vec3(0.02745, 0.03529, 0.05882);\n\nvec3 tap(vec2 offset) {\n  vec4 texel = texture2D(uSampler, vTextureCoord + offset * uSourceTexel);\n  // a solid surface (marked in alpha) gives no glow\n  return texel.a > 0.25 && texel.a < 0.75 ? vec3(0.0) : max(texel.rgb - BG, 0.0);\n}\n\nvoid main(void) {\n  float h = uSpan * 0.25;\n  vec3 sum = tap(vec2(-h, -h)) + tap(vec2(h, -h)) + tap(vec2(-h, h)) + tap(vec2(h, h));\n  gl_FragColor = vec4(min(sum * 0.25 * 8.0, 1.0), 1.0);\n}\n",
       "camera": null,
-      "uniformTracks": {},
+      "uniformTracks": {
+        "uSpan": [
+          {
+            "time": 0,
+            "value": 1,
+            "easing": "smooth"
+          },
+          {
+            "time": 2.2,
+            "value": 3.2,
+            "easing": "smooth"
+          },
+          {
+            "time": 4.4,
+            "value": 1.2,
+            "easing": "smooth"
+          }
+        ]
+      },
       "mesh": "quad",
-      "texture": "explosion_atlas",
+      "texture": "doomr_scene_preview",
       "visible": true,
       "opacity": 1,
       "blend": "normal",
@@ -27,11 +46,29 @@
   ],
   "shader": "post-downsample",
   "vertex": "\nattribute vec2 aVertexPosition;\nattribute vec2 aTextureCoord;\nvarying vec2 vTextureCoord;\n\nvoid main(void) {\n  vTextureCoord = aTextureCoord;\n  gl_Position = vec4(aVertexPosition, 0.0, 1.0);\n}\n",
-  "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec2 uSourceTexel;\nuniform float uSpan; // 0.5 4.0 1.5 0.1\nvarying vec2 vTextureCoord;\n\nconst vec3 BG = vec3(0.02745, 0.03529, 0.05882);\n\nvec3 tap(vec2 offset) {\n  vec4 texel = texture2D(uSampler, vTextureCoord + offset * uSourceTexel);\n  // a solid surface (marked in alpha) gives no glow\n  return texel.a > 0.25 && texel.a < 0.75 ? vec3(0.0) : max(texel.rgb - BG, 0.0);\n}\n\nvoid main(void) {\n  float h = uSpan * 0.25;\n  vec3 sum = tap(vec2(-h, -h)) + tap(vec2(h, -h)) + tap(vec2(-h, h)) + tap(vec2(h, h));\n  gl_FragColor = vec4(min(sum * 0.25 * 8.0, 1.0), 1.0);\n}\n",
+  "fragment": "\nprecision mediump float;\nuniform sampler2D uSampler;\nuniform vec2 uSourceTexel;\nuniform float uSpan; // 0.5 4.0 1.75 0.05\nvarying vec2 vTextureCoord;\n\nconst vec3 BG = vec3(0.02745, 0.03529, 0.05882);\n\nvec3 tap(vec2 offset) {\n  vec4 texel = texture2D(uSampler, vTextureCoord + offset * uSourceTexel);\n  // a solid surface (marked in alpha) gives no glow\n  return texel.a > 0.25 && texel.a < 0.75 ? vec3(0.0) : max(texel.rgb - BG, 0.0);\n}\n\nvoid main(void) {\n  float h = uSpan * 0.25;\n  vec3 sum = tap(vec2(-h, -h)) + tap(vec2(h, -h)) + tap(vec2(-h, h)) + tap(vec2(h, h));\n  gl_FragColor = vec4(min(sum * 0.25 * 8.0, 1.0), 1.0);\n}\n",
   "camera": null,
-  "uniformTracks": {},
+  "uniformTracks": {
+    "uSpan": [
+      {
+        "time": 0,
+        "value": 1,
+        "easing": "smooth"
+      },
+      {
+        "time": 2.2,
+        "value": 3.2,
+        "easing": "smooth"
+      },
+      {
+        "time": 4.4,
+        "value": 1.2,
+        "easing": "smooth"
+      }
+    ]
+  },
   "mesh": "quad",
-  "texture": "explosion_atlas",
+  "texture": "doomr_scene_preview",
   "visible": true,
   "opacity": 1,
   "blend": "normal",

@@ -1,11 +1,10 @@
 import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
+import { LIGHT_GLSL, SOLID_TEXTURED_FRAGMENT } from './quads.js';
 import { mulberry32 } from './rng.js';
 import floorRustShader from './shaders/floor-rust.shadergun.json' with { type: 'json' };
 import slimeShader from './shaders/slime.shadergun.json' with { type: 'json' };
 import teleporterShader from './shaders/teleporter.shadergun.json' with { type: 'json' };
-import crateShader from './shaders/crate.shadergun.json' with { type: 'json' };
 import marsDirtShader from './shaders/mars-dirt.shadergun.json' with { type: 'json' };
-import marsRockShader from './shaders/mars-rock.shadergun.json' with { type: 'json' };
 
 const scratchPt = new Vec2();
 
@@ -1000,7 +999,7 @@ export function crateMesh(center = new Vec3(0, 0, 0), size = new Vec2(64, 26)) {
   return { vertices, uvs };
 }
 
-export const CRATE_FRAGMENT = crateShader.fragment;
+export const CRATE_FRAGMENT = SOLID_TEXTURED_FRAGMENT;
 
 // ---- Martian surface dirt & boulders (E1M5 Red Planet) -------------------------------------------------------------
 
@@ -1366,7 +1365,7 @@ function drawBoulderCell(t, rnd, variant) {
   t.set(17, 16, BOULDER_HIGHLIGHT, 0.9);
 }
 
-export const MARS_ROCK_FRAGMENT = marsRockShader.fragment;
+export const MARS_ROCK_FRAGMENT = MARS_DIRT_FRAGMENT;
 
 /**
  * 256x64 4-cell procedural Martian rock boulder atlas (`crag`, `strata`, `scoured`, `cap`)
@@ -1478,7 +1477,6 @@ export function marsBoulderMesh(center = new Vec3(0, 0, 0), size = new Vec2(64, 
   }
   return { vertices, uvs };
 }
-
 
 
 
