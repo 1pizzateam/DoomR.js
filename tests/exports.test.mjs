@@ -58,6 +58,20 @@ const checks = [
   ['issue-107 AC-2 level.js has no DIAG_NONE', () => {
     assert.ok(!read('level').includes('DIAG_NONE'));
   }],
+  ['issue-61 AC-1 level.js has no DIAG_NONE', () => {
+    assert.ok(!read('level').includes('DIAG_NONE'));
+  }],
+  ['issue-61 AC-2 level.js keeps DIAG_NW/NE/SW/SE exports with values 1..4', () => {
+    const src = read('level');
+    for (const [n, v] of [['DIAG_NW', 1], ['DIAG_NE', 2], ['DIAG_SW', 3], ['DIAG_SE', 4]]) {
+      assert.ok(exported(src, n), `level.js lost export ${n}`);
+      assert.ok(new RegExp(`${n}\\s*=\\s*${v}\\b`).test(src), `${n} is not ${v}`);
+    }
+  }],
+  ['issue-61 AC-4 npm test chain includes levels, sim, and exports tests', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    for (const t of ['levels', 'sim', 'exports']) assert.ok(pkg.scripts.test.includes(`tests/${t}.test.mjs`));
+  }],
   ['issue-107 AC-3 keycard.js has no KEYCARD_COLORS but keeps cell exports', () => {
     const src = read('keycard');
     assert.ok(!src.includes('KEYCARD_COLORS'));
