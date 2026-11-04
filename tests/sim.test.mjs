@@ -25,7 +25,7 @@ import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WAL
 import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
 import { CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
-import { LIGHT_GLSL, PARTICLE_FRAGMENT, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT } from '../src/quads.js';
+import { LIGHT_GLSL, PARTICLE_FRAGMENT, QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, TEXTURED_VERTEX, texturedMesh } from '../src/quads.js';
 import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads, screenSplatQuads, createQuadTarget, bloodAtlas, CELL, cellUv, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallSplatQuad } from '../src/bloodsprites.js';
 import { CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { Fog } from '../src/fog.js';
@@ -164,6 +164,49 @@ function withWallWorld(check) {
     check(world, programs);
   } finally {
     Mesh.prototype.addProgram = addProgram;
+  }
+}
+
+function withQuadHarness(check) {
+  const programs = [];
+  const textures = [];
+  const sharedTextures = [];
+  const inactives = [];
+  const origAddProgram = Mesh.prototype.addProgram;
+  const origSetTexture = Mesh.prototype.setTexture;
+  const origSetSharedTexture = Mesh.prototype.setSharedTexture;
+  const origSetInactive = Mesh.prototype.setInactive;
+
+  Mesh.prototype.addProgram = function(...args) {
+    programs.push({ mesh: this, args });
+    return true;
+  };
+  Mesh.prototype.setTexture = function(...args) {
+    textures.push({ mesh: this, args });
+  };
+  Mesh.prototype.setSharedTexture = function(...args) {
+    sharedTextures.push({ mesh: this, args });
+  };
+  Mesh.prototype.setInactive = function(...args) {
+    inactives.push({ mesh: this, args });
+  };
+
+  const gl = {
+    createBuffer: () => ({}),
+    bindBuffer() {},
+    bufferData() {},
+    bufferSubData() {},
+    UNSIGNED_SHORT: 5123,
+    NEAREST: 9728,
+  };
+
+  try {
+    check({ gl, programs, textures, sharedTextures, inactives });
+  } finally {
+    Mesh.prototype.addProgram = origAddProgram;
+    Mesh.prototype.setTexture = origSetTexture;
+    Mesh.prototype.setSharedTexture = origSetSharedTexture;
+    Mesh.prototype.setInactive = origSetInactive;
   }
 }
 
@@ -10776,6 +10819,144 @@ const tests = {
     }
     assert.notDeepEqual(weaponQuads[0].slice(0, 4), weaponRect.slice(0, 4), 'second frame moved the weapon quad');
     assert.notDeepEqual(faceQuads[0].slice(0, 4), faceRect.slice(0, 4), 'second frame moved the face quad');
+  },
+
+  'AC-1 QuadBatch defaults pass geometry sizes, default shaders and material to the superclass'() {
+    withQuadHarness(({ gl, programs, inactives }) => {
+      const atlas = { data: new Uint8Array(16), width: 2, height: 2 };
+      const batch = new QuadBatch(gl, { capacity: 4, atlas });
+      assert.equal(batch.vertices.length, 72);
+      assert.equal(batch.uvs.length, 48);
+      assert.equal(batch.capacity, 4);
+      assert.equal(programs.length, 1);
+      assert.equal(programs[0].mesh, batch);
+      assert.equal(programs[0].args[0], TEXTURED_VERTEX);
+      assert.equal(programs[0].args[1], SOLID_TEXTURED_FRAGMENT);
+      const mat = programs[0].args[2];
+      assert.ok(mat instanceof Material);
+      assert.ok(mat.diffuse instanceof Vec3);
+      assert.equal(mat.diffuse.x, 1);
+      assert.equal(mat.diffuse.y, 1);
+      assert.equal(mat.diffuse.z, 1);
+      assert.equal(inactives.length, 1);
+      assert.equal(inactives[0].mesh, batch);
+    });
+  },
+
+  'AC-2 QuadBatch forwards custom vertex, fragment and material to addProgram'() {
+    withQuadHarness(({ gl, programs }) => {
+      const atlas = { data: new Uint8Array(16), width: 2, height: 2 };
+      const customMat = new Material({ diffuse: new Vec3(0.5, 0.4, 0.3) });
+      const customVertex = 'attribute vec3 aPosition; void main() {}';
+      const customFragment = 'precision mediump float; void main() {}';
+      const batch = new QuadBatch(gl, {
+        capacity: 2,
+        atlas,
+        vertex: customVertex,
+        fragment: customFragment,
+        material: customMat,
+      });
+      assert.equal(programs.length, 1);
+      assert.equal(programs[0].mesh, batch);
+      assert.equal(programs[0].args[0], customVertex);
+      assert.equal(programs[0].args[1], customFragment);
+      assert.equal(programs[0].args[2], customMat);
+    });
+  },
+
+  'AC-3 QuadBatch builds a nearest-neighbor atlas texture with overridable options'() {
+    withQuadHarness(({ gl, textures, sharedTextures }) => {
+      const atlas = { data: new Uint8Array(16), width: 2, height: 2 };
+      const batchA = new QuadBatch(gl, { capacity: 2, atlas });
+      assert.equal(textures.length, 1);
+      assert.equal(textures[0].mesh, batchA);
+      assert.equal(textures[0].args[0], atlas.data);
+      assert.ok(textures[0].args[1].size instanceof Vec2);
+      assert.equal(textures[0].args[1].size.x, atlas.width);
+      assert.equal(textures[0].args[1].size.y, atlas.height);
+      assert.equal(textures[0].args[1].magFilter, gl.NEAREST);
+      assert.equal(textures[0].args[1].minFilter, gl.NEAREST);
+      assert.equal(sharedTextures.length, 0);
+
+      const batchB = new QuadBatch(gl, { capacity: 2, atlas, textureOptions: { magFilter: 1 } });
+      assert.equal(textures.length, 2);
+      assert.equal(textures[1].mesh, batchB);
+      assert.equal(textures[1].args[0], atlas.data);
+      assert.equal(textures[1].args[1].magFilter, 1);
+      assert.equal(textures[1].args[1].minFilter, gl.NEAREST);
+      assert.equal(sharedTextures.length, 0);
+    });
+  },
+
+  'AC-4 QuadBatch binds sharedTexture and skips atlas upload'() {
+    withQuadHarness(({ gl, textures, sharedTextures }) => {
+      const sentinel = { id: 'sentinel-texture' };
+      const batch = new QuadBatch(gl, { capacity: 2, sharedTexture: sentinel });
+      assert.equal(sharedTextures.length, 1);
+      assert.equal(sharedTextures[0].mesh, batch);
+      assert.equal(sharedTextures[0].args[0], sentinel);
+      assert.equal(textures.length, 0);
+    });
+  },
+
+  'AC-5 texturedMesh binds shared texture or falls back to nearest-neighbor setTexture'() {
+    withQuadHarness(({ gl, programs, textures, sharedTextures }) => {
+      const geometry = new CustomMesh();
+      geometry.vertices = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+      geometry.uvs = new Float32Array([0, 0, 1, 0, 0, 1]);
+      geometry.setPrimitive('TRIANGLES');
+      const atlas = { data: new Uint8Array(16), width: 2, height: 2 };
+      const sentinel = { id: 'shared-texture' };
+
+      const meshA = texturedMesh(gl, geometry, { atlas, sharedTexture: sentinel });
+      assert.equal(sharedTextures.length, 1);
+      assert.equal(sharedTextures[0].mesh, meshA);
+      assert.equal(sharedTextures[0].args[0], sentinel);
+      assert.equal(textures.length, 0);
+      assert.equal(programs.length, 1);
+      assert.equal(programs[0].mesh, meshA);
+      assert.equal(programs[0].args[0], TEXTURED_VERTEX);
+      assert.equal(programs[0].args[1], SOLID_TEXTURED_FRAGMENT);
+      assert.ok(programs[0].args[2] instanceof Material);
+
+      const customMat = new Material({ diffuse: new Vec3(0.1, 0.2, 0.3) });
+      const customFrag = 'precision mediump float; void main() {}';
+      const meshB = texturedMesh(gl, geometry, {
+        atlas,
+        material: customMat,
+        fragment: customFrag,
+        textureOptions: { magFilter: 1 },
+      });
+      assert.equal(textures.length, 1);
+      assert.equal(textures[0].mesh, meshB);
+      assert.equal(textures[0].args[0], atlas.data);
+      assert.ok(textures[0].args[1].size instanceof Vec2);
+      assert.equal(textures[0].args[1].size.x, atlas.width);
+      assert.equal(textures[0].args[1].size.y, atlas.height);
+      assert.equal(textures[0].args[1].magFilter, 1);
+      assert.equal(textures[0].args[1].minFilter, gl.NEAREST);
+      assert.equal(programs.length, 2);
+      assert.equal(programs[1].mesh, meshB);
+      assert.equal(programs[1].args[0], TEXTURED_VERTEX);
+      assert.equal(programs[1].args[1], customFrag);
+      assert.equal(programs[1].args[2], customMat);
+
+      const savedSetSharedTexture = Mesh.prototype.setSharedTexture;
+      try {
+        Mesh.prototype.setSharedTexture = undefined;
+        const meshC = texturedMesh(gl, geometry, { atlas, sharedTexture: sentinel });
+        assert.equal(textures.length, 2);
+        assert.equal(textures[1].mesh, meshC);
+        assert.equal(textures[1].args[0], atlas.data);
+        assert.ok(textures[1].args[1].size instanceof Vec2);
+        assert.equal(textures[1].args[1].size.x, atlas.width);
+        assert.equal(textures[1].args[1].size.y, atlas.height);
+        assert.equal(textures[1].args[1].magFilter, gl.NEAREST);
+        assert.equal(textures[1].args[1].minFilter, gl.NEAREST);
+      } finally {
+        Mesh.prototype.setSharedTexture = savedSetSharedTexture;
+      }
+    });
   },
 };
 
