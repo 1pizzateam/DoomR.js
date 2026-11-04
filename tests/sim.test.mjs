@@ -1038,13 +1038,13 @@ const tests = {
       assert.ok(!far.gibbed, 'a kill from afar should leave a body');
   },
 
-  'the warden is confined to his own room, which is found without crossing a door'() {
+  'AC-6 warden starts in and never leaves his arena (the warden is confined to his own room, which is found without crossing a door)'() {
     const game = new Game();
     game.load(1);
     const { level } = game;
     assert.ok(level.arena && level.arena.size > 20, 'level 2 should have a giant\'s room');
     const [boss] = game.enemies.filter((e) => e.type === 'boss');
-    assert.ok(level.inArena(boss.pos.x, boss.pos.y), 'the warden starts in his room');
+    assert.ok(level.inArena(boss.pos), 'the warden starts in his room');
     for (const door of level.doors.values())
       assert.ok(!level.arena.has(door.idx), 'a door is never part of the room');
     assert.equal(new Game().level.arena, null, 'a level without a giant has no such room');
@@ -1062,7 +1062,7 @@ const tests = {
         game.level.setDoorOpen(door, 1);
         door.target = 1;
       }
-      assert.ok(level.inArena(boss.pos.x, boss.pos.y), `the warden left his room at ${boss.pos.x.toFixed(0)}, ${boss.pos.y.toFixed(0)}`);
+      assert.ok(level.inArena(boss.pos), `the warden left his room at ${boss.pos.x.toFixed(0)}, ${boss.pos.y.toFixed(0)}`);
     }
   },
 
@@ -6445,7 +6445,7 @@ const tests = {
     assert.equal(doorNorthSouth.alongY, true, 'door at (3, 5) has walls West/East and opens a North/South corridor');
   },
 
-  'diagonal walls: 4 triangle orientations parse, mesh, block rays, slide bodies, and take marks'() {
+  'AC-5 player stays outside the diagonal hypotenuse and blood attaches (diagonal walls: 4 triangle orientations parse, mesh, block rays, slide bodies, and take marks)'() {
     // 1. Explicit 4-direction glyphs and auto-oriented / and \
     const custom = new Level({
       name: 'DiagExplicit',
@@ -6506,12 +6506,12 @@ const tests = {
       [3 * custom.width + 5, -Math.SQRT1_2, -Math.SQRT1_2],
     ]) {
       const info = custom.diagInfo(idx);
-      assert.ok(Math.abs(info.nx - expectedNx) < 1e-6 && Math.abs(info.ny - expectedNy) < 1e-6);
+      assert.ok(Math.abs(info.normal.x - expectedNx) < 1e-6 && Math.abs(info.normal.y - expectedNy) < 1e-6);
       const quads = diagWallFaceQuads({
-        ax: info.ax,
-        ay: info.ay,
-        bx: info.bx,
-        by: info.by,
+        ax: info.a.x,
+        ay: info.a.y,
+        bx: info.b.x,
+        by: info.b.y,
         base: 0,
         top: 64,
         x: idx % custom.width,
@@ -6520,7 +6520,7 @@ const tests = {
         exit: null,
       });
       assert.equal(quads.length, 1);
-      assert.deepEqual(quads[0].corners.slice(0, 6), [info.ax, 0, info.ay, info.bx, 0, info.by]);
+      assert.deepEqual(quads[0].corners.slice(0, 6), [info.a.x, 0, info.a.y, info.b.x, 0, info.b.y]);
       for (const u of quads[0].uv)
         assert.ok(u >= 0 && u <= 1, 'diagonal wall UVs stay inside [0, 1]');
     }
@@ -6554,7 +6554,7 @@ const tests = {
     const p = game.player.pos;
     const nwDiag = custom.diagInfo(1 * custom.width + 1);
     const signedDist = nwDiag.tri.signedDistanceToHypotenuse(p);
-    assert.ok(signedDist >= 14 - 1e-4, `player stays outside the diagonal hypotenuse (signedDist=${signedDist})`);
+    assert.ok(signedDist >= 14 - 1e-4, `AC-5 player stays outside the diagonal hypotenuse (signedDist=${signedDist})`);
 
     // Bullet holes and blood splats on diagonal wall hypotenuse are recorded and clamped to hypotenuse span
     game.blood.holes.length = 0;
@@ -6564,6 +6564,105 @@ const tests = {
     assert.equal(game.blood.holes.length, 1, 'bullet hole attaches to diagonal wall hypotenuse');
     assert.equal(game.blood.walls.length, 1, 'blood splat attaches to diagonal wall hypotenuse');
     assert.ok(game.blood.holes[0].lo < -40 && game.blood.holes[0].hi > 40, 'diagonal face span covers the ~90.5-unit hypotenuse');
+  },
+
+  'AC-1 inArena accepts a Vec2 and reports arena membership'() {
+    assert.equal(Level.prototype.inArena.length, 1, 'inArena has an arity of 1');
+    const game = new Game();
+    game.load(1);
+    const { level } = game;
+    const [boss] = game.enemies.filter((e) => e.type === 'boss');
+    assert.ok(boss, 'warden boss exists');
+    assert.equal(level.inArena(boss.pos), true, 'boss starting pos is in arena');
+    const firstArenaTile = [...level.bossArena][0];
+    const ax = firstArenaTile % level.width;
+    const ay = Math.floor(firstArenaTile / level.width);
+    assert.equal(level.inArena(new Vec2((ax + 0.5) * 64, (ay + 0.5) * 64)), true, 'tile center inside boss arena is in arena');
+    assert.equal(level.inArena(new Vec2(1 * 64 + 32, 1 * 64 + 32)), false, 'known non-arena tile is not in arena');
+    assert.equal(level.inArena(new Vec2(-10, -10)), false, 'negative coordinates outside grid return false');
+    assert.equal(level.inArena(new Vec2(level.width * 64 + 100, level.rowCount * 64 + 100)), false, 'out-of-bounds coordinates return false');
+  },
+
+  'AC-2 diagInfo returns Vec2 primitives without scalar fields'() {
+    const custom = new Level({
+      name: 'DiagExplicit',
+      rows: [
+        '#######',
+        '#◤...◥#',
+        '#..P..#',
+        '#◣...◢#',
+        '#######',
+      ],
+    });
+    const legacyKeys = ['ax', 'ay', 'bx', 'by', 'sx', 'sy', 'ox', 'oy', 'nx', 'ny', 'cx', 'cy'];
+    for (const idx of custom.diagTriangles.keys()) {
+      const info = custom.diagInfo(idx);
+      assert.ok(info, `diagInfo exists for diagonal tile ${idx}`);
+      assert.ok(info.a instanceof Vec2, 'info.a is a Vec2');
+      assert.ok(info.b instanceof Vec2, 'info.b is a Vec2');
+      assert.ok(info.s instanceof Vec2, 'info.s is a Vec2');
+      assert.ok(info.o instanceof Vec2, 'info.o is a Vec2');
+      assert.ok(info.normal instanceof Vec2, 'info.normal is a Vec2');
+      assert.ok(info.center instanceof Vec2, 'info.center is a Vec2');
+      for (const k of legacyKeys)
+        assert.equal(k in info, false, `legacy key ${k} is not in diagInfo result`);
+    }
+  },
+
+  'AC-3 diagInfo normals and vertices match the four diagonal orientations'() {
+    const custom = new Level({
+      name: 'DiagExplicit',
+      rows: [
+        '#######',
+        '#◤...◥#',
+        '#..P..#',
+        '#◣...◢#',
+        '#######',
+      ],
+    });
+    const orientations = [
+      { idx: 1 * custom.width + 1, diag: DIAG_NW, nx: Math.SQRT1_2, ny: Math.SQRT1_2 },
+      { idx: 1 * custom.width + 5, diag: DIAG_NE, nx: -Math.SQRT1_2, ny: Math.SQRT1_2 },
+      { idx: 3 * custom.width + 1, diag: DIAG_SW, nx: Math.SQRT1_2, ny: -Math.SQRT1_2 },
+      { idx: 3 * custom.width + 5, diag: DIAG_SE, nx: -Math.SQRT1_2, ny: -Math.SQRT1_2 },
+    ];
+    const sTest = new Vec2();
+    const aTest = new Vec2();
+    const bTest = new Vec2();
+    const oTest = new Vec2();
+    for (const { idx, diag, nx, ny } of orientations) {
+      const info = custom.diagInfo(idx);
+      assert.equal(info.diag, diag);
+      assert.ok(Math.abs(info.normal.x - nx) < 1e-6, `normal.x matches for diag ${diag}`);
+      assert.ok(Math.abs(info.normal.y - ny) < 1e-6, `normal.y matches for diag ${diag}`);
+      assert.ok(Math.abs(info.normal.x - info.tri.hypNormal.x) < 1e-6);
+      assert.ok(Math.abs(info.normal.y - info.tri.hypNormal.y) < 1e-6);
+      assert.ok(Math.abs(info.center.x - info.tri.position.x) < 1e-6);
+      assert.ok(Math.abs(info.center.y - info.tri.position.y) < 1e-6);
+      info.tri.getVertices(sTest, aTest, bTest);
+      info.tri.getOppositeCorner(oTest);
+      assert.ok(Math.abs(info.s.x - sTest.x) < 1e-6 && Math.abs(info.s.y - sTest.y) < 1e-6);
+      assert.ok(Math.abs(info.a.x - aTest.x) < 1e-6 && Math.abs(info.a.y - aTest.y) < 1e-6);
+      assert.ok(Math.abs(info.b.x - bTest.x) < 1e-6 && Math.abs(info.b.y - bTest.y) < 1e-6);
+      assert.ok(Math.abs(info.o.x - oTest.x) < 1e-6 && Math.abs(info.o.y - oTest.y) < 1e-6);
+    }
+  },
+
+  'AC-4 diagInfo returns null for non-diagonal tiles'() {
+    const custom = new Level({
+      name: 'DiagExplicit',
+      rows: [
+        '#######',
+        '#◤...◥#',
+        '#..P..#',
+        '#◣...◢#',
+        '#######',
+      ],
+    });
+    const wallIdx = 0 * custom.width + 0;
+    const floorIdx = 2 * custom.width + 2;
+    assert.equal(custom.diagInfo(wallIdx), null, 'diagInfo returns null for plain wall');
+    assert.equal(custom.diagInfo(floorIdx), null, 'diagInfo returns null for floor');
   },
 
   'half-size walls (PILLAR) have ceiling above them in roofed rooms and stay roofless inside the boss arena'() {
