@@ -778,12 +778,12 @@ export class Hud {
               : RGB[GREEN];
         if (!door && level.diag?.[idx] > 0) {
           const df = level.diagInfo(idx);
-          const ax = ox + (df.ax / TILE) * s;
-          const ay = oy + (df.ay / TILE) * s;
-          const bx = ox + (df.bx / TILE) * s;
-          const by = oy + (df.by / TILE) * s;
-          const sx = ox + (df.sx / TILE) * s;
-          const sy = oy + (df.sy / TILE) * s;
+          const ax = ox + (df.a.x / TILE) * s;
+          const ay = oy + (df.a.y / TILE) * s;
+          const bx = ox + (df.b.x / TILE) * s;
+          const by = oy + (df.b.y / TILE) * s;
+          const sx = ox + (df.s.x / TILE) * s;
+          const sy = oy + (df.s.y / TILE) * s;
           layerTriangle(layer, sx, sy, ax, ay, bx, by, RGB[BLUE], visible ? 0.9 : 0.35);
           continue;
         }
@@ -972,12 +972,12 @@ export class Hud {
 
         if (level.diag?.[idx] > 0) {
           const df = level.diagInfo(idx);
-          const ax = ox + (df.ax / TILE) * s;
-          const ay = oy + (df.ay / TILE) * s;
-          const bx = ox + (df.bx / TILE) * s;
-          const by = oy + (df.by / TILE) * s;
-          const sx = ox + (df.sx / TILE) * s;
-          const sy = oy + (df.sy / TILE) * s;
+          const ax = ox + (df.a.x / TILE) * s;
+          const ay = oy + (df.a.y / TILE) * s;
+          const bx = ox + (df.b.x / TILE) * s;
+          const by = oy + (df.b.y / TILE) * s;
+          const sx = ox + (df.s.x / TILE) * s;
+          const sy = oy + (df.s.y / TILE) * s;
           layerTriangle(layer, sx, sy, ax, ay, bx, by, RGB[BLUE], visible ? 0.38 : 0.2);
           layerSegment(layer, ax, ay, bx, by, RGB[RED], edgeAlpha);
           if (level.hasCardinalFace(idx, 0) && isOpenNeighbor(x, y - 1, 0))

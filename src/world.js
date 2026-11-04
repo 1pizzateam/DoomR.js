@@ -1247,21 +1247,21 @@ export class World {
       if (!df)
         continue;
       const top = Math.min(baseHeight[idx], ROOF);
-      const tx = (df.bx - df.ax) / TILE;
-      const ty = (df.by - df.ay) / TILE;
-      const offset = [-df.nx * 0.9, 0, -df.ny * 0.9];
+      const tx = (df.b.x - df.a.x) / TILE;
+      const ty = (df.b.y - df.a.y) / TILE;
+      const offset = [-df.normal.x * 0.9, 0, -df.normal.y * 0.9];
       const lap = (y0, y1) => [
-        [df.ax - tx * 1.2, y0, df.ay - ty * 1.2],
-        [df.bx + tx * 1.2, y0, df.by + ty * 1.2],
-        [df.bx + tx * 1.2, y1, df.by + ty * 1.2],
-        [df.ax - tx * 1.2, y1, df.ay - ty * 1.2],
+        [df.a.x - tx * 1.2, y0, df.a.y - ty * 1.2],
+        [df.b.x + tx * 1.2, y0, df.b.y + ty * 1.2],
+        [df.b.x + tx * 1.2, y1, df.b.y + ty * 1.2],
+        [df.a.x - tx * 1.2, y1, df.a.y - ty * 1.2],
       ];
       hide.push(...quadTriangles(lap(WALL_FLOOR_Y, top), offset));
       const roofless = level.arena?.has(idx);
       const toRoof = kind[idx] !== PILLAR && top < ROOF && !roofless;
       if (toRoof)
         hide.push(...quadTriangles(lap(top, ROOF), offset));
-      const quads = diagWallFaceQuads({ ax: df.ax, ay: df.ay, bx: df.bx, by: df.by, base: 0, top: toRoof ? ROOF : top, x: df.x, y: df.y, diag: df.diag, exit: kind[idx] === EXIT });
+      const quads = diagWallFaceQuads({ ax: df.a.x, ay: df.a.y, bx: df.b.x, by: df.b.y, base: 0, top: toRoof ? ROOF : top, x: df.x, y: df.y, diag: df.diag, exit: kind[idx] === EXIT });
       sinkToFloor(quads);
       if (isMars && !level.isIndoorTile(idx))
         outdoorFaces.push(...quads);
@@ -1342,7 +1342,7 @@ export class World {
       if (baseHeight[idx] >= EYE + 8) {
         const top = ROOF - 0.25;
         const corners = df
-          ? [df.sx, top, df.sy, df.ax, top, df.ay, df.bx, top, df.by, df.sx, top, df.sy]
+          ? [df.s.x, top, df.s.y, df.a.x, top, df.a.y, df.b.x, top, df.b.y, df.s.x, top, df.s.y]
           : [x * TILE, top, y * TILE, (x + 1) * TILE, top, y * TILE, (x + 1) * TILE, top, (y + 1) * TILE, x * TILE, top, (y + 1) * TILE];
         wallTops.push({ corners, uv: wallCellUv(WALL_CELLS.top) });
         continue;
@@ -1350,7 +1350,7 @@ export class World {
       const h = baseHeight[idx] - 0.9;
       const top = baseHeight[idx] - 0.3;
       const corners = df
-        ? [df.sx, top, df.sy, df.ax, top, df.ay, df.bx, top, df.by, df.sx, top, df.sy]
+        ? [df.s.x, top, df.s.y, df.a.x, top, df.a.y, df.b.x, top, df.b.y, df.s.x, top, df.s.y]
         : [x * TILE, top, y * TILE, (x + 1) * TILE, top, y * TILE, (x + 1) * TILE, top, (y + 1) * TILE, x * TILE, top, (y + 1) * TILE];
       if (kind[idx] !== PILLAR) {
         if (isMars && !level.indoor?.has(idx))
@@ -1358,7 +1358,7 @@ export class World {
         else
           faces.push({ corners, uv: wallCellUv(WALL_CELLS.top) });
         if (df)
-          hide.push(df.sx, h, df.sy, df.ax, h, df.ay, df.bx, h, df.by);
+          hide.push(df.s.x, h, df.s.y, df.a.x, h, df.a.y, df.b.x, h, df.b.y);
         else
           hide.push(
             x * TILE, h, y * TILE, (x + 1) * TILE, h, y * TILE, (x + 1) * TILE, h, (y + 1) * TILE,

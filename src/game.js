@@ -147,6 +147,7 @@ export class Game {
     this.keyLabel = defaultActionLabel;
     this.scratch = new Vec2();
     this.velocity = new Vec2();
+    this.arenaProbe = new Vec2();
     this.pitMin = new Vec2();
     this.pitMax = new Vec2();
     this.pitStepStart = new Vec2();
@@ -540,7 +541,7 @@ export class Game {
         const df = level.diagInfo(idx);
         if (df) {
           const body = this.addStaticTriangle(df);
-          this.diagWalls.push({ ...df, body });
+          this.diagWalls.push({ idx: df.idx, x: df.x, y: df.y, diag: df.diag, tri: df.tri, normal: df.tri.hypNormal, center: df.tri.position, body });
           x++;
           continue;
         }
@@ -2190,7 +2191,7 @@ export class Game {
       return null;
     const df = level.diagInfo(by * level.width + bx);
     if (df)
-      return out.setScalar(df.cx + df.nx * 18, df.cy + df.ny * 18);
+      return out.setScalar(df.center.x + df.normal.x * 18, df.center.y + df.normal.y * 18);
     return out.setScalar((bx + 0.5) * TILE, (by + 0.5) * TILE);
   }
 
@@ -2357,7 +2358,7 @@ export class Game {
       const step = this.scratch.setScalar(vx, vy);
       if (step.getMagnitude(true) > 0)
         step.normalize();
-      return level.inArena(enemy.pos.x + step.x * reach, enemy.pos.y + step.y * reach);
+      return level.inArena(this.arenaProbe.setScalar(enemy.pos.x + step.x * reach, enemy.pos.y + step.y * reach));
     };
     if (ahead(velocity.x, velocity.y))
       return;

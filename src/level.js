@@ -424,8 +424,9 @@ export class Level {
     return this.bossArena;
   }
 
-  inArena(x, y) {
-    const idx = this.grid.getCell(scratchGridPt.setScalar(x, y));
+  /** Whether a 2D world point (`Vec2`) lies inside an arena. */
+  inArena(pos) {
+    const idx = this.grid.getCell(pos);
     if (idx < 0)
       return false;
     if (this.bossArena)
@@ -532,7 +533,11 @@ export class Level {
     return d === 1 || d === 3;
   }
 
-  /** Geometry of a diagonal wall triangle at tile `idx`, or null when the tile is not diagonal. */
+  /**
+   * Geometry of a diagonal wall triangle at tile `idx`, or null when the tile is not diagonal.
+   * Returned vector instances (`a, b, s, o, normal, center`) are shared scratch or triangle-owned
+   * Vec2 objects valid only until the next diagInfo call and must not be mutated by callers.
+   */
   diagInfo(idx) {
     const tri = this.diagTriangles.get(idx);
     if (!tri)
@@ -548,18 +553,12 @@ export class Level {
       y,
       diag,
       tri,
-      ax: scratchA.x,
-      ay: scratchA.y,
-      bx: scratchB.x,
-      by: scratchB.y,
-      sx: scratchS.x,
-      sy: scratchS.y,
-      ox: scratchO.x,
-      oy: scratchO.y,
-      nx: tri.hypNormal.x,
-      ny: tri.hypNormal.y,
-      cx: tri.position.x,
-      cy: tri.position.y,
+      a: scratchA,
+      b: scratchB,
+      s: scratchS,
+      o: scratchO,
+      normal: tri.hypNormal,
+      center: tri.position,
     };
   }
 

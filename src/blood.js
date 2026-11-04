@@ -593,8 +593,8 @@ export class Blood {
             df.tri.projectOntoHypotenuse(this.pt.setScalar(p.x, p.y), 2, this.pt);
             const sx = this.pt.x;
             const sy = this.pt.y;
-            if (!this.blocked(sx + df.nx * 0.5, sy + df.ny * 0.5, p.z) && this.blocked(sx - df.nx * 0.5, sy - df.ny * 0.5, p.z))
-              this.wallSplat(sx, sy, p.z, df.nx, df.ny, size, level.heights[didx], null);
+            if (!this.blocked(sx + df.normal.x * 0.5, sy + df.normal.y * 0.5, p.z) && this.blocked(sx - df.normal.x * 0.5, sy - df.normal.y * 0.5, p.z))
+              this.wallSplat(sx, sy, p.z, df.normal.x, df.normal.y, size, level.heights[didx], null);
           }
           return 'diag';
         }
