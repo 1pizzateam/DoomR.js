@@ -1,5 +1,5 @@
 import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
-import { LIGHT_GLSL, SOLID_TEXTURED_FRAGMENT } from './quads.js';
+import { SOLID_TEXTURED_FRAGMENT } from './quads.js';
 import { mulberry32 } from './rng.js';
 import floorRustShader from './shaders/floor-rust.shadergun.json' with { type: 'json' };
 import slimeShader from './shaders/slime.shadergun.json' with { type: 'json' };
@@ -1477,6 +1477,5 @@ export function marsBoulderMesh(center = new Vec3(0, 0, 0), size = new Vec2(64, 
   }
   return { vertices, uvs };
 }
-
 
 
