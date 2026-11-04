@@ -44,6 +44,15 @@ export const TELEPORT_LIGHT_COLOR = new Vec3(0.36, 1.48, 1.05);
 export const DYNAMIC_LIGHT_ATTENUATION = new Vec3(1, 0.0052, 0.000042);
 const DYNAMIC_LIGHT_RADIUS = TILE * 9;
 const MAX_DYNAMIC_LIGHTS = 4;
+
+function compareDynamicLightSortKey(a, b) {
+  return a.sortKey - b.sortKey;
+}
+
+function compareFixtureDistSq(a, b) {
+  return a.distSq - b.distSq;
+}
+
 const SIZE = 64;
 const VOID = [5, 7, 13];
 const COFFER = [11, 15, 25];
@@ -434,16 +443,40 @@ export function createCeilingLights(scene, count = MAX_LIGHTS) {
   return { ambient, pointLights };
 }
 
+const dynamicLightPool = [];
+const dynamicLightCandidateArrays = [[], []];
+let candidateArrayIdx = 0;
+const EMPTY_DYNAMIC_LIGHTS = [];
+
+function acquireDynamicLight(index) {
+  let entry = dynamicLightPool[index];
+  if (!entry) {
+    entry = {
+      kind: '',
+      position: new Vec3(),
+      color: null,
+      strength: 0,
+      attenuation: null,
+      sortKey: 0,
+    };
+    dynamicLightPool[index] = entry;
+  }
+  return entry;
+}
+
 /**
  * Gathers transient dynamic point lights from weapon muzzle flashes, flying rockets/fireballs,
  * barrel/rocket detonations, teleporter plasma bursts, and burning barrels near `cameraPos`.
+ * Returned array and its entries are pooled and reused across invocations; valid until next call.
  */
 export function collectDynamicLights(game, cameraPos, time = 0, maxRadius = Infinity, fog = null) {
   if (!game)
-    return [];
+    return EMPTY_DYNAMIC_LIGHTS;
+  const dynamicLightCandidates = dynamicLightCandidateArrays[candidateArrayIdx];
+  candidateArrayIdx = (candidateArrayIdx + 1) & 1;
   const radius = Math.min(DYNAMIC_LIGHT_RADIUS, maxRadius);
   const maxDistSq = radius * radius;
-  const candidates = [];
+  let dynamicLightCount = 0;
   const player = game.player;
 
   if (player && (player.flash ?? 0) > 0 && game.state !== 'dead' && game.state !== 'title') {
@@ -454,15 +487,14 @@ export function collectDynamicLights(game, cameraPos, time = 0, maxRadius = Infi
       const mx = player.pos.x + Math.cos(player.angle) * 24;
       const my = (player.eye ?? 28) - 4;
       const mz = player.pos.y + Math.sin(player.angle) * 24;
-      const position = new Vec3(mx, my, mz);
-      candidates.push({
-        kind: 'muzzle',
-        position,
-        color: MUZZLE_LIGHT_COLOR,
-        strength: flashRatio * mult,
-        attenuation: MUZZLE_LIGHT_ATTENUATION,
-        sortKey: -1000,
-      });
+      const entry = acquireDynamicLight(dynamicLightCount);
+      entry.kind = 'muzzle';
+      entry.position.setScalar(mx, my, mz);
+      entry.color = MUZZLE_LIGHT_COLOR;
+      entry.strength = flashRatio * mult;
+      entry.attenuation = MUZZLE_LIGHT_ATTENUATION;
+      entry.sortKey = -1000;
+      dynamicLightCandidates[dynamicLightCount++] = entry;
     }
   }
 
@@ -471,21 +503,20 @@ export function collectDynamicLights(game, cameraPos, time = 0, maxRadius = Infi
       const shot = game.shots[i];
       if (fog && !fog.canSeeNear(shot.pos))
         continue;
-      const position = new Vec3(shot.pos.x, 24, shot.pos.y);
-      const distSq = cameraPos ? cameraPos.getDistance(position, true) : 0;
+      const entry = acquireDynamicLight(dynamicLightCount);
+      entry.position.setScalar(shot.pos.x, 24, shot.pos.y);
+      const distSq = cameraPos ? cameraPos.getDistance(entry.position, true) : 0;
       if (distSq > maxDistSq)
         continue;
       const isRocket = shot.kind === 'rocket';
       const flicker = 0.92 + 0.08 * Math.sin(time * 32 + i * 1.9);
       const fade = 1 - 0.35 * (distSq / maxDistSq);
-      candidates.push({
-        kind: isRocket ? 'rocket' : 'fireball',
-        position,
-        color: isRocket ? ROCKET_LIGHT_COLOR : FIREBALL_LIGHT_COLOR,
-        strength: (isRocket ? 1.15 : 0.95) * flicker * fade,
-        attenuation: DYNAMIC_LIGHT_ATTENUATION,
-        sortKey: distSq * (isRocket ? 0.65 : 0.85),
-      });
+      entry.kind = isRocket ? 'rocket' : 'fireball';
+      entry.color = isRocket ? ROCKET_LIGHT_COLOR : FIREBALL_LIGHT_COLOR;
+      entry.strength = (isRocket ? 1.15 : 0.95) * flicker * fade;
+      entry.attenuation = DYNAMIC_LIGHT_ATTENUATION;
+      entry.sortKey = distSq * (isRocket ? 0.65 : 0.85);
+      dynamicLightCandidates[dynamicLightCount++] = entry;
     }
 
   if (Array.isArray(game.effects))
@@ -496,8 +527,9 @@ export function collectDynamicLights(game, cameraPos, time = 0, maxRadius = Infi
       if (fog && !fog.canSeeNear(scratchPt.setScalar(effect.x, effect.y), effect.type === 'boom' ? 2 : 1))
         continue;
       const ey = effect.type === 'boom' ? 20 : (effect.z ?? 24);
-      const position = new Vec3(effect.x, ey, effect.y);
-      const distSq = cameraPos ? cameraPos.getDistance(position, true) : 0;
+      const entry = acquireDynamicLight(dynamicLightCount);
+      entry.position.setScalar(effect.x, ey, effect.y);
+      const distSq = cameraPos ? cameraPos.getDistance(entry.position, true) : 0;
       if (distSq > maxDistSq)
         continue;
       const lifeRatio = Math.max(0, 1 - effect.age / Math.max(0.001, effect.life));
@@ -510,14 +542,12 @@ export function collectDynamicLights(game, cameraPos, time = 0, maxRadius = Infi
           ? TELEPORT_LIGHT_COLOR
           : FIREBALL_LIGHT_COLOR;
       const baseStrength = isBoom ? 1.38 : isTeleport ? 1.25 : 1.05;
-      candidates.push({
-        kind: effect.type ?? 'blast',
-        position,
-        color,
-        strength: lifeRatio * baseStrength * fade,
-        attenuation: DYNAMIC_LIGHT_ATTENUATION,
-        sortKey: distSq * (isBoom || isTeleport ? 0.5 : 0.8),
-      });
+      entry.kind = effect.type ?? 'blast';
+      entry.color = color;
+      entry.strength = lifeRatio * baseStrength * fade;
+      entry.attenuation = DYNAMIC_LIGHT_ATTENUATION;
+      entry.sortKey = distSq * (isBoom || isTeleport ? 0.5 : 0.8);
+      dynamicLightCandidates[dynamicLightCount++] = entry;
     }
 
   if (Array.isArray(game.barrels))
@@ -527,23 +557,24 @@ export function collectDynamicLights(game, cameraPos, time = 0, maxRadius = Infi
         continue;
       if (fog && !fog.canSeeNear(barrel.pos))
         continue;
-      const position = new Vec3(barrel.pos.x, 18, barrel.pos.y);
-      const distSq = cameraPos ? cameraPos.getDistance(position, true) : 0;
+      const entry = acquireDynamicLight(dynamicLightCount);
+      entry.position.setScalar(barrel.pos.x, 18, barrel.pos.y);
+      const distSq = cameraPos ? cameraPos.getDistance(entry.position, true) : 0;
       if (distSq > maxDistSq)
         continue;
       const pulse = 0.75 + 0.35 * Math.abs(Math.sin(time * 55 + i));
-      candidates.push({
-        kind: 'Fuse',
-        position,
-        color: BOOM_LIGHT_COLOR,
-        strength: pulse,
-        attenuation: DYNAMIC_LIGHT_ATTENUATION,
-        sortKey: distSq * 0.9,
-      });
+      entry.kind = 'Fuse';
+      entry.color = BOOM_LIGHT_COLOR;
+      entry.strength = pulse;
+      entry.attenuation = DYNAMIC_LIGHT_ATTENUATION;
+      entry.sortKey = distSq * 0.9;
+      dynamicLightCandidates[dynamicLightCount++] = entry;
     }
 
-  candidates.sort((a, b) => a.sortKey - b.sortKey);
-  return candidates.slice(0, MAX_DYNAMIC_LIGHTS);
+  dynamicLightCandidates.length = dynamicLightCount;
+  dynamicLightCandidates.sort(compareDynamicLightSortKey);
+  dynamicLightCandidates.length = Math.min(dynamicLightCount, MAX_DYNAMIC_LIGHTS);
+  return dynamicLightCandidates;
 }
 
 const rankedFixturesPool = [];
@@ -558,7 +589,7 @@ export function updateCeilingLights(pointLights, fixtures, cameraPos, time = 0, 
   const limit = pointLights.length;
   if (!limit)
     return pointLights;
-  const dynamic = game ? collectDynamicLights(game, cameraPos, time, maxRadius, fog) : [];
+  const dynamic = game ? collectDynamicLights(game, cameraPos, time, maxRadius, fog) : EMPTY_DYNAMIC_LIGHTS;
   const dynCount = Math.min(dynamic.length, Math.min(MAX_DYNAMIC_LIGHTS, limit));
 
   for (let i = 0; i < dynCount; i++) {
@@ -591,7 +622,7 @@ export function updateCeilingLights(pointLights, fixtures, cameraPos, time = 0, 
     }
   }
   rankedFixturesScratch.length = rankedCount;
-  rankedFixturesScratch.sort((a, b) => a.distSq - b.distSq);
+  rankedFixturesScratch.sort(compareFixtureDistSq);
 
   for (let i = dynCount; i < limit; i++) {
     const light = pointLights[i];
