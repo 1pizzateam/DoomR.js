@@ -94,6 +94,11 @@ export { MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar };
 const scratchHoleMark = { x: 0, y: 0, z: 0, nx: 0, ny: 0, top: 0, seed: 0, kind: undefined, lo: undefined, hi: undefined, slope: undefined };
 const scratchHoleQuad = { corners: new Array(12).fill(0), uv: new Array(4).fill(0) };
 const scratchSplatMark = { x: 0, y: 0, z: 0, nx: 0, ny: 0, size: 0, top: 0, seed: 0, age: undefined, lo: undefined, hi: undefined, slope: undefined };
+const scratchChainsawOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, attacking: false };
+const scratchChaingunOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, attacking: false, spinDown: 0 };
+const scratchShotgunOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, hasAmmo: true };
+const scratchRocketOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, hasAmmo: true };
+const scratchKnifeOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, attack: 'vertical' };
 const scratchPos = new Vec3();
 const scratchRot = new Vec3();
 const scratchScale = new Vec3();
@@ -335,7 +340,11 @@ export class World {
     this.enemyViews = new Map();
     this.pickupViews = new Map();
     this.cacheViews = new Map();
+    this.frameGame = null;
+    this.framePlayer = null;
+    this.frameTime = 0;
     this.frameCullDistSq = Infinity;
+    this.frameEffectCullDistSq = Infinity;
     this.frameOccludeFog = null;
     this.barrelViews = new Map();
     this.shotViews = new Map();
@@ -1978,6 +1987,14 @@ export class World {
     MONSTERS[enemy.type].die(view, enemy);
   }
 
+  buildEnemyView(enemy) {
+    return this.buildEnemy(enemy);
+  }
+
+  updateEnemyView(enemy, view) {
+    this.updateEnemy(enemy, view, this.framePlayer, this.frameTime, this.frameGame, this.frameCullDistSq, this.frameOccludeFog);
+  }
+
   buildPickup(pickup) {
     const { gl } = this;
     const keyColor = pickup.type === 'redKey' ? 'red' : pickup.type === 'yellowKey' ? 'yellow' : pickup.type === 'blueKey' ? 'blue' : null;
@@ -2067,6 +2084,24 @@ export class World {
     }
     this.scene.addMesh(root);
     return { root, spinSpeed: isChainsaw || isShotgun || isChaingun || isRocket ? 1.4 : 1.8 };
+  }
+
+  buildPickupView(pickup) {
+    return this.buildPickup(pickup);
+  }
+
+  updatePickupView(pickup, view) {
+    const time = this.frameTime;
+    const cullDistSq = this.frameCullDistSq;
+    const occludeFog = this.frameOccludeFog;
+    if ((Number.isFinite(cullDistSq) && pickup.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(pickup.pos))) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+    const bob = 1.5 + Math.sin(time * 3 + pickup.phase) * 1.2;
+    setPos(view.root, pickup.pos.x, bob, pickup.pos.y);
+    setRot(view.root, 0, time * view.spinSpeed + pickup.phase, 0);
   }
 
   /** A supply chest: a textured body plus a lid child hinged at the back top edge. */
@@ -2206,6 +2241,77 @@ export class World {
     };
   }
 
+  buildBarrelView() {
+    return this.buildBarrel();
+  }
+
+  updateBarrelView(barrel, view) {
+    const time = this.frameTime;
+    const cullDistSq = this.frameCullDistSq;
+    const occludeFog = this.frameOccludeFog;
+    if ((Number.isFinite(cullDistSq) && barrel.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(barrel.pos))) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+    if (barrel.pos.x !== view.lastX || barrel.pos.y !== view.lastY) {
+      view.lastX = barrel.pos.x;
+      view.lastY = barrel.pos.y;
+      setPos(view.root, barrel.pos.x, 0, barrel.pos.y);
+    }
+    if (!barrel.gone) {
+      if (view.wasGone) {
+        view.wasGone = false;
+        view.intactSettled = false;
+        view.wreckSettled = false;
+        view.intact.setActive();
+        view.wreck.setInactive();
+        view.lid.setInactive();
+        for (const stave of view.staves)
+          stave.setInactive();
+      }
+      // a barrel that has been set off flickers and shudders until it blows
+      const burning = barrel.fuse >= 0;
+      if (!burning && view.intactSettled)
+        return;
+      const skin = burning ? 0.8 + 0.6 * Math.abs(Math.sin(time * 70)) : 1;
+      scratchPos.setScalar(skin, skin, skin);
+      view.skinMaterial.setDiffuse(scratchPos);
+      setUniformScale(view.intact, burning ? 1 + 0.05 * Math.sin(time * 90) : 1);
+      view.intactSettled = !burning;
+      return;
+    }
+
+    if (!view.wasGone) {
+      view.wasGone = true;
+      view.intactSettled = false;
+      view.wreckSettled = false;
+      view.intact.setInactive();
+      view.wreck.setActive();
+      view.lid.setActive();
+      for (const stave of view.staves)
+        stave.setActive();
+    }
+    if (view.wreckSettled)
+      return;
+    const deadTime = barrel.deadTime ?? 0;
+    const flash = deadTime < 0.45 ? (1 - deadTime / 0.45) * 0.65 : 0;
+    scratchPos.setScalar(0.92 + flash, 0.9 + flash * 0.7, 0.88 + flash * 0.35);
+    view.wreckMaterial.setDiffuse(scratchPos);
+
+    barrelExplosionPose(deadTime, barrel.phase ?? 0, view.pose);
+    view.wreck.setRotation(view.pose.wreckRot);
+    view.wreck.setScale(view.pose.wreckScale);
+    view.lid.setPosition(view.pose.lid.pos);
+    view.lid.setRotation(view.pose.lid.rot);
+    for (let i = 0; i < view.staves.length; i++) {
+      view.staves[i].setPosition(view.pose.staves[i].pos);
+      view.staves[i].setRotation(view.pose.staves[i].rot);
+    }
+    if (deadTime >= 1.25)
+      view.wreckSettled = true;
+  }
+
   buildShot(shot) {
     if (shot?.kind === 'grenade') {
       const bodyMaterial = this.material('green');
@@ -2236,6 +2342,30 @@ export class World {
     });
     this.scene.addMesh(root);
     return { root };
+  }
+
+  buildShotView(shot) {
+    return this.buildShot(shot);
+  }
+
+  updateShotView(shot, view) {
+    const time = this.frameTime;
+    const cullDistSq = this.frameCullDistSq;
+    const occludeFog = this.frameOccludeFog;
+    if ((Number.isFinite(cullDistSq) && shot.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(shot.pos))) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+    if (shot.kind === 'grenade') {
+      setPos(view.root, shot.pos.x, shot.z, shot.pos.y);
+      setRot(view.root, time * 8, 0, time * 5);
+      return;
+    }
+    view.root.setFrame(Math.floor((time * 18) % FIREBALL_FRAMES));
+    setPos(view.root, shot.pos.x, EYE - 4, shot.pos.y);
+    const baseScale = shot.kind === 'rocket' ? 1.35 : 1;
+    setUniformScale(view.root, baseScale * (1 + 0.08 * Math.sin(time * 24)));
   }
 
   buildEffect(effect) {
@@ -2291,6 +2421,61 @@ export class World {
     this.scene.addMesh(root);
     // each spark is one of several kinds, and it keeps it for its whole life
     return { root, material, spark, boom: false, teleport, kind: Rand.integer(0, SPARK_VARIANTS - 1) };
+  }
+
+  buildEffectView(effect) {
+    return this.buildEffect(effect);
+  }
+
+  updateEffectView(effect, view) {
+    const effectCullDistSq = this.frameEffectCullDistSq;
+    const occludeFog = this.frameOccludeFog;
+    scratchEntity2d.setScalar(effect.x, effect.y);
+    if ((Number.isFinite(effectCullDistSq) && scratchEntity2d.getDistance(scratchCam2d, true) > effectCullDistSq) || (occludeFog && !occludeFog.canSeeNear(scratchEntity2d, view.boom ? 2 : 1))) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+    const progress = Math.min(0.999, effect.age / effect.life);
+    if (view.spark) {
+      const width = 19;
+      view.root.setFrame(IMPACT_CELLS.spark + view.kind * SPARK_FRAMES + Math.floor(progress * SPARK_FRAMES));
+      setPos(view.root, effect.x, effect.z, effect.y);
+      setUniformScale(view.root, width);
+      return;
+    }
+    if (view.boom) {
+      const radius = explosionWidth(effect) * 0.5;
+      const pose = explosion3dPose(progress, view.pose);
+      if (!pose.active) {
+        view.root.setInactive();
+        return;
+      }
+      setPos(
+        view.root,
+        effect.x + pose.pos.x * radius,
+        Math.max(0, effect.z) + pose.pos.y * radius,
+        effect.y + pose.pos.z * radius
+      );
+      view.root.setRotation(pose.rot);
+      setScale(
+        view.root,
+        pose.scale.x * radius,
+        pose.scale.y * radius,
+        pose.scale.z * radius
+      );
+      view.material.setDiffuse(pose.color);
+      view.root.setCustomUniform('dissolve', pose.dissolve);
+      view.root.setCustomUniform('heat', pose.heat);
+      view.root.setCustomUniform('progress', progress);
+      view.root.setCustomUniform('phase', pose.phase);
+      return;
+    }
+    // projectile blasts and teleporter plasma sit at impact height as camera-facing sprites
+    const width = explosionWidth(effect);
+    view.root.setFrame(Math.min(EXPLOSION_FRAMES - 1, Math.floor(progress * EXPLOSION_FRAMES)));
+    setPos(view.root, effect.x, effect.z, effect.y);
+    setUniformScale(view.root, width);
   }
 
   /** Create views for new entities, update live ones, drop the ones that are gone. `keep` filters the list. */
@@ -2351,6 +2536,13 @@ export class World {
     const effectCullDist = fogFar + 96;
     const effectCullDistSq = effectCullDist * effectCullDist;
     const occludeFog = !this.cutaway && !game.cam ? game.fog ?? null : null;
+
+    this.frameGame = game;
+    this.framePlayer = player;
+    this.frameTime = time;
+    this.frameCullDistSq = cullDistSq;
+    this.frameEffectCullDistSq = effectCullDistSq;
+    this.frameOccludeFog = occludeFog;
 
     if (this.staticChunks)
       for (let i = 0; i < this.staticChunks.length; i++) {
@@ -2423,149 +2615,39 @@ export class World {
     this.syncViews(
       this.enemyViews,
       game.enemies,
-      (enemy) => this.buildEnemy(enemy),
-      (enemy, view) => this.updateEnemy(enemy, view, player, time, game, cullDistSq, occludeFog)
+      (this.buildEnemyViewFn ??= (enemy) => this.buildEnemyView(enemy)),
+      (this.updateEnemyViewFn ??= (enemy, view) => this.updateEnemyView(enemy, view))
     );
-    this.syncViews(this.pickupViews, game.pickups, (pickup) => this.buildPickup(pickup), (pickup, view) => {
-      if ((Number.isFinite(cullDistSq) && pickup.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(pickup.pos))) {
-        view.root.setInactive();
-        return;
-      }
-      view.root.setActive();
-      const bob = 1.5 + Math.sin(time * 3 + pickup.phase) * 1.2;
-      setPos(view.root, pickup.pos.x, bob, pickup.pos.y);
-      setRot(view.root, 0, time * view.spinSpeed + pickup.phase, 0);
-    });
-    this.frameCullDistSq = cullDistSq;
-    this.frameOccludeFog = occludeFog;
-    this.syncViews(this.cacheViews, game.caches ?? EMPTY, (this.buildCacheView ??= (cache) => this.buildCache(cache)), (this.updateCacheView ??= (cache, view) => this.updateCache(cache, view)));
-    this.syncViews(this.barrelViews, game.barrels, () => this.buildBarrel(), (barrel, view) => {
-      if ((Number.isFinite(cullDistSq) && barrel.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(barrel.pos))) {
-        view.root.setInactive();
-        return;
-      }
-      view.root.setActive();
-      if (barrel.pos.x !== view.lastX || barrel.pos.y !== view.lastY) {
-        view.lastX = barrel.pos.x;
-        view.lastY = barrel.pos.y;
-        setPos(view.root, barrel.pos.x, 0, barrel.pos.y);
-      }
-      if (!barrel.gone) {
-        if (view.wasGone) {
-          view.wasGone = false;
-          view.intactSettled = false;
-          view.wreckSettled = false;
-          view.intact.setActive();
-          view.wreck.setInactive();
-          view.lid.setInactive();
-          for (const stave of view.staves)
-            stave.setInactive();
-        }
-        // a barrel that has been set off flickers and shudders until it blows
-        const burning = barrel.fuse >= 0;
-        if (!burning && view.intactSettled)
-          return;
-        const skin = burning ? 0.8 + 0.6 * Math.abs(Math.sin(time * 70)) : 1;
-        scratchPos.setScalar(skin, skin, skin);
-        view.skinMaterial.setDiffuse(scratchPos);
-        setUniformScale(view.intact, burning ? 1 + 0.05 * Math.sin(time * 90) : 1);
-        view.intactSettled = !burning;
-        return;
-      }
-
-      if (!view.wasGone) {
-        view.wasGone = true;
-        view.intactSettled = false;
-        view.wreckSettled = false;
-        view.intact.setInactive();
-        view.wreck.setActive();
-        view.lid.setActive();
-        for (const stave of view.staves)
-          stave.setActive();
-      }
-      if (view.wreckSettled)
-        return;
-      const deadTime = barrel.deadTime ?? 0;
-      const flash = deadTime < 0.45 ? (1 - deadTime / 0.45) * 0.65 : 0;
-      scratchPos.setScalar(0.92 + flash, 0.9 + flash * 0.7, 0.88 + flash * 0.35);
-      view.wreckMaterial.setDiffuse(scratchPos);
-
-      barrelExplosionPose(deadTime, barrel.phase ?? 0, view.pose);
-      view.wreck.setRotation(view.pose.wreckRot);
-      view.wreck.setScale(view.pose.wreckScale);
-      view.lid.setPosition(view.pose.lid.pos);
-      view.lid.setRotation(view.pose.lid.rot);
-      for (let i = 0; i < view.staves.length; i++) {
-        view.staves[i].setPosition(view.pose.staves[i].pos);
-        view.staves[i].setRotation(view.pose.staves[i].rot);
-      }
-      if (deadTime >= 1.25)
-        view.wreckSettled = true;
-    });
-    this.syncViews(this.shotViews, game.shots, (shot) => this.buildShot(shot), (shot, view) => {
-      if ((Number.isFinite(cullDistSq) && shot.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(shot.pos))) {
-        view.root.setInactive();
-        return;
-      }
-      view.root.setActive();
-      if (shot.kind === 'grenade') {
-        setPos(view.root, shot.pos.x, shot.z, shot.pos.y);
-        setRot(view.root, time * 8, 0, time * 5);
-        return;
-      }
-      view.root.setFrame(Math.floor((time * 18) % FIREBALL_FRAMES));
-      setPos(view.root, shot.pos.x, EYE - 4, shot.pos.y);
-      const baseScale = shot.kind === 'rocket' ? 1.35 : 1;
-      setUniformScale(view.root, baseScale * (1 + 0.08 * Math.sin(time * 24)));
-    });
-    this.syncViews(this.effectViews, game.effects, (effect) => this.buildEffect(effect), (effect, view) => {
-      scratchEntity2d.setScalar(effect.x, effect.y);
-      if ((Number.isFinite(effectCullDistSq) && scratchEntity2d.getDistance(scratchCam2d, true) > effectCullDistSq) || (occludeFog && !occludeFog.canSeeNear(scratchEntity2d, view.boom ? 2 : 1))) {
-        view.root.setInactive();
-        return;
-      }
-      view.root.setActive();
-      const progress = Math.min(0.999, effect.age / effect.life);
-      if (view.spark) {
-        const width = 19;
-        view.root.setFrame(IMPACT_CELLS.spark + view.kind * SPARK_FRAMES + Math.floor(progress * SPARK_FRAMES));
-        setPos(view.root, effect.x, effect.z, effect.y);
-        setUniformScale(view.root, width);
-        return;
-      }
-      if (view.boom) {
-        const radius = explosionWidth(effect) * 0.5;
-        const pose = explosion3dPose(progress, view.pose);
-        if (!pose.active) {
-          view.root.setInactive();
-          return;
-        }
-        setPos(
-          view.root,
-          effect.x + pose.pos.x * radius,
-          Math.max(0, effect.z) + pose.pos.y * radius,
-          effect.y + pose.pos.z * radius
-        );
-        view.root.setRotation(pose.rot);
-        setScale(
-          view.root,
-          pose.scale.x * radius,
-          pose.scale.y * radius,
-          pose.scale.z * radius
-        );
-        view.material.setDiffuse(pose.color);
-        view.root.setCustomUniform('dissolve', pose.dissolve);
-        view.root.setCustomUniform('heat', pose.heat);
-        view.root.setCustomUniform('progress', progress);
-        view.root.setCustomUniform('phase', pose.phase);
-        return;
-      }
-      // projectile blasts and teleporter plasma sit at impact height as camera-facing sprites
-      const width = explosionWidth(effect);
-      view.root.setFrame(Math.min(EXPLOSION_FRAMES - 1, Math.floor(progress * EXPLOSION_FRAMES)));
-      setPos(view.root, effect.x, effect.z, effect.y);
-      setUniformScale(view.root, width);
-    });
+    this.syncViews(
+      this.pickupViews,
+      game.pickups,
+      (this.buildPickupViewFn ??= (pickup) => this.buildPickupView(pickup)),
+      (this.updatePickupViewFn ??= (pickup, view) => this.updatePickupView(pickup, view))
+    );
+    this.syncViews(
+      this.cacheViews,
+      game.caches ?? EMPTY,
+      (this.buildCacheView ??= (cache) => this.buildCache(cache)),
+      (this.updateCacheView ??= (cache, view) => this.updateCache(cache, view))
+    );
+    this.syncViews(
+      this.barrelViews,
+      game.barrels,
+      (this.buildBarrelViewFn ??= () => this.buildBarrelView()),
+      (this.updateBarrelViewFn ??= (barrel, view) => this.updateBarrelView(barrel, view))
+    );
+    this.syncViews(
+      this.shotViews,
+      game.shots,
+      (this.buildShotViewFn ??= (shot) => this.buildShotView(shot)),
+      (this.updateShotViewFn ??= (shot, view) => this.updateShotView(shot, view))
+    );
+    this.syncViews(
+      this.effectViews,
+      game.effects,
+      (this.buildEffectViewFn ??= (effect) => this.buildEffectView(effect)),
+      (this.updateEffectViewFn ??= (effect, view) => this.updateEffectView(effect, view))
+    );
 
     this.updateKnife(game);
     this.updateChainsaw(game);
@@ -2609,17 +2691,13 @@ export class World {
     const attacking = Boolean(
       player.attacking || (!player.dryFire && (player.switchTimer ?? 0) <= 0 && ((player.cooldown ?? 0) > 0 || player.triggerHeld))
     );
-    const pose = chainsawPose(
-      {
-        time: game.time ?? 0,
-        bob: player.bob ?? 0,
-        moving: player.moving ?? 0,
-        recoil: player.recoil ?? 0,
-        switchOffset,
-        attacking,
-      },
-      view.pose
-    );
+    scratchChainsawOpts.time = game.time ?? 0;
+    scratchChainsawOpts.bob = player.bob ?? 0;
+    scratchChainsawOpts.moving = player.moving ?? 0;
+    scratchChainsawOpts.recoil = player.recoil ?? 0;
+    scratchChainsawOpts.switchOffset = switchOffset;
+    scratchChainsawOpts.attacking = attacking;
+    const pose = chainsawPose(scratchChainsawOpts, view.pose);
 
     const kick = player.kick ?? ZERO_KICK;
     writeViewBasis(player.angle, kick);
@@ -2657,18 +2735,14 @@ export class World {
       player.attacking || (canSpin && (player.cooldown ?? 0) > 0 && player.triggerHeld !== false)
     );
     const spinDown = canSpin ? Math.max(player.spinDown ?? 0, (player.cooldown ?? 0) > 0 ? 0.1 : 0) : 0;
-    const pose = chaingunPose(
-      {
-        time: game.time ?? 0,
-        bob: player.bob ?? 0,
-        moving: player.moving ?? 0,
-        recoil: player.recoil ?? 0,
-        switchOffset,
-        attacking,
-        spinDown,
-      },
-      view.pose
-    );
+    scratchChaingunOpts.time = game.time ?? 0;
+    scratchChaingunOpts.bob = player.bob ?? 0;
+    scratchChaingunOpts.moving = player.moving ?? 0;
+    scratchChaingunOpts.recoil = player.recoil ?? 0;
+    scratchChaingunOpts.switchOffset = switchOffset;
+    scratchChaingunOpts.attacking = attacking;
+    scratchChaingunOpts.spinDown = spinDown;
+    const pose = chaingunPose(scratchChaingunOpts, view.pose);
 
     const flashBoost = attacking && (player.flash ?? 0) > 0 ? Math.min(1, player.flash / WEAPONS.chaingun.feel.flash) * 0.38 : 0;
     tintScratch.setScalar(1 + flashBoost, 1 + flashBoost * 0.78, 1 + flashBoost * 0.42);
@@ -2707,18 +2781,14 @@ export class World {
     const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
     const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? WEAPONS.shotgun.cooldown - player.cooldown : -1;
     const hasAmmo = (player.shells ?? player.ammo ?? 1) >= 1;
-    const pose = shotgunPose(
-      {
-        time: game.time ?? 0,
-        bob: player.bob ?? 0,
-        moving: player.moving ?? 0,
-        recoil: player.recoil ?? 0,
-        switchOffset,
-        elapsed,
-        hasAmmo,
-      },
-      view.pose
-    );
+    scratchShotgunOpts.time = game.time ?? 0;
+    scratchShotgunOpts.bob = player.bob ?? 0;
+    scratchShotgunOpts.moving = player.moving ?? 0;
+    scratchShotgunOpts.recoil = player.recoil ?? 0;
+    scratchShotgunOpts.switchOffset = switchOffset;
+    scratchShotgunOpts.elapsed = elapsed;
+    scratchShotgunOpts.hasAmmo = hasAmmo;
+    const pose = shotgunPose(scratchShotgunOpts, view.pose);
 
     const flashBoost =
       isFiring && ((player.flash ?? 0) > 0 || (elapsed >= 0 && elapsed < SHOTGUN_FLASH))
@@ -2763,18 +2833,14 @@ export class World {
     const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
     const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? WEAPONS.rocket.cooldown - player.cooldown : -1;
     const hasAmmo = (player.rockets ?? player.ammo ?? 1) >= 1;
-    const pose = rocketLauncherPose(
-      {
-        time: game.time ?? 0,
-        bob: player.bob ?? 0,
-        moving: player.moving ?? 0,
-        recoil: player.recoil ?? 0,
-        switchOffset,
-        elapsed,
-        hasAmmo,
-      },
-      view.pose
-    );
+    scratchRocketOpts.time = game.time ?? 0;
+    scratchRocketOpts.bob = player.bob ?? 0;
+    scratchRocketOpts.moving = player.moving ?? 0;
+    scratchRocketOpts.recoil = player.recoil ?? 0;
+    scratchRocketOpts.switchOffset = switchOffset;
+    scratchRocketOpts.elapsed = elapsed;
+    scratchRocketOpts.hasAmmo = hasAmmo;
+    const pose = rocketLauncherPose(scratchRocketOpts, view.pose);
 
     const flashBoost =
       isFiring && ((player.flash ?? 0) > 0 || (elapsed >= 0 && elapsed < ROCKET_FLASH))
@@ -2814,18 +2880,14 @@ export class World {
     const switchOffset = player.switchOffset ?? Math.min(1, (player.switchTimer ?? 0) / 0.22);
     const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
     const elapsed = isFiring && (player.cooldown ?? 0) > 0 ? WEAPONS.knife.cooldown - player.cooldown : -1;
-    const pose = knifePose(
-      {
-        time: game.time ?? 0,
-        bob: player.bob ?? 0,
-        moving: player.moving ?? 0,
-        recoil: player.recoil ?? 0,
-        switchOffset,
-        elapsed,
-        attack: player.knifeAttack ?? 'vertical',
-      },
-      view.pose
-    );
+    scratchKnifeOpts.time = game.time ?? 0;
+    scratchKnifeOpts.bob = player.bob ?? 0;
+    scratchKnifeOpts.moving = player.moving ?? 0;
+    scratchKnifeOpts.recoil = player.recoil ?? 0;
+    scratchKnifeOpts.switchOffset = switchOffset;
+    scratchKnifeOpts.elapsed = elapsed;
+    scratchKnifeOpts.attack = player.knifeAttack ?? 'vertical';
+    const pose = knifePose(scratchKnifeOpts, view.pose);
 
     const kick = player.kick ?? ZERO_KICK;
     writeViewBasis(player.angle, kick);
