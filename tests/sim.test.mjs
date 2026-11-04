@@ -10958,6 +10958,104 @@ const tests = {
       }
     });
   },
+
+  'AC-1 emit writes pooled events with exact keys and a copied pos'() {
+    const game = fresh();
+    game.events.length = 0;
+    const initialArray = game.events;
+    game.emit('dry');
+    assert.deepEqual(Object.keys(game.events[0]).sort(), ['pos', 'type', 'visible', 'x', 'y']);
+    assert.equal(game.events[0].pos.x, game.player.pos.x);
+    assert.equal(game.events[0].pos.y, game.player.pos.y);
+    assert.notEqual(game.events[0].pos, game.player.pos);
+    game.emit('dry');
+    game.emit('dry');
+    assert.equal(game.events, initialArray);
+  },
+
+  'AC-2 emit caps the queue at 256 keeping the newest with unique objects'() {
+    const game = fresh();
+    game.events.length = 0;
+    for (let i = 0; i < 300; i++)
+      game.emit('mark', null, { n: i });
+    assert.equal(game.events.length, 256);
+    assert.equal(game.events[0].n, 44);
+    assert.equal(game.events[255].n, 299);
+    const set = new Set(game.events);
+    assert.equal(set.size, 256);
+  },
+
+  'AC-3 recycled events carry no stale extras and extras are not retained'() {
+    const game = fresh();
+    game.events.length = 0;
+    const extra = { kind: 'imp' };
+    game.emit('alert', null, extra);
+    extra.kind = 'mutated';
+    assert.equal(game.events[0].kind, 'imp');
+    game.events.length = 0;
+    for (let i = 0; i < 256; i++)
+      game.emit('dry');
+    for (const ev of game.events)
+      assert.equal('kind' in ev, false);
+  },
+
+  'AC-4 emit reuses pooled event objects and positions after draining'() {
+    const game = fresh();
+    game.events.length = 0;
+    for (let i = 0; i < 256; i++)
+      game.emit('dry');
+    const firstRoundObjects = new Set(game.events);
+    const firstRoundPositions = new Set(game.events.map((e) => e.pos));
+    assert.equal(firstRoundObjects.size, 256);
+    assert.equal(firstRoundPositions.size, 256);
+    game.events.length = 0;
+    for (let i = 0; i < 256; i++)
+      game.emit('dry');
+    assert.equal(game.events.length, 256);
+    for (const ev of game.events) {
+      assert.ok(firstRoundObjects.has(ev));
+      assert.ok(firstRoundPositions.has(ev.pos));
+    }
+  },
+
+  'AC-5 Sound.handle forwards one shared dispatch object per play'() {
+    const sound = new Sound();
+    const calls = [];
+    sound.play = (name, options) => {
+      calls.push({
+        name,
+        optionsRef: options,
+        visible: options.visible,
+        pos: options.pos?.clone?.() ?? options.pos,
+      });
+    };
+    const boomPos = new Vec2(10, 10);
+    sound.handle({ type: 'boom', pos: boomPos, visible: false });
+    sound.handle({ type: 'boom', pos: boomPos, visible: false });
+    sound.handle({ type: 'weaponSwitch', weapon: 'chainsaw', pos: new Vec2(), visible: true });
+    assert.equal(calls.length, 4);
+    const firstOptions = calls[0].optionsRef;
+    for (const c of calls)
+      assert.equal(c.optionsRef, firstOptions);
+    assert.equal(calls[0].visible, false);
+    assert.equal(calls[0].pos.x, 10);
+    assert.equal(calls[0].pos.y, 10);
+    assert.equal(calls[2].name, 'weaponSwitch');
+    assert.equal(calls[3].name, 'chainsawUp');
+  },
+
+  'AC-6 spatial returns one reused result object and defaults range'() {
+    const listener = new Vec2(0, 0);
+    const r1 = spatial(listener, new Vec2(200, 200));
+    const firstPan = r1.pan;
+    const firstGain = r1.gain;
+    const firstDist = r1.distance;
+    const r2 = spatial(listener, new Vec2(5000, 0));
+    assert.equal(r1, r2);
+    assert.equal(r2.gain, 0);
+    assert.equal(r2.distance, 5000);
+    assert.ok(firstPan > 0.3);
+  },
 };
 
 function pausedHud() {

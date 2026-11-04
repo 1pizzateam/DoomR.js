@@ -24,13 +24,14 @@ const scratchDelta = new Vec2();
 const scratchRight = new Vec2(1, 0);
 const ORIGIN = new Vec2();
 const scratchSpatial = { pan: 0, gain: 0, distance: 0 };
+const NO_OPTIONS = Object.freeze({});
 
 /**
  * Where a sound at `sourcePos` (Vec2) is heard from a listener at `listenerPos` (Vec2) looking along `angle`.
  * Sound fades with distance and pans left/right by where it is relative to the facing
  * direction. In the game's plane, "right" of a viewer looking along `angle` is (-sin, cos).
  */
-export function spatial(listenerPos, sourcePos, { angle = 0, reference = 220, range = 1000 } = {}) {
+export function spatial(listenerPos, sourcePos, { angle = 0, reference = 220, range = 1000 } = NO_OPTIONS) {
   scratchDelta.subVectors(sourcePos, listenerPos);
   const distance = scratchDelta.getMagnitude();
   scratchRight.setRadian(angle + Trigo.halfpi);
