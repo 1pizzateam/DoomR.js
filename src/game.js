@@ -21,6 +21,7 @@ const QUERY_ENEMY = Object.freeze({ mask: CAT.ENEMY });
 const QUERY_BARREL = Object.freeze({ mask: CAT.BARREL });
 const QUERY_MELEE = Object.freeze({ mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
 const EMPTY_EXTRA = Object.freeze({});
+const EVENT_CAPACITY = 256;
 const DUST_COUNT = 240;
 
 /** Explosive barrels: a couple of pellets set one off, and the blast sets off its neighbours. */
@@ -168,6 +169,10 @@ export class Game {
     this.blood = new Blood();
     // sound events for main.js to hand to the audio layer; the rules never touch audio themselves
     this.events = [];
+    this.eventPool = [];
+    for (let i = 0; i < EVENT_CAPACITY; i++)
+      this.eventPool.push({ type: '', pos: new Vec2(), x: 0, y: 0, visible: true });
+    this.eventCursor = 0;
     this.useTarget = { kind: null, door: null, cache: null, verb: '', lock: null, promptable: false };
     this.usePrompt = { fade: 0, verb: '', lock: null };
     this.load(0);
@@ -493,12 +498,23 @@ export class Game {
   /** Queue a sound event (carrying a `pos` Vec2 copy) at a position (the player's, when none is given). */
   emit(type, position = null, extra = EMPTY_EXTRA) {
     const at = position ?? this.player.pos;
-    this.events.push({ type, pos: at.clone(), x: at.x, y: at.y, visible: this.fog ? this.fog.canSee(at.x, at.y) : true, ...extra });
-    const overflow = this.events.length - 256;
-    if (overflow > 0) {
-      this.events.copyWithin(0, overflow);
-      this.events.length = 256;
+    const ev = this.eventPool[this.eventCursor];
+    this.eventCursor = (this.eventCursor + 1) % EVENT_CAPACITY;
+    for (const key in ev)
+      if (key !== 'type' && key !== 'pos' && key !== 'x' && key !== 'y' && key !== 'visible')
+        delete ev[key];
+    ev.type = type;
+    ev.pos.copy(at);
+    ev.x = at.x;
+    ev.y = at.y;
+    ev.visible = this.fog ? this.fog.canSee(at.x, at.y) : true;
+    for (const key in extra)
+      ev[key] = extra[key];
+    if (this.events.length >= EVENT_CAPACITY) {
+      this.events.copyWithin(0, 1);
+      this.events.length = EVENT_CAPACITY - 1;
     }
+    this.events.push(ev);
   }
 
   /** An idle enemy that notices the player (or a shot) wakes up, and says so. */
