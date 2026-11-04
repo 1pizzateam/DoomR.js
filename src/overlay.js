@@ -237,10 +237,15 @@ class Layer {
 
   /** Strokes a closed circle approximated with segments. */
   circleLine(cx, cy, radius, color, alpha = 1, segments = 10) {
+    const { lines } = this;
+    scratch[0] = color[0] * alpha;
+    scratch[1] = color[1] * alpha;
+    scratch[2] = color[2] * alpha;
     for (let i = 0; i < segments; i++) {
       const a = (i / segments) * Trigo.twopi;
       const b = ((i + 1) / segments) * Trigo.twopi;
-      this.line([cx + Math.cos(a) * radius, cy + Math.sin(a) * radius, cx + Math.cos(b) * radius, cy + Math.sin(b) * radius], color, alpha);
+      lines.vertex(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius, scratch);
+      lines.vertex(cx + Math.cos(b) * radius, cy + Math.sin(b) * radius, scratch);
     }
   }
 

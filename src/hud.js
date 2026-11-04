@@ -80,6 +80,7 @@ const WEAPON_PLACE_OPTS = { width: 0, height: 0, bob: 0, moving: 0, recoil: 0, s
 const WEAPON_RECT = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
 const FACE_PLACE_OPTS = { width: 0, height: 0, hurt: 0 };
 const FACE_RECT = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
+const FACE_FRAME_OPTS = { health: 100, hurt: 0, shotElapsed: -1, time: 0 };
 
 // Scalar drawing into a Layer through the shared scratch arrays: no per-call coordinate arrays.
 const layerSegment = (layer, x0, y0, x1, y1, color, alpha = 1) => {
@@ -211,7 +212,7 @@ export class Hud {
   }
 
   computeHudTextKey(game, showAutomap) {
-    if (game.state !== 'playing' || showAutomap)
+    if (game.state !== 'play' || showAutomap)
       return '';
     if (game.message && game.message.age < game.message.life)
       return '';
@@ -440,7 +441,11 @@ export class Hud {
           : !player.dryFire && player.cooldown > 0 && (player.switchTimer ?? 0) <= 0
             ? Math.max(0, weaponDef.cooldown - player.cooldown)
             : -1;
-    const frameIdx = faceFrame({ health: player.health, hurt: player.hurt, shotElapsed, time: game.time });
+    FACE_FRAME_OPTS.health = player.health;
+    FACE_FRAME_OPTS.hurt = player.hurt;
+    FACE_FRAME_OPTS.shotElapsed = shotElapsed;
+    FACE_FRAME_OPTS.time = game.time;
+    const frameIdx = faceFrame(FACE_FRAME_OPTS);
     const crisp = this.overlay.crisp;
     const borderCol =
       (player.teleFlash ?? 0) > 0
