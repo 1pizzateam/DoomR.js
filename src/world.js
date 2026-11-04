@@ -1205,7 +1205,7 @@ export class World {
       const a0 = group.from * TILE;
       const a1 = (group.to + 1) * TILE;
       const inward = d === 0 || d === 2 ? 0.9 : -0.9;
-      const offset = axis === 'x' ? [inward, 0, 0] : [0, 0, inward];
+      const offset = axis === 'x' ? new Vec3(inward, 0, 0) : new Vec3(0, 0, inward);
       const nx = group.x + (d === 0 ? -1 : d === 1 ? 1 : 0);
       const ny = group.y + (d === 2 ? -1 : d === 3 ? 1 : 0);
 
@@ -1213,7 +1213,9 @@ export class World {
       // while stopping flush at exterior corners and door jambs so they never protrude in front of adjacent walls
       const lap0 = (d < 2 ? solid(nx, group.from - 1) : solid(group.from - 1, ny)) ? 1.2 : 0;
       const lap1 = (d < 2 ? solid(nx, group.to + 1) : solid(group.to + 1, ny)) ? 1.2 : 0;
-      const lap = (y0, y1) => faceCorners(axis, plane, a0 - lap0, a1 + lap1, y0, y1);
+      const lap = (y0, y1) => axis === 'x'
+        ? faceCorners(axis, new Vec3(plane, y0, a0 - lap0), new Vec3(plane, y1, a1 + lap1))
+        : faceCorners(axis, new Vec3(a0 - lap0, y0, plane), new Vec3(a1 + lap1, y1, plane));
       if (group.kind !== PILLAR)
         hide.push(...quadTriangles(lap(base === 0 ? WALL_FLOOR_Y : base, top), offset));
       // the wall carries on up to the roof, without being drawn; a low pillar does not, it has sky above,
@@ -1249,12 +1251,12 @@ export class World {
       const top = Math.min(baseHeight[idx], ROOF);
       const tx = (df.b.x - df.a.x) / TILE;
       const ty = (df.b.y - df.a.y) / TILE;
-      const offset = [-df.normal.x * 0.9, 0, -df.normal.y * 0.9];
+      const offset = new Vec3(-df.normal.x * 0.9, 0, -df.normal.y * 0.9);
       const lap = (y0, y1) => [
-        [df.a.x - tx * 1.2, y0, df.a.y - ty * 1.2],
-        [df.b.x + tx * 1.2, y0, df.b.y + ty * 1.2],
-        [df.b.x + tx * 1.2, y1, df.b.y + ty * 1.2],
-        [df.a.x - tx * 1.2, y1, df.a.y - ty * 1.2],
+        new Vec3(df.a.x - tx * 1.2, y0, df.a.y - ty * 1.2),
+        new Vec3(df.b.x + tx * 1.2, y0, df.b.y + ty * 1.2),
+        new Vec3(df.b.x + tx * 1.2, y1, df.b.y + ty * 1.2),
+        new Vec3(df.a.x - tx * 1.2, y1, df.a.y - ty * 1.2),
       ];
       hide.push(...quadTriangles(lap(WALL_FLOOR_Y, top), offset));
       const roofless = level.arena?.has(idx);
@@ -1284,9 +1286,9 @@ export class World {
           continue;
         const inset = end ? -0.9 : 0.9;
         const corners = alongY
-          ? faceCorners('z', (y + end) * TILE, x * TILE, (x + 1) * TILE, top, ROOF)
-          : faceCorners('x', (x + end) * TILE, y * TILE, (y + 1) * TILE, top, ROOF);
-        hide.push(...quadTriangles(corners, alongY ? [0, 0, inset] : [inset, 0, 0]));
+          ? faceCorners('z', new Vec3(x * TILE, top, (y + end) * TILE), new Vec3((x + 1) * TILE, ROOF, (y + end) * TILE))
+          : faceCorners('x', new Vec3((x + end) * TILE, top, y * TILE), new Vec3((x + end) * TILE, ROOF, (y + 1) * TILE));
+        hide.push(...quadTriangles(corners, alongY ? new Vec3(0, 0, inset) : new Vec3(inset, 0, 0)));
         // and the lintel is textured wall as well
         const quads = wallFaceQuads(alongY
           ? { axis: 'z', plane: (y + end) * TILE, from: x, to: x, base: top, top: ROOF, x, y, d: 2 + end, exit: false }
@@ -1311,7 +1313,9 @@ export class World {
           const axis = d < 2 ? 'x' : 'z';
           const plane = (d < 2 ? tx + (d === 1 ? 1 : 0) : ty + (d === 3 ? 1 : 0)) * TILE;
           const along = (d < 2 ? ty : tx) * TILE;
-          hide.push(...quadTriangles(faceCorners(axis, plane, along, along + TILE, -ACID_PIT_DEPTH - 0.35, -0.2)));
+          hide.push(...quadTriangles(axis === 'x'
+            ? faceCorners(axis, new Vec3(plane, -ACID_PIT_DEPTH - 0.35, along), new Vec3(plane, -0.2, along + TILE))
+            : faceCorners(axis, new Vec3(along, -ACID_PIT_DEPTH - 0.35, plane), new Vec3(along + TILE, -0.2, plane))));
         }
       }
 
@@ -1326,7 +1330,7 @@ export class World {
         if (roofed)
           continue;
         if (x > start)
-          roofHide.push(...quadTriangles([[start * TILE, ROOF, y * TILE], [x * TILE, ROOF, y * TILE], [x * TILE, ROOF, (y + 1) * TILE], [start * TILE, ROOF, (y + 1) * TILE]]));
+          roofHide.push(...quadTriangles([new Vec3(start * TILE, ROOF, y * TILE), new Vec3(x * TILE, ROOF, y * TILE), new Vec3(x * TILE, ROOF, (y + 1) * TILE), new Vec3(start * TILE, ROOF, (y + 1) * TILE)]));
         start = x + 1;
       }
     }
