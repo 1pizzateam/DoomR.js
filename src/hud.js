@@ -1,4 +1,4 @@
-import { Trigo, Utils } from '@1pizzateam/spock';
+import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { CEILING, DOOR, EXIT, PILLAR, TILE } from './level.js';
 import { LEVELS } from './levels.js';
 import { createQuadTarget, screenSplatQuads } from './bloodsprites.js';
@@ -9,6 +9,8 @@ import { DEFAULT_HINT_LINES, DEFAULT_SELECT_HINT, defaultActionLabel } from './k
 import { HIT_BACK, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP } from './controls.js';
 import { WEAPON_SLOTS, WEAPONS, weaponCellUv, weaponFrame, weaponPlacement } from './weapon.js';
 
+const scratchBloodViewport = new Vec2();
+const scratchBloodSplat = { pos: new Vec2(), size: 0, age: 0, drip: 0, seed: 0 };
 const COLORS = ['#5b8cff', '#38c793', '#ff9f43', '#e8102c'];
 const BLUE = 0;
 const GREEN = 1;
@@ -366,11 +368,16 @@ export class Hud {
 
   /** Blood on the player's view: always translucent on the visor so the 3D world remains visible behind it. */
   drawBlood(game) {
-    const { width, height } = this;
+    scratchBloodViewport.setScalar(this.width, this.height);
     const { sprites } = this.overlay.crisp;
     for (const splat of game.blood.splats) {
       const fade = Utils.clamp((splat.life - splat.age) / (splat.life * 0.6), 0, 1) * SCREEN_BLOOD_ALPHA;
-      const target = screenSplatQuads(splat, width, height, fade, this.bloodQuads);
+      scratchBloodSplat.pos.setScalar(splat.x, splat.y);
+      scratchBloodSplat.size = splat.size;
+      scratchBloodSplat.age = splat.age;
+      scratchBloodSplat.drip = splat.drip;
+      scratchBloodSplat.seed = splat.seed;
+      const target = screenSplatQuads(scratchBloodSplat, scratchBloodViewport, fade, this.bloodQuads);
       for (let i = 0; i < target.count; i++) {
         const q = target.quads[i];
         sprites.quad(q.x0, q.y0, q.x1, q.y1, q.uv, q.fade);
