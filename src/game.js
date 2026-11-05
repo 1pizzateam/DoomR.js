@@ -149,6 +149,8 @@ export class Game {
     this.scratch = new Vec2();
     this.velocity = new Vec2();
     this.arenaProbe = new Vec2();
+    this.queryScratch = [];
+    this.corpseHit = { fraction: 0, point: new Vec2(), normal: new Vec2() };
     this.pitMin = new Vec2();
     this.pitMax = new Vec2();
     this.pitStepStart = new Vec2();
@@ -527,7 +529,7 @@ export class Game {
     this.emit('alert', enemy.pos, { kind: enemy.type });
     // a pack wakes as one
     if (enemy.type === 'swarmer')
-      for (const body of this.scene.queryCircle(enemy.pos, 240, QUERY_ENEMY)) {
+      for (const body of this.scene.queryCircle(enemy.pos, 240, QUERY_ENEMY, this.queryScratch)) {
         const other = body.ref;
         if (other?.type === 'swarmer' && other.state === 'idle' && this.scene.hasLineOfSight(other.pos, enemy.pos, QUERY_WALL))
           other.state = 'chase';
@@ -1117,7 +1119,7 @@ export class Game {
     if (away < shot.radius && this.canReach(pos, this.player.pos))
       this.hurtPlayer(Math.round(6 + 26 * (1 - away / shot.radius)));
 
-    for (const body of this.scene.queryCircle(pos, shot.radius, QUERY_ENEMY)) {
+    for (const body of this.scene.queryCircle(pos, shot.radius, QUERY_ENEMY, this.queryScratch)) {
       const enemy = body.ref;
       if (!enemy || enemy.state === 'dead')
         continue;
@@ -1137,7 +1139,7 @@ export class Game {
         dir.setScalar(1, 0);
       this.mutilateCorpse(enemy, dir.x, dir.y, true);
     }
-    for (const body of this.scene.queryCircle(pos, shot.radius, QUERY_BARREL)) {
+    for (const body of this.scene.queryCircle(pos, shot.radius, QUERY_BARREL, this.queryScratch)) {
       const barrel = body.ref;
       const d = barrel.pos.getDistance(pos);
       if (!barrel.gone && d < shot.radius && this.canReach(pos, barrel.pos))
@@ -1191,7 +1193,7 @@ export class Game {
     if (away < BARREL.blast && this.canReach(barrel.pos, this.player.pos))
       this.hurtPlayer(Math.round(8 + 42 * (1 - away / BARREL.blast)));
 
-    for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_ENEMY)) {
+    for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_ENEMY, this.queryScratch)) {
       const enemy = body.ref;
       if (!enemy || enemy.state === 'dead')
         continue;
@@ -1211,7 +1213,7 @@ export class Game {
         dir.setScalar(1, 0);
       this.mutilateCorpse(enemy, dir.x, dir.y, true);
     }
-    for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_BARREL)) {
+    for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_BARREL, this.queryScratch)) {
       const other = body.ref;
       const d = other.pos.getDistance(barrel.pos);
       if (!other.gone && d < BARREL.blast && this.canReach(barrel.pos, other.pos))
@@ -1683,7 +1685,7 @@ export class Game {
         continue;
       if (this.toPlayer.subVectors(corpse.pos, player.pos).dotProduct(this.velocity) <= 0)
         continue;
-      if (Raycast.sweepCircleCircle(player.pos, end, radiusPad, corpse.pos, corpse.def.radius)) {
+      if (Raycast.sweepCircleCircle(player.pos, end, radiusPad, corpse.pos, corpse.def.radius, this.corpseHit)) {
         this.mutilateCorpse(corpse, dirX, dirY, forceGib);
         return;
       }
@@ -2775,7 +2777,7 @@ export class Game {
           this.shake = Math.max(this.shake, 0.35 * (1 - dist / 420));
       }
       if (crusher.low < 24) {
-        for (const body of this.scene.queryCircle(crusher.center, TILE * 0.45, QUERY_ENEMY)) {
+        for (const body of this.scene.queryCircle(crusher.center, TILE * 0.45, QUERY_ENEMY, this.queryScratch)) {
           const enemy = body.ref;
           if (!enemy || enemy.state === 'dead')
             continue;
@@ -2829,7 +2831,7 @@ export class Game {
       this.shake = Math.max(this.shake, 0.45);
 
       let telefragged = false;
-      for (const body of this.scene.queryCircle(pad.target, PLAYER_RADIUS + 10, QUERY_ENEMY)) {
+      for (const body of this.scene.queryCircle(pad.target, PLAYER_RADIUS + 10, QUERY_ENEMY, this.queryScratch)) {
         const enemy = body.ref;
         if (!enemy || enemy.state === 'dead')
           continue;
