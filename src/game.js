@@ -322,7 +322,7 @@ export class Game {
     this.addWalls();
     this.addPlayer(carry);
     this.fog = new Fog(this.level);
-    this.fog.update(this.player.pos.x, this.player.pos.y, this.player.angle, this.fogConeRange());
+    this.fog.update(this.player.pos, this.player.angle, this.fogConeRange());
     const diff = this.difficultyDef;
     let nonBossIndex = 0;
     for (const spawn of this.level.enemies) {
@@ -507,7 +507,7 @@ export class Game {
     ev.pos.copy(at);
     ev.x = at.x;
     ev.y = at.y;
-    ev.visible = this.fog ? this.fog.canSee(at.x, at.y) : true;
+    ev.visible = this.fog ? this.fog.canSee(at) : true;
     for (const key in extra)
       ev[key] = extra[key];
     if (this.events.length >= EVENT_CAPACITY) {
@@ -3018,7 +3018,7 @@ export class Game {
     this.cleanup();
     this.trackFootprints();
     if (this.state === 'play')
-      this.fog.update(this.player.pos.x, this.player.pos.y, this.player.angle, this.fogConeRange());
+      this.fog.update(this.player.pos, this.player.angle, this.fogConeRange());
 
     if (this.state === 'play') {
       const secretIdx = this.level.secretAt(this.player.pos.x, this.player.pos.y);
