@@ -98,20 +98,20 @@ export class Fog {
   }
 
   /** Walk a ray tile by tile, marking what it passes and stopping at the first thing that blocks sight. */
-  cast(x, y, angle, range) {
-    const { level, explored, visible, pos, step } = this;
+  cast(pos, angle, range) {
+    const { level, explored, visible, pos: tilePos, step } = this;
     const { width, heights, baseHeight, kind, diag } = level;
     step.setScalar(STEP, 0).setRadian(angle);
-    pos.setScalar(x / TILE, y / TILE);
+    tilePos.scaleVector(pos, 1 / TILE);
     let prevIdx = -1;
     for (let travelled = 0; travelled <= range; travelled += STEP) {
-      const tx = Math.floor(pos.x);
-      const ty = Math.floor(pos.y);
+      const tx = Math.floor(tilePos.x);
+      const ty = Math.floor(tilePos.y);
       if (!level.inBounds(tx, ty))
         return;
       const idx = ty * width + tx;
       if (idx === prevIdx && !(diag?.[idx] > 0)) {
-        pos.add(step);
+        tilePos.add(step);
         continue;
       }
       prevIdx = idx;
@@ -132,43 +132,43 @@ export class Fog {
       if (kind?.[idx] === DOOR)
         h = heights[idx] >= baseHeight[idx] * 0.98 ? EYE : 0;
       else if (diag?.[idx] > 0 && level.heightAtPoint) {
-        this.pt.scaleVector(pos, TILE);
+        this.pt.scaleVector(tilePos, TILE);
         h = level.heightAtPoint(this.pt);
       } else
         h = heights[idx];
       if (h >= EYE)
         return;
-      pos.add(step);
+      tilePos.add(step);
     }
   }
 
-  update(x, y, angle, range = CONE_RANGE) {
+  update(pos, angle, range = CONE_RANGE) {
     const doorKey = this.doorSightKey();
-    const startIdx = this.tileIndex(x, y);
+    const startIdx = this.tileIndex(pos);
     if (
       startIdx >= 0 &&
       this.visible[startIdx] === 1 &&
       this.exploredCount > 0 &&
-      Math.abs(x - this.lastPos.x) < 1.5 &&
-      Math.abs(y - this.lastPos.y) < 1.5 &&
+      Math.abs(pos.x - this.lastPos.x) < 1.5 &&
+      Math.abs(pos.y - this.lastPos.y) < 1.5 &&
       Math.abs(Trigo.deltaRadian(angle, this.lastAngle)) < 0.008 &&
       range === this.lastRange &&
       doorKey === this.lastDoorKey
     )
       return;
-    this.lastPos.setScalar(x, y);
+    this.lastPos.copy(pos);
     this.lastAngle = angle;
     this.lastRange = range;
     this.lastDoorKey = doorKey;
     this.visible.fill(0);
     for (let i = 0; i < CONE_RAYS; i++)
-      this.cast(x, y, angle + (i / (CONE_RAYS - 1) - 0.5) * 2 * CONE_HALF_ANGLE, range);
+      this.cast(pos, angle + (i / (CONE_RAYS - 1) - 0.5) * 2 * CONE_HALF_ANGLE, range);
     for (let i = 0; i < RING_RAYS; i++)
-      this.cast(x, y, (i / RING_RAYS) * Trigo.twopi, Math.min(RING_RANGE, range));
+      this.cast(pos, (i / RING_RAYS) * Trigo.twopi, Math.min(RING_RANGE, range));
   }
 
-  tileIndex(x, y) {
-    return this.grid.getCell(this.pt.setScalar(x, y));
+  tileIndex(pos) {
+    return this.grid.getCell(pos);
   }
 
   isExplored(idx) {
@@ -180,8 +180,8 @@ export class Fog {
   }
 
   /** True when a world position is inside a tile that is in view right now. */
-  canSee(x, y) {
-    const idx = this.tileIndex(x, y);
+  canSee(pos) {
+    const idx = this.tileIndex(pos);
     return idx >= 0 && this.visible[idx] === 1;
   }
 
