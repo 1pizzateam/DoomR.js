@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 const read = (name) => readFileSync(new URL(`../src/${name}.js`, import.meta.url), 'utf8');
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -31,10 +31,8 @@ const checks = [
     for (const n of ['MAX_CODE_LENGTH', 'MOUSE_WHICH_BASE', 'LAYOUTS']) assert.ok(!exported(src, n), `keymap.js still exports ${n}`);
     for (const n of ['CONTROLS_VERSION', 'MAX_SLOTS']) assert.ok(exported(src, n), `keymap.js lost export ${n}`);
   }],
-  ['AC-3 sprites per-monster atlas generators are not exported', () => {
-    const src = read('sprites');
-    for (const n of ['impAtlas', 'bruteAtlas', 'bossAtlas', 'skullAtlas', 'crawlerAtlas', 'swarmerAtlas']) assert.ok(!exported(src, n), `sprites.js still exports ${n}`);
-    for (const n of ['wraithAtlas']) assert.ok(exported(src, n), `sprites.js lost export ${n}`);
+  ['AC-3 sprites.js legacy atlas module is gone', () => {
+    assert.equal(existsSync(new URL('../src/sprites.js', import.meta.url)), false, 'sprites.js still exists');
   }],
   ['AC-4 keymap loads with retained exports and no ReferenceError', async () => {
     const mod = await import('../src/keymap.js');
@@ -122,6 +120,33 @@ const checks = [
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.ok(pkg.scripts.test.includes('tests/sim.test.mjs'));
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'));
+  }],
+  ['issue-81 AC-1 src/sprites.js is removed and no src module imports it', () => {
+    const srcDir = new URL('../src/', import.meta.url);
+    assert.equal(existsSync(new URL('../src/sprites.js', import.meta.url)), false, 'src/sprites.js still exists');
+    const files = readdirSync(srcDir).filter((f) => f.endsWith('.js'));
+    for (const file of files) {
+      const content = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
+      assert.ok(
+        !/(?:from\s+['"][^'"]*|import\s+['"][^'"]*)(?<!blood)sprites\.js['"]/.test(content),
+        `${file} contains an import specifier resolving to sprites.js`
+      );
+    }
+  }],
+  ['issue-81 AC-2 every relative import in src resolves to an existing file other than sprites.js', () => {
+    const srcDir = new URL('../src/', import.meta.url);
+    const files = readdirSync(srcDir).filter((f) => f.endsWith('.js'));
+    const relativeImportRegex = /(?:from\s+['"]|import\s+['"])(\.\/[^'"]+)['"]/g;
+    for (const file of files) {
+      const content = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
+      let match;
+      while ((match = relativeImportRegex.exec(content)) !== null) {
+        const specifier = match[1];
+        assert.notEqual(specifier, './sprites.js', `${file} imports ./sprites.js`);
+        const targetUrl = new URL(specifier, new URL(`../src/${file}`, import.meta.url));
+        assert.ok(existsSync(targetUrl), `${file} relative import ${specifier} does not exist`);
+      }
+    }
   }],
 ];
 

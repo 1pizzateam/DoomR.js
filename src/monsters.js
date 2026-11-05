@@ -33,7 +33,7 @@ function setUniformScale(node, s) {
  * - Every enemy (`imp`, `brute`, `boss`, `skull`, `crawler`, `swarmer`, `wraith`) is an articulated 3D hierarchy of
  *   textured RoostR `Mesh` nodes (`body`, `head`, `jaw`, `leftArm`, `rightArm`, `leftLeg`, `rightLeg`, `extra`, `gorePool`)
  *   wrapped in a procedural power-of-two RGBA pixel-art skin atlas (`256 x 32`, 8 `32 x 32` anatomical cells).
- * - Preserves the exact horror palettes and shader encodings from `sprites.js`:
+ * - Defines the horror palettes and shader encodings:
  *   - `G = 255`: Emissive supernatural eyes and chest hell-cores that flare with `uGlare` and extinguish on death.
  *   - `B = 255`: Arterial gore & torn viscera ramp.
  */

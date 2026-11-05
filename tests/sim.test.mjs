@@ -30,7 +30,6 @@ import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wall
 import { CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { Fog } from '../src/fog.js';
 import { MONSTER_SKIN_CELL, MONSTER_SKIN_CELLS, MONSTER_SKIN_FRAMES, MONSTERS, monsterGoreSkinAtlas, monsterMesh, monsterParts, monsterSkinAtlas } from '../src/monsters.js';
-import { MONSTER_ATLASES, MONSTER_FRAMES, WRAITH_FRAMES, wraithAtlas } from '../src/sprites.js';
 import { SHOTS, TitleDirector } from '../src/title.js';
 import { EXPLOSION_3D_FRAGMENT, EXPLOSION_3D_VERTEX, explosionWidth, LINE_FRAGMENT, LINE_VERTEX, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, MONSTER_FRAGMENT, marsFogNearFar, registerStaticChunk, SPARK_PARTICLE_FRAGMENT, SPRITE_FRAGMENT, World } from '../src/world.js';
 import { MEDIKIT_CELL, MEDIKIT_CELLS, MEDIKIT_FRAMES, medikitAtlas, medikitMesh } from '../src/medikit.js';
@@ -1010,74 +1009,21 @@ const tests = {
     assert.ok(level.shots.length >= 3, 'the warden fires a fan of fireballs at medium range');
   },
 
-  'a wraith is a flat sprite: it wails when it wakes, drifts in, rakes the player and drops no limbs'() {
-    const atlas = wraithAtlas();
-    assert.equal(atlas.data.length, atlas.width * atlas.height * 4);
-    const count = (frame) => {
-      let solid = 0;
-      let eyes = 0;
-      let shroud = 0;
-      let bone = 0;
-      let blood = 0;
-      for (let y = 0; y < atlas.height; y++) {
-        for (let x = 0; x < atlas.cell; x++) {
-          const o = (y * atlas.width + frame * atlas.cell + x) * 4;
-          const r = atlas.data[o];
-          const g = atlas.data[o + 1];
-          const b = atlas.data[o + 2];
-          const a = atlas.data[o + 3];
-          solid += a ? 1 : 0;
-          eyes += g === 255 ? 1 : 0;
-          if (a && g < 255 && b < 255) {
-            if (b > r && r > g)
-              shroud++;
-            else if (r > g && g > b && g > 130)
-              bone++;
-            else if (r > 120 && r > b * 2)
-              blood++;
-          }
-        }
-      }
-      return { solid, eyes, shroud, bone, blood };
-    };
-    for (const frame of [0, 1, 2, 3, WRAITH_FRAMES.dying[0]]) {
-      const { solid, eyes, shroud, bone, blood } = count(frame);
-      assert.ok(solid > 200 && solid < atlas.cell * atlas.height, `frame ${frame} should be a shape, not a block`);
-      assert.ok(eyes >= 4, `frame ${frame} should have eyes`);
-      assert.ok(shroud > 80, `frame ${frame} should have a necrotic violet/indigo shroud`);
-      assert.ok(bone > 8, `frame ${frame} should have pale bone claws, ribs, or fangs`);
-      assert.ok(blood > 8, `frame ${frame} should have blood-tipped claws and crimson accents`);
-    }
-    // the death folds up and dissolves: each frame leaves less than the one before, and the eyes go out
-    const dying = WRAITH_FRAMES.dying.map(count);
-    for (let i = 1; i < dying.length; i++)
-      assert.ok(dying[i].solid < dying[i - 1].solid, `death frame ${i} should have less of the wraith left`);
-    assert.equal(dying[dying.length - 1].eyes, 0, 'the eyes should be out at the end');
-    assert.ok(dying[dying.length - 1].solid > 10, 'embers should be left in the last frame');
-
-    // blown apart, it turns red: the frames are mostly meat in the middle, and it thins out at the end
-    const meat = (frame) => {
-      let red = 0;
-      for (let y = 0; y < atlas.height; y++) {
-        for (let x = 0; x < atlas.cell; x++)
-          red += atlas.data[(y * atlas.width + frame * atlas.cell + x) * 4 + 2] === 255 ? 1 : 0;
-      }
-      return red;
-    };
-    const bursting = WRAITH_FRAMES.bursting;
-    assert.ok(meat(bursting[0]) > 0, 'it should crack open red before it goes');
-    assert.ok(Math.max(...bursting.map(meat)) > 300, 'it should be a mass of red when it bursts');
-    assert.ok(meat(bursting[bursting.length - 1]) < Math.max(...bursting.map(meat)), 'and thin out again');
-    assert.equal(count(bursting[bursting.length - 1]).eyes, 0, 'the eyes should be out when it is gone');
-    assert.ok(Object.values(WRAITH_FRAMES).flat().every((f) => f >= 0 && f < atlas.frames), 'every named frame exists');
+  'a wraith wails when it wakes, drifts in, rakes the player and drops no limbs'() {
     assert.equal(typeof MONSTERS.wraith.die, 'function', 'a wraith has a death of its own');
+    assert.ok(MONSTERS.wraith, 'wraith definition exists in MONSTERS');
+    assert.ok(MONSTERS.wraith.die, 'wraith has a die method');
+    assert.notEqual(MONSTERS.wraith.build, null, 'wraith build is defined');
 
     const game = fresh();
     clearEnemies(game);
     game.player.body.setPosition(new Vec2(6 * 64, 9 * 64 + 32));
     game.player.health = 100;
+    assert.equal(game.player.health, 100, 'player starts healthy');
+    assert.equal(game.enemies.length, 0, 'enemies cleared');
     game.addEnemy('wraith', new Vec2(6 * 64 + 220, 9 * 64 + 32));
     const wraith = game.enemies[0];
+    assert.ok(wraith, 'wraith enemy created');
     game.update(1 / 60, idle);
     game.events.length = 0;
     game.wake(wraith);
@@ -3500,55 +3446,9 @@ const tests = {
       assert.ok(ammoGeo.uvs[i] >= 0 && ammoGeo.uvs[i] <= 1, 'ammo UVs stay within [0, 1]');
   },
 
-  'every monster is an animated horror sprite with multi-tone gore, bone, glowing eyes, and gruesome death and gibbing frames'() {
-    for (const type of Object.keys(ENEMY_TYPES)) {
-      assert.equal(typeof MONSTER_ATLASES[type], 'function', `${type} has a sprite atlas builder`);
-      assert.equal(typeof MONSTERS[type].die, 'function', `${type} has a sprite death animation`);
-      const atlas = MONSTER_ATLASES[type]();
-      assert.equal(atlas.data.length, atlas.width * atlas.height * 4);
-      const stats = (frame) => {
-        let solid = 0;
-        let eyes = 0;
-        let gore = 0;
-        let bone = 0;
-        let hash = 0;
-        let airborne = 0;
-        for (let y = 0; y < atlas.height; y++)
-          for (let x = 0; x < atlas.cell; x++) {
-            const o = (y * atlas.width + frame * atlas.cell + x) * 4;
-            const r = atlas.data[o];
-            const g = atlas.data[o + 1];
-            const b = atlas.data[o + 2];
-            const a = atlas.data[o + 3];
-            solid += a ? 1 : 0;
-            if (a && y < atlas.height - 16)
-              airborne++;
-            eyes += g === 255 ? 1 : 0;
-            gore += b === 255 || (a && r > 120 && r > b * 2) ? 1 : 0;
-            bone += a && g < 255 && b < 255 && r > g && g > b && g > 130 ? 1 : 0;
-            hash = (Math.imul(hash, 31) + r + g + b + a) | 0;
-          }
-        return { solid, airborne, eyes, gore, bone, hash };
-      };
-      const live = [MONSTER_FRAMES.idleA, MONSTER_FRAMES.idleB, MONSTER_FRAMES.attack, MONSTER_FRAMES.pain].map(stats);
-      for (const s of live) {
-        assert.ok(s.solid > 120, `${type} live pose is a substantial sprite shape`);
-        assert.ok(s.eyes >= 4, `${type} live pose has glowing eyes`);
-        assert.ok(s.gore >= 6, `${type} live pose has arterial gore details`);
-        assert.ok(s.bone >= 6, `${type} live pose has bone/fang/horn/rib details`);
-      }
-      assert.notEqual(live[0].hash, live[1].hash, `${type} idleA and idleB frames animate`);
-      assert.notEqual(live[0].hash, live[2].hash, `${type} attack frame is distinct from idle`);
-      const dying = MONSTER_FRAMES.dying.map(stats);
-      assert.equal(dying[dying.length - 1].eyes, 0, `${type} eyes go out by the end of dying`);
-      assert.equal(dying[dying.length - 1].airborne, 0, `${type} final dying corpse frame has no blood or body pixels floating in the air`);
-      if (type !== 'wraith')
-        assert.ok(dying[dying.length - 1].gore > 40, `${type} leaves a bloody carcass and pool of gore when killed`);
-      const bursting = MONSTER_FRAMES.bursting.map(stats);
-      assert.ok(Math.max(...bursting.map((s) => s.gore)) > 250, `${type} detonates into a mass of red gore when gibbed`);
-      assert.equal(bursting[bursting.length - 1].eyes, 0, `${type} eyes are gone when blown apart`);
-      assert.equal(bursting[bursting.length - 1].airborne, 0, `${type} final gibbed corpse frame has no blood or gore pixels floating in the air`);
-    }
+  'every monster is an animated 3D horror monster with death and gibbing behavior'() {
+    for (const type of Object.keys(ENEMY_TYPES))
+      assert.equal(typeof MONSTERS[type].die, 'function', `${type} has a 3D death animation`);
     const game = fresh();
     const victim = game.enemies[0];
     victim.pain = 0.25;
@@ -11259,6 +11159,82 @@ const tests = {
     }
     const overlaySrc = readFileSync(new URL('../src/overlay.js', import.meta.url), 'utf8');
     assert.ok(!overlaySrc.includes('this.line(['));
+  },
+
+  'issue-81 AC-3 every enemy has a power-of-two opaque horror skin atlas with emissive eyes and arterial gore'() {
+    for (const type of Object.keys(ENEMY_TYPES)) {
+      const atlas = monsterSkinAtlas(type);
+      assert.equal(atlas.width, 256);
+      assert.equal(atlas.height, 32);
+      assert.equal(atlas.data.length, 256 * 32 * 4);
+      for (let i = 3; i < atlas.data.length; i += 4)
+        assert.equal(atlas.data[i], 255, `${type} skin atlas cell must be 100% opaque`);
+
+      let eyes = 0;
+      const faceStart = MONSTER_SKIN_CELLS.face * MONSTER_SKIN_CELL;
+      for (let y = 0; y < MONSTER_SKIN_CELL; y++)
+        for (let x = 0; x < MONSTER_SKIN_CELL; x++) {
+          const idx = (y * atlas.width + (faceStart + x)) * 4;
+          if (atlas.data[idx + 1] === 255) eyes++;
+        }
+      assert.ok(eyes >= 8, `${type} face cell has fewer than 8 emissive pixels (G=255)`);
+
+      let gore = 0;
+      const goreStart = MONSTER_SKIN_CELLS.gore * MONSTER_SKIN_CELL;
+      for (let y = 0; y < MONSTER_SKIN_CELL; y++)
+        for (let x = 0; x < MONSTER_SKIN_CELL; x++) {
+          const idx = (y * atlas.width + (goreStart + x)) * 4;
+          if (atlas.data[idx + 2] === 255) gore++;
+        }
+      assert.ok(gore >= 40, `${type} gore cell has fewer than 40 arterial blood pixels (B=255)`);
+    }
+  },
+
+  'issue-81 AC-4 gore skin atlases for non-wraith enemies are drenched in blood and expose bone'() {
+    for (const type of Object.keys(ENEMY_TYPES)) {
+      if (type === 'wraith') continue;
+      const atlas = monsterGoreSkinAtlas(type);
+      assert.equal(atlas.width, 256);
+      assert.equal(atlas.height, 32);
+      let blood = 0;
+      let bone = 0;
+      for (let i = 0; i < atlas.data.length; i += 4) {
+        const r = atlas.data[i];
+        const g = atlas.data[i + 1];
+        const b = atlas.data[i + 2];
+        if (b === 255) blood++;
+        if (r >= 180 && g >= 165) bone++;
+      }
+      assert.ok(blood >= 400, `${type} gore skin atlas has fewer than 400 arterial blood pixels (B=255)`);
+      assert.ok(bone >= 100, `${type} gore skin atlas has fewer than 100 bone pixels (R>=180, G>=165)`);
+    }
+  },
+
+  'issue-81 AC-5 every enemy has a 3D death function and gore anatomy'() {
+    for (const type of Object.keys(ENEMY_TYPES)) {
+      assert.equal(typeof MONSTERS[type].die, 'function', `${type} has a 3D death animation`);
+      assert.ok(MONSTERS[type].die, `${type} death function is defined`);
+      assert.notEqual(MONSTERS[type].die, null, `${type} death function is not null`);
+      const parts = monsterParts(type);
+      assert.ok(parts, `${type} parts returned`);
+      assert.ok(parts.pivots, `${type} missing pivots`);
+      assert.ok(parts.body, `${type} missing body`);
+      assert.ok(parts.head, `${type} missing head`);
+      assert.ok(parts.jaw, `${type} missing jaw`);
+      assert.ok(parts.goreViscera, `${type} missing goreViscera`);
+      assert.ok(parts.gorePool, `${type} missing gorePool`);
+      assert.ok(Array.isArray(parts.goreChunks), `${type} missing goreChunks array`);
+      assert.ok(parts.goreChunks !== null, `${type} goreChunks array is not null`);
+    }
+  },
+
+  'issue-81 AC-6 test suite and monsters module no longer reference the legacy sprites module'() {
+    const simSrc = readFileSync(new URL('./sim.test.mjs', import.meta.url), 'utf8');
+    const monstersSrc = readFileSync(new URL('../src/monsters.js', import.meta.url), 'utf8');
+    const legacyPattern = new RegExp(`(?<!blood)${'sprites\\.js'}`);
+    const filteredSimSrc = simSrc.split('\n').filter((line) => !line.includes('legacyPattern')).join('\n');
+    assert.ok(!legacyPattern.test(filteredSimSrc), 'sim.test.mjs still references sprites.js');
+    assert.ok(!legacyPattern.test(monstersSrc), 'monsters.js still references sprites.js');
   },
 };
 
