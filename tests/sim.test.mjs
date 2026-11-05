@@ -2395,7 +2395,7 @@ const tests = {
     assert.equal(game.fog.isVisible(idx(8, 3)), false, 'still in view while facing away');
     assert.equal(game.fog.isExplored(idx(8, 3)), true, 'forgot a tile it had seen');
     assert.ok(game.fog.exploredCount >= known, 'the explored count went down');
-    assert.equal(game.fog.canSee(8 * 64 + 32, 3 * 64 + 32), false);
+    assert.equal(game.fog.canSee(new Vec2(8 * 64 + 32, 3 * 64 + 32)), false);
   },
 
   'tall walls block sight but the low pillars do not'() {
@@ -2408,24 +2408,121 @@ const tests = {
     fog.explored.fill(0);
     fog.visible.fill(0);
     fog.exploredCount = 0;
-    fog.update(1 * 64 + 32, 9 * 64 + 32, 0);
+    const p1 = new Vec2(1 * 64 + 32, 9 * 64 + 32);
+    fog.update(p1, 0);
     assert.equal(fog.isVisible(idx(3, 9)), true, 'the pillar itself should be seen');
     assert.equal(fog.isVisible(idx(8, 9)), true, 'sight must pass over a low pillar');
     // the wall between the hall and the south room (row 13) stops sight dead
-    fog.update(10 * 64 + 32, 12 * 64 + 32, Math.PI / 2);
+    const p2 = new Vec2(10 * 64 + 32, 12 * 64 + 32);
+    fog.update(p2, Math.PI / 2);
     assert.equal(fog.isVisible(idx(10, 13)), true, 'the wall face itself is seen');
     assert.equal(fog.isVisible(idx(10, 15)), false, 'saw through a tall wall');
+  },
+
+  'AC-1 Fog.update takes a Vec2 and matches the scalar-era visibility'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { level, fog } = game;
+    const idx = (x, y) => y * level.width + x;
+    fog.explored.fill(0);
+    fog.visible.fill(0);
+    fog.exploredCount = 0;
+    assert.equal(fog.update.length, 2);
+    const pos = new Vec2(1 * 64 + 32, 9 * 64 + 32);
+    fog.update(pos, 0);
+    assert.equal(fog.isVisible(idx(3, 9)), true, 'pillar tile is visible');
+    assert.equal(fog.isVisible(idx(8, 9)), true, 'hall tile past pillar is visible');
+    assert.ok(fog.exploredCount > 0, 'explored count updated');
+  },
+
+  'AC-2 Fog.canSee and tileIndex accept a Vec2'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { level, fog } = game;
+    fog.explored.fill(0);
+    fog.visible.fill(0);
+    fog.exploredCount = 0;
+    const pos = new Vec2(1 * 64 + 32, 9 * 64 + 32);
+    fog.update(pos, 0);
+    const visiblePos = new Vec2(8 * 64 + 32, 9 * 64 + 32);
+    const behindClosedDoor = new Vec2(8 * 64 + 32, 3 * 64 + 32);
+    assert.equal(fog.canSee(visiblePos), true, 'visible tile returns true');
+    assert.equal(fog.canSee(behindClosedDoor), false, 'hidden tile behind door returns false');
+    assert.equal(fog.tileIndex(visiblePos), fog.grid.getCell(visiblePos));
+    const oob = new Vec2(-64, -64);
+    assert.ok(fog.tileIndex(oob) < 0, 'out-of-bounds Vec2 yields negative index');
+    assert.equal(fog.canSee(oob), false, 'out-of-bounds Vec2 cannot be seen');
+  },
+
+  'AC-3 Fog.cast takes a Vec2 origin without mutating it'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { level, fog } = game;
+    const idx = (x, y) => y * level.width + x;
+    fog.visible.fill(0);
+    const origin = new Vec2(10 * 64 + 32, 12 * 64 + 32);
+    const origX = origin.x;
+    const origY = origin.y;
+    fog.cast(origin, Math.PI / 2, 20);
+    assert.equal(fog.isVisible(idx(10, 13)), true, 'wall tile is marked visible');
+    assert.equal(fog.isVisible(idx(10, 15)), false, 'tile beyond tall wall is not marked visible');
+    assert.equal(origin.x, origX, 'origin.x was not mutated');
+    assert.equal(origin.y, origY, 'origin.y was not mutated');
+  },
+
+  'AC-4 Fog.update skips unchanged poses and caches a copy of the Vec2'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { level, fog } = game;
+    const idx = (x, y) => y * level.width + x;
+    const pos = new Vec2(1 * 64 + 32, 9 * 64 + 32);
+    fog.update(pos, 0);
+    const sentinelIdx = idx(8, 9);
+    assert.equal(fog.isVisible(sentinelIdx), true);
+    fog.visible[sentinelIdx] = 0;
+
+    // Shift by 1 unit (< 1.5 units): update is skipped and sentinel stays 0
+    pos.x += 1;
+    fog.update(pos, 0);
+    assert.equal(fog.isVisible(sentinelIdx), false, 'small shift < 1.5 units skips recomputation');
+
+    // Shift by 2 more units (total shift > 1.5 units from last cached pos): recomputed
+    pos.x += 2;
+    fog.update(pos, 0);
+    assert.equal(fog.isVisible(sentinelIdx), true, 'shift >= 1.5 units triggers recomputation');
+
+    // Mutating pos afterwards does not corrupt fog.lastPos
+    const lastX = fog.lastPos.x;
+    const lastY = fog.lastPos.y;
+    pos.x += 100;
+    pos.y += 100;
+    assert.equal(fog.lastPos.x, lastX, 'fog.lastPos did not alias mutated vector');
+    assert.equal(fog.lastPos.y, lastY, 'fog.lastPos did not alias mutated vector');
+  },
+
+  'AC-5 game and hud callers pass vectors to Fog without scalar extraction'() {
+    const gameSrc = readFileSync(new URL('../src/game.js', import.meta.url), 'utf8');
+    const hudSrc = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
+    const badPatterns = [
+      /fog\.update\([^)]*\.(?:pos\.)?[xy]/,
+      /fog\.canSee\([^)]*\.(?:pos\.)?[xy]/,
+      /this\.fog\.canSee\([^)]*\.(?:pos\.)?[xy]/,
+    ];
+    for (const pattern of badPatterns) {
+      assert.ok(!pattern.test(gameSrc), `src/game.js matched forbidden scalar extraction pattern: ${pattern}`);
+      assert.ok(!pattern.test(hudSrc), `src/hud.js matched forbidden scalar extraction pattern: ${pattern}`);
+    }
   },
 
   'enemies show on the map only while in view, and a new level starts with a fresh fog'() {
     const game = fresh();
     const { fog } = game;
     // enemies in the hall behind the closed door are not in view
-    assert.ok(game.enemies.every((e) => !fog.canSee(e.pos.x, e.pos.y)), 'an enemy is visible through the walls');
+    assert.ok(game.enemies.every((e) => !fog.canSee(e.pos)), 'an enemy is visible through the walls');
     game.player.body.setPosition(new Vec2(6 * 64 + 32, 9 * 64 + 32));
     game.player.angle = 0;
     run(game, 0.2);
-    assert.ok(game.enemies.some((e) => fog.canSee(e.pos.x, e.pos.y)), 'an enemy in plain view is not visible');
+    assert.ok(game.enemies.some((e) => fog.canSee(e.pos)), 'an enemy in plain view is not visible');
     const known = fog.exploredCount;
     assert.ok(known > 0);
     game.load(1);
@@ -7608,7 +7705,7 @@ const tests = {
     assert.equal(outdoorRange, MARS_OUTDOOR_FOG.y / 64, 'outdoor Mars dust storm restricts minimap cone range (~4.06 tiles)');
     marsGame.fog.explored.fill(0);
     marsGame.fog.exploredCount = 0;
-    marsGame.fog.update(marsGame.player.pos.x, marsGame.player.pos.y, 0, outdoorRange);
+    marsGame.fog.update(marsGame.player.pos, 0, outdoorRange);
     // Tile (12, 3) is 2 tiles ahead (visible in storm), while tile (17, 3) is 7 tiles ahead (beyond storm fog)
     assert.equal(marsGame.fog.isVisible(3 * marsGame.level.width + 12), true, 'nearby tile within storm fog is visible on minimap');
     assert.equal(marsGame.fog.isVisible(3 * marsGame.level.width + 17), false, 'distant tile beyond storm fog is hidden on minimap');
@@ -7748,7 +7845,7 @@ const tests = {
     game.player.body.setPosition(game.player.pos);
     game.player.angle = 0;
     level.setDoorOpen(door, 0);
-    fog.update(game.player.pos.x, game.player.pos.y, 0);
+    fog.update(game.player.pos, 0);
 
     const inFrontOfDoor = new Vec2(4 * 64 + 32, 3 * 64 + 32);
     const onClosedDoor = door.center;
@@ -7766,13 +7863,13 @@ const tests = {
 
     // Crack the door open slightly (5%): sight immediately passes through the upper doorway gap so nothing pops in
     level.setDoorOpen(door, 0.05);
-    fog.update(game.player.pos.x, game.player.pos.y, 0);
+    fog.update(game.player.pos, 0);
     assert.equal(fog.canSeeNear(oneTileBehindDoor), true, 'cracking the door open 5% immediately makes the tile behind it visible');
     assert.equal(fog.canSeeNear(twoTilesBehindDoor), true, 'cracking the door open 5% immediately reveals the hall behind it');
 
     // Close the door again to verify entity, particle, and light occlusion behind it
     level.setDoorOpen(door, 0);
-    fog.update(game.player.pos.x, game.player.pos.y, 0);
+    fog.update(game.player.pos, 0);
 
     // 2. Dynamic lights and ceiling lights behind a closed door or wall are culled when fog is provided
     const camPos = new Vec3(game.player.pos.x, EYE, game.player.pos.y);
@@ -7975,7 +8072,7 @@ const tests = {
     assert.equal(e1m1.grid.getCell(new Vec2(3 * 64 + 10, 2 * 64 + 10)), 2 * e1m1.width + 3, 'Level.grid.getCell resolves tile index');
     const e1m1Fog = new Fog(e1m1);
     assert.equal(e1m1Fog.grid, e1m1.grid, 'Fog reuses Level.grid');
-    assert.equal(e1m1Fog.tileIndex(3 * 64 + 10, 2 * 64 + 10), 2 * e1m1.width + 3, 'Fog.tileIndex delegates to Spock Grid');
+    assert.equal(e1m1Fog.tileIndex(new Vec2(3 * 64 + 10, 2 * 64 + 10)), 2 * e1m1.width + 3, 'Fog.tileIndex delegates to Spock Grid');
 
     const chunks = [];
     const chunkGeom = new CustomMesh();

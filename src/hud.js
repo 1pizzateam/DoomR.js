@@ -805,7 +805,7 @@ export class Hud {
 
     // enemies only show while they are in view: the map is not a radar
     for (const enemy of game.enemies) {
-      if (enemy.state === 'dead' || !fog.canSee(enemy.pos.x, enemy.pos.y))
+      if (enemy.state === 'dead' || !fog.canSee(enemy.pos))
         continue;
       layer.fillRect(ox + (enemy.pos.x / TILE) * s - 1.5, oy + (enemy.pos.y / TILE) * s - 1.5, 3, 3, RGB[ORANGE]);
     }
@@ -1078,7 +1078,7 @@ export class Hud {
 
     // visible enemies (only while currently in line-of-sight)
     for (const enemy of game.enemies) {
-      if (enemy.state === 'dead' || !fog.canSee(enemy.pos.x, enemy.pos.y))
+      if (enemy.state === 'dead' || !fog.canSee(enemy.pos))
         continue;
       const ex = ox + (enemy.pos.x / TILE) * s;
       const ey = oy + (enemy.pos.y / TILE) * s;
