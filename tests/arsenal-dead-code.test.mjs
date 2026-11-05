@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const read = (name) => readFileSync(new URL(`../src/${name}.js`, import.meta.url), 'utf8');
 const arsenalSrc = read('arsenal');
@@ -56,6 +56,13 @@ const checks = [
       assert.ok(n in arsenal, `${n} missing from arsenal`);
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.ok(pkg.scripts.test.includes('tests/arsenal-dead-code.test.mjs'));
+  }],
+  ['AC-3 orphaned weapon-player-hands.polygun.json model asset is removed', () => {
+    assert.equal(existsSync(new URL('../src/models/weapon-player-hands.polygun.json', import.meta.url)), false);
+  }],
+  ['AC-5 no source file references weapon-player-hands', () => {
+    assert.doesNotMatch(arsenalSrc, /weapon-player-hands/);
+    assert.doesNotMatch(worldSrc, /weapon-player-hands/);
   }],
 ];
 
