@@ -84,6 +84,9 @@ export const DEFAULT_SELECT_HINT = '←/→ select mission  ·  ↑/↓ or 1-4 s
 
 const NO_OVERRIDES = new Map();
 
+const hintRow = (keys, label) => Object.freeze({ keys, label });
+const hintGroup = (title, rows) => Object.freeze({ title, rows: Object.freeze(rows) });
+
 const buildHints = (label, layoutText, custom = NO_OVERRIDES) => {
   const weapons = custom.has('weapon1') || custom.has('weapon2') || custom.has('weapon3') || custom.has('weapon4')
     ? `${label('weapon1')} ${label('weapon2')} ${label('weapon3')} ${label('weapon4')}`
@@ -93,14 +96,35 @@ const buildHints = (label, layoutText, custom = NO_OVERRIDES) => {
   const jump = custom.has('jump') ? label('jump') : 'SPACE';
   const run = custom.has('run') ? label('run') : 'SHIFT';
   const automap = custom.has('automap') ? label('automap') : 'TAB';
+  const moveKeys = `${label('moveForward')} ${label('strafeLeft')} ${label('moveBack')} ${label('strafeRight')}`;
+  const switchLevelKeys = `${label('levelPrev')} / ${label('levelNext')}`;
+
   return Object.freeze([
-    `${label('moveForward')} ${label('strafeLeft')} ${label('moveBack')} ${label('strafeRight')}  move     ${turn}  turn`,
-    `${fire}  fire     ${weapons}  weapons`,
-    `${jump}  jump     ${label('crouch')}  crouch     ${run}  run`,
-    `${label('use')}  open doors     ${label('levelPrev')} / ${label('levelNext')}  switch level     ${label('sound')}  sound`,
-    `${automap}  automap     ${label('nightVision')}  night vision     ${label('music')}  music     ESC  pause`,
-    `${label('layoutCycle')}  keyboard layout: ${layoutText}`,
-    `${label('controls')}  controls`,
+    hintGroup('MOVE', [
+      hintRow(moveKeys, 'move'),
+      hintRow(turn, 'turn'),
+      hintRow(jump, 'jump'),
+      hintRow(label('crouch'), 'crouch'),
+      hintRow(run, 'run'),
+    ]),
+    hintGroup('COMBAT', [
+      hintRow(fire, 'fire'),
+      hintRow(weapons, 'weapons'),
+      hintRow(label('grenade'), 'grenade'),
+      hintRow(label('use'), 'use / open doors'),
+    ]),
+    hintGroup('WORLD', [
+      hintRow(switchLevelKeys, 'switch level'),
+      hintRow(automap, 'automap'),
+      hintRow(label('nightVision'), 'night vision'),
+    ]),
+    hintGroup('SYSTEM', [
+      hintRow('ESC', 'pause'),
+      hintRow(label('sound'), 'sound'),
+      hintRow(label('music'), 'music'),
+      hintRow(label('layoutCycle'), `layout: ${layoutText}`),
+      hintRow(label('controls'), 'controls'),
+    ]),
   ]);
 };
 
