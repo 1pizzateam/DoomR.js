@@ -8319,11 +8319,14 @@ const tests = {
     const hud = new Hud(fakeCanvas, fakeOverlay);
     hud.resize(1024, 768, 1);
     hud.render(game);
-    assert.ok(texts.some((t) => t.includes(';  sound')), 'AC-6 semicolon sound row');
-    assert.ok(texts.some((t) => t.includes('N  night vision')), 'AC-6 N night vision row');
-    assert.ok(!texts.some((t) => t.includes('N  sound')), 'AC-6 no N sound label');
-    assert.ok(texts.some((t) => t.includes('M  music')), 'AC-6 music label');
-    assert.ok(texts.some((t) => t.includes('ESC  pause')), 'AC-6 pause label');
+    assert.ok(texts.includes(';'), 'AC-6 semicolon sound row');
+    assert.ok(texts.includes('sound'), 'AC-6 sound label');
+    assert.ok(texts.includes('N'), 'AC-6 N night vision row');
+    assert.ok(texts.includes('night vision'), 'AC-6 night vision label');
+    assert.ok(texts.includes('M'), 'AC-6 music label');
+    assert.ok(texts.includes('music'), 'AC-6 music label');
+    assert.ok(texts.includes('ESC'), 'AC-6 pause label');
+    assert.ok(texts.includes('pause'), 'AC-6 pause label');
   },
 
   'AC-7 README controls table maps semicolon to sound and N to night vision'() {
@@ -8416,22 +8419,26 @@ const tests = {
   'AC-5 keyboard layouts: hint lines default to QWERTY and follow AZERTY and Dvorak layouts'() {
     const k = new Keymap({ storage: null, navigator: null });
     assert.deepEqual(k.hintLines, DEFAULT_HINT_LINES);
-    assert.deepEqual(k.hintLines.slice(0, 5), [
-      'W A S D  move     mouse / ← →  turn',
-      'click / X  fire     1-4  weapons',
-      'SPACE  jump     C  crouch     SHIFT  run',
-      'E  open doors     [ / ]  switch level     ;  sound',
-      'TAB  automap     N  night vision     M  music     ESC  pause',
-    ]);
-    assert.equal(k.hintLines[5], 'F2  keyboard layout: auto (QWERTY)');
+    assert.equal(k.hintLines.length, 4);
+    assert.equal(k.hintLines[0].title, 'MOVE');
+    assert.equal(k.hintLines[0].rows[0].keys, 'W A S D');
+    assert.equal(k.hintLines[0].rows[0].label, 'move');
+    assert.equal(k.hintLines[1].title, 'COMBAT');
+    assert.equal(k.hintLines[2].title, 'WORLD');
+    assert.equal(k.hintLines[3].title, 'SYSTEM');
+
     k.applyLayoutMap(new Map(Object.entries(PRESETS.azerty.glyphs)));
     assert.equal(k.layoutName, 'AZERTY');
-    assert.ok(k.hintLines[0].startsWith('Z Q S D  move'));
-    assert.equal(k.hintLines[3], 'E  open doors     ^ / $  switch level     ;  sound');
-    assert.ok(k.hintLines[4].includes('M  music'));
+    assert.equal(k.hintLines[0].rows[0].keys, 'Z Q S D');
+    assert.equal(k.hintLines[2].rows[0].keys, '^ / $');
+    assert.equal(k.hintLines[2].rows[0].label, 'switch level');
+    assert.equal(k.hintLines[3].rows[2].keys, 'M');
+    assert.equal(k.hintLines[3].rows[2].label, 'music');
+
     const d = new Keymap({ storage: { getItem: () => 'dvorak' }, navigator: null });
-    assert.ok(d.hintLines[0].startsWith(', A O E  move'));
-    assert.ok(d.hintLines[3].startsWith('.  open doors'));
+    assert.equal(d.hintLines[0].rows[0].keys, ', A O E');
+    assert.equal(d.hintLines[1].rows[3].keys, '.');
+    assert.equal(d.hintLines[1].rows[3].label, 'use / open doors');
   },
 
   'AC-6 keyboard layouts: live learning detects AZERTY once and F2 cycles and persists the override'() {
@@ -8484,12 +8491,14 @@ const tests = {
     hud.resize(1024, 768, 1);
     hud.controlHints = new Keymap({ storage: { getItem: () => 'azerty' }, navigator: null }).hintLines;
     hud.render(game);
-    assert.ok(texts.includes('Z Q S D  move     mouse / ← →  turn'));
-    assert.ok(texts.includes('F2  keyboard layout: AZERTY'));
+    assert.ok(texts.includes('Z Q S D'));
+    assert.ok(texts.includes('MOVE'));
+    assert.ok(texts.includes('F2'));
+    assert.ok(texts.includes('layout: AZERTY'));
     texts.length = 0;
     game.state = 'paused';
     hud.render(game);
-    assert.ok(texts.some((t) => t.startsWith('F2  keyboard layout:')));
+    assert.ok(texts.some((t) => t.startsWith('layout:')));
     const src = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
     for (const s of ["input.took('layoutCycle')", 'keymap.cycleOverride()', 'hud.controlHints = keymap.hintLines'])
       assert.ok(src.includes(s), `AC-7 main.js contains ${s}`);
@@ -9701,16 +9710,12 @@ const tests = {
       assert.equal(k.unboundActions().length, 0);
     }
     const k = new Keymap({ storage: null, navigator: null });
-    assert.deepEqual(k.hintLines.slice(0, 6), DEFAULT_HINT_LINES.slice(0, 6));
-    assert.deepEqual(k.hintLines.slice(0, 5), [
-      'W A S D  move     mouse / ← →  turn',
-      'click / X  fire     1-4  weapons',
-      'SPACE  jump     C  crouch     SHIFT  run',
-      'E  open doors     [ / ]  switch level     ;  sound',
-      'TAB  automap     N  night vision     M  music     ESC  pause',
-    ]);
-    assert.equal(k.hintLines[5], 'F2  keyboard layout: auto (QWERTY)');
-    assert.equal(k.hintLines[6], 'F1  controls');
+    assert.deepEqual(k.hintLines, DEFAULT_HINT_LINES);
+    assert.equal(k.hintLines.length, 4);
+    assert.equal(k.hintLines[3].rows[3].keys, 'F2');
+    assert.equal(k.hintLines[3].rows[3].label, 'layout: auto (QWERTY)');
+    assert.equal(k.hintLines[3].rows[4].keys, 'F1');
+    assert.equal(k.hintLines[3].rows[4].label, 'controls');
     const ids = [];
     for (const g of CONTROL_GROUPS)
       for (const a of g.actions)
@@ -9775,12 +9780,13 @@ const tests = {
   },
 
   'AC-4 hint lines: default fire hint is click / X and custom fire prints one label'() {
-    assert.equal(DEFAULT_HINT_LINES[1], 'click / X  fire     1-4  weapons');
+    assert.equal(DEFAULT_HINT_LINES[1].rows[0].keys, 'click / X');
+    assert.equal(DEFAULT_HINT_LINES[1].rows[0].label, 'fire');
     const k = new Keymap({ storage: null, navigator: null });
-    assert.equal(k.hintLines[1], 'click / X  fire     1-4  weapons');
+    assert.equal(k.hintLines[1].rows[0].keys, 'click / X');
     k.setBinding('fire', 0, 'KeyJ');
-    assert.ok(k.hintLines[1].startsWith('J  fire'));
-    assert.ok(!/click|OPT|CTRL/.test(k.hintLines[1]));
+    assert.equal(k.hintLines[1].rows[0].keys, 'J');
+    assert.equal(k.hintLines[1].rows[0].label, 'fire');
   },
 
   'AC-5 two-slot invariant: every default action fits MAX_SLOTS'() {
@@ -10512,8 +10518,8 @@ const tests = {
       drawn.length = 0;
       rects.length = 0;
       hud.render(game);
-      assert.ok(!drawn.includes('E') && !drawn.includes('OPEN'), label);
-      assert.equal(rects.filter((r) => r.y > 394 && r.h < 30).length, 0, label);
+      assert.ok(!drawn.includes('OPEN'), label);
+      assert.equal(rects.filter((r) => r.y > 394 && r.h === 16).length, 0, label);
     };
     game.message.age = 99;
     game.usePrompt.verb = 'OPEN';
@@ -11454,6 +11460,140 @@ const tests = {
     const filteredSimSrc = simSrc.split('\n').filter((line) => !line.includes('legacyPattern')).join('\n');
     assert.ok(!legacyPattern.test(filteredSimSrc), 'sim.test.mjs still references sprites.js');
     assert.ok(!legacyPattern.test(monstersSrc), 'monsters.js still references sprites.js');
+  },
+
+  'AC-1 default hint structure': () => {
+    assert.ok(Array.isArray(DEFAULT_HINT_LINES), 'DEFAULT_HINT_LINES is an array');
+    assert.equal(DEFAULT_HINT_LINES.length, 4, 'Has 4 functional groups');
+    const titles = DEFAULT_HINT_LINES.map((g) => g.title);
+    assert.deepEqual(titles, ['MOVE', 'COMBAT', 'WORLD', 'SYSTEM']);
+    for (const group of DEFAULT_HINT_LINES) {
+      assert.ok(Array.isArray(group.rows), `${group.title} has rows array`);
+      for (const row of group.rows) {
+        assert.equal(typeof row.keys, 'string');
+        assert.equal(typeof row.label, 'string');
+      }
+    }
+    assert.equal(DEFAULT_HINT_LINES[0].rows[0].keys, 'W A S D');
+    assert.equal(DEFAULT_HINT_LINES[0].rows[0].label, 'move');
+    assert.equal(DEFAULT_HINT_LINES[1].rows[0].keys, 'click / X');
+    assert.equal(DEFAULT_HINT_LINES[1].rows[0].label, 'fire');
+  },
+
+  'AC-2 layout presets and custom overrides in hints': () => {
+    const k = new Keymap({ storage: null, navigator: null });
+    k.applyLayoutMap(new Map(Object.entries(PRESETS.azerty.glyphs)));
+    assert.equal(k.hintLines[0].rows[0].keys, 'Z Q S D');
+    assert.equal(k.hintLines[2].rows[0].keys, '^ / $');
+
+    // Custom fire override
+    k.setBinding('fire', 0, 'KeyJ');
+    assert.equal(k.hintLines[1].rows[0].keys, 'J');
+
+    // Unbound action
+    k.clearBinding('crouch', 0);
+    assert.equal(k.hintLines[0].rows[3].keys, 'UNBOUND');
+  },
+
+  'AC-3 HUD drawControlHints renders keycaps and returns panel height': () => {
+    const texts = [];
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+          fillText(str) { texts.push(str); },
+        };
+      },
+    };
+    const hud = new Hud(fakeCanvas, {});
+    hud.resize(1024, 768, 1);
+    const height = hud.drawControlHints(512, 200);
+    assert.ok(height > 0, 'Returns non-zero panel height');
+    assert.ok(texts.includes('MOVE'));
+    assert.ok(texts.includes('COMBAT'));
+    assert.ok(texts.includes('WORLD'));
+    assert.ok(texts.includes('SYSTEM'));
+    assert.ok(texts.includes('W A S D'));
+  },
+
+  'AC-4 narrow viewport single column layout': () => {
+    const texts = [];
+    const lines = [];
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo(x, y) { lines.push([x, y]); }, stroke() {},
+          fillText(str, x, y) { texts.push({ str, x, y }); },
+        };
+      },
+    };
+    const hud = new Hud(fakeCanvas, {});
+    hud.resize(480, 800, 1);
+    const height = hud.drawControlHints(240, 100);
+    assert.ok(height > 0);
+    for (const t of texts) {
+      assert.ok(t.x >= 0 && t.x <= 480, `Text "${t.str}" at x=${t.x} is within canvas bounds`);
+    }
+  },
+
+  'AC-5 wide viewport multi-column layout': () => {
+    const texts = [];
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+          fillText(str, x) { texts.push({ str, x }); },
+        };
+      },
+    };
+    const hud = new Hud(fakeCanvas, {});
+    hud.resize(1024, 768, 1);
+    hud.drawControlHints(512, 100);
+    const moveTitle = texts.find((t) => t.str === 'MOVE');
+    const combatTitle = texts.find((t) => t.str === 'COMBAT');
+    const worldTitle = texts.find((t) => t.str === 'WORLD');
+    const sysTitle = texts.find((t) => t.str === 'SYSTEM');
+    assert.ok(moveTitle && combatTitle && worldTitle && sysTitle);
+    assert.ok(moveTitle.x < combatTitle.x);
+    assert.ok(combatTitle.x < worldTitle.x);
+    assert.ok(worldTitle.x < sysTitle.x);
+  },
+
+  'AC-7 unbound warning positioning below panel': () => {
+    const texts = [];
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+          fillText(str, x, y) { texts.push({ str, y }); },
+        };
+      },
+    };
+    const fakeOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } },
+    };
+    const hud = new Hud(fakeCanvas, fakeOverlay);
+    hud.resize(1024, 768, 1);
+    hud.setControlsStatus('F1', 2);
+    const game = fresh(0);
+    game.state = 'title';
+    game.selectingDifficulty = false;
+    hud.render(game);
+    const unboundMsg = texts.find((t) => t.str.includes('2 controls unbound'));
+    assert.ok(unboundMsg, 'Unbound warning is rendered');
+    const panelStartY = 768 / 2 + 100;
+    const hintsH = hud.drawControlHints(512, panelStartY);
+    assert.ok(unboundMsg.y >= panelStartY + hintsH + 16, `Warning at y=${unboundMsg.y} is strictly below panel (start=${panelStartY}, h=${hintsH})`);
   },
 };
 

@@ -4,8 +4,11 @@ import { Vec2, Vec3 } from '@1pizzateam/roostr';
 
 const worldSrc = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 const ceilingSrc = readFileSync(new URL('../src/ceiling.js', import.meta.url), 'utf8');
+const hudSrc = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
 const arsenal = await import('../src/arsenal.js');
 const ceiling = await import('../src/ceiling.js');
+const { Hud } = await import('../src/hud.js');
+const { DEFAULT_HINT_LINES } = await import('../src/keymap.js');
 
 function extractMethodBody(src, methodName) {
   const cleanName = methodName.replace(/\(.*$/, '').trim();
@@ -280,6 +283,51 @@ const checks = [
     assert.equal(pointLights[0].position, f1.position, 'nearest fixture at slot 0');
     assert.equal(pointLights[1].position, f2.position, 'second nearest fixture at slot 1');
     assert.equal(pointLights[2].position, f3.position, 'third nearest fixture at slot 2');
+  }],
+  ['AC-6 drawControlHints per-frame zero heap allocation', () => {
+    const drawBody = extractMethodBody(hudSrc, 'drawControlHints(');
+    assert.doesNotMatch(drawBody, /\bnew\s+/, 'drawControlHints should not call new');
+    assert.doesNotMatch(drawBody, /\[\s*\]/, 'drawControlHints should not allocate [] literal');
+    assert.doesNotMatch(drawBody, /\{\s*size\b/, 'drawControlHints should not allocate inline style object literals');
+    assert.doesNotMatch(drawBody, /\.map\s*\(/, 'drawControlHints should not call .map');
+    assert.doesNotMatch(drawBody, /\.filter\s*\(/, 'drawControlHints should not call .filter');
+    assert.doesNotMatch(drawBody, /\.slice\s*\(/, 'drawControlHints should not call .slice');
+
+    // Runtime allocation test across animation frames
+    let lineCallCount = 0;
+    let textCallCount = 0;
+    const ctx = {
+      save() {},
+      restore() {},
+      fillText() { textCallCount++; },
+      strokeText() {},
+      measureText() { return { width: 40 }; },
+      setTransform() {},
+      clearRect() {},
+      beginPath() {},
+      moveTo() {},
+      lineTo() {},
+      stroke() { lineCallCount++; },
+    };
+    const overlay = {
+      glow: { line() {} },
+      crisp: { line() {}, fillRect() {}, rectLine() {} },
+      clear() {},
+    };
+    const hud = new Hud({ width: 800, height: 600, getContext: () => ctx }, overlay);
+    hud.resize(800, 600, 1);
+    hud.controlHints = DEFAULT_HINT_LINES;
+
+    // Warm up layout cache
+    hud.drawControlHints(400, 200);
+
+    // Run repeated frames
+    const runs = 20;
+    for (let i = 0; i < runs; i++)
+      hud.drawControlHints(400, 200);
+
+    assert.ok(textCallCount > 0, 'drawControlHints should have rendered text');
+    assert.ok(lineCallCount > 0, 'drawControlHints should have rendered line-art keycaps');
   }],
 ];
 

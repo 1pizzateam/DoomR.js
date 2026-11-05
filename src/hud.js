@@ -113,6 +113,78 @@ const CONTROLS_LAYOUT = {
   nameX: 0, slot0X: 0, slot1X: 0, slotHalf: 0, resetX: 0, backX: 0, buttonY: 0,
 };
 
+const HINT_TITLE_STYLE = Object.freeze({ size: 11, align: 'left', alpha: 0.55, weight: 800, glow: 3 });
+const HINT_KEY_STYLE = Object.freeze({ size: 10, align: 'center', alpha: 0.85, weight: 600, glow: 2 });
+const HINT_KEY_COMPACT_STYLE = Object.freeze({ size: 8, align: 'center', alpha: 0.85, weight: 600, glow: 2 });
+const HINT_LABEL_STYLE = Object.freeze({ size: 10, align: 'left', alpha: 0.72, weight: 500, glow: 0 });
+
+const HINTS_LAYOUT = {
+  width: 0,
+  height: 0,
+  hintsRef: null,
+  cols: 1,
+  totalH: 0,
+  colPositions: [0, 0, 0, 0],
+  colWidths: [0, 0, 0, 0],
+  groupOffsetsY: [0, 0, 0, 0],
+  groupHeights: [0, 0, 0, 0],
+};
+
+const layoutHints = (hints, width, height) => {
+  const H = HINTS_LAYOUT;
+  if (H.hintsRef === hints && H.width === width && H.height === height)
+    return H;
+  H.hintsRef = hints;
+  H.width = width;
+  H.height = height;
+
+  if (!Array.isArray(hints) || hints.length === 0) {
+    H.cols = 1;
+    H.totalH = 0;
+    return H;
+  }
+
+  const rowHeight = 18;
+  const headerHeight = 16;
+  const numGroups = hints.length;
+  for (let g = 0; g < numGroups; g++) {
+    const rowCount = Array.isArray(hints[g]?.rows) ? hints[g].rows.length : 0;
+    H.groupHeights[g] = headerHeight + rowCount * rowHeight;
+  }
+
+  if (width < 560) {
+    H.cols = 1;
+    const colW = Math.min(width - 32, 280);
+    H.colWidths[0] = colW;
+    H.colPositions[0] = -colW / 2;
+    let currY = 0;
+    for (let g = 0; g < numGroups; g++) {
+      H.groupOffsetsY[g] = currY;
+      currY += H.groupHeights[g] + 6;
+    }
+    H.totalH = currY > 0 ? currY - 6 : 0;
+  } else {
+    H.cols = Math.min(numGroups, 4);
+    const colGap = 16;
+    const maxTotalW = Math.min(width - 48, 720);
+    const colW = Math.floor((maxTotalW - colGap * (H.cols - 1)) / H.cols);
+    const totalW = colW * H.cols + colGap * (H.cols - 1);
+    const startX = -totalW / 2;
+
+    let maxColH = 0;
+    for (let g = 0; g < H.cols; g++) {
+      H.colWidths[g] = colW;
+      H.colPositions[g] = startX + g * (colW + colGap);
+      H.groupOffsetsY[g] = 0;
+      if (H.groupHeights[g] > maxColH)
+        maxColH = H.groupHeights[g];
+    }
+    H.totalH = maxColH;
+  }
+
+  return H;
+};
+
 export const layoutControls = (width, height) => {
   const L = CONTROLS_LAYOUT;
   L.boxW = Utils.clamp(width - 48, 360, 640);
@@ -180,9 +252,57 @@ export class Hud {
   }
 
   drawControlHints(cx, y) {
-    const lines = this.controlHints;
-    for (let i = 0; i < lines.length; i++)
-      this.text(lines[i], cx, y + i * 20, BLUE, i === 5 ? HINT_DIM_STYLE : HINT_STYLE);
+    const hints = this.controlHints;
+    if (!Array.isArray(hints) || hints.length === 0)
+      return 0;
+
+    // Backward compatibility if hints are still an array of strings
+    if (typeof hints[0] === 'string') {
+      for (let i = 0; i < hints.length; i++)
+        this.text(hints[i], cx, y + i * 20, BLUE, i === 5 ? HINT_DIM_STYLE : HINT_STYLE);
+      return hints.length * 20;
+    }
+
+    const L = layoutHints(hints, this.width, this.height);
+    const rowH = 18;
+    const headerH = 16;
+    const capPadX = 3;
+    const capH = 14;
+
+    for (let g = 0; g < hints.length; g++) {
+      const group = hints[g];
+      const colIdx = L.cols === 1 ? 0 : g;
+      const colX = cx + L.colPositions[colIdx];
+      const colW = L.colWidths[colIdx];
+      const groupY = y + L.groupOffsetsY[g];
+
+      this.text(group.title, colX, groupY + 12, BLUE, HINT_TITLE_STYLE);
+
+      const rows = group.rows;
+      if (!Array.isArray(rows))
+        continue;
+
+      const keyW = Utils.clamp(Math.floor(colW * 0.44), 36, 90);
+      const labelX = colX + keyW + 6;
+
+      for (let r = 0; r < rows.length; r++) {
+        const row = rows[r];
+        const ry = groupY + headerH + r * rowH;
+        const capBoxX = colX;
+        const capBoxY = ry + 2;
+
+        this.canvasLine(controlsRect(capBoxX, capBoxY, capBoxX + keyW, capBoxY + capH), BLUE, 0.35, 1, 3);
+
+        const keysText = row.keys ?? '';
+        const keyColor = keysText === 'UNBOUND' ? RED : BLUE;
+        const keyStyle = keysText.length > 10 ? HINT_KEY_COMPACT_STYLE : HINT_KEY_STYLE;
+        this.text(keysText, capBoxX + keyW / 2, ry + 12, keyColor, keyStyle);
+
+        this.text(row.label ?? '', labelX, ry + 12, BLUE, HINT_LABEL_STYLE);
+      }
+    }
+
+    return L.totalH;
   }
 
   toggleAutomap(game) {
@@ -1461,9 +1581,9 @@ export class Hud {
         this.text('Rip and tear', cx, cy - 20, GREEN, { size: 15, align: 'center', alpha: 0.9 });
         this.text('click or press ENTER to start', cx, cy + 56, ORANGE, { size: 16, align: 'center', alpha: 0.5 + blink * 0.5 });
         this.text(this.controlsEntryText, cx, cy + CONTROLS_ENTRY_TITLE_DY, GREEN, { size: 13, align: 'center', alpha: 0.85 });
-        this.drawControlHints(cx, cy + 100);
+        const panelH = this.drawControlHints(cx, cy + 100);
         if (this.unboundText)
-          this.text(this.unboundText, cx, cy + 100 + this.controlHints.length * 20, RED, { size: 12, align: 'center' });
+          this.text(this.unboundText, cx, cy + 100 + panelH + 16, RED, { size: 12, align: 'center' });
       } else {
         this.text('DOOMR', cx, cy - 116, BLUE, { size: Math.min(84, width / 8), align: 'center', weight: 800, glow: 22 });
         const boxW = Utils.clamp(width - 48, 280, 390);
@@ -1512,9 +1632,9 @@ export class Hud {
       this.text('PAUSED', cx, cy, BLUE, { size: 40, align: 'center', weight: 800, glow: 14 });
       this.text(this.resumeText, cx, cy + 36, GREEN, { size: 14, align: 'center' });
       this.text(this.controlsEntryText, cx, cy + CONTROLS_ENTRY_PAUSED_DY, GREEN, { size: 13, align: 'center', alpha: 0.85 });
-      this.drawControlHints(cx, cy + 76);
+      const panelH = this.drawControlHints(cx, cy + 76);
       if (this.unboundText)
-        this.text(this.unboundText, cx, cy + 76 + this.controlHints.length * 20, RED, { size: 12, align: 'center' });
+        this.text(this.unboundText, cx, cy + 76 + panelH + 16, RED, { size: 12, align: 'center' });
     } else if (state === 'dead') {
       const fade = Utils.clamp(game.player.deadTime / 1.2, 0, 1);
       dim(0.5 * fade);

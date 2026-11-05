@@ -16,7 +16,7 @@ const INTERNALS = {
   overlay: ['VERTEX', 'FRAGMENT', 'TEXTURED_VERTEX', 'TEXTURED_FRAGMENT'],
   game: ['BARREL', 'USE_VERBS'],
   bloodsprites: ['FLOOR_VARIANTS', 'WALL_VARIANTS'],
-  hud: ['CONTROLS_LAYOUT'],
+  hud: ['CONTROLS_LAYOUT', 'HINTS_LAYOUT', 'layoutHints'],
 };
 
 const checks = [
@@ -147,6 +147,24 @@ const checks = [
         assert.ok(existsSync(targetUrl), `${file} relative import ${specifier} does not exist`);
       }
     }
+  }],
+  ['issue-140 AC-1 keymap exports structured DEFAULT_HINT_LINES and hud exports drawControlHints and controlHints without leaking layout internals', async () => {
+    const keymapMod = await import('../src/keymap.js');
+    assert.ok(Array.isArray(keymapMod.DEFAULT_HINT_LINES), 'DEFAULT_HINT_LINES should be an array');
+    assert.equal(keymapMod.DEFAULT_HINT_LINES.length, 4, 'DEFAULT_HINT_LINES should have 4 groups');
+    for (const g of keymapMod.DEFAULT_HINT_LINES) {
+      assert.ok(typeof g.title === 'string', 'Group title must be a string');
+      assert.ok(Array.isArray(g.rows), 'Group rows must be an array');
+      for (const r of g.rows) {
+        assert.ok(typeof r.keys === 'string', 'Row keys must be a string');
+        assert.ok(typeof r.label === 'string', 'Row label must be a string');
+      }
+    }
+
+    const hudMod = await import('../src/hud.js');
+    assert.ok(typeof hudMod.Hud.prototype.drawControlHints === 'function', 'Hud must expose drawControlHints');
+    assert.ok(!('HINTS_LAYOUT' in hudMod), 'HINTS_LAYOUT internal should not be exported');
+    assert.ok(!('layoutHints' in hudMod), 'layoutHints internal should not be exported');
   }],
 ];
 
