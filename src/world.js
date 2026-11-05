@@ -112,7 +112,66 @@ function wallHoleQuad(mark, out = null) {
   hm.slope = mark.slope;
   return holeQuad(hm, out);
 }
-const scratchSplatMark = { x: 0, y: 0, z: 0, nx: 0, ny: 0, size: 0, top: 0, seed: 0, age: undefined, lo: undefined, hi: undefined, slope: undefined };
+const scratchMarkPos2 = new Vec2();
+const scratchFloorOpts = { pos: scratchMarkPos2, size: 0, seed: 0, height: undefined };
+const scratchGibOpts = { pos: scratchMarkPos2, size: 0, variant: undefined, angle: undefined, height: undefined };
+const scratchPrintOpts = { pos: scratchMarkPos2, angle: 0, side: 0, strength: 0, scale: 0 };
+const scratchSplatMark = { pos: new Vec3(), normal: new Vec2(), size: 0, top: 0, seed: 0, age: undefined, lo: undefined, hi: undefined, slope: undefined };
+const scratchParticleOpts = { pos: new Vec3(), gib: false, variant: undefined, scale: undefined, visualScale: undefined };
+
+function floorSplatOf(mark) {
+  scratchMarkPos2.setScalar(mark.x, mark.y);
+  scratchFloorOpts.size = mark.size;
+  scratchFloorOpts.seed = mark.seed;
+  scratchFloorOpts.height = mark.height;
+  return floorSplatQuad(scratchFloorOpts);
+}
+
+function floorGibOf(mark) {
+  scratchMarkPos2.setScalar(mark.x, mark.y);
+  scratchGibOpts.size = mark.size;
+  scratchGibOpts.variant = mark.variant;
+  scratchGibOpts.angle = mark.angle;
+  scratchGibOpts.height = mark.height;
+  return floorGibQuad(scratchGibOpts);
+}
+
+function printOf(mark) {
+  scratchMarkPos2.setScalar(mark.x, mark.y);
+  scratchPrintOpts.angle = mark.angle;
+  scratchPrintOpts.side = mark.side;
+  scratchPrintOpts.strength = mark.strength;
+  scratchPrintOpts.scale = mark.scale;
+  return printQuad(scratchPrintOpts);
+}
+
+function fillWallOpts(mark) {
+  const o = scratchSplatMark;
+  o.pos.setScalar(mark.x, mark.y, mark.z);
+  o.normal.setScalar(mark.nx, mark.ny);
+  o.size = mark.size;
+  o.top = mark.top;
+  o.seed = mark.seed;
+  o.age = mark.age;
+  o.lo = mark.lo;
+  o.hi = mark.hi;
+  o.slope = mark.slope;
+  return o;
+}
+
+function wallSplatOf(mark) {
+  return wallSplatQuad(fillWallOpts(mark));
+}
+
+function fillParticleOpts(p) {
+  const o = scratchParticleOpts;
+  o.pos.setScalar(p.x, p.y, p.z);
+  o.gib = p.gib;
+  o.variant = p.variant;
+  o.scale = p.scale;
+  o.visualScale = p.visualScale;
+  return o;
+}
 const scratchChainsawOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, attacking: false };
 const scratchChaingunOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, attacking: false, spinDown: 0 };
 const scratchShotgunOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, hasAmmo: true };
@@ -160,8 +219,6 @@ const scratchFog = new Vec2();
 const scratchCam2d = new Vec2();
 const EMPTY = Object.freeze([]);
 const scratchEntity2d = new Vec2();
-const scratchRightArr = [0, 0, 0];
-const scratchUpArr = [0, 0, 0];
 const scratchParticleQuad = { corners: new Float32Array(12), uv: [0, 0, 0, 0] };
 const SECTOR_TILES = 16;
 
@@ -1012,19 +1069,10 @@ export class World {
     for (const mark of blood.walls) {
       if (mark.door !== door)
         continue;
+      fillWallOpts(mark);
       const sunk = scratchSplatMark;
-      sunk.x = mark.x - mark.nx * inset;
-      sunk.y = mark.y - mark.ny * inset;
-      sunk.z = mark.z - drop;
+      sunk.pos.setScalar(mark.x - mark.nx * inset, mark.y - mark.ny * inset, mark.z - drop);
       sunk.top = mark.top * height;
-      sunk.nx = mark.nx;
-      sunk.ny = mark.ny;
-      sunk.size = mark.size;
-      sunk.seed = mark.seed;
-      sunk.age = mark.age;
-      sunk.lo = mark.lo;
-      sunk.hi = mark.hi;
-      sunk.slope = mark.slope;
       const quad = wallSplatQuad(sunk);
       if (quad)
         batch.quad(quad.corners, quad.uv);
@@ -1061,12 +1109,6 @@ export class World {
       scratchUp.normalize();
     else
       scratchUp.setScalar(0, 1, 0);
-    scratchRightArr[0] = scratchRight.x;
-    scratchRightArr[1] = scratchRight.y;
-    scratchRightArr[2] = scratchRight.z;
-    scratchUpArr[0] = scratchUp.x;
-    scratchUpArr[1] = scratchUp.y;
-    scratchUpArr[2] = scratchUp.z;
     scratchCam2d.setScalar(camera.position.x, camera.position.z);
     const maxParticleDist = this.cutaway ? Infinity : this.fogNearFar.y + 16;
     const maxParticleDistSq = maxParticleDist * maxParticleDist;
@@ -1078,7 +1120,7 @@ export class World {
         continue;
       if (fog && !fog.canSeeNear(scratchEntity2d))
         continue;
-      const quad = particleQuad(p, scratchRightArr, scratchUpArr, p.gib ? p.age * 9 : p.age * 4 + p.vx, scratchParticleQuad);
+      const quad = particleQuad(fillParticleOpts(p), scratchRight, scratchUp, p.gib ? p.age * 9 : p.age * 4 + p.vx, scratchParticleQuad);
       if (!drops.quad(quad.corners, quad.uv))
         break;
     }
@@ -1093,7 +1135,7 @@ export class World {
             continue;
           if (fog && !fog.canSeeNear(scratchEntity2d))
             continue;
-          const quad = particleQuad(d, scratchRightArr, scratchUpArr, d.age * 6 + d.vx * 0.02, scratchParticleQuad);
+          const quad = particleQuad(fillParticleOpts(d), scratchRight, scratchUp, d.age * 6 + d.vx * 0.02, scratchParticleQuad);
           if (!dustBatch.quad(quad.corners, quad.uv))
             break;
         }
@@ -1132,16 +1174,16 @@ export class World {
     const batch = this.splatters.begin();
     const add = (quad) => quad && batch.quad(quad.corners, quad.uv);
     for (const splat of blood.floor)
-      add(this.cachedQuad(splat, floorSplatQuad));
+      add(this.cachedQuad(splat, floorSplatOf));
     for (const gib of blood.gibs)
-      add(this.cachedQuad(gib, floorGibQuad));
+      add(this.cachedQuad(gib, floorGibOf));
     for (const splat of blood.walls)
       if (!splat.door)
-        add(this.cachedQuad(splat, wallSplatQuad));
+        add(this.cachedQuad(splat, wallSplatOf));
     for (const splat of blood.ceiling)
-      add(this.cachedQuad(splat, floorSplatQuad));
+      add(this.cachedQuad(splat, floorSplatOf));
     for (const print of blood.prints)
-      add(this.cachedQuad(print, printQuad));
+      add(this.cachedQuad(print, printOf));
     batch.end();
   }
 
@@ -1154,13 +1196,13 @@ export class World {
       if (splat.age >= splat.dripTime) {
         let quads = this.dripCache.get(splat);
         if (!quads) {
-          quads = wallDripQuads(splat);
+          quads = wallDripQuads(fillWallOpts(splat));
           this.dripCache.set(splat, quads);
         }
         for (const drip of quads)
           batch.quad(drip.corners, drip.uv);
       } else {
-        const drips = wallDripQuads(splat, this.dripTarget);
+        const drips = wallDripQuads(fillWallOpts(splat), this.dripTarget);
         for (let i = 0; i < drips.count; i++)
           batch.quad(drips.quads[i].corners, drips.quads[i].uv);
       }

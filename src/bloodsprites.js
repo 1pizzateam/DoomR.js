@@ -433,23 +433,23 @@ export function cellUv(cell) {
 // and its texture rectangle as [u0, v0, u1, v1]; null when nothing is left of it.
 
 /** A splat on the floor, turned any way round. `size` is the splat's, and the quad is 3.2 times as wide. */
-export function floorSplatQuad({ x, y, size, seed, height = 0.3 }) {
+export function floorSplatQuad({ pos, size, seed, height = 0.3 }) {
   const rnd = mulberry32(seed);
   const variant = Math.floor(rnd() * FLOOR_VARIANTS);
   const angle = rnd() * Trigo.twopi;
   const half = size * 1.6;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  const at = (lx, ly) => [x + cos * lx - sin * ly, height, y + sin * lx + cos * ly];
+  const at = (lx, ly) => [pos.x + cos * lx - sin * ly, height, pos.y + sin * lx + cos * ly];
   return { corners: [...at(-half, -half), ...at(half, -half), ...at(half, half), ...at(-half, half)], uv: cellUv(CELLS.floor + variant) };
 }
 
 /** A persistent chunk of meat, bone, skull, or organ resting on the floor after an XDeath gibbing. */
-export function floorGibQuad({ x, y, size, variant = 0, angle = 0, height = 0.36 }) {
+export function floorGibQuad({ pos, size, variant = 0, angle = 0, height = 0.36 }) {
   const half = size;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  const at = (lx, ly) => [x + cos * lx - sin * ly, height, y + sin * lx + cos * ly];
+  const at = (lx, ly) => [pos.x + cos * lx - sin * ly, height, pos.y + sin * lx + cos * ly];
   return {
     corners: [...at(-half, -half), ...at(half, -half), ...at(half, half), ...at(-half, half)],
     uv: cellUv(CELLS.gib + ((variant >>> 0) % GIB_VARIANTS)),
@@ -460,13 +460,13 @@ export function floorGibQuad({ x, y, size, variant = 0, angle = 0, height = 0.36
  * A shoe print. `strength` picks a filled, hatched print or just an outline, and a left foot is a mirrored right one.
  * Like the line version it is about 10.6 * 1.8 * scale long.
  */
-export function printQuad({ x, y, angle, side, strength, scale }) {
+export function printQuad({ pos, angle, side, strength, scale }) {
   const size = scale * 1.8 * (0.75 + 0.25 * Math.min(1, strength));
   const half = (CELL / 2) * (size / PRINT_PIXELS);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const offset = side * 0.3 * side * size;
-  const at = (fx, fy) => [x + cos * fx - sin * (fy + offset), 0.32, y + sin * fx + cos * (fy + offset)];
+  const at = (fx, fy) => [pos.x + cos * fx - sin * (fy + offset), 0.32, pos.y + sin * fx + cos * (fy + offset)];
   const [u0, v0, u1, v1] = cellUv(strength > 0.55 ? CELLS.printFilled : CELLS.printOutline);
   return {
     corners: [...at(-half, -half), ...at(half, -half), ...at(half, half), ...at(-half, half)],
@@ -479,7 +479,7 @@ export function printQuad({ x, y, angle, side, strength, scale }) {
  * `hi` along its tangent, from the splat's height `z` and up to `top`), so none hangs in the air past a corner,
  * an opening or the top of the wall.
  */
-export function wallSplatQuad({ x, y, z, nx, ny, size, top, seed, lo = -Infinity, hi = Infinity, slope = 0 }) {
+export function wallSplatQuad({ pos, normal, size, top, seed, lo = -Infinity, hi = Infinity, slope = 0 }) {
   const rnd = mulberry32(seed);
   const variant = Math.floor(rnd() * WALL_VARIANTS);
   const pixel = size / 10;
@@ -490,15 +490,17 @@ export function wallSplatQuad({ x, y, z, nx, ny, size, top, seed, lo = -Infinity
   const v1 = 16 * pixel;
   const cu0 = Math.max(u0, lo + EDGE);
   const cu1 = Math.min(u1, hi - EDGE);
-  const cv0 = Math.max(v0, 0.6 - z);
-  const cv1 = Math.min(v1, top - 0.6 - z);
+  const cv0 = Math.max(v0, 0.6 - pos.z);
+  const cv1 = Math.min(v1, top - 0.6 - pos.z);
   if (cu0 >= cu1 || cv0 >= cv1)
     return null;
+  const nx = normal.x;
+  const ny = normal.y;
   const tx = -ny;
   const ty = nx;
   const at = (u, v) => {
     const n = 0.4 - slope * v;
-    return [x + tx * u + nx * n, z + v, y + ty * u + ny * n];
+    return [pos.x + tx * u + nx * n, pos.z + v, pos.y + ty * u + ny * n];
   };
   const [a0, b0, a1, b1] = cellUv(CELLS.wall + variant);
   const du = a1 - a0;
@@ -643,9 +645,14 @@ function pushDripQuad(target, x, y, z, tx, ty, nx, ny, slope, u0, v0, u1, v1, a0
  * and returned as an array; with a `createQuadTarget()` they are written into it (overwritten by the next call, valid
  * up to `target.count`) and the target is returned.
  */
-export function wallDripQuads({ x, y, z, nx, ny, size, top, seed, age = 0, lo = -Infinity, hi = Infinity, slope = 0 }, target = null) {
+export function wallDripQuads({ pos, normal, size, top, seed, age = 0, lo = -Infinity, hi = Infinity, slope = 0 }, target = null) {
   const out = target ?? createQuadTarget();
   out.count = 0;
+  const x = pos.x;
+  const y = pos.y;
+  const z = pos.z;
+  const nx = normal.x;
+  const ny = normal.y;
   const tx = -ny;
   const ty = nx;
   const floor = 0.6 - z;
@@ -685,16 +692,19 @@ export function wallDripQuads({ x, y, z, nx, ny, size, top, seed, age = 0, lo = 
  * A droplet or a gib in the air: a square facing the camera, turned by `spin` in the view plane.
  * `right` and `up` are the camera's axes in the world.
  */
-export function particleQuad({ x, y, z, gib, variant = 0, scale = 1, visualScale }, right, up, spin = 0, target = null) {
+export function particleQuad({ pos, gib, variant = 0, scale = 1, visualScale }, right, up, spin = 0, target = null) {
   const half = (gib ? 1.75 : 0.65) * (visualScale ?? scale);
   const cos = Math.cos(spin) * half;
   const sin = Math.sin(spin) * half;
-  const r0 = right[0];
-  const r1 = right[1];
-  const r2 = right[2];
-  const u0 = up[0];
-  const u1 = up[1];
-  const u2 = up[2];
+  const x = pos.x;
+  const y = pos.y;
+  const z = pos.z;
+  const r0 = right.x;
+  const r1 = right.y;
+  const r2 = right.z;
+  const u0 = up.x;
+  const u1 = up.y;
+  const u2 = up.z;
   const cell = gib ? CELLS.gib + ((variant >>> 0) % GIB_VARIANTS) : CELLS.drop;
   const corners = target ? target.corners : new Array(12);
   // (-1, -1)
@@ -735,14 +745,14 @@ export function particleQuad({ x, y, z, gib, variant = 0, scale = 1, visualScale
  * as an array; with a `createQuadTarget()` they are written into it (overwritten by the next call, valid up to
  * `target.count`) and the target is returned.
  */
-export function screenSplatQuads({ x, y, size, age, drip, seed }, width, height, fade, target = null) {
+export function screenSplatQuads({ pos, size, age, drip, seed }, viewportSize, fade, target = null) {
   const out = target ?? createQuadTarget();
   out.count = 0;
   const rnd = mulberry32(seed);
   const grow = 1 - Math.pow(1 - Math.min(1, age * 7), 3);
   const half = size * (0.35 + 0.65 * grow) * 1.4;
-  const cx = x * width;
-  const cy = y * height;
+  const cx = pos.x * viewportSize.x;
+  const cy = pos.y * viewportSize.y;
   const burst = cellUv(CELLS.floor + Math.floor(rnd() * FLOOR_VARIANTS));
   setScreenQuad(out, cx - half, cy - half, cx + half, cy + half, burst[0], burst[1], burst[2], burst[3], fade);
   const run = drip * Math.min(1, age * 0.9);
