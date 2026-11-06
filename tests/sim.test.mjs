@@ -11736,6 +11736,157 @@ const tests = {
     assert.equal(weaponFrame(0.8, true, 'rocket'), WEAPON_FRAMES.idle, 'rocket elapsed >= 0.68 settles to idle with ammo');
     assert.equal(weaponFrame(0.55, false, 'rocket'), WEAPON_FRAMES.idle, 'rocket elapsed 0.48..0.68 returns idle without ammo');
   },
+
+  'AC-1 keymap.statusText formats manual override layouts'() {
+    for (const layout of ['qwerty', 'azerty', 'qwertz', 'dvorak']) {
+      const k = new Keymap({ storage: null, navigator: null });
+      k.override = layout;
+      assert.equal(k.statusText, `Keyboard: ${PRESETS[layout].name} (manual)`);
+    }
+  },
+
+  'AC-2 keymap.statusText formats auto-detected layouts'() {
+    const azertyKeymap = new Keymap({ storage: null, navigator: null });
+    azertyKeymap.applyLayoutMap(new Map([['KeyW', 'z']]));
+    assert.equal(azertyKeymap.detected, 'azerty');
+    assert.equal(azertyKeymap.statusText, 'Keyboard: auto (AZERTY detected)');
+
+    const dvorakKeymap = new Keymap({ storage: null, navigator: null });
+    dvorakKeymap.applyLayoutMap(new Map([['KeyW', ',']]));
+    assert.equal(dvorakKeymap.detected, 'dvorak');
+    assert.equal(dvorakKeymap.statusText, 'Keyboard: auto (Dvorak detected)');
+
+    const qwertzKeymap = new Keymap({ storage: null, navigator: null });
+    qwertzKeymap.applyLayoutMap(new Map([['KeyY', 'z']]));
+    assert.equal(qwertzKeymap.detected, 'qwertz');
+    assert.equal(qwertzKeymap.statusText, 'Keyboard: auto (QWERTZ detected)');
+
+    const qwertyKeymap = new Keymap({ storage: null, navigator: null });
+    qwertyKeymap.applyLayoutMap(new Map([['KeyW', 'w'], ['KeyY', 'y']]));
+    assert.equal(qwertyKeymap.detected, 'qwerty');
+    assert.equal(qwertyKeymap.statusText, 'Keyboard: auto (QWERTY detected)');
+  },
+
+  'AC-3 keymap.statusText formats auto fallback preset layouts'() {
+    const enKeymap = new Keymap({ storage: null, navigator: { language: 'en-US' } });
+    assert.equal(enKeymap.override, 'auto');
+    assert.equal(enKeymap.detected, null);
+    assert.equal(enKeymap.languagePreset, 'qwerty');
+    assert.equal(enKeymap.statusText, 'Keyboard: auto (QWERTY)');
+
+    const deKeymap = new Keymap({ storage: null, navigator: { language: 'de-DE' } });
+    assert.equal(deKeymap.override, 'auto');
+    assert.equal(deKeymap.detected, null);
+    assert.equal(deKeymap.languagePreset, 'qwertz');
+    assert.equal(deKeymap.statusText, 'Keyboard: auto (QWERTZ)');
+
+    const frKeymap = new Keymap({ storage: null, navigator: { language: 'fr-FR' } });
+    assert.equal(frKeymap.override, 'auto');
+    assert.equal(frKeymap.detected, null);
+    assert.equal(frKeymap.languagePreset, 'azerty');
+    assert.equal(frKeymap.statusText, 'Keyboard: auto (AZERTY)');
+  },
+
+  'AC-4 keymap.requestLayoutMap handles missing keyboard, errors, and layout maps'() {
+    const noNav = new Keymap({ storage: null, navigator: null });
+    assert.equal(noNav.requestLayoutMap(), undefined);
+
+    const noKb = new Keymap({ storage: null, navigator: {} });
+    assert.equal(noKb.requestLayoutMap(), undefined);
+
+    const noFn = new Keymap({ storage: null, navigator: { keyboard: {} } });
+    assert.equal(noFn.requestLayoutMap(), undefined);
+
+    const throwingKb = new Keymap({
+      storage: null,
+      navigator: {
+        keyboard: {
+          getLayoutMap() {
+            throw new Error('sync error');
+          },
+        },
+      },
+    });
+    assert.equal(throwingKb.requestLayoutMap(), undefined);
+
+    let rejectPromise;
+    const rejectingKb = new Keymap({
+      storage: null,
+      navigator: {
+        keyboard: {
+          getLayoutMap() {
+            return Promise.reject(new Error('async rejected'));
+          },
+        },
+      },
+    });
+    rejectPromise = rejectingKb.requestLayoutMap();
+    assert.ok(rejectPromise instanceof Promise);
+    let rejectResult;
+    rejectPromise.then((val) => {
+      rejectResult = val;
+    });
+
+    const mockMap = new Map([['KeyW', 'z'], ['KeyA', 'q']]);
+    let calls = 0;
+    const resolvingKb = new Keymap({
+      storage: null,
+      navigator: {
+        keyboard: {
+          getLayoutMap() {
+            calls++;
+            return calls === 1 ? Promise.resolve(new Map()) : Promise.resolve(mockMap);
+          },
+        },
+      },
+    });
+    const versionBefore = resolvingKb.version;
+    const resolvePromise = resolvingKb.requestLayoutMap();
+    assert.ok(resolvePromise instanceof Promise);
+    let resolveResult;
+    resolvePromise.then((val) => {
+      resolveResult = val;
+    });
+
+    return Promise.all([rejectPromise, resolvePromise]).then(() => {
+      assert.equal(rejectResult, false);
+      assert.equal(resolveResult, true);
+      assert.equal(resolvingKb.layoutGlyphs.get('KeyW'), 'z');
+      assert.equal(resolvingKb.layoutGlyphs.get('KeyA'), 'q');
+      assert.equal(resolvingKb.detected, 'azerty');
+      assert.ok(resolvingKb.version > versionBefore);
+    });
+  },
+
+  'AC-5 keymap.resetAction restores default bindings and bumps version'() {
+    const k = new Keymap({ storage: null, navigator: null });
+
+    const nonBindableResult = k.resetAction('nonExistentAction');
+    assert.equal(nonBindableResult.ok, false);
+
+    assert.equal(k.setBinding('jump', 0, 'KeyJ').ok, true);
+    assert.equal(k.isCustom('jump'), true);
+    assert.deepEqual(k.effectiveCodes('jump'), ['KeyJ']);
+    const vBefore = k.version;
+    const bvBefore = k.bindingsVersion;
+
+    const resetJump = k.resetAction('jump');
+    assert.equal(resetJump.ok, true);
+    assert.equal(k.isCustom('jump'), false);
+    assert.deepEqual(k.effectiveCodes('jump'), ['Space']);
+    assert.equal(k.version, vBefore + 1);
+    assert.equal(k.bindingsVersion, bvBefore + 1);
+
+    assert.equal(k.setBinding('grenade', 0, 'Space').ok, true);
+    assert.deepEqual(k.effectiveCodes('grenade'), ['Space']);
+    assert.ok(!k.effectiveCodes('jump').includes('Space'));
+
+    const resetJumpReclaim = k.resetAction('jump');
+    assert.equal(resetJumpReclaim.ok, true);
+    assert.equal(resetJumpReclaim.stolenFrom, 'grenade');
+    assert.deepEqual(k.effectiveCodes('jump'), ['Space']);
+    assert.ok(!k.effectiveCodes('grenade').includes('Space'));
+  },
 };
 
 function pausedHud() {
@@ -11818,7 +11969,9 @@ console.log('# file: tests/sim.test.mjs');
 let failed = 0;
 for (const [name, fn] of Object.entries(tests)) {
   try {
-    fn();
+    const res = fn();
+    if (res && typeof res.then === 'function')
+      await res;
     console.log(`ok   ${name}`);
   } catch (error) {
     failed++;
