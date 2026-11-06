@@ -15078,6 +15078,152 @@ const tests = {
     assert.ok(useRowMatch, 'README contains an entry for key E in the controls table');
     assert.ok(useRowMatch[1].trim().startsWith('use'), 'README describes key E starting with use');
   },
+
+  'AC-1 giveAll unlocks all weapons'() {
+    const game = fresh(0);
+    game.player.weapons = { knife: true, chainsaw: false, shotgun: false, chaingun: false, rocket: false };
+    game.giveAll();
+    assert.equal(game.player.weapons.knife, true);
+    assert.equal(game.player.weapons.chainsaw, true);
+    assert.equal(game.player.weapons.shotgun, true);
+    assert.equal(game.player.weapons.chaingun, true);
+    assert.equal(game.player.weapons.rocket, true);
+  },
+
+  'AC-2 giveAll fills ammo pools and switches knife to shotgun'() {
+    const game = fresh(0);
+    game.player.weapon = 'knife';
+    game.player.shells = 0;
+    game.player.bullets = 0;
+    game.player.rockets = 0;
+    game.player.ammo = 0;
+    game.giveAll();
+    assert.equal(game.player.shells, AMMO_TYPES.shells.max);
+    assert.equal(game.player.bullets, AMMO_TYPES.bullets.max);
+    assert.equal(game.player.rockets, AMMO_TYPES.rockets.max);
+    assert.equal(game.player.ammo, AMMO_TYPES.shells.max);
+    assert.equal(game.player.weapon, 'shotgun');
+
+    // If player had chaingun equipped, weapon is retained and not forcibly changed to shotgun
+    const game2 = fresh(0);
+    game2.player.weapon = 'chaingun';
+    game2.giveAll();
+    assert.equal(game2.player.weapon, 'chaingun');
+  },
+
+  'AC-3 giveAll grants max health armor keys and nightvision'() {
+    const game = fresh(0);
+    game.player.health = 35;
+    game.player.armor = 0;
+    game.player.armorType = null;
+    game.player.keys = { blue: false, yellow: false, red: false };
+    game.player.hasNightVision = false;
+    game.player.nightVisionBattery = 0;
+    game.player.nightVisionActive = false;
+    game.player.nightVision = 0;
+    game.message.text = '';
+
+    game.giveAll();
+    assert.ok(game.player.health >= 200);
+    assert.equal(game.player.armor, 200);
+    assert.equal(game.player.armorType, 'blue');
+    assert.equal(game.player.keys.blue, true);
+    assert.equal(game.player.keys.yellow, true);
+    assert.equal(game.player.keys.red, true);
+    assert.equal(game.player.hasNightVision, true);
+    assert.equal(game.player.nightVisionBattery, POWERUP_TYPES.nightvision.duration);
+    assert.equal(game.player.nightVision, 0);
+    assert.equal(game.message.text, 'IDKFA · Full Arsenal & Keycards Granted');
+
+    // If nightVision was active, player.nightVision reflects active battery duration
+    const gameActiveNv = fresh(0);
+    gameActiveNv.player.nightVisionActive = true;
+    gameActiveNv.giveAll();
+    assert.equal(gameActiveNv.player.nightVision, POWERUP_TYPES.nightvision.duration);
+
+    // If health was already > 200 (e.g. 250 via soulsphere), health is not reduced
+    const gameOverHealed = fresh(0);
+    gameOverHealed.player.health = 250;
+    gameOverHealed.giveAll();
+    assert.equal(gameOverHealed.player.health, 250);
+
+    // giveAll when player is null safely no-ops without throwing
+    const noPlayerGame = new Game();
+    assert.doesNotThrow(() => noPlayerGame.giveAll());
+  },
+
+  'AC-4 swarmer enters windup when within melee attack distance'() {
+    const game = fresh(0);
+    clearEnemies(game);
+    game.player.body.setPosition(new Vec2(200, 200));
+
+    // Swarmer melee reach is def.radius + PLAYER_RADIUS + 8 = 8 + 14 + 8 = 30
+    const reach = ENEMY_TYPES.swarmer.radius + 14 + 8;
+    assert.equal(reach, 30);
+
+    // Place swarmer within melee attack reach (e.g. distance = 20 < 30)
+    const swarmer = game.addEnemy('swarmer', new Vec2(200 + reach - 10, 200));
+    game.wake(swarmer);
+    swarmer.cooldown = 0;
+    swarmer.windup = 0;
+
+    assert.equal(swarmer.state, 'chase');
+    assert.equal(swarmer.windup, 0);
+
+    // Run 1 simulation tick (1/60s)
+    game.update(1 / 60, idle);
+
+    assert.equal(swarmer.windup, 0.15, 'swarmer starts 0.15s windup when within melee attack reach and cooldown <= 0');
+
+    // Outside melee reach (e.g. distance = reach + 10), windup does not initiate
+    const farSwarmer = game.addEnemy('swarmer', new Vec2(200 + reach + 10, 200));
+    game.wake(farSwarmer);
+    farSwarmer.cooldown = 0;
+    farSwarmer.windup = 0;
+    game.update(1 / 60, idle);
+    assert.equal(farSwarmer.windup, 0, 'swarmer does not initiate windup when outside melee reach');
+  },
+
+  'AC-5 swarmer emits bite event deals damage and enters cooldown'() {
+    const game = fresh(0);
+    clearEnemies(game);
+    game.player.body.setPosition(new Vec2(200, 200));
+    game.player.health = 100;
+    game.player.armor = 0;
+    game.player.armorType = null;
+
+    const reach = ENEMY_TYPES.swarmer.radius + 14 + 8;
+    const swarmer = game.addEnemy('swarmer', new Vec2(200 + reach - 8, 200));
+    game.wake(swarmer);
+    swarmer.cooldown = 0;
+    swarmer.windup = 0.15;
+
+    game.events.length = 0;
+
+    // Advance simulation through the 0.15s windup window (0.15s is 9 frames at 60fps)
+    // Run 10 frames = ~0.167s > 0.15s
+    for (let i = 0; i < 10; i++)
+      game.update(1 / 60, idle);
+
+    // Verify bite event emission
+    const biteEvents = game.events.filter((e) => e.type === 'bite');
+    assert.equal(biteEvents.length, 1, 'swarmer emits bite event upon windup expiration');
+    assert.equal(biteEvents[0].kind, 'swarmer');
+    assert.ok(biteEvents[0].pos instanceof Vec2);
+
+    // Verify player took 4 melee damage
+    assert.equal(game.player.health, 96, 'player health decreased by 4 damage');
+
+    // Verify cooldown is reset to 0.5s (or close to 0.5 minus elapsed fractional time since trigger)
+    assert.ok(swarmer.cooldown > 0.4 && swarmer.cooldown <= 0.5, `swarmer cooldown reset around 0.5s: ${swarmer.cooldown}`);
+
+    // Advance 5 more frames (~0.08s); cooldown prevents another immediate attack
+    game.events.length = 0;
+    for (let i = 0; i < 5; i++)
+      game.update(1 / 60, idle);
+    assert.equal(game.events.filter((e) => e.type === 'bite').length, 0, 'no new attack during cooldown');
+    assert.equal(game.player.health, 96, 'no additional damage delivered while on cooldown');
+  },
 };
 
 function pausedHud() {
