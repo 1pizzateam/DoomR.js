@@ -42,7 +42,7 @@ import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION
 import { CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
 import { LIGHT_GLSL, PARTICLE_FRAGMENT, QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, TEXTURED_VERTEX, texturedMesh } from '../src/quads.js';
 import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads as wallDripQuadsVec, screenSplatQuads as screenSplatQuadsVec, createQuadTarget, bloodAtlas, CELL, cellUv, floorGibQuad as floorGibQuadVec, floorSplatQuad as floorSplatQuadVec, particleQuad, printQuad as printQuadVec, wallSplatQuad as wallSplatQuadVec } from '../src/bloodsprites.js';
-import { CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
+import { CEILING, CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { Fog } from '../src/fog.js';
 import { MONSTER_SKIN_CELL, MONSTER_SKIN_CELLS, MONSTER_SKIN_FRAMES, MONSTERS, monsterGoreSkinAtlas, monsterMesh, monsterParts, monsterSkinAtlas } from '../src/monsters.js';
 import { SHOTS, TitleDirector } from '../src/title.js';
@@ -15223,6 +15223,605 @@ const tests = {
       game.update(1 / 60, idle);
     assert.equal(game.events.filter((e) => e.type === 'bite').length, 0, 'no new attack during cooldown');
     assert.equal(game.player.health, 96, 'no additional damage delivered while on cooldown');
+  },
+
+  'AC-1 HUD drawIntermission renders stat tallies and time across phases'() {
+    const texts = [];
+    const lines = [];
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        fillText(str) { texts.push(str); },
+      }),
+    };
+    const mockOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: {
+        fillRect() {}, rectLine() {}, line() {}, circleLine() {},
+        weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} },
+      },
+    };
+    const hud = new Hud(mockCanvas, mockOverlay);
+    hud.resize(1024, 768, 1);
+    const origCanvasLine = hud.canvasLine.bind(hud);
+    hud.canvasLine = (pts, ...rest) => {
+      lines.push(pts);
+      origCanvasLine(pts, ...rest);
+    };
+
+    const game = fresh(0);
+    game.state = 'cleared';
+    game.kills = 12;
+    game.totalEnemies = 20;
+    game.itemsPicked = 8;
+    game.totalItems = 10;
+    game.secretsFound = 1;
+    game.totalSecrets = 2;
+    game.stats.time = 95;
+    game.level.par = 120;
+
+    // Test across intermission phases 0 through 4
+    for (let phase = 0; phase <= 4; phase++) {
+      texts.length = 0;
+      lines.length = 0;
+      game.intermission = {
+        phase,
+        done: phase === 4,
+        killsPct: 60,
+        itemsPct: 80,
+        secretsPct: 50,
+        timeSec: 95,
+        parSec: 120,
+        shownKills: phase >= 0 ? 60 : 0,
+        shownItems: phase >= 1 ? 80 : 0,
+        shownSecrets: phase >= 2 ? 50 : 0,
+        shownTime: phase >= 3 ? 95 : 0,
+      };
+
+      hud.drawIntermission(game);
+
+      assert.ok(texts.includes(game.level.name.toUpperCase()), `phase ${phase} draws level name`);
+      assert.ok(texts.includes('KILLS') && texts.includes('ITEMS') && texts.includes('SECRETS'), `phase ${phase} draws tally labels`);
+      assert.ok(texts.includes('12/20') && texts.includes('8/10') && texts.includes('1/2'), `phase ${phase} draws raw totals`);
+
+      if (phase >= 0)
+        assert.ok(texts.includes('60%'), `phase ${phase} draws kills percentage`);
+      else
+        assert.ok(texts.includes('--%'));
+
+      if (phase >= 1)
+        assert.ok(texts.includes('80%'), `phase ${phase} draws items percentage`);
+
+      if (phase >= 2)
+        assert.ok(texts.includes('50%'), `phase ${phase} draws secrets percentage`);
+
+      if (phase >= 3)
+        assert.ok(texts.includes('1:35'), `phase ${phase} draws formatted elapsed time`);
+      else
+        assert.ok(texts.includes('--:--'), `phase ${phase} draws unreached time indicator`);
+
+      assert.ok(texts.includes('PAR') && texts.includes('2:00'), `phase ${phase} draws par time`);
+
+      if (phase === 4)
+        assert.ok(texts.includes('PAR BEATEN'), 'phase 4 displays PAR BEATEN when time <= par');
+
+      assert.ok(lines.length >= 25, `phase ${phase} draws framing, ticks, and facility transit routes`);
+    }
+  },
+
+  'AC-2 HUD drawPowerups renders berserk radsuit and night vision badges'() {
+    const texts = [];
+    const hud = Object.create(Hud.prototype);
+    hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
+
+    // 1. None active
+    const player = { berserk: false, radSuit: 0, hasNightVision: false };
+    hud.drawPowerups(100, 500, player);
+    assert.equal(texts.length, 0, 'no badges when no powerups active');
+
+    // 2. Berserk active
+    texts.length = 0;
+    player.berserk = true;
+    hud.drawPowerups(100, 500, player);
+    assert.equal(texts.length, 1);
+    assert.equal(texts[0].str, 'BERSERK');
+    assert.equal(texts[0].col, 3, 'berserk badge is RED (3)');
+    assert.equal(texts[0].opts.alpha, 0.95);
+
+    // 3. Radsuit active > 5s (no blink, alpha 0.95)
+    texts.length = 0;
+    player.radSuit = 24.3;
+    hud.drawPowerups(100, 500, player);
+    const radText = texts.find((t) => t.str.startsWith('RAD'));
+    assert.ok(radText);
+    assert.equal(radText.str, 'RAD 25s');
+    assert.equal(radText.col, 1, 'radsuit badge is GREEN (1)');
+    assert.equal(radText.opts.alpha, 0.95);
+
+    // 4. Radsuit active <= 5s: blinking depending on Math.floor(radSuit * 4) % 2
+    // At radSuit = 4.0: 4.0 * 4 = 16 (even -> alpha 0.95)
+    texts.length = 0;
+    player.radSuit = 4.0;
+    hud.drawPowerups(100, 500, player);
+    assert.equal(texts.find((t) => t.str.startsWith('RAD')).opts.alpha, 0.95);
+    // At radSuit = 4.3: 4.3 * 4 = 17 (odd -> alpha 0.3)
+    texts.length = 0;
+    player.radSuit = 4.3;
+    hud.drawPowerups(100, 500, player);
+    assert.equal(texts.find((t) => t.str.startsWith('RAD')).opts.alpha, 0.3);
+
+    // 5. Night vision equipped, inactive (BLUE, alpha 0.72)
+    texts.length = 0;
+    player.hasNightVision = true;
+    player.nightVisionActive = false;
+    player.nightVisionBattery = 45;
+    hud.drawPowerups(100, 500, player);
+    const nvgInactive = texts.find((t) => t.str.startsWith('NVG'));
+    assert.ok(nvgInactive);
+    assert.equal(nvgInactive.str, 'NVG 100%');
+    assert.equal(nvgInactive.col, 0, 'inactive NVG badge is BLUE (0)');
+    assert.equal(nvgInactive.opts.alpha, 0.72);
+
+    // 6. Night vision active (> 5s battery, GREEN, alpha 0.95)
+    texts.length = 0;
+    player.nightVisionActive = true;
+    player.nightVisionBattery = 30; // ~67%
+    hud.drawPowerups(100, 500, player);
+    const nvgActive = texts.find((t) => t.str.startsWith('NVG'));
+    assert.ok(nvgActive);
+    assert.equal(nvgActive.str, 'NVG 67%');
+    assert.equal(nvgActive.col, 1, 'active NVG badge is GREEN (1)');
+    assert.equal(nvgActive.opts.alpha, 0.95);
+
+    // 7. Night vision active (<= 5s battery: blinking state)
+    texts.length = 0;
+    player.nightVisionBattery = 4.0; // 4.0 * 4 = 16 (even -> alpha 0.95)
+    hud.drawPowerups(100, 500, player);
+    assert.equal(texts.find((t) => t.str.startsWith('NVG')).opts.alpha, 0.95);
+
+    texts.length = 0;
+    player.nightVisionBattery = 4.3; // 4.3 * 4 = 17 (odd -> alpha 0.3)
+    hud.drawPowerups(100, 500, player);
+    assert.equal(texts.find((t) => t.str.startsWith('NVG')).opts.alpha, 0.3);
+  },
+
+  'AC-3 HUD controlsHitAt and controlsButtonAt hit-test coordinate boundaries'() {
+    const hud = Object.create(Hud.prototype);
+    hud.width = 1024;
+    hud.height = 768;
+
+    // When controlsView is closed or not open -> HIT_NONE
+    hud.controlsView = null;
+    assert.equal(hud.controlsHitAt(new Vec2(500, 400)), HIT_NONE);
+    hud.controlsView = { open: false };
+    assert.equal(hud.controlsHitAt(new Vec2(500, 400)), HIT_NONE);
+
+    // Layout dimensions
+    const L = layoutControls(hud.width, hud.height);
+    hud.controlsView = {
+      open: true,
+      scroll: 0,
+      lines: [
+        { kind: 'header', title: 'MOVE' },
+        { kind: 'action', name: 'Forward', slot0: 'W', slot1: 'UP' },
+        { kind: 'action', name: 'Back', slot0: 'S', slot1: 'DOWN' },
+      ],
+    };
+
+    // Outside bounding box
+    assert.equal(hud.controlsHitAt(new Vec2(L.boxX - 10, L.boxY)), HIT_NONE);
+    assert.equal(hud.controlsHitAt(new Vec2(L.boxX + L.boxW + 10, L.boxY)), HIT_NONE);
+    assert.equal(hud.controlsHitAt(new Vec2(L.boxX, L.boxY - 10)), HIT_NONE);
+    assert.equal(hud.controlsHitAt(new Vec2(L.boxX, L.boxY + L.boxH + 10)), HIT_NONE);
+
+    // Button row: Reset All and Back
+    assert.equal(hud.controlsHitAt(new Vec2(L.resetX, L.buttonY)), HIT_RESET_ALL);
+    assert.equal(hud.controlsHitAt(new Vec2(L.backX, L.buttonY)), HIT_BACK);
+    assert.equal(hud.controlsHitAt(new Vec2((L.resetX + L.backX) / 2, L.buttonY)), HIT_NONE);
+
+    // Scroll cues
+    hud.controlsView.scroll = 1;
+    assert.equal(hud.controlsHitAt(new Vec2(L.boxX + L.boxW - 10, L.rowsTop - 8)), HIT_SCROLL_UP);
+    hud.controlsView.lines = new Array(50).fill({ kind: 'action', name: 'A', slot0: '1', slot1: '2' });
+    assert.equal(hud.controlsHitAt(new Vec2(L.boxX + L.boxW - 10, L.footerTop - 8)), HIT_SCROLL_DOWN);
+
+    // Action slot rows
+    hud.controlsView.scroll = 0;
+    hud.controlsView.lines = [
+      { kind: 'header', title: 'MOVE' },
+      { kind: 'action', name: 'Forward', slot0: 'W', slot1: 'UP' },
+      { kind: 'action', name: 'Back', slot0: 'S', slot1: 'DOWN' },
+    ];
+    // Row 0 (header) returns HIT_NONE
+    assert.equal(hud.controlsHitAt(new Vec2(L.slot0X, L.rowsTop + 10)), HIT_NONE);
+    // Row 1 (action 'Forward', line 1): slot 0 is 1 * 2 = 2, slot 1 is 1 * 2 + 1 = 3
+    assert.equal(hud.controlsHitAt(new Vec2(L.slot0X, L.rowsTop + 30)), (1 * 2));
+    assert.equal(hud.controlsHitAt(new Vec2(L.slot1X, L.rowsTop + 30)), (1 * 2 + 1));
+
+    // controlsButtonAt in title state vs paused state vs playing state
+    const cx = hud.width / 2;
+    const cy = hud.height / 2;
+    const game = { state: 'title', selectingDifficulty: false };
+    assert.equal(hud.controlsButtonAt(new Vec2(cx, cy + 80), game), true);
+    assert.equal(hud.controlsButtonAt(new Vec2(cx + 200, cy + 80), game), false);
+
+    game.state = 'paused';
+    assert.equal(hud.controlsButtonAt(new Vec2(cx, cy + 58), game), true);
+    assert.equal(hud.controlsButtonAt(new Vec2(cx, cy + 80), game), false);
+
+    game.state = 'play';
+    assert.equal(hud.controlsButtonAt(new Vec2(cx, cy + 80), game), false);
+    game.state = 'title';
+    game.selectingDifficulty = true;
+    assert.equal(hud.controlsButtonAt(new Vec2(cx, cy + 80), game), false);
+  },
+
+  'AC-4 HUD difficulty selection overlay renders DIFFICULTY_ORDER options'() {
+    const texts = [];
+    const lines = [];
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        fillText(str) { texts.push(str); },
+      }),
+    };
+    const mockOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: {
+        fillRect() {}, rectLine() {}, line() {}, circleLine() {},
+        weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} },
+      },
+    };
+    const hud = new Hud(mockCanvas, mockOverlay);
+    hud.resize(1024, 768, 1);
+    const origCanvasLine = hud.canvasLine.bind(hud);
+    hud.canvasLine = (pts, ...rest) => {
+      lines.push(pts);
+      origCanvasLine(pts, ...rest);
+    };
+
+    const game = fresh(0);
+    game.state = 'title';
+    game.selectingDifficulty = true;
+    game.difficulty = 'hard';
+
+    hud.drawOverlay(game);
+
+    assert.ok(texts.includes('SELECT SKILL LEVEL'), 'renders skill selection title');
+    for (let i = 0; i < DIFFICULTY_ORDER.length; i++) {
+      const key = DIFFICULTY_ORDER[i];
+      const def = DIFFICULTIES[key];
+      assert.ok(texts.some((t) => t.includes(def.label)), `renders skill label for ${key}`);
+      if (key === 'hard')
+        assert.ok(texts.some((t) => t.includes(`▸ [${i + 1}] ${def.label}`)), 'selected skill has pointer arrow prefix');
+    }
+    assert.ok(texts.includes(DIFFICULTIES.hard.desc), 'renders description of currently selected skill');
+    assert.ok(texts.includes(`MISSION:  ◂  ${game.level.name.toUpperCase()}  ▸`), 'renders mission cycle text');
+    assert.ok(lines.length >= 8, 'renders dialog box borders and selection highlights');
+  },
+
+  'AC-5 Blood dissolution step compacts acid splats gibs and prints'() {
+    const game = fresh(0);
+    clearEnemies(game);
+    const { blood } = game;
+    blood.reset(game.level, game.rand);
+
+    // Populate dissolving and non-dissolving entities
+    blood.floor.length = 0;
+    blood.gibs.length = 0;
+    blood.prints.length = 0;
+
+    // Floor splats: 1 dissolving near life expiration, 1 non-dissolving
+    blood.floor.push(
+      { x: 100, y: 100, size: 8, baseSize: 8, seed: 1234, dissolving: true, age: 1.0, life: 1.2, height: 0.28 },
+      { x: 200, y: 200, size: 6, seed: 5678, dissolving: false },
+    );
+
+    // Gibs: 1 dissolving near expiration, 1 non-dissolving
+    blood.gibs.push(
+      { x: 110, y: 110, size: 3, baseSize: 3, variant: 0, angle: 0, height: 0.36, baseHeight: 0.36, dissolving: true, age: 1.5, life: 1.8 },
+      { x: 210, y: 210, size: 3, baseSize: 3, variant: 1, angle: 0, height: 0.36, baseHeight: 0.36, dissolving: false, age: 0, life: Infinity },
+    );
+
+    // Prints: 1 dissolving near expiration, 1 non-dissolving
+    blood.prints.push(
+      { angle: 0, side: 1, strength: 0.8, baseStrength: 0.8, scale: 1, baseScale: 1, dissolving: true, age: 0.9, life: 1.1 },
+      { angle: 0, side: -1, strength: 0.8, baseStrength: 0.8, scale: 1, baseScale: 1, dissolving: false, age: 0, life: Infinity },
+    );
+
+    blood.hasDissolving = true;
+
+    // Advance 0.1s: entities shrink, age, jitter, but still alive
+    blood.update(0.1);
+    assert.equal(blood.hasDissolving, true, 'hasDissolving remains true while entities are active');
+    assert.ok(blood.floor[0].size < 8, 'dissolving floor splat size shrinks');
+    assert.ok(blood.gibs[0].size < 3, 'dissolving gib size shrinks');
+    assert.ok(blood.prints[0].scale < 1, 'dissolving print scale shrinks');
+
+    // Advance 0.3s more: dissolving entities expire and buffer compaction removes them
+    blood.update(0.3);
+    assert.equal(blood.floor.length, 1, 'expired dissolving splat compacted away');
+    assert.equal(blood.floor[0].dissolving, false, 'permanent splat retained');
+    assert.equal(blood.gibs.length, 1, 'expired dissolving gib compacted away');
+    assert.equal(blood.gibs[0].dissolving, false, 'permanent gib retained');
+    assert.equal(blood.prints.length, 1, 'expired dissolving print compacted away');
+    assert.equal(blood.prints[0].dissolving, false, 'permanent print retained');
+    assert.equal(blood.hasDissolving, false, 'hasDissolving reset to false when all dissolving items finish');
+
+    // Test high-velocity gib ceiling impact and wall axis deflection
+    blood.particles.length = 0;
+    // Ceiling bounce
+    const ceilingGib = blood.acquire();
+    ceilingGib.x = 200;
+    ceilingGib.y = 200;
+    ceilingGib.z = CEILING - 2;
+    ceilingGib.vx = 0;
+    ceilingGib.vy = 0;
+    ceilingGib.vz = 200; // moving up fast toward ceiling
+    ceilingGib.age = 0;
+    ceilingGib.life = 2.0;
+    ceilingGib.gib = true;
+    ceilingGib.bounces = 2;
+    blood.particles.push(ceilingGib);
+
+    blood.update(1 / 30);
+    assert.equal(ceilingGib.bounces, 1, 'bounces decremented on ceiling impact');
+    assert.ok(ceilingGib.vz < 0, 'vz deflected downwards from ceiling');
+    assert.ok(blood.ceiling.length > 0, 'ceiling splat spawned from gib impact');
+  },
+
+  'AC-6 Game combat handles weapon caps armor absorption and death transition'() {
+    const game = fresh(0);
+    clearEnemies(game);
+    const player = game.player;
+
+    // 1. Weapon pickup capping: shotgun, chaingun, rocket
+    player.weapons.shotgun = true;
+    player.shells = AMMO_TYPES.shells.max;
+    const shotgunRef = { type: 'shotgun', taken: false, initial: false };
+    game.grant(shotgunRef);
+    assert.equal(shotgunRef.taken, false, 'shotgun pickup refused when shells full');
+    assert.equal(game.message.text, 'SHELLS full');
+
+    player.shells = AMMO_TYPES.shells.max - 4;
+    game.grant(shotgunRef);
+    assert.equal(shotgunRef.taken, true, 'shotgun pickup accepted when below max');
+    assert.equal(player.shells, AMMO_TYPES.shells.max);
+
+    // Chaingun capping
+    player.weapons.chaingun = true;
+    player.bullets = AMMO_TYPES.bullets.max;
+    const chaingunRef = { type: 'chaingun', taken: false, initial: false };
+    game.grant(chaingunRef);
+    assert.equal(chaingunRef.taken, false, 'chaingun refused when bullets full');
+
+    // Rocket capping
+    player.weapons.rocket = true;
+    player.rockets = AMMO_TYPES.rockets.max;
+    const rocketRef = { type: 'rocket', taken: false, initial: false };
+    game.grant(rocketRef);
+    assert.equal(rocketRef.taken, false, 'rocket refused when rockets full');
+
+    // 2. Night vision pickup rules
+    player.hasNightVision = true;
+    player.nightVisionActive = true;
+    player.nightVisionBattery = POWERUP_TYPES.nightvision.duration - 1; // >= duration - 2
+    const nvgRef = { type: 'nightvision', taken: false, initial: false };
+    game.grant(nvgRef);
+    assert.equal(nvgRef.taken, false, 'NVG pickup refused when battery is near full');
+
+    player.nightVisionBattery = 10;
+    game.grant(nvgRef);
+    assert.equal(nvgRef.taken, true, 'NVG pickup granted when battery depleted');
+    assert.equal(player.nightVisionBattery, POWERUP_TYPES.nightvision.duration);
+
+    // 3. Green vs Blue Armor absorption
+    game.state = 'play';
+    player.health = 100;
+    player.armor = 100;
+    player.armorType = 'green'; // ARMOR_TYPES.green.save = 1/3
+    game.hurtPlayer(30);
+    // Green armor saves round(30 * 1/3) = 10. Armor takes 10 (remaining 90), health takes 20 (remaining 80).
+    assert.equal(player.armor, 90, 'green armor absorbs 1/3 of incoming damage');
+    assert.equal(player.health, 80, 'player health takes 2/3 remainder');
+
+    player.health = 100;
+    player.armor = 200;
+    player.armorType = 'blue'; // ARMOR_TYPES.blue.save = 1/2
+    game.hurtPlayer(30);
+    // Blue megaArmor saves round(30 * 1/2) = 15. Armor takes 15 (remaining 185), health takes 15 (remaining 85).
+    assert.equal(player.armor, 185, 'blue armor absorbs 1/2 of incoming damage');
+    assert.equal(player.health, 85, 'player health takes 1/2 remainder');
+
+    // 4. Lethal damage transition to dead
+    const imp = game.addEnemy('imp', new Vec2(player.pos.x + 50, player.pos.y));
+    imp.windup = 0.5;
+    imp.leap = 0.5;
+    imp.roar = 0.5;
+    imp.body.setVelocity(new Vec2(100, 50));
+
+    game.events.length = 0;
+    game.hurtPlayer(999);
+
+    assert.equal(game.state, 'dead', 'game state transitions to dead');
+    assert.equal(player.health, 0);
+    assert.equal(player.body.velocity.x, 0);
+    assert.equal(player.body.velocity.y, 0);
+    assert.equal(imp.windup, 0, 'enemy windup reset');
+    assert.equal(imp.leap, 0, 'enemy leap reset');
+    assert.equal(imp.roar, 0, 'enemy roar reset');
+    assert.equal(imp.body.velocity.x, 0, 'enemy velocity zeroed');
+    assert.equal(imp.body.velocity.y, 0);
+    assert.ok(game.events.some((e) => e.type === 'death'), 'death event emitted');
+  },
+
+  'AC-7 Monster death modes and postGibHits launch limbs and activate gore chunks'() {
+    const mockWorld = {
+      gl: null,
+      material: () => new Material(),
+      monsterPartMesh: (geo) => {
+        const m = new Mesh(null, geo);
+        m.setCustomUniform = () => {};
+        return m;
+      },
+      scene: { addMesh: () => {} },
+      sharedTexture: () => {},
+    };
+
+    const enemy = {
+      type: 'imp',
+      def: ENEMY_TYPES.imp,
+      hp: ENEMY_TYPES.imp.hp,
+      pos: new Vec2(100, 100),
+      body: { velocity: new Vec2(0, 0) },
+      state: 'dead',
+      walk: 0,
+      phase: 0,
+      windup: 0,
+      roar: 0,
+      hurt: 0,
+      pain: 0,
+      leap: 0,
+      deadTime: 0.35,
+      gibbed: false,
+      inSlime: false,
+      limbs: { leftArm: true, rightArm: true, leftLeg: true, rightLeg: true },
+    };
+
+    const view = MONSTERS.imp.build(mockWorld, enemy);
+
+    // Death mode 0: Decapitation (Math.floor(abs(seed * 13.37)) % 4 === 0)
+    // seed = 0.0 -> 0.0 * 13.37 = 0
+    view.pose.seed = 0.0;
+    MONSTERS.imp.die(view, enemy);
+    assert.equal(view.dismemberMode, 0);
+    assert.equal(view.head.parent, view.root, 'mode 0 decapitation launches head into root');
+    assert.equal(view.jaw.parent, view.head, 'mode 0 attaches jaw under head');
+    assert.equal(view.leftArm.parent, view.body, 'mode 0 keeps left arm attached to body');
+    assert.equal(view.rightArm.parent, view.body, 'mode 0 keeps right arm attached to body');
+
+    // Death mode 1: Jaw and Left Arm launch (seed = 0.1 -> 0.1 * 13.37 = 1.337 -> 1)
+    view.pose.seed = 0.1;
+    MONSTERS.imp.die(view, enemy);
+    assert.equal(view.dismemberMode, 1);
+    assert.equal(view.jaw.parent, view.root, 'mode 1 launches jaw into root');
+    assert.equal(view.leftArm.parent, view.root, 'mode 1 launches left arm into root');
+    assert.equal(view.head.parent, view.body, 'mode 1 keeps head on body');
+
+    // Death mode 2: Right Arm launch (seed = 0.16 -> 0.16 * 13.37 = 2.139 -> 2)
+    view.pose.seed = 0.16;
+    MONSTERS.imp.die(view, enemy);
+    assert.equal(view.dismemberMode, 2);
+    assert.equal(view.rightArm.parent, view.root, 'mode 2 launches right arm into root');
+    assert.equal(view.leftArm.parent, view.body, 'mode 2 keeps left arm on body');
+
+    // Death mode 3: Head and Left Arm launch (seed = 0.23 -> 0.23 * 13.37 = 3.075 -> 3)
+    view.pose.seed = 0.23;
+    MONSTERS.imp.die(view, enemy);
+    assert.equal(view.dismemberMode, 3);
+    assert.equal(view.head.parent, view.root, 'mode 3 launches head into root');
+    assert.equal(view.leftArm.parent, view.root, 'mode 3 launches left arm into root');
+
+    // Death mode 4: XDeath explosive gibs (gibbed = true)
+    enemy.gibbed = true;
+    enemy.postGibHits = 0;
+    MONSTERS.imp.die(view, enemy);
+    assert.equal(view.dismemberMode, 4);
+    assert.equal(view.body.parent, view.root, 'XDeath launches body into root');
+    assert.equal(view.head.parent, view.root, 'XDeath launches head into root');
+    assert.equal(view.jaw.parent, view.root, 'XDeath launches jaw into root');
+    assert.equal(view.leftArm.parent, view.root, 'XDeath launches left arm into root');
+    assert.equal(view.rightArm.parent, view.root, 'XDeath launches right arm into root');
+    assert.equal(view.leftLeg.parent, view.root, 'XDeath launches left leg into root');
+    assert.equal(view.rightLeg.parent, view.root, 'XDeath launches right leg into root');
+    assert.equal(view.goreChunks.filter((c) => c.isActive()).length, 2, 'initial XDeath activates 2 gore chunks');
+
+    // Progressive postGibHits: 1 -> 4 chunks, 2 -> 6 chunks
+    enemy.postGibHits = 1;
+    MONSTERS.imp.die(view, enemy);
+    assert.equal(view.goreChunks.filter((c) => c.isActive()).length, 4, 'postGibHits 1 activates 4 gore chunks');
+
+    enemy.postGibHits = 2;
+    MONSTERS.imp.die(view, enemy);
+    assert.equal(view.goreChunks.filter((c) => c.isActive()).length, 6, 'postGibHits 2 activates 6 gore chunks');
+  },
+
+  'AC-8 Input rawMode dispatches wheel button events and accumulates mouseDX'() {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    const canvasHandlers = {};
+    const docHandlers = {};
+    const winHandlers = {};
+    const mockCanvas = {
+      addEventListener(name, handler) {
+        canvasHandlers[name] = handler;
+      },
+    };
+    globalThis.document = {
+      addEventListener(name, handler) {
+        docHandlers[name] = handler;
+      },
+      pointerLockElement: null,
+    };
+    globalThis.window = {
+      addEventListener(name, handler) {
+        winHandlers[name] = handler;
+      },
+    };
+
+    try {
+      const inp = new Input(mockCanvas, new Keymap({ storage: null, navigator: null }));
+      inp.setRawMode(true);
+
+      // 1. Wheel event: pushes 'wheel' raw record with delta sign
+      canvasHandlers.wheel?.({ deltaY: 45, preventDefault() {} });
+      canvasHandlers.wheel?.({ deltaY: -60, preventDefault() {} });
+
+      const wheel1 = inp.nextRaw();
+      assert.deepStrictEqual(wheel1, { kind: 'wheel', code: '', key: '', repeat: false, delta: 1 });
+      const wheel2 = inp.nextRaw();
+      assert.deepStrictEqual(wheel2, { kind: 'wheel', code: '', key: '', repeat: false, delta: -1 });
+
+      // 2. Mousedown & mouseup: button 0 -> Mouse0, button 2 -> Mouse1
+      canvasHandlers.mousedown?.({ button: 0, clientX: 0, clientY: 0, preventDefault() {} });
+      winHandlers.mouseup?.({ button: 0, preventDefault() {} });
+      canvasHandlers.mousedown?.({ button: 2, clientX: 0, clientY: 0, preventDefault() {} });
+      winHandlers.mouseup?.({ button: 2, preventDefault() {} });
+
+      const down0 = inp.nextRaw();
+      assert.deepStrictEqual(down0, { kind: 'buttondown', code: 'Mouse0', key: '', repeat: false, delta: 0 });
+      const up0 = inp.nextRaw();
+      assert.deepStrictEqual(up0, { kind: 'buttonup', code: 'Mouse0', key: '', repeat: false, delta: 0 });
+
+      const down2 = inp.nextRaw();
+      assert.deepStrictEqual(down2, { kind: 'buttondown', code: 'Mouse2', key: '', repeat: false, delta: 0 });
+      const up2 = inp.nextRaw();
+      assert.deepStrictEqual(up2, { kind: 'buttonup', code: 'Mouse2', key: '', repeat: false, delta: 0 });
+
+      assert.equal(inp.nextRaw(), null, 'raw queue drained');
+
+      // 3. Mousemove when locked accumulates mouseDX
+      globalThis.document.pointerLockElement = mockCanvas;
+      assert.equal(inp.locked, true);
+      assert.equal(inp.mouseDX, 0);
+
+      docHandlers.mousemove?.({ movementX: 12, clientX: 50, clientY: 50 });
+      docHandlers.mousemove?.({ movementX: -5, clientX: 45, clientY: 50 });
+      assert.equal(inp.mouseDX, 7, 'mouseDX accumulates 12 + (-5) = 7');
+
+      const polled = inp.poll();
+      assert.equal(polled.mouseX, 7, 'polled mouseX matches mouseDX');
+      assert.equal(inp.mouseDX, 0, 'mouseDX reset after poll');
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
   },
 };
 
