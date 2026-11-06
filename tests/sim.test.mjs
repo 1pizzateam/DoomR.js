@@ -202,10 +202,12 @@ function withQuadHarness(check) {
   const textures = [];
   const sharedTextures = [];
   const inactives = [];
+  const roostrQuadBatchInits = [];
   const origAddProgram = Mesh.prototype.addProgram;
   const origSetTexture = Mesh.prototype.setTexture;
   const origSetSharedTexture = Mesh.prototype.setSharedTexture;
   const origSetInactive = Mesh.prototype.setInactive;
+  const origRoostrQuadBatch = Object.getPrototypeOf(QuadBatch);
 
   Mesh.prototype.addProgram = function(...args) {
     programs.push({ mesh: this, args });
@@ -221,6 +223,14 @@ function withQuadHarness(check) {
     inactives.push({ mesh: this, args });
   };
 
+  class TrackedRoostrQuadBatch extends origRoostrQuadBatch {
+    constructor(context, options) {
+      roostrQuadBatchInits.push({ context, options });
+      super(context, options);
+    }
+  }
+  Object.setPrototypeOf(QuadBatch, TrackedRoostrQuadBatch);
+
   const gl = {
     createBuffer: () => ({}),
     bindBuffer() {},
@@ -231,8 +241,9 @@ function withQuadHarness(check) {
   };
 
   try {
-    check({ gl, programs, textures, sharedTextures, inactives });
+    check({ gl, programs, textures, sharedTextures, inactives, roostrQuadBatchInits });
   } finally {
+    Object.setPrototypeOf(QuadBatch, origRoostrQuadBatch);
     Mesh.prototype.addProgram = origAddProgram;
     Mesh.prototype.setTexture = origSetTexture;
     Mesh.prototype.setSharedTexture = origSetSharedTexture;
@@ -13998,6 +14009,138 @@ const tests = {
       inp.heldWhich.add(91);
       inp.syncMeta({ metaKey: false });
       assert.ok(keyboardUpCalls.includes(91), 'keyboard.up dispatched when 91 was in heldWhich');
+    });
+  },
+
+  'AC-1 QuadBatch configures sharedTexture when provided and omits direct texture options'() {
+    withQuadHarness(({ gl, sharedTextures, textures, roostrQuadBatchInits }) => {
+      const atlas = { data: new Uint8Array(16), width: 2, height: 2 };
+      const sharedTex = { id: 'shared-texture-mock' };
+      const batch = new QuadBatch(gl, {
+        capacity: 10,
+        atlas,
+        sharedTexture: sharedTex,
+      });
+
+      assert.equal(roostrQuadBatchInits.length, 1);
+      const passedOpts = roostrQuadBatchInits[0].options;
+      assert.equal(passedOpts.sharedTexture, sharedTex);
+      assert.equal(passedOpts.texture, undefined);
+      assert.equal(passedOpts.textureOptions, undefined);
+
+      assert.equal(sharedTextures.length, 1);
+      assert.equal(sharedTextures[0].mesh, batch);
+      assert.equal(sharedTextures[0].args[0], sharedTex);
+      assert.equal(textures.length, 0);
+    });
+  },
+
+  'AC-2 QuadBatch configures direct atlas texture and merged texture options when sharedTexture is absent'() {
+    withQuadHarness(({ gl, sharedTextures, textures, roostrQuadBatchInits }) => {
+      const atlas = { data: new Uint8Array(64), width: 4, height: 4 };
+      const customOptions = { wrapS: 10497, customFlag: true };
+      const batch = new QuadBatch(gl, {
+        capacity: 10,
+        atlas,
+        sharedTexture: null,
+        textureOptions: customOptions,
+      });
+
+      assert.equal(roostrQuadBatchInits.length, 1);
+      const passedOpts = roostrQuadBatchInits[0].options;
+      assert.equal(passedOpts.sharedTexture, null);
+      assert.equal(passedOpts.texture, atlas.data);
+      assert.ok(passedOpts.textureOptions.size instanceof Vec2);
+      assert.equal(passedOpts.textureOptions.size.x, 4);
+      assert.equal(passedOpts.textureOptions.size.y, 4);
+      assert.equal(passedOpts.textureOptions.magFilter, gl.NEAREST);
+      assert.equal(passedOpts.textureOptions.minFilter, gl.NEAREST);
+      assert.equal(passedOpts.textureOptions.wrapS, 10497);
+      assert.equal(passedOpts.textureOptions.customFlag, true);
+
+      assert.equal(sharedTextures.length, 0);
+      assert.equal(textures.length, 1);
+      assert.equal(textures[0].mesh, batch);
+      assert.equal(textures[0].args[0], atlas.data);
+      assert.equal(textures[0].args[1], passedOpts.textureOptions);
+    });
+  },
+
+  'AC-3 texturedMesh invokes setSharedTexture when supported and sharedTexture is provided'() {
+    withQuadHarness(({ gl, sharedTextures, textures, programs }) => {
+      const geometry = new CustomMesh();
+      const atlas = { data: new Uint8Array(16), width: 2, height: 2 };
+      const sharedTex = { id: 'mesh-shared-tex' };
+      const mesh = texturedMesh(gl, geometry, {
+        atlas,
+        sharedTexture: sharedTex,
+      });
+
+      assert.ok(mesh instanceof Mesh);
+      assert.equal(programs.length, 1);
+      assert.equal(sharedTextures.length, 1);
+      assert.equal(sharedTextures[0].mesh, mesh);
+      assert.equal(sharedTextures[0].args[0], sharedTex);
+      assert.equal(textures.length, 0);
+    });
+  },
+
+  'AC-4 texturedMesh falls back to setTexture when setSharedTexture is absent'() {
+    withQuadHarness(({ gl, textures }) => {
+      const origSetSharedTexture = Mesh.prototype.setSharedTexture;
+      delete Mesh.prototype.setSharedTexture;
+      try {
+        const geometry = new CustomMesh();
+        const atlas = { data: new Uint8Array(64), width: 4, height: 4 };
+        const sharedTex = { id: 'fallback-shared-tex' };
+        const customOptions = { wrapT: 10497 };
+        const mesh = texturedMesh(gl, geometry, {
+          atlas,
+          sharedTexture: sharedTex,
+          textureOptions: customOptions,
+        });
+
+        assert.ok(mesh instanceof Mesh);
+        assert.equal(textures.length, 1);
+        assert.equal(textures[0].mesh, mesh);
+        assert.equal(textures[0].args[0], atlas.data);
+        const passedOptions = textures[0].args[1];
+        assert.ok(passedOptions.size instanceof Vec2);
+        assert.equal(passedOptions.size.x, 4);
+        assert.equal(passedOptions.size.y, 4);
+        assert.equal(passedOptions.magFilter, gl.NEAREST);
+        assert.equal(passedOptions.minFilter, gl.NEAREST);
+        assert.equal(passedOptions.wrapT, 10497);
+      } finally {
+        Mesh.prototype.setSharedTexture = origSetSharedTexture;
+      }
+    });
+  },
+
+  'AC-5 texturedMesh invokes setTexture with merged options when sharedTexture is absent'() {
+    withQuadHarness(({ gl, sharedTextures, textures }) => {
+      const geometry = new CustomMesh();
+      const atlas = { data: new Uint8Array(16), width: 2, height: 2 };
+      const customOptions = { generateMipmaps: true, wrapS: 33071 };
+      const mesh = texturedMesh(gl, geometry, {
+        atlas,
+        sharedTexture: null,
+        textureOptions: customOptions,
+      });
+
+      assert.ok(mesh instanceof Mesh);
+      assert.equal(sharedTextures.length, 0);
+      assert.equal(textures.length, 1);
+      assert.equal(textures[0].mesh, mesh);
+      assert.equal(textures[0].args[0], atlas.data);
+      const passedOptions = textures[0].args[1];
+      assert.ok(passedOptions.size instanceof Vec2);
+      assert.equal(passedOptions.size.x, 2);
+      assert.equal(passedOptions.size.y, 2);
+      assert.equal(passedOptions.magFilter, gl.NEAREST);
+      assert.equal(passedOptions.minFilter, gl.NEAREST);
+      assert.equal(passedOptions.generateMipmaps, true);
+      assert.equal(passedOptions.wrapS, 33071);
     });
   },
 };
