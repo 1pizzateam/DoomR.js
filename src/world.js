@@ -1299,7 +1299,7 @@ export class World {
           const adjIdx = adjY * width + adjX;
           const tileRoofless = level.arena?.has(adjIdx);
           const tileToRoof = top < ROOF && !tileRoofless;
-          const quads = wallFaceQuads({ axis, plane, from: a, to: a, base, top: tileToRoof ? ROOF : top, x: group.x, y: group.y, d, exit: group.kind === EXIT });
+          const quads = wallFaceQuads({ axis, plane, from: a, to: a, base, top: tileToRoof ? ROOF : top, tile: new Vec2(group.x, group.y), d, exit: group.kind === EXIT });
           if (base === 0)
             sinkToFloor(quads);
           if (isMars && !level.isIndoorTile(adjIdx))
@@ -1329,7 +1329,7 @@ export class World {
       const toRoof = kind[idx] !== PILLAR && top < ROOF && !roofless;
       if (toRoof)
         hide.push(...quadTriangles(lap(top, ROOF), offset));
-      const quads = diagWallFaceQuads({ ax: df.a.x, ay: df.a.y, bx: df.b.x, by: df.b.y, base: 0, top: toRoof ? ROOF : top, x: df.x, y: df.y, diag: df.diag, exit: kind[idx] === EXIT });
+      const quads = diagWallFaceQuads({ a: df.a, b: df.b, heights: new Vec2(0, toRoof ? ROOF : top), tile: new Vec2(df.x, df.y), diag: df.diag, exit: kind[idx] === EXIT });
       sinkToFloor(quads);
       if (isMars && !level.isIndoorTile(idx))
         outdoorFaces.push(...quads);
@@ -1357,8 +1357,8 @@ export class World {
         hide.push(...quadTriangles(corners, alongY ? new Vec3(0, 0, inset) : new Vec3(inset, 0, 0)));
         // and the lintel is textured wall as well
         const quads = wallFaceQuads(alongY
-          ? { axis: 'z', plane: (y + end) * TILE, from: x, to: x, base: top, top: ROOF, x, y, d: 2 + end, exit: false }
-          : { axis: 'x', plane: (x + end) * TILE, from: y, to: y, base: top, top: ROOF, x, y, d: end, exit: false });
+          ? { axis: 'z', plane: (y + end) * TILE, from: x, to: x, base: top, top: ROOF, tile: new Vec2(x, y), d: 2 + end, exit: false }
+          : { axis: 'x', plane: (x + end) * TILE, from: y, to: y, base: top, top: ROOF, tile: new Vec2(x, y), d: end, exit: false });
         if (isMars && !level.isIndoorTile(outY * width + outX))
           outdoorFaces.push(...quads);
         else
