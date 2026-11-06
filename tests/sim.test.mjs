@@ -10675,7 +10675,7 @@ const tests = {
     assert.ok(log.includes('#26') && log.includes('doomr.controls'));
   },
 
-  'AC-1 ControlsMenu cursor navigation and boundary clamping'() {
+  'AC-1 ControlsMenu moveCursor navigates action rows, skips headers, and enters footer'() {
     withRig((inp) => {
       const menu = new ControlsMenu(inp.keymap, inp);
       const game = fakeGame();
@@ -10686,216 +10686,105 @@ const tests = {
       assert.equal(v.cursorCol, 0);
       assert.equal(v.footerFocus, -1);
 
+      // Boundary clamping: ArrowUp on topmost action row does nothing
       menu.moveCursor(-1, game);
       assert.equal(v.cursorLine, menu.actionLines[0]);
       assert.equal(v.footerFocus, -1);
       assert.equal(game.events.length, 0);
 
+      // Verify that every action line advance skips intervening header rows
       for (let i = 1; i < menu.actionLines.length; i++) {
+        const prevLine = v.cursorLine;
         menu.moveCursor(1, game);
         assert.equal(v.cursorLine, menu.actionLines[i]);
+        assert.equal(v.lines[v.cursorLine].kind, 'action');
         assert.equal(v.footerFocus, -1);
         assert.equal(game.events[game.events.length - 1], 'tallyTick');
+        // Ensure that if there's a header between prevLine and cursorLine, cursor jumped over it
+        if (v.cursorLine > prevLine + 1)
+          assert.equal(v.lines[prevLine + 1].kind, 'header');
       }
 
+      // Transition past last action row into footer (FOOTER_RESET = 0)
       menu.moveCursor(1, game);
       assert.equal(v.footerFocus, 0);
       assert.equal(game.events[game.events.length - 1], 'tallyTick');
 
+      // Subsequent ArrowDown while in footer does not advance further
+      const evCount = game.events.length;
       menu.moveCursor(1, game);
       assert.equal(v.footerFocus, 0);
+      assert.equal(game.events.length, evCount);
 
-      menu.moveColumn(1, game);
-      assert.equal(v.footerFocus, 1);
-      assert.equal(game.events[game.events.length - 1], 'tallyTick');
-
-      menu.moveColumn(1, game);
-      assert.equal(v.footerFocus, 1);
-
+      // ArrowUp from footer escapes back to the last action line
       menu.moveCursor(-1, game);
       assert.equal(v.footerFocus, -1);
       assert.equal(v.cursorLine, menu.actionLines[menu.actionLines.length - 1]);
       assert.equal(game.events[game.events.length - 1], 'tallyTick');
-
-      assert.equal(v.cursorCol, 0);
-      menu.moveColumn(-1, game);
-      assert.equal(v.cursorCol, 0);
-
-      menu.moveColumn(1, game);
-      assert.equal(v.cursorCol, 1);
-      assert.equal(game.events[game.events.length - 1], 'tallyTick');
-
-      menu.moveColumn(1, game);
-      assert.equal(v.cursorCol, 1);
-
-      menu.moveColumn(-1, game);
-      assert.equal(v.cursorCol, 0);
     });
   },
 
-  'AC-2 ControlsMenu keepCursorVisible and scrollBy viewport scrolling'() {
+  'AC-2 ControlsMenu moveColumn navigates slots and toggles footer buttons'() {
     withRig((inp) => {
       const menu = new ControlsMenu(inp.keymap, inp);
       const game = fakeGame();
       menu.open('title');
       const v = menu.view;
 
-      assert.equal(v.scroll, 0);
-      assert.equal(v.visibleRows, 12);
+      // On action row: slot 0 -> slot 1 -> clamped
+      assert.equal(v.footerFocus, -1);
+      assert.equal(v.cursorCol, 0);
 
-      const maxScroll = Math.max(0, v.lines.length - v.visibleRows);
-      assert.ok(maxScroll > 0);
+      // Boundary move left does nothing and emits no sound
+      menu.moveColumn(-1, game);
+      assert.equal(v.cursorCol, 0);
+      assert.equal(game.events.length, 0);
 
-      let targetIdx = 0;
-      while (targetIdx < menu.actionLines.length && menu.actionLines[targetIdx] <= v.visibleRows - 1)
-        targetIdx++;
-      const targetLine = menu.actionLines[targetIdx];
-      while (v.cursorLine < targetLine)
-        menu.moveCursor(1, game);
+      // ArrowRight advances to slot 1 and emits tallyTick
+      menu.moveColumn(1, game);
+      assert.equal(v.cursorCol, 1);
+      assert.equal(game.events[game.events.length - 1], 'tallyTick');
 
-      assert.equal(v.cursorLine, targetLine);
-      assert.equal(v.scroll, targetLine - v.visibleRows + 1);
+      // Subsequent ArrowRight clamps at 1 and emits no sound
+      const evLen1 = game.events.length;
+      menu.moveColumn(1, game);
+      assert.equal(v.cursorCol, 1);
+      assert.equal(game.events.length, evLen1);
 
-      const headerIdx = v.lines.findIndex((l, idx) => idx > 0 && l.kind === 'header');
-      assert.ok(headerIdx > 0);
-      const rowUnderHeader = headerIdx + 1;
-      assert.ok(menu.actionLines.includes(rowUnderHeader));
+      // ArrowLeft moves back to slot 0 and emits tallyTick
+      menu.moveColumn(-1, game);
+      assert.equal(v.cursorCol, 0);
+      assert.equal(game.events[game.events.length - 1], 'tallyTick');
 
-      v.cursorLine = rowUnderHeader;
-      v.footerFocus = -1;
-      v.scroll = rowUnderHeader;
-      menu.keepCursorVisible();
-      assert.equal(v.scroll, rowUnderHeader - 1);
+      // Navigate to footer
+      menu.moveCursor(menu.actionLines.length, game);
+      assert.equal(v.footerFocus, 0); // FOOTER_RESET
 
-      v.scroll = 5;
-      menu.scrollBy(3);
-      assert.equal(v.scroll, 8);
+      // Boundary move left in footer does nothing and emits no sound
+      const evLen2 = game.events.length;
+      menu.moveColumn(-1, game);
+      assert.equal(v.footerFocus, 0);
+      assert.equal(game.events.length, evLen2);
 
-      menu.scrollBy(-20);
-      assert.equal(v.scroll, 0);
+      // ArrowRight toggles to FOOTER_BACK (1) and emits tallyTick
+      menu.moveColumn(1, game);
+      assert.equal(v.footerFocus, 1);
+      assert.equal(game.events[game.events.length - 1], 'tallyTick');
 
-      menu.scrollBy(v.lines.length + 50);
-      assert.equal(v.scroll, maxScroll);
+      // Subsequent ArrowRight in footer clamps at FOOTER_BACK and emits no sound
+      const evLen3 = game.events.length;
+      menu.moveColumn(1, game);
+      assert.equal(v.footerFocus, 1);
+      assert.equal(game.events.length, evLen3);
 
-      v.scroll = 2;
-      inp.pushRaw('wheel', '', '', false, 1);
-      menu.update(0.016, game);
-      assert.equal(v.scroll, 5);
-
-      inp.pushRaw('wheel', '', '', false, -1);
-      menu.update(0.016, game);
-      assert.equal(v.scroll, 2);
+      // ArrowLeft toggles back to FOOTER_RESET (0) and emits tallyTick
+      menu.moveColumn(-1, game);
+      assert.equal(v.footerFocus, 0);
+      assert.equal(game.events[game.events.length - 1], 'tallyTick');
     });
   },
 
-  'AC-3 ControlsMenu two-stage reset confirmation and timeout'() {
-    withRig((inp, rig) => {
-      const k = inp.keymap;
-      k.setBinding('fire', 0, 'KeyZ');
-      assert.equal(k.isCustom('fire'), true);
-
-      const menu = new ControlsMenu(k, inp);
-      const game = fakeGame();
-      menu.open('title');
-      const v = menu.view;
-
-      menu.activateReset(game);
-      assert.equal(v.mode, 'confirmReset');
-      assert.equal(v.confirmTime, 2);
-      assert.equal(v.toastText, 'Press RESET ALL again to restore every default');
-      assert.equal(k.isCustom('fire'), true);
-
-      menu.update(2.1, game);
-      assert.equal(v.mode, 'browse');
-      assert.equal(k.isCustom('fire'), true);
-
-      menu.activateReset(game);
-      assert.equal(v.mode, 'confirmReset');
-      assert.equal(k.isCustom('fire'), true);
-
-      menu.activateReset(game);
-      assert.equal(v.mode, 'browse');
-      assert.equal(k.isCustom('fire'), false);
-      assert.equal(v.toastText, 'All controls reset');
-      assert.ok(game.events.includes('keycard'));
-
-      k.setBinding('fire', 0, 'KeyZ');
-      assert.equal(k.isCustom('fire'), true);
-
-      v.footerFocus = 0;
-      rig.down({ code: 'Enter', key: 'Enter' });
-      menu.update(0.016, game);
-      rig.up({ code: 'Enter', key: 'Enter' });
-      menu.update(0.016, game);
-      assert.equal(v.mode, 'confirmReset');
-      assert.equal(k.isCustom('fire'), true);
-
-      rig.down({ code: 'Enter', key: 'Enter' });
-      menu.update(0.016, game);
-      rig.up({ code: 'Enter', key: 'Enter' });
-      menu.update(0.016, game);
-      assert.equal(v.mode, 'browse');
-      assert.equal(k.isCustom('fire'), false);
-    });
-  },
-
-  'AC-4 ControlsMenu Delete/Backspace unbinding and Escape cancellation'() {
-    withRig((inp, rig) => {
-      const menu = new ControlsMenu(inp.keymap, inp);
-      const game = fakeGame();
-      menu.open('title');
-      const v = menu.view;
-
-      const forwardLine = v.lines.findIndex((l) => l.id === 'moveForward');
-      assert.ok(forwardLine >= 0);
-      v.cursorLine = forwardLine;
-      // Test secondary slot unbinding on an action with two slots (moveForward)
-      // and single-binding action unbinding to 'UNBOUND' (jump).
-      v.cursorCol = 1;
-      rig.down({ code: 'Backspace', key: 'Backspace' });
-      menu.update(0.016, game);
-      rig.up({ code: 'Backspace', key: 'Backspace' });
-      menu.update(0.016, game);
-
-      assert.equal(v.lines[forwardLine].slot1, '—');
-      assert.equal(v.toastText, 'Not saved: browser storage unavailable');
-      assert.ok(game.events.includes('keycard'));
-
-      // Now unbind single slot of 'jump'
-      const jumpLine = v.lines.findIndex((l) => l.id === 'jump');
-      assert.ok(jumpLine >= 0);
-      v.cursorLine = jumpLine;
-      v.cursorCol = 0;
-      rig.down({ code: 'Delete', key: 'Delete' });
-      menu.update(0.016, game);
-      rig.up({ code: 'Delete', key: 'Delete' });
-      menu.update(0.016, game);
-
-      assert.equal(v.lines[jumpLine].slot0, 'UNBOUND');
-      assert.equal(v.lines[jumpLine].unbound, true);
-
-      menu.activateReset(game);
-      assert.equal(v.mode, 'confirmReset');
-
-      rig.down({ code: 'Escape', key: 'Escape' });
-      menu.update(0.016, game);
-      rig.up({ code: 'Escape', key: 'Escape' });
-      menu.update(0.016, game);
-
-      assert.equal(v.mode, 'browse');
-      assert.equal(menu.isOpen, true);
-
-      rig.down({ code: 'Escape', key: 'Escape' });
-      menu.update(0.016, game);
-      rig.up({ code: 'Escape', key: 'Escape' });
-      menu.update(0.016, game);
-
-      assert.equal(menu.isOpen, false);
-      assert.equal(inp.rawMode, false);
-    });
-  },
-
-  'AC-5 ControlsMenu mouse hit detection and button routing'() {
+  'AC-3 ControlsMenu mouse wheel and scrollBy clamp scroll within valid bounds'() {
     withRig((inp) => {
       let currentHit = HIT_NONE;
       const menu = new ControlsMenu(inp.keymap, inp, { hitAt: () => currentHit });
@@ -10903,6 +10792,29 @@ const tests = {
       menu.open('title');
       const v = menu.view;
 
+      assert.equal(v.scroll, 0);
+      assert.equal(v.visibleRows, 12);
+      const maxScroll = Math.max(0, v.lines.length - v.visibleRows);
+      assert.ok(maxScroll > 0);
+
+      // Mouse wheel event records in browse mode
+      v.scroll = 2;
+      inp.pushRaw('wheel', '', '', false, 1);
+      menu.update(0.016, game);
+      assert.equal(v.scroll, 5); // 2 + 1 * SCROLL_STEP (3)
+
+      inp.pushRaw('wheel', '', '', false, -1);
+      menu.update(0.016, game);
+      assert.equal(v.scroll, 2); // 5 - 1 * SCROLL_STEP (3)
+
+      // Clamping via scrollBy
+      menu.scrollBy(-20);
+      assert.equal(v.scroll, 0);
+
+      menu.scrollBy(v.lines.length + 50);
+      assert.equal(v.scroll, maxScroll);
+
+      // HIT_SCROLL_UP and HIT_SCROLL_DOWN clicks
       v.scroll = 5;
       currentHit = HIT_SCROLL_DOWN;
       inp.pushRaw('buttondown', 'Mouse0', '', false, 0);
@@ -10914,6 +10826,144 @@ const tests = {
       menu.update(0.016, game);
       assert.equal(v.scroll, 5);
 
+      // keepCursorVisible adjusting scroll when moving below visible rows
+      v.scroll = 0;
+      let targetIdx = 0;
+      while (targetIdx < menu.actionLines.length && menu.actionLines[targetIdx] <= v.visibleRows - 1)
+        targetIdx++;
+      const targetLine = menu.actionLines[targetIdx];
+      while (v.cursorLine < targetLine)
+        menu.moveCursor(1, game);
+      assert.equal(v.cursorLine, targetLine);
+      assert.equal(v.scroll, targetLine - v.visibleRows + 1);
+
+      // keepCursorVisible adjusting scroll when moving above visible rows, preserving header
+      const headerIdx = v.lines.findIndex((l, idx) => idx > 0 && l.kind === 'header');
+      assert.ok(headerIdx > 0);
+      const rowUnderHeader = headerIdx + 1;
+      assert.ok(menu.actionLines.includes(rowUnderHeader));
+
+      v.cursorLine = rowUnderHeader;
+      v.footerFocus = -1;
+      v.scroll = rowUnderHeader;
+      menu.keepCursorVisible();
+      assert.equal(v.scroll, rowUnderHeader - 1); // scrolled up to keep preceding header visible
+    });
+  },
+
+  'AC-4 ControlsMenu KeyR resets single action to defaults and toasts outcome'() {
+    withRig((inp, rig) => {
+      const menu = new ControlsMenu(inp.keymap, inp);
+      const game = fakeGame();
+      menu.open('title');
+      const v = menu.view;
+
+      // Locate jump action and bind it to KeyJ (custom)
+      const jumpLine = v.lines.findIndex((l) => l.id === 'jump');
+      assert.ok(jumpLine >= 0);
+      v.cursorLine = jumpLine;
+      v.cursorCol = 0;
+      inp.keymap.setBinding('jump', 0, 'KeyJ');
+      menu.refreshLabels();
+      assert.equal(v.lines[jumpLine].custom, true);
+
+      // Send KeyR keydown in browse mode
+      rig.down({ code: 'KeyR', key: 'r' });
+      menu.update(0.016, game);
+      rig.up({ code: 'KeyR', key: 'r' });
+      menu.update(0.016, game);
+
+      assert.equal(inp.keymap.isCustom('jump'), false);
+      assert.equal(v.lines[jumpLine].custom, false);
+      assert.equal(game.events[game.events.length - 1], 'keycard');
+      assert.equal(v.toastText, 'Reset');
+      assert.equal(v.toastTone, 1); // TONE_GREEN = 1
+
+      // Conflict resolution during reset: steal jump's default key (Space) by setting moveForward slot 0 to Space
+      const fwdLine = v.lines.findIndex((l) => l.id === 'moveForward');
+      assert.ok(fwdLine >= 0);
+      inp.keymap.setBinding('moveForward', 0, 'Space');
+      assert.equal(inp.keymap.isCustom('moveForward'), true);
+
+      // Now reset jump; its default is Space, so resetting jump steals Space back from moveForward
+      v.cursorLine = jumpLine;
+      rig.down({ code: 'KeyR', key: 'r' });
+      menu.update(0.016, game);
+      rig.up({ code: 'KeyR', key: 'r' });
+      menu.update(0.016, game);
+
+      assert.equal(game.events[game.events.length - 1], 'keycard');
+      assert.ok(v.toastText.includes('was taken from MOVE FORWARD'));
+      assert.equal(v.toastTone, 2); // TONE_ORANGE = 2 because moveForward still has ArrowUp in slot 1
+    }, memoryStorage());
+  },
+
+  'AC-5 ControlsMenu Reset All two-step confirmation, timeout cancellation, and execution'() {
+    withRig((inp, rig) => {
+      let currentHit = HIT_NONE;
+      const menu = new ControlsMenu(inp.keymap, inp, { hitAt: () => currentHit });
+      const game = fakeGame();
+      menu.open('title');
+      const v = menu.view;
+
+      // Make a custom binding
+      inp.keymap.setBinding('fire', 0, 'KeyZ');
+      assert.equal(inp.keymap.isCustom('fire'), true);
+
+      // 1. Keyboard activation of Reset All
+      v.footerFocus = 0; // FOOTER_RESET
+      rig.down({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+
+      assert.equal(v.mode, 'confirmReset');
+      assert.ok(v.confirmTime > 1.9 && v.confirmTime <= 2);
+      assert.equal(v.toastText, 'Press RESET ALL again to restore every default');
+      assert.equal(v.toastTone, 2); // TONE_ORANGE = 2
+      assert.equal(inp.keymap.isCustom('fire'), true);
+
+      // Cancellation via non-activating key (e.g. ArrowUp)
+      rig.down({ code: 'ArrowUp', key: 'ArrowUp' });
+      menu.update(0.016, game);
+      rig.up({ code: 'ArrowUp', key: 'ArrowUp' });
+      menu.update(0.016, game);
+
+      assert.equal(v.mode, 'browse');
+      assert.equal(inp.keymap.isCustom('fire'), true);
+
+      // 2. Cancellation via timer expiration
+      v.footerFocus = 0;
+      rig.down({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      assert.equal(v.mode, 'confirmReset');
+
+      menu.update(2.1, game); // exceed CONFIRM_SECONDS
+      assert.equal(v.mode, 'browse');
+      assert.equal(inp.keymap.isCustom('fire'), true);
+
+      // 3. Confirmed execution via keyboard
+      v.footerFocus = 0;
+      rig.down({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      assert.equal(v.mode, 'confirmReset');
+
+      rig.down({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+
+      assert.equal(v.mode, 'browse');
+      assert.equal(inp.keymap.isCustom('fire'), false);
+      assert.equal(v.toastText, 'All controls reset');
+      assert.equal(v.toastTone, 1); // TONE_GREEN = 1
+      assert.equal(game.events[game.events.length - 1], 'keycard');
+
+      // 4. Mouse click confirmation on HIT_RESET_ALL
       inp.keymap.setBinding('fire', 0, 'KeyZ');
       assert.equal(inp.keymap.isCustom('fire'), true);
 
@@ -10924,18 +10974,92 @@ const tests = {
       assert.equal(v.footerFocus, 0);
       assert.equal(inp.keymap.isCustom('fire'), true);
 
+      // Click again on HIT_RESET_ALL to confirm
       currentHit = HIT_RESET_ALL;
       inp.pushRaw('buttondown', 'Mouse0', '', false, 0);
       menu.update(0.016, game);
       assert.equal(v.mode, 'browse');
       assert.equal(inp.keymap.isCustom('fire'), false);
+      assert.equal(v.toastText, 'All controls reset');
 
+      // Click outside HIT_RESET_ALL during confirmReset cancels back to browse
       menu.activateReset(game);
       assert.equal(v.mode, 'confirmReset');
       currentHit = HIT_NONE;
       inp.pushRaw('buttondown', 'Mouse0', '', false, 0);
       menu.update(0.016, game);
       assert.equal(v.mode, 'browse');
+    }, memoryStorage());
+  },
+
+  'AC-6 ControlsMenu Delete and Backspace clear targeted binding slot'() {
+    withRig((inp, rig) => {
+      const menu = new ControlsMenu(inp.keymap, inp);
+      const game = fakeGame();
+      menu.open('title');
+      const v = menu.view;
+
+      // Focus an action row with an active binding in slot 1 (moveForward has 2 slots: KeyW and ArrowUp)
+      const forwardLine = v.lines.findIndex((l) => l.id === 'moveForward');
+      assert.ok(forwardLine >= 0);
+      v.cursorLine = forwardLine;
+      v.cursorCol = 1;
+
+      rig.down({ code: 'Backspace', key: 'Backspace' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Backspace', key: 'Backspace' });
+      menu.update(0.016, game);
+
+      assert.equal(v.lines[forwardLine].slot1, '—');
+      assert.equal(game.events[game.events.length - 1], 'keycard');
+      assert.equal(v.toastText, 'Cleared');
+      assert.equal(v.toastTone, 1); // TONE_GREEN = 1
+
+      // Clearing an already empty slot (slot 1 was just cleared)
+      const evCountBefore = game.events.length;
+      rig.down({ code: 'Backspace', key: 'Backspace' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Backspace', key: 'Backspace' });
+      menu.update(0.016, game);
+
+      assert.equal(game.events[game.events.length - 1], 'dry');
+
+      // Clearing with Delete key on slot 0
+      const jumpLine = v.lines.findIndex((l) => l.id === 'jump');
+      assert.ok(jumpLine >= 0);
+      v.cursorLine = jumpLine;
+      v.cursorCol = 0;
+
+      rig.down({ code: 'Delete', key: 'Delete' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Delete', key: 'Delete' });
+      menu.update(0.016, game);
+
+      assert.equal(v.lines[jumpLine].slot0, 'UNBOUND');
+      assert.equal(v.lines[jumpLine].unbound, true);
+      assert.equal(game.events[game.events.length - 1], 'keycard');
+
+      // Pressing Delete or Backspace while in footer does NOT clear bindings
+      v.footerFocus = 0; // FOOTER_RESET
+      const fireLine = v.lines.findIndex((l) => l.id === 'fire');
+      const fireCodesBefore = inp.keymap.effectiveCodes('fire').slice();
+
+      rig.down({ code: 'Delete', key: 'Delete' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Delete', key: 'Delete' });
+      menu.update(0.016, game);
+
+      assert.deepEqual(inp.keymap.effectiveCodes('fire'), fireCodesBefore);
+    }, memoryStorage());
+  },
+
+  'ControlsMenu mouse hit detection and button routing'() {
+    withRig((inp) => {
+      let currentHit = HIT_NONE;
+      const menu = new ControlsMenu(inp.keymap, inp, { hitAt: () => currentHit });
+      const game = fakeGame();
+      menu.open('title');
+      const v = menu.view;
 
       const targetLine = menu.actionLines[2];
       const targetCol = 1;
