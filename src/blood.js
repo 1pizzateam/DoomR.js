@@ -1,4 +1,4 @@
-import { Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Rand, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { dripTime, GIB_VARIANTS } from './bloodsprites.js';
 import { MARS_BOULDER_BASE_INSET, MARS_BOULDER_SLOPE } from './floor.js';
 import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
@@ -20,8 +20,11 @@ export const BLOOD = {
 
 /** Fresh feet: nothing on them yet. */
 export function makeFeet() {
-  return { blood: 0, travel: 0, side: 1, x: null, y: null, hx: 0, hy: 0 };
+  return { blood: 0, travel: 0, side: 1, placed: false, pos: new Vec2(), heading: new Vec2() };
 }
+
+// read-only default direction: never mutate
+const ZERO_DIR = new Vec2();
 
 /**
  * Blood simulation, with no rendering in it.
@@ -35,6 +38,14 @@ export class Blood {
     this.version = 0;
     this.holesVersion = 0;
     this.pt = new Vec2();
+    // scratch vectors for internal calls into the vector APIs; each is distinct so nested calls cannot clobber one another
+    this.at = new Vec2();
+    this.back = new Vec2();
+    this.at3 = new Vec3();
+    this.cell = new Vec2();
+    this.spanAt = new Vec2();
+    this.wallPos = new Vec3();
+    this.wallNormal = new Vec2();
     this.reset(null, null);
   }
 
@@ -90,15 +101,15 @@ export class Blood {
   }
 
   /** Spray droplets (or gibs) from a point, mostly along a direction plus a random spread. */
-  spray(x, y, z, dirX, dirY, count, { speed = 200, spread = 110, up = 170, gib = false, scale = 1 } = {}) {
+  spray(pos, dir, count, { speed = 200, spread = 110, up = 170, gib = false, scale = 1 } = {}) {
     for (let i = 0; i < count; i++) {
       const s = speed * this.float(0.35, 1);
       const p = this.acquire();
-      p.x = x;
-      p.y = y;
-      p.z = z;
-      p.vx = dirX * s + this.float(-spread, spread);
-      p.vy = dirY * s + this.float(-spread, spread);
+      p.x = pos.x;
+      p.y = pos.y;
+      p.z = pos.z;
+      p.vx = dir.x * s + this.float(-spread, spread);
+      p.vy = dir.y * s + this.float(-spread, spread);
       p.vz = this.float(-20, up) * (gib ? 1.35 : 1);
       p.age = 0;
       p.life = gib ? 2.1 : 2.5;
@@ -115,38 +126,49 @@ export class Blood {
   }
 
   /** A pellet hitting flesh: spray out of the back, a little back at the shooter, plus occasional torn meat shreds. */
-  hit(x, y, z, dirX, dirY, scale = 1) {
+  hit(pos, dir, scale = 1) {
     const spreadScale = 0.55 + 0.45 * Math.min(scale, 2);
     const sizeScale = Math.sqrt(scale);
-    this.spray(x, y, z, dirX, dirY, Math.max(1, Math.round(11 * scale)), { speed: 270 * spreadScale, spread: 115 * spreadScale, up: 185, scale: sizeScale });
-    this.spray(x, y, z, -dirX, -dirY, Math.max(1, Math.round(5 * scale)), { speed: 125 * spreadScale, spread: 80 * spreadScale, up: 135, scale: sizeScale });
+    this.spray(pos, dir, Math.max(1, Math.round(11 * scale)), { speed: 270 * spreadScale, spread: 115 * spreadScale, up: 185, scale: sizeScale });
+    this.back.setScalar(-dir.x, -dir.y);
+    this.spray(pos, this.back, Math.max(1, Math.round(5 * scale)), { speed: 125 * spreadScale, spread: 80 * spreadScale, up: 135, scale: sizeScale });
     if (this.float(0, 1) < Math.min(0.95, 0.45 * scale))
-      this.spray(x, y, z, dirX, dirY, Math.max(1, Math.round(scale)), { speed: 150 * spreadScale, spread: 95 * spreadScale, up: 190, gib: true, scale: sizeScale });
-    this.floorSplat(x + dirX * 14 * spreadScale, y + dirY * 14 * spreadScale, this.float(2.4, 5.2) * sizeScale);
+      this.spray(pos, dir, Math.max(1, Math.round(scale)), { speed: 150 * spreadScale, spread: 95 * spreadScale, up: 190, gib: true, scale: sizeScale });
+    this.at.setScalar(pos.x + dir.x * 14 * spreadScale, pos.y + dir.y * 14 * spreadScale);
+    this.floorSplat(this.at, this.float(2.4, 5.2) * sizeScale);
   }
 
   /** An enemy bursting: a massive fountain of arterial droplets, bouncing gib chunks, and concentric pools of viscera. */
-  gore(x, y, scale = 1, dirX = 0, dirY = 0) {
+  gore(pos, scale = 1, dir = ZERO_DIR) {
     const spreadScale = 0.55 + 0.45 * Math.min(scale, 2.2);
     const sizeScale = Math.sqrt(scale);
-    this.spray(x, y, 30, dirX, dirY, Math.round(78 * scale), { speed: 130 * spreadScale, spread: 265 * spreadScale, up: 310, scale: sizeScale });
-    this.spray(x, y, 22, 0, 0, Math.round(42 * scale), { speed: 0, spread: 210 * spreadScale, up: 360, scale: sizeScale });
-    this.spray(x, y, 34, dirX, dirY, Math.max(1, Math.round(3 * scale)), { speed: 140 * spreadScale, spread: 195 * spreadScale, up: 320, gib: true, scale: sizeScale });
-    this.floorSplat(x, y, 16 * scale);
-    for (let i = 0; i < Math.round(12 * scale); i++)
-      this.floorSplat(x + this.float(-42, 42) * scale, y + this.float(-42, 42) * scale, this.float(5, 12) * sizeScale);
-    for (let i = 0; i < Math.max(1, Math.round(2 * scale)); i++)
-      this.floorGib(x + this.float(-22, 22) * scale, y + this.float(-22, 22) * scale, this.float(2.0, 3.4) * sizeScale, i % GIB_VARIANTS);
+    const { at, at3 } = this;
+    at3.setScalar(pos.x, pos.y, 30);
+    this.spray(at3, dir, Math.round(78 * scale), { speed: 130 * spreadScale, spread: 265 * spreadScale, up: 310, scale: sizeScale });
+    at3.setScalar(pos.x, pos.y, 22);
+    this.spray(at3, ZERO_DIR, Math.round(42 * scale), { speed: 0, spread: 210 * spreadScale, up: 360, scale: sizeScale });
+    at3.setScalar(pos.x, pos.y, 34);
+    this.spray(at3, dir, Math.max(1, Math.round(3 * scale)), { speed: 140 * spreadScale, spread: 195 * spreadScale, up: 320, gib: true, scale: sizeScale });
+    this.floorSplat(pos, 16 * scale);
+    for (let i = 0; i < Math.round(12 * scale); i++) {
+      at.setScalar(pos.x + this.float(-42, 42) * scale, pos.y + this.float(-42, 42) * scale);
+      this.floorSplat(at, this.float(5, 12) * sizeScale);
+    }
+    for (let i = 0; i < Math.max(1, Math.round(2 * scale)); i++) {
+      at.setScalar(pos.x + this.float(-22, 22) * scale, pos.y + this.float(-22, 22) * scale);
+      this.floorGib(at, this.float(2.0, 3.4) * sizeScale, i % GIB_VARIANTS);
+    }
   }
 
   /** A single slow drop: wounded enemies leave a trail scaled to their size. */
-  drip(x, y, scale = 1) {
+  drip(pos, scale = 1) {
     const sizeScale = Math.sqrt(scale);
-    this.spray(x, y, 24, 0, 0, Math.max(1, Math.round(scale)), { speed: 0, spread: 22 * sizeScale, up: 30, scale: sizeScale });
+    this.at3.setScalar(pos.x, pos.y, 24);
+    this.spray(this.at3, ZERO_DIR, Math.max(1, Math.round(scale)), { speed: 0, spread: 22 * sizeScale, up: 30, scale: sizeScale });
   }
 
   /** Localized limb dismemberment burst: arterial fountain + flying meat/bone chunks when an arm is severed or a leg explodes. */
-  severBurst(x, y, z, dirX = 0, dirY = 0, scale = 1, isLeg = false) {
+  severBurst(pos, dir = ZERO_DIR, scale = 1, isLeg = false) {
     const sizeScale = Math.sqrt(Math.max(0.25, scale));
     const rng = this.severRand;
     const dropCount = Math.max(8, Math.round(24 * scale));
@@ -154,11 +176,11 @@ export class Blood {
       const spd = 220 * rng.float(0.35, 1);
       const spread = 170 * sizeScale;
       const p = this.acquire();
-      p.x = x;
-      p.y = y;
-      p.z = z;
-      p.vx = dirX * spd + rng.float(-spread, spread);
-      p.vy = dirY * spd + rng.float(-spread, spread);
+      p.x = pos.x;
+      p.y = pos.y;
+      p.z = pos.z;
+      p.vx = dir.x * spd + rng.float(-spread, spread);
+      p.vy = dir.y * spd + rng.float(-spread, spread);
       p.vz = rng.float(-20, 170);
       p.age = 0;
       p.life = 2.5;
@@ -176,11 +198,11 @@ export class Blood {
       const spd = 175 * rng.float(0.4, 1);
       const spread = 180 * sizeScale;
       const p = this.acquire();
-      p.x = x;
-      p.y = y;
-      p.z = z;
-      p.vx = dirX * spd + rng.float(-spread, spread);
-      p.vy = dirY * spd + rng.float(-spread, spread);
+      p.x = pos.x;
+      p.y = pos.y;
+      p.z = pos.z;
+      p.vx = dir.x * spd + rng.float(-spread, spread);
+      p.vy = dir.y * spd + rng.float(-spread, spread);
       p.vz = rng.float(-15, 170);
       p.age = 0;
       p.life = 2.1;
@@ -194,8 +216,8 @@ export class Blood {
       this.particles.push(p);
     }
     this.trim();
-    const gx = x + dirX * 10;
-    const gy = y + dirY * 10;
+    const gx = pos.x + dir.x * 10;
+    const gy = pos.y + dir.y * 10;
     const dissolving = Boolean(this.level?.slimeAt?.(gx, gy));
     if (dissolving)
       this.hasDissolving = true;
@@ -224,20 +246,20 @@ export class Blood {
     return Boolean(level && level.planet === 'mars' && level.kind[idx] === PILLAR && !level.indoor?.has(idx));
   }
 
-  boulderPlacement(wx, wy, x, y, z, nx, ny, top, halfExtent) {
-    const cx = (wx + 0.5) * TILE;
-    const cy = (wy + 0.5) * TILE;
-    const tanX = -ny;
-    const tanY = nx;
-    const rawAlong = (x - cx) * tanX + (y - cy) * tanY;
-    const halfW = TILE * 0.5 - (MARS_BOULDER_BASE_INSET + MARS_BOULDER_SLOPE * z);
-    const zTop = Math.min(top - 0.6, z + halfExtent);
+  boulderPlacement(cell, pos, normal, top, halfExtent) {
+    const cx = (cell.x + 0.5) * TILE;
+    const cy = (cell.y + 0.5) * TILE;
+    const tanX = -normal.y;
+    const tanY = normal.x;
+    const rawAlong = (pos.x - cx) * tanX + (pos.y - cy) * tanY;
+    const halfW = TILE * 0.5 - (MARS_BOULDER_BASE_INSET + MARS_BOULDER_SLOPE * pos.z);
+    const zTop = Math.min(top - 0.6, pos.z + halfExtent);
     const topHalfW = TILE * 0.5 - (MARS_BOULDER_BASE_INSET + MARS_BOULDER_SLOPE * zTop);
     const margin = Math.min(2, topHalfW * 0.25);
     const along = Utils.clamp(rawAlong * (halfW / (TILE * 0.5)), -topHalfW + margin, topHalfW - margin);
     return {
-      x: cx + nx * halfW + tanX * along,
-      y: cy + ny * halfW + tanY * along,
+      x: cx + normal.x * halfW + tanX * along,
+      y: cy + normal.y * halfW + tanY * along,
       lo: -topHalfW - along,
       hi: topHalfW - along,
       slope: MARS_BOULDER_SLOPE,
@@ -246,14 +268,17 @@ export class Blood {
 
   /**
    * A bullet hitting a wall face at height z leaves a permanent crater there.
-   * (nx, ny) is the face normal. Returns the height it was marked at, or false when nothing could be marked:
+   * `normal` is the face normal. Returns the height it was marked at, or false when nothing could be marked:
    * a pellet in the floor, or a door that has sunk away, has nothing to hit.
    * Holes on a door belong to the door and move with it as it opens and closes.
    * Low walls stop the shot like any other, so one aimed over the top still marks
    * the face, somewhere on it, instead of leaving only a spark.
    */
-  impact(x, y, nx, ny, z, kind = 'hole') {
+  impact(pos, normal, kind = 'hole') {
     const { level } = this;
+    const { x, y, z } = pos;
+    const nx = normal.x;
+    const ny = normal.y;
     const isDiag = Math.abs(nx) > 0.1 && Math.abs(ny) > 0.1;
     const tx = Math.floor((x - nx * 0.5) / TILE);
     const ty = Math.floor((y - ny * 0.5) / TILE);
@@ -270,7 +295,9 @@ export class Blood {
     let py = y;
     let span;
     if (!isDiag && this.isBoulderTile(idx)) {
-      const boulder = this.boulderPlacement(tx, ty, x, y, height, nx, ny, top, 8);
+      this.cell.setScalar(tx, ty);
+      this.wallPos.setScalar(x, y, height);
+      const boulder = this.boulderPlacement(this.cell, this.wallPos, normal, top, 8);
       px = boulder.x;
       py = boulder.y;
       span = { lo: boulder.lo, hi: boulder.hi, slope: boulder.slope };
@@ -282,12 +309,12 @@ export class Blood {
       const along = (x - cx) * tanX + (y - cy) * tanY;
       px = cx + tanX * along;
       py = cy + tanY * along;
-      span = this.faceSpan(px, py, nx, ny, door);
+      span = this.faceSpan(this.spanAt.setScalar(px, py), normal, door);
     } else {
       // the face lies on a tile boundary: snap to it so every hole shares the wall's plane
       px = nx ? Math.round(x / TILE) * TILE : x;
       py = ny ? Math.round(y / TILE) * TILE : y;
-      span = this.faceSpan(px, py, nx, ny, door);
+      span = this.faceSpan(this.spanAt.setScalar(px, py), normal, door);
     }
     // a door slides: its holes are kept in the door's own height, so they travel with it
     const hole = {
@@ -315,13 +342,16 @@ export class Blood {
   }
 
   /**
-   * How far a wall face runs either side of a point on it, along the face (the tangent is (-ny, nx)):
+   * How far a wall face runs either side of a point on it, along the face (the tangent is (-normal.y, normal.x)):
    * `lo` is negative, `hi` positive. The face ends where the wall turns a corner, meets an opening or a
    * wall of another height, so marks can be cut off there instead of hanging in the air. A door is just
    * its own tile, because it slides away from the wall around it.
    */
-  faceSpan(x, y, nx, ny, door = null) {
+  faceSpan(pos, normal, door = null) {
     const { level } = this;
+    const { x, y } = pos;
+    const nx = normal.x;
+    const ny = normal.y;
     const tx = -ny;
     const ty = nx;
     const wx = Math.floor((x - nx * 0.5) / TILE);
@@ -377,7 +407,8 @@ export class Blood {
     return { lo: reach(-1), hi: reach(1) };
   }
 
-  floorSplat(x, y, size) {
+  floorSplat(pos, size) {
+    const { x, y } = pos;
     const dissolving = Boolean(this.level?.slimeAt?.(x, y));
     if (dissolving)
       this.hasDissolving = true;
@@ -393,7 +424,8 @@ export class Blood {
   }
 
   /** Deposit a chunk of meat, bone, skull, or organ on the floor; on acid it dissolves away. */
-  floorGib(x, y, size = this.float(2.0, 3.4), variant = this.rand.integer(0, GIB_VARIANTS - 1)) {
+  floorGib(pos, size = this.float(2.0, 3.4), variant = this.rand.integer(0, GIB_VARIANTS - 1)) {
+    const { x, y } = pos;
     const dissolving = Boolean(this.level?.slimeAt?.(x, y));
     if (dissolving)
       this.hasDissolving = true;
@@ -416,8 +448,11 @@ export class Blood {
     this.version++;
   }
 
-  /** Splat on a wall face. (nx, ny) is the face's normal in the game plane, top the wall's height. */
-  wallSplat(x, y, z, nx, ny, size, top, door = null) {
+  /** Splat on a wall face. `normal` is the face's normal in the game plane, top the wall's height. */
+  wallSplat(pos, normal, size, top, door = null) {
+    const { x, y, z } = pos;
+    const nx = normal.x;
+    const ny = normal.y;
     const isDiag = Math.abs(nx) > 0.1 && Math.abs(ny) > 0.1;
     const wx = Math.floor((x - nx * 0.5) / TILE);
     const wy = Math.floor((y - ny * 0.5) / TILE);
@@ -426,12 +461,12 @@ export class Blood {
     let py = y;
     let span;
     if (!isDiag && idx >= 0 && this.isBoulderTile(idx)) {
-      const boulder = this.boulderPlacement(wx, wy, x, y, z, nx, ny, top, size * 1.6);
+      const boulder = this.boulderPlacement(this.cell.setScalar(wx, wy), pos, normal, top, size * 1.6);
       px = boulder.x;
       py = boulder.y;
       span = { lo: boulder.lo, hi: boulder.hi, slope: boulder.slope };
     } else
-      span = this.faceSpan(x, y, nx, ny, door);
+      span = this.faceSpan(this.spanAt.setScalar(x, y), normal, door);
     const seed = this.rand.integer(1, 2147483647);
     this.walls.push({ x: px, y: py, z, nx, ny, size, top, door, ...span, seed, age: 0, dripTime: dripTime(seed, size) });
     // blood on a door rides with it, like a hole, and each door keeps only so many
@@ -449,7 +484,8 @@ export class Blood {
    * Splat on the ceiling, where blood thrown up lands. For a few seconds it lets go of a drop or two, which fall back
    * down. The times come from its own seed, so nothing is taken from the game's random numbers.
    */
-  ceilingSplat(x, y, size) {
+  ceilingSplat(pos, size) {
+    const { x, y } = pos;
     const seed = this.rand.integer(1, 2147483647);
     const drops = [];
     for (let i = 0; i < 1 + (seed % 3); i++)
@@ -477,8 +513,8 @@ export class Blood {
   }
 
   /** True when the point is inside a puddle big enough to soak a shoe. */
-  inPool(x, y) {
-    this.pt.setScalar(x, y);
+  inPool(pos) {
+    this.pt.copy(pos);
     for (const splat of this.floor) {
       if (splat.size < 5)
         continue;
@@ -494,36 +530,35 @@ export class Blood {
    * Stepping in a pool soaks its feet; every stride then leaves an alternating left/right
    * footprint and some of the blood wears off, so the trail thins out and stops.
    */
-  walk(feet, x, y, scale = 1, stride = BLOOD.stride * scale, bloody = true) {
-    if (feet.x === null) {
-      feet.x = x;
-      feet.y = y;
+  walk(feet, pos, scale = 1, stride = BLOOD.stride * scale, bloody = true) {
+    const { x, y } = pos;
+    if (!feet.placed) {
+      feet.placed = true;
+      feet.pos.copy(pos);
       return 0;
     }
-    const dx = x - feet.x;
-    const dy = y - feet.y;
+    const dx = x - feet.pos.x;
+    const dy = y - feet.pos.y;
     const distance = this.pt.setScalar(dx, dy).getMagnitude();
-    feet.x = x;
-    feet.y = y;
+    feet.pos.copy(pos);
     // a jump means a teleport or a level change, not a step
     if (distance > 80 || distance < 0.01)
       return 0;
 
     // only the player tracks blood about; a monster's feet stay clean, it just takes steps
-    if (bloody && this.inPool(x, y))
+    if (bloody && this.inPool(pos))
       feet.blood = 1;
     feet.travel += distance;
-    feet.hx += dx;
-    feet.hy += dy;
+    feet.heading.x += dx;
+    feet.heading.y += dy;
     if (feet.travel < stride)
       return 0;
 
-    const length = this.pt.setScalar(feet.hx, feet.hy).getMagnitude() || 1;
-    const hx = feet.hx / length;
-    const hy = feet.hy / length;
+    const length = feet.heading.getMagnitude() || 1;
+    const hx = feet.heading.x / length;
+    const hy = feet.heading.y / length;
     feet.travel = 0;
-    feet.hx = 0;
-    feet.hy = 0;
+    feet.heading.setScalar(0, 0);
     feet.side = -feet.side;
     if (this.level?.slimeAt?.(x, y))
       feet.blood *= 0.45;
@@ -594,7 +629,7 @@ export class Blood {
             const sx = this.pt.x;
             const sy = this.pt.y;
             if (!this.blocked(sx + df.normal.x * 0.5, sy + df.normal.y * 0.5, p.z) && this.blocked(sx - df.normal.x * 0.5, sy - df.normal.y * 0.5, p.z))
-              this.wallSplat(sx, sy, p.z, df.normal.x, df.normal.y, size, level.heights[didx], null);
+              this.wallSplat(this.wallPos.setScalar(sx, sy, p.z), df.normal, size, level.heights[didx], null);
           }
           return 'diag';
         }
@@ -632,7 +667,7 @@ export class Blood {
       const wnx = vertical ? 0 : (p.vx > 0 ? -1 : 1);
       const wny = vertical ? (p.vy > 0 ? -1 : 1) : 0;
       if (!this.blocked(sx + wnx * 0.5, sy + wny * 0.5, p.z) && this.blocked(sx - wnx * 0.5, sy - wny * 0.5, p.z))
-        this.wallSplat(sx, sy, z, wnx, wny, size, top, door);
+        this.wallSplat(this.wallPos.setScalar(sx, sy, z), this.wallNormal.setScalar(wnx, wny), size, top, door);
     }
     return vertical ? 'y' : 'x';
   }
@@ -651,10 +686,11 @@ export class Blood {
   land(p) {
     const s = p.scale ?? 1;
     if (p.gib) {
-      this.floorSplat(p.x, p.y, this.float(5, 9.5) * s);
-      this.floorGib(p.x, p.y, this.float(2.0, 3.4) * s, p.variant ?? 0);
+      this.at.setScalar(p.x, p.y);
+      this.floorSplat(this.at, this.float(5, 9.5) * s);
+      this.floorGib(this.at, this.float(2.0, 3.4) * s, p.variant ?? 0);
     } else if (this.rand.float(0, 1) < 0.5)
-      this.floorSplat(p.x, p.y, this.float(1.6, 4.0) * s);
+      this.floorSplat(this.at.setScalar(p.x, p.y), this.float(1.6, 4.0) * s);
   }
 
   update(dt) {
@@ -710,7 +746,7 @@ export class Blood {
           p.vz = Math.abs(p.vz) * 0.36;
           p.vx *= 0.55;
           p.vy *= 0.55;
-          this.floorSplat(p.x, p.y, this.float(3.5, 7) * (p.scale ?? 1));
+          this.floorSplat(this.at.setScalar(p.x, p.y), this.float(3.5, 7) * (p.scale ?? 1));
           if (p.age < p.life)
             this.particles[keep++] = p;
           continue;
@@ -743,7 +779,7 @@ export class Blood {
       // thrown up as far as the ceiling, it sticks there (not over the warden's room, which has none)
       if (nz >= CEILING && p.vz > 0 && this.hitsCeiling(nx, ny)) {
         if (p.gib || this.rand.float(0, 1) < 0.55)
-          this.ceilingSplat(nx, ny, (p.gib ? this.float(4.8, 8.5) : this.float(1.6, 4.0)) * (p.scale ?? 1));
+          this.ceilingSplat(this.at.setScalar(nx, ny), (p.gib ? this.float(4.8, 8.5) : this.float(1.6, 4.0)) * (p.scale ?? 1));
         if (p.gib && p.bounces > 0) {
           p.bounces--;
           p.z = CEILING - 1;
