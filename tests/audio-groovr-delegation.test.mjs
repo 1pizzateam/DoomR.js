@@ -7,10 +7,10 @@ let failed = 0;
 function test(name, fn) {
   try {
     fn();
-    console.log(`ok - ${name}`);
+    console.log(`ok   ${name}`);
   } catch (error) {
     failed++;
-    console.error(`not ok - ${name}\n${error.stack}`);
+    console.error(`FAIL ${name}\n${error.stack}`);
   }
 }
 
