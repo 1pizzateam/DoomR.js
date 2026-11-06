@@ -21,8 +21,8 @@ const scratchNormal = new Vec3();
 const scratchPt = new Vec2();
 
 function pushQuad(vertices, normals, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
-  scratchEdgeA.setScalar(c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]);
-  scratchEdgeB.setScalar(c2[0] - c0[0], c2[1] - c0[1], c2[2] - c0[2]);
+  scratchEdgeA.setScalar(c1.x - c0.x, c1.y - c0.y, c1.z - c0.z);
+  scratchEdgeB.setScalar(c2.x - c0.x, c2.y - c0.y, c2.z - c0.z);
   scratchNormal.crossVectors(scratchEdgeA, scratchEdgeB);
   if (scratchNormal.getMagnitude(true) > 0)
     scratchNormal.normalize();
@@ -31,13 +31,12 @@ function pushQuad(vertices, normals, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
   const nx = scratchNormal.x;
   const ny = scratchNormal.y;
   const nz = scratchNormal.z;
-  const corners = [c0, c1, c2, c3];
-  const quadUvs = [[u0, v1], [u1, v1], [u1, v0], [u0, v0]];
-  for (const k of [0, 1, 2, 0, 2, 3]) {
-    vertices.push(...corners[k]);
-    normals.push(nx, ny, nz);
-    uvs.push(...quadUvs[k]);
-  }
+  vertices.push(
+    c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z,
+    c0.x, c0.y, c0.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z
+  );
+  normals.push(nx, ny, nz, nx, ny, nz, nx, ny, nz, nx, ny, nz, nx, ny, nz, nx, ny, nz);
+  uvs.push(u0, v1, u1, v1, u1, v0, u0, v1, u1, v0, u0, v0);
 }
 
 function boxMesh(size = new Vec3(1, 1, 1)) {
@@ -47,12 +46,12 @@ function boxMesh(size = new Vec3(1, 1, 1)) {
   const vertices = [];
   const normals = [];
   const uvs = [];
-  pushQuad(vertices, normals, uvs, [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz], 0, 0, 1, 1);
-  pushQuad(vertices, normals, uvs, [hx, -hy, -hz], [-hx, -hy, -hz], [-hx, hy, -hz], [hx, hy, -hz], 0, 0, 1, 1);
-  pushQuad(vertices, normals, uvs, [hx, -hy, hz], [hx, -hy, -hz], [hx, hy, -hz], [hx, hy, hz], 0, 0, 1, 1);
-  pushQuad(vertices, normals, uvs, [-hx, -hy, -hz], [-hx, -hy, hz], [-hx, hy, hz], [-hx, hy, -hz], 0, 0, 1, 1);
-  pushQuad(vertices, normals, uvs, [-hx, hy, hz], [hx, hy, hz], [hx, hy, -hz], [-hx, hy, -hz], 0, 0, 1, 1);
-  pushQuad(vertices, normals, uvs, [-hx, -hy, -hz], [hx, -hy, -hz], [hx, -hy, hz], [-hx, -hy, hz], 0, 0, 1, 1);
+  pushQuad(vertices, normals, uvs, new Vec3(-hx, -hy, hz), new Vec3(hx, -hy, hz), new Vec3(hx, hy, hz), new Vec3(-hx, hy, hz), 0, 0, 1, 1);
+  pushQuad(vertices, normals, uvs, new Vec3(hx, -hy, -hz), new Vec3(-hx, -hy, -hz), new Vec3(-hx, hy, -hz), new Vec3(hx, hy, -hz), 0, 0, 1, 1);
+  pushQuad(vertices, normals, uvs, new Vec3(hx, -hy, hz), new Vec3(hx, -hy, -hz), new Vec3(hx, hy, -hz), new Vec3(hx, hy, hz), 0, 0, 1, 1);
+  pushQuad(vertices, normals, uvs, new Vec3(-hx, -hy, -hz), new Vec3(-hx, -hy, hz), new Vec3(-hx, hy, hz), new Vec3(-hx, hy, -hz), 0, 0, 1, 1);
+  pushQuad(vertices, normals, uvs, new Vec3(-hx, hy, hz), new Vec3(hx, hy, hz), new Vec3(hx, hy, -hz), new Vec3(-hx, hy, -hz), 0, 0, 1, 1);
+  pushQuad(vertices, normals, uvs, new Vec3(-hx, -hy, -hz), new Vec3(hx, -hy, -hz), new Vec3(hx, -hy, hz), new Vec3(-hx, -hy, hz), 0, 0, 1, 1);
   return { vertices: new Float32Array(vertices), normals: new Float32Array(normals), uvs: new Float32Array(uvs) };
 }
 
@@ -64,14 +63,14 @@ function prismMesh(bottomSize = new Vec3(1, 1, 1), topSize = new Vec3(1, 1, 1), 
   const tz = topSize.z * 0.5;
   const sx = topShift.x;
   const sz = topShift.y;
-  const bFL = [-bx, -hy, bz];
-  const bFR = [bx, -hy, bz];
-  const bBR = [bx, -hy, -bz];
-  const bBL = [-bx, -hy, -bz];
-  const tFL = [sx - tx, hy, sz + tz];
-  const tFR = [sx + tx, hy, sz + tz];
-  const tBR = [sx + tx, hy, sz - tz];
-  const tBL = [sx - tx, hy, sz - tz];
+  const bFL = new Vec3(-bx, -hy, bz);
+  const bFR = new Vec3(bx, -hy, bz);
+  const bBR = new Vec3(bx, -hy, -bz);
+  const bBL = new Vec3(-bx, -hy, -bz);
+  const tFL = new Vec3(sx - tx, hy, sz + tz);
+  const tFR = new Vec3(sx + tx, hy, sz + tz);
+  const tBR = new Vec3(sx + tx, hy, sz - tz);
+  const tBL = new Vec3(sx - tx, hy, sz - tz);
   const vertices = [];
   const normals = [];
   const uvs = [];
@@ -99,7 +98,7 @@ function cylinderMesh(radiusLength = new Vec2(1, 1), segments = 12) {
     const y0 = Math.sin(a0) * r;
     const x1 = Math.cos(a1) * r;
     const y1 = Math.sin(a1) * r;
-    pushQuad(vertices, normals, uvs, [x0, y0, -hz], [x1, y1, -hz], [x1, y1, hz], [x0, y0, hz], u0, 0, u1, 1);
+    pushQuad(vertices, normals, uvs, new Vec3(x0, y0, -hz), new Vec3(x1, y1, -hz), new Vec3(x1, y1, hz), new Vec3(x0, y0, hz), u0, 0, u1, 1);
     vertices.push(0, 0, hz, x0, y0, hz, x1, y1, hz);
     normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1);
     uvs.push(0.5, 0.5, 0.5 + Math.cos(a0) * 0.45, 0.5 + Math.sin(a0) * 0.45, 0.5 + Math.cos(a1) * 0.45, 0.5 + Math.sin(a1) * 0.45);
@@ -324,10 +323,10 @@ function loftRingsMesh(rings, capEnds = true, smoothNormals = false) {
           vertices,
           normals,
           uvs,
-          [a0.x, a0.y, a0.z],
-          [a1.x, a1.y, a1.z],
-          [b1.x, b1.y, b1.z],
-          [b0.x, b0.y, b0.z],
+          a0,
+          a1,
+          b1,
+          b0,
           u0,
           v0,
           u1,
@@ -474,10 +473,10 @@ function hollowCylinderMesh(radii = new Vec2(0.4, 0.65), lengthSegs = new Vec2(0
     const iy0 = s0 * rIn;
     const ix1 = c1 * rIn;
     const iy1 = s1 * rIn;
-    pushQuad(vertices, normals, uvs, [ox0, oy0, -hz], [ox1, oy1, -hz], [ox1, oy1, hz], [ox0, oy0, hz], u0, 0, u1, 1);
-    pushQuad(vertices, normals, uvs, [ox0, oy0, hz], [ox1, oy1, hz], [ix1, iy1, hz], [ix0, iy0, hz], u0, 0, u1, 1);
-    pushQuad(vertices, normals, uvs, [ix1, iy1, -hz], [ix0, iy0, -hz], [ix0, iy0, hz], [ix1, iy1, hz], u0, 0, u1, 1);
-    pushQuad(vertices, normals, uvs, [ox1, oy1, -hz], [ox0, oy0, -hz], [ix0, iy0, -hz], [ix1, iy1, -hz], u0, 0, u1, 1);
+    pushQuad(vertices, normals, uvs, new Vec3(ox0, oy0, -hz), new Vec3(ox1, oy1, -hz), new Vec3(ox1, oy1, hz), new Vec3(ox0, oy0, hz), u0, 0, u1, 1);
+    pushQuad(vertices, normals, uvs, new Vec3(ox0, oy0, hz), new Vec3(ox1, oy1, hz), new Vec3(ix1, iy1, hz), new Vec3(ix0, iy0, hz), u0, 0, u1, 1);
+    pushQuad(vertices, normals, uvs, new Vec3(ix1, iy1, -hz), new Vec3(ix0, iy0, -hz), new Vec3(ix0, iy0, hz), new Vec3(ix1, iy1, hz), u0, 0, u1, 1);
+    pushQuad(vertices, normals, uvs, new Vec3(ox1, oy1, -hz), new Vec3(ox0, oy0, -hz), new Vec3(ix0, iy0, -hz), new Vec3(ix1, iy1, -hz), u0, 0, u1, 1);
   }
   return { vertices: new Float32Array(vertices), normals: new Float32Array(normals), uvs: new Float32Array(uvs) };
 }

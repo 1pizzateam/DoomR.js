@@ -481,8 +481,8 @@ function cellRange(cell) {
 }
 
 function pushQuad(vertices, normals, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
-  scratchEdgeA.setScalar(c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]);
-  scratchEdgeB.setScalar(c2[0] - c0[0], c2[1] - c0[1], c2[2] - c0[2]);
+  scratchEdgeA.setScalar(c1.x - c0.x, c1.y - c0.y, c1.z - c0.z);
+  scratchEdgeB.setScalar(c2.x - c0.x, c2.y - c0.y, c2.z - c0.z);
   scratchNormal.crossVectors(scratchEdgeA, scratchEdgeB);
   if (scratchNormal.getMagnitude(true) > 0)
     scratchNormal.normalize();
@@ -491,13 +491,12 @@ function pushQuad(vertices, normals, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
   const nx = scratchNormal.x;
   const ny = scratchNormal.y;
   const nz = scratchNormal.z;
-  const corners = [c0, c1, c2, c3];
-  const quadUvs = [[u0, v1], [u1, v1], [u1, v0], [u0, v0]];
-  for (const k of [0, 1, 2, 0, 2, 3]) {
-    vertices.push(...corners[k]);
-    normals.push(nx, ny, nz);
-    uvs.push(...quadUvs[k]);
-  }
+  vertices.push(
+    c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z,
+    c0.x, c0.y, c0.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z
+  );
+  normals.push(nx, ny, nz, nx, ny, nz, nx, ny, nz, nx, ny, nz, nx, ny, nz, nx, ny, nz);
+  uvs.push(u0, v1, u1, v1, u1, v0, u0, v1, u1, v0, u0, v0);
 }
 
 /**
@@ -522,15 +521,15 @@ function taperPrism(bottomSize, topSize, offset = new Vec3(0, 0, 0), cells = {},
   const top = cellRange(cells.top ?? cells.side ?? MONSTER_SKIN_CELLS.hide);
   const bottom = cellRange(cells.bottom ?? cells.side ?? MONSTER_SKIN_CELLS.hide);
 
-  const bFL = [ox - bx, oy - hy, oz + bz];
-  const bFR = [ox + bx, oy - hy, oz + bz];
-  const bBR = [ox + bx, oy - hy, oz - bz];
-  const bBL = [ox - bx, oy - hy, oz - bz];
+  const bFL = new Vec3(ox - bx, oy - hy, oz + bz);
+  const bFR = new Vec3(ox + bx, oy - hy, oz + bz);
+  const bBR = new Vec3(ox + bx, oy - hy, oz - bz);
+  const bBL = new Vec3(ox - bx, oy - hy, oz - bz);
 
-  const tFL = [ox + sx - tx, oy + hy, oz + sz + tz];
-  const tFR = [ox + sx + tx, oy + hy, oz + sz + tz];
-  const tBR = [ox + sx + tx, oy + hy, oz + sz - tz];
-  const tBL = [ox + sx - tx, oy + hy, oz + sz - tz];
+  const tFL = new Vec3(ox + sx - tx, oy + hy, oz + sz + tz);
+  const tFR = new Vec3(ox + sx + tx, oy + hy, oz + sz + tz);
+  const tBR = new Vec3(ox + sx + tx, oy + hy, oz + sz - tz);
+  const tBL = new Vec3(ox + sx - tx, oy + hy, oz + sz - tz);
 
   const vertices = [];
   const normals = [];
