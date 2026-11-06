@@ -3,6 +3,10 @@ import { mulberry32 } from './rng.js';
 import { field, mix, plate, rivet, rust, SHADOW, Tile } from './floor.js';
 
 const scratchPt = new Vec2();
+const scratchUvA = new Vec2();
+const scratchUvB = new Vec2();
+const scratchUvC = new Vec2();
+const scratchUvD = new Vec2();
 const scratchEdgeA = new Vec3();
 const scratchEdgeB = new Vec3();
 const scratchNormal = new Vec3();
@@ -229,8 +233,8 @@ export function skinBarrel(cylinder, radialSegments, heightSegments = 1) {
 }
 
 function pushTri(vertices, normals, uvs, p0, p1, p2, uv0, uv1, uv2) {
-  scratchEdgeA.setScalar(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
-  scratchEdgeB.setScalar(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
+  scratchEdgeA.setScalar(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+  scratchEdgeB.setScalar(p2.x - p0.x, p2.y - p0.y, p2.z - p0.z);
   scratchNormal.crossVectors(scratchEdgeA, scratchEdgeB);
   if (scratchNormal.getMagnitude(true) > 0)
     scratchNormal.normalize();
@@ -239,14 +243,18 @@ function pushTri(vertices, normals, uvs, p0, p1, p2, uv0, uv1, uv2) {
   const nx = scratchNormal.x;
   const ny = scratchNormal.y;
   const nz = scratchNormal.z;
-  vertices.push(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
+  vertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
   normals.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
-  uvs.push(uv0[0], uv0[1], uv1[0], uv1[1], uv2[0], uv2[1]);
+  uvs.push(uv0.x, uv0.y, uv1.x, uv1.y, uv2.x, uv2.y);
 }
 
 function pushQuad(vertices, normals, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
-  pushTri(vertices, normals, uvs, c0, c1, c2, [u0, v1], [u1, v1], [u1, v0]);
-  pushTri(vertices, normals, uvs, c0, c2, c3, [u0, v1], [u1, v0], [u0, v0]);
+  scratchUvA.setScalar(u0, v1);
+  scratchUvB.setScalar(u1, v1);
+  scratchUvC.setScalar(u1, v0);
+  scratchUvD.setScalar(u0, v0);
+  pushTri(vertices, normals, uvs, c0, c1, c2, scratchUvA, scratchUvB, scratchUvC);
+  pushTri(vertices, normals, uvs, c0, c2, c3, scratchUvA, scratchUvC, scratchUvD);
 }
 
 /**
@@ -292,12 +300,12 @@ export function barrelWreckMesh(size = new Vec2(9.5, 26)) {
       vertices,
       normals,
       uvs,
-      [0, 0.08, 0],
-      [c1 * scorchNextR, 0.08, s1 * scorchNextR],
-      [c0 * scorchR, 0.08, s0 * scorchR],
-      [charUC, 0.5],
-      [charUC + c1 * 0.11, 0.5 + s1 * 0.42],
-      [charUC + c0 * 0.11, 0.5 + s0 * 0.42]
+      new Vec3(0, 0.08, 0),
+      new Vec3(c1 * scorchNextR, 0.08, s1 * scorchNextR),
+      new Vec3(c0 * scorchR, 0.08, s0 * scorchR),
+      new Vec2(charUC, 0.5),
+      new Vec2(charUC + c1 * 0.11, 0.5 + s1 * 0.42),
+      new Vec2(charUC + c0 * 0.11, 0.5 + s0 * 0.42)
     );
 
     // 2. Charred interior floor plate inside the ruptured stump (y = 1.4)
@@ -306,21 +314,21 @@ export function barrelWreckMesh(size = new Vec2(9.5, 26)) {
       vertices,
       normals,
       uvs,
-      [0, 1.4, 0],
-      [c1 * innerFloorR, 1.1, s1 * innerFloorR],
-      [c0 * innerFloorR, 1.1, s0 * innerFloorR],
-      [charUC, 0.5],
-      [charUC + c1 * 0.09, 0.5 + s1 * 0.36],
-      [charUC + c0 * 0.09, 0.5 + s0 * 0.36]
+      new Vec3(0, 1.4, 0),
+      new Vec3(c1 * innerFloorR, 1.1, s1 * innerFloorR),
+      new Vec3(c0 * innerFloorR, 1.1, s0 * innerFloorR),
+      new Vec2(charUC, 0.5),
+      new Vec2(charUC + c1 * 0.09, 0.5 + s1 * 0.36),
+      new Vec2(charUC + c0 * 0.09, 0.5 + s0 * 0.36)
     );
 
     // 3. Lower drum collar (y = 0 .. collarH): orange/rusted outer skin + charred soot inner wall
     const rBase = R * 0.985;
     const rCollar = R * 1.04;
-    const b0 = [c0 * rBase, 0, s0 * rBase];
-    const b1 = [c1 * rBase, 0, s1 * rBase];
-    const m0 = [c0 * rCollar, collarH, s0 * rCollar];
-    const m1 = [c1 * rCollar, collarH, s1 * rCollar];
+    const b0 = new Vec3(c0 * rBase, 0, s0 * rBase);
+    const b1 = new Vec3(c1 * rBase, 0, s1 * rBase);
+    const m0 = new Vec3(c0 * rCollar, collarH, s0 * rCollar);
+    const m1 = new Vec3(c1 * rCollar, collarH, s1 * rCollar);
     const su0 = Utils.lerp(sideU0, sideU1, u0);
     const su1 = Utils.lerp(sideU0, sideU1, u1);
     pushQuad(vertices, normals, uvs, b0, b1, m1, m0, su0, 0.68, su1, 0.98);
@@ -334,17 +342,17 @@ export function barrelWreckMesh(size = new Vec2(9.5, 26)) {
     const tipR = R * (petalFlares[i] + 0.16);
     const tipH = H * (petalHeights[i] + 0.09);
 
-    const t0 = [c0 * f0, h0, s0 * f0];
-    const t1 = [c1 * f1, h1, s1 * f1];
-    const tip = [cM * tipR, tipH, sM * tipR];
+    const t0 = new Vec3(c0 * f0, h0, s0 * f0);
+    const t1 = new Vec3(c1 * f1, h1, s1 * f1);
+    const tip = new Vec3(cM * tipR, tipH, sM * tipR);
 
     // Outer face of flared petal (shows hazard band / orange paint)
     pushQuad(vertices, normals, uvs, m0, m1, t1, t0, su0, 0.36, su1, 0.68);
-    pushTri(vertices, normals, uvs, t0, t1, tip, [su0, 0.36], [su1, 0.36], [(su0 + su1) * 0.5, 0.22]);
+    pushTri(vertices, normals, uvs, t0, t1, tip, new Vec2(su0, 0.36), new Vec2(su1, 0.36), new Vec2((su0 + su1) * 0.5, 0.22));
 
     // Inner face of flared petal (shows blackened soot & glowing embers)
     pushQuad(vertices, normals, uvs, m1, m0, t0, t1, charU0, 0.18, charU1, 0.55);
-    pushTri(vertices, normals, uvs, t1, t0, tip, [charU1, 0.18], [charU0, 0.18], [charUC, 0.05]);
+    pushTri(vertices, normals, uvs, t1, t0, tip, new Vec2(charU1, 0.18), new Vec2(charU0, 0.18), new Vec2(charUC, 0.05));
   }
 
   return {
@@ -388,32 +396,32 @@ export function barrelShrapnelParts(size = new Vec2(9.5, 26)) {
     const warp0 = Math.max(0, c0) * 1.85;
     const warp1 = Math.max(0, c1) * 1.85;
 
-    const top0 = [c0 * lidR, lidThick * 0.5 + warp0, s0 * lidR];
-    const top1 = [c1 * lidR, lidThick * 0.5 + warp1, s1 * lidR];
-    const bot0 = [c0 * lidR, -lidThick * 0.5 + warp0, s0 * lidR];
-    const bot1 = [c1 * lidR, -lidThick * 0.5 + warp1, s1 * lidR];
+    const top0 = new Vec3(c0 * lidR, lidThick * 0.5 + warp0, s0 * lidR);
+    const top1 = new Vec3(c1 * lidR, lidThick * 0.5 + warp1, s1 * lidR);
+    const bot0 = new Vec3(c0 * lidR, -lidThick * 0.5 + warp0, s0 * lidR);
+    const bot1 = new Vec3(c1 * lidR, -lidThick * 0.5 + warp1, s1 * lidR);
 
     pushTri(
       lidVerts,
       lidNorms,
       lidUvs,
-      [0, lidThick * 0.5 + 0.35, 0],
+      new Vec3(0, lidThick * 0.5 + 0.35, 0),
       top1,
       top0,
-      [lidUC, 0.5],
-      [lidUC + c1 * 0.12, 0.5 + s1 * 0.46],
-      [lidUC + c0 * 0.12, 0.5 + s0 * 0.46]
+      new Vec2(lidUC, 0.5),
+      new Vec2(lidUC + c1 * 0.12, 0.5 + s1 * 0.46),
+      new Vec2(lidUC + c0 * 0.12, 0.5 + s0 * 0.46)
     );
     pushTri(
       lidVerts,
       lidNorms,
       lidUvs,
-      [0, -lidThick * 0.5 + 0.35, 0],
+      new Vec3(0, -lidThick * 0.5 + 0.35, 0),
       bot0,
       bot1,
-      [charUC, 0.5],
-      [charUC + c0 * 0.11, 0.5 + s0 * 0.42],
-      [charUC + c1 * 0.11, 0.5 + s1 * 0.42]
+      new Vec2(charUC, 0.5),
+      new Vec2(charUC + c0 * 0.11, 0.5 + s0 * 0.42),
+      new Vec2(charUC + c1 * 0.11, 0.5 + s1 * 0.42)
     );
     pushQuad(lidVerts, lidNorms, lidUvs, bot0, bot1, top1, top0, charU0, 0.2, charU1, 0.8);
   }
@@ -448,10 +456,10 @@ export function barrelShrapnelParts(size = new Vec2(9.5, 26)) {
       const bend0 = f0 * 1.1;
       const bend1 = f1 * 1.1;
 
-      const b0 = [x0, jagBot0, z0 + bend0];
-      const b1 = [x1, jagBot1, z1 + bend1];
-      const t0 = [x0 * 1.08, jagTop0, z0 + 0.65 + bend0];
-      const t1 = [x1 * 1.08, jagTop1, z1 + 0.65 + bend1];
+      const b0 = new Vec3(x0, jagBot0, z0 + bend0);
+      const b1 = new Vec3(x1, jagBot1, z1 + bend1);
+      const t0 = new Vec3(x0 * 1.08, jagTop0, z0 + 0.65 + bend0);
+      const t1 = new Vec3(x1 * 1.08, jagTop1, z1 + 0.65 + bend1);
 
       const su0 = Utils.lerp(sideU0, sideU1, uBase + (j / subSegs) * uSpan);
       const su1 = Utils.lerp(sideU0, sideU1, uBase + ((j + 1) / subSegs) * uSpan);
