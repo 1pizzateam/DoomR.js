@@ -8,8 +8,8 @@
  * of it should go to the room reverb. They also run in an OfflineAudioContext, which is
  * how they are checked for silence, clipping and clicks.
  */
-import { createImpulse, createNoise, softClip } from '@1pizzateam/groovr';
-import { Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { createImpulse, createNoise, softClip, spatial2D } from '@1pizzateam/groovr';
+import { Rand, Utils, Vec2 } from '@1pizzateam/spock';
 import { Music } from './music.js';
 import { SHOTGUN_PUMP, WEAPONS } from './weapon.js';
 
@@ -19,12 +19,11 @@ const DUCK_ATTACK = 0.012;
 const DUCK_HOLD = 0.06;
 const DUCK_RELEASE = 0.09;
 
-const clamp = Utils.clamp;
 const rand = Rand.float;
-const scratchDelta = new Vec2();
-const scratchRight = new Vec2(1, 0);
 const ORIGIN = new Vec2();
 const scratchSpatial = { pan: 0, gain: 0, distance: 0 };
+// a source right on top of the listener has no direction, so ease the pan in over 70 units
+const scratchSpatialOptions = { reference: 220, range: 1000, panMax: 0.9, easeDistance: 70 };
 const NO_OPTIONS = Object.freeze({});
 
 /**
@@ -33,17 +32,9 @@ const NO_OPTIONS = Object.freeze({});
  * direction. In the game's plane, "right" of a viewer looking along `angle` is (-sin, cos).
  */
 export function spatial(listenerPos, sourcePos, { angle = 0, reference = 220, range = 1000 } = NO_OPTIONS) {
-  scratchDelta.subVectors(sourcePos, listenerPos);
-  const distance = scratchDelta.getMagnitude();
-  scratchRight.setRadian(angle + Trigo.halfpi);
-  const side = distance < 1 ? 0 : scratchDelta.dotProduct(scratchRight) / distance;
-  // a source right on top of the listener has no direction, so ease the pan in
-  const pan = clamp(side * Math.min(1, distance / 70), -1, 1) * 0.9;
-  const gain = distance > range ? 0 : 1 / (1 + (distance / reference) ** 2);
-  scratchSpatial.pan = pan;
-  scratchSpatial.gain = gain;
-  scratchSpatial.distance = distance;
-  return scratchSpatial;
+  scratchSpatialOptions.reference = reference;
+  scratchSpatialOptions.range = range;
+  return spatial2D(listenerPos, angle, sourcePos, scratchSpatialOptions, scratchSpatial);
 }
 
 // ---- building blocks ------------------------------------------------------------------------

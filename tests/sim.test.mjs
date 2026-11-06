@@ -3030,7 +3030,8 @@ const tests = {
     // louder when near, silent when out of range, and right on top of the listener it is centred and full
     const gains = [0, 100, 300, 600, 900].map((d) => spatial(listener, new Vec2(d, 0)).gain);
     for (let i = 1; i < gains.length; i++)
-      assert.ok(gains[i] < gains[i - 1], 'gain must fall with distance');
+      assert.ok(gains[i] <= gains[i - 1], 'gain must not rise with distance');
+    assert.ok(gains[2] < gains[1] && gains[3] < gains[2] && gains[4] < gains[3], 'gain must fall beyond the reference radius');
     assert.equal(spatial(listener, new Vec2(0, 0)).gain, 1);
     assert.equal(spatial(listener, new Vec2(0, 0)).pan, 0);
     assert.equal(spatial(listener, new Vec2(5000, 0)).gain, 0, 'out of range is silent');
@@ -9439,7 +9440,10 @@ const tests = {
       };
       makeSound().play('dry', { pos: new Vec2(150, 0) });
       assert.equal(buses.length, 1);
-      assert.ok(Math.abs(buses[0].gain.value - 1 / (1 + (150 / 220) ** 2)) < 1e-9);
+      assert.ok(Math.abs(buses[0].gain.value - ((220 / 150) ** 2 > 1 ? 1 : 0)) < 1e-9, 'inside the reference radius the sound is full');
+      buses.length = 0;
+      makeSound().play('dry', { pos: new Vec2(500, 0) });
+      assert.ok(Math.abs(buses[0].gain.value - ((220 / 500) ** 2 - (220 / 1000) ** 2) / (1 - (220 / 1000) ** 2)) < 1e-9);
       buses.length = 0;
       makeSound().play('dry', { pos: new Vec2(5000, 0) });
       assert.equal(buses.length, 0, 'out of range creates no bus');
@@ -9457,11 +9461,12 @@ const tests = {
     const listener = new Vec2(0, 0);
     const gains = [0, 100, 300, 600, 900, 1000].map((d) => {
       const { gain } = spatial(listener, new Vec2(d, 0));
-      assert.ok(Math.abs(gain - 1 / (1 + (d / 220) ** 2)) < 1e-12);
+      assert.ok(Math.abs(gain - ((d) => d <= 220 ? 1 : d >= 1000 ? 0 : ((220 / d) ** 2 - (220 / 1000) ** 2) / (1 - (220 / 1000) ** 2))(d)) < 1e-12);
       return gain;
     });
     for (let i = 1; i < gains.length; i++)
-      assert.ok(gains[i] < gains[i - 1]);
+      assert.ok(gains[i] <= gains[i - 1]);
+    assert.ok(gains[2] < gains[1] && gains[3] < gains[2] && gains[4] < gains[3]);
     assert.equal(spatial(listener, new Vec2(1000.5, 0)).gain, 0);
     assert.equal(spatial(listener, new Vec2(5000, 0)).gain, 0);
     assert.equal(spatial(listener, new Vec2(0, 0)).gain, 1);
@@ -10114,13 +10119,13 @@ const tests = {
         const distance = Math.hypot(src.x - listener.x, src.y - listener.y);
         const side = distance < 1 ? 0 : ((src.x - listener.x) * -Math.sin(angle) + (src.y - listener.y) * Math.cos(angle)) / distance;
         const pan = Math.max(-1, Math.min(1, side * Math.min(1, distance / 70))) * 0.9;
-        const gain = distance > 1000 ? 0 : 1 / (1 + (distance / 220) ** 2);
+        const gain = ((d) => d <= 220 ? 1 : d >= 1000 ? 0 : ((220 / d) ** 2 - (220 / 1000) ** 2) / (1 - (220 / 1000) ** 2))(distance);
         assert.ok(Math.abs(got.pan - pan) < 1e-12, `pan at ${d}`);
         if (Math.abs(distance - 1000) > 1e-6)
           assert.ok(Math.abs(got.gain - gain) < 1e-12, `gain at ${d}`);
         assert.ok(Math.abs(got.distance - distance) < 1e-9, `distance at ${d}`);
       }
-    assert.ok(spatial(new Vec2(0, 0), new Vec2(1000, 0)).gain > 0);
+    assert.equal(spatial(new Vec2(0, 0), new Vec2(1000, 0)).gain, 0);
     assert.equal(spatial(new Vec2(0, 0), new Vec2(1000.5, 0)).gain, 0);
   },
 
