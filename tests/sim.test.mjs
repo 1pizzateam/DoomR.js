@@ -58,7 +58,7 @@ import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
 import { Overlay } from '../src/overlay.js';
 import { ACTIONS, CONTROLS_STORAGE_KEY, CONTROLS_VERSION, CONTROL_GROUPS, DEFAULT_HINT_LINES, Keymap, LAYOUT_STORAGE_KEY, MAX_SLOTS, PRESETS, RESERVED_CODES } from '../src/keymap.js';
-import { ControlsMenu, TONE_RED } from '../src/controls.js';
+import { ControlsMenu, HIT_BACK, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP, TONE_RED } from '../src/controls.js';
 import { NAV_DOWN, NAV_LEFT, NAV_NONE, NAV_RIGHT, NAV_UP, RAW_RING_SIZE } from '../src/input.js';
 
 // Scalar fixtures to the vector options of the blood quad generators
@@ -10576,6 +10576,299 @@ const tests = {
     assert.ok(section.includes('doomr.controls'));
     const log = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
     assert.ok(log.includes('#26') && log.includes('doomr.controls'));
+  },
+
+  'AC-1 ControlsMenu cursor navigation and boundary clamping'() {
+    withRig((inp) => {
+      const menu = new ControlsMenu(inp.keymap, inp);
+      const game = fakeGame();
+      menu.open('title');
+      const v = menu.view;
+
+      assert.equal(v.cursorLine, menu.actionLines[0]);
+      assert.equal(v.cursorCol, 0);
+      assert.equal(v.footerFocus, -1);
+
+      menu.moveCursor(-1, game);
+      assert.equal(v.cursorLine, menu.actionLines[0]);
+      assert.equal(v.footerFocus, -1);
+      assert.equal(game.events.length, 0);
+
+      for (let i = 1; i < menu.actionLines.length; i++) {
+        menu.moveCursor(1, game);
+        assert.equal(v.cursorLine, menu.actionLines[i]);
+        assert.equal(v.footerFocus, -1);
+        assert.equal(game.events[game.events.length - 1], 'tallyTick');
+      }
+
+      menu.moveCursor(1, game);
+      assert.equal(v.footerFocus, 0);
+      assert.equal(game.events[game.events.length - 1], 'tallyTick');
+
+      menu.moveCursor(1, game);
+      assert.equal(v.footerFocus, 0);
+
+      menu.moveColumn(1, game);
+      assert.equal(v.footerFocus, 1);
+      assert.equal(game.events[game.events.length - 1], 'tallyTick');
+
+      menu.moveColumn(1, game);
+      assert.equal(v.footerFocus, 1);
+
+      menu.moveCursor(-1, game);
+      assert.equal(v.footerFocus, -1);
+      assert.equal(v.cursorLine, menu.actionLines[menu.actionLines.length - 1]);
+      assert.equal(game.events[game.events.length - 1], 'tallyTick');
+
+      assert.equal(v.cursorCol, 0);
+      menu.moveColumn(-1, game);
+      assert.equal(v.cursorCol, 0);
+
+      menu.moveColumn(1, game);
+      assert.equal(v.cursorCol, 1);
+      assert.equal(game.events[game.events.length - 1], 'tallyTick');
+
+      menu.moveColumn(1, game);
+      assert.equal(v.cursorCol, 1);
+
+      menu.moveColumn(-1, game);
+      assert.equal(v.cursorCol, 0);
+    });
+  },
+
+  'AC-2 ControlsMenu keepCursorVisible and scrollBy viewport scrolling'() {
+    withRig((inp) => {
+      const menu = new ControlsMenu(inp.keymap, inp);
+      const game = fakeGame();
+      menu.open('title');
+      const v = menu.view;
+
+      assert.equal(v.scroll, 0);
+      assert.equal(v.visibleRows, 12);
+
+      const maxScroll = Math.max(0, v.lines.length - v.visibleRows);
+      assert.ok(maxScroll > 0);
+
+      let targetIdx = 0;
+      while (targetIdx < menu.actionLines.length && menu.actionLines[targetIdx] <= v.visibleRows - 1)
+        targetIdx++;
+      const targetLine = menu.actionLines[targetIdx];
+      while (v.cursorLine < targetLine)
+        menu.moveCursor(1, game);
+
+      assert.equal(v.cursorLine, targetLine);
+      assert.equal(v.scroll, targetLine - v.visibleRows + 1);
+
+      const headerIdx = v.lines.findIndex((l, idx) => idx > 0 && l.kind === 'header');
+      assert.ok(headerIdx > 0);
+      const rowUnderHeader = headerIdx + 1;
+      assert.ok(menu.actionLines.includes(rowUnderHeader));
+
+      v.cursorLine = rowUnderHeader;
+      v.footerFocus = -1;
+      v.scroll = rowUnderHeader;
+      menu.keepCursorVisible();
+      assert.equal(v.scroll, rowUnderHeader - 1);
+
+      v.scroll = 5;
+      menu.scrollBy(3);
+      assert.equal(v.scroll, 8);
+
+      menu.scrollBy(-20);
+      assert.equal(v.scroll, 0);
+
+      menu.scrollBy(v.lines.length + 50);
+      assert.equal(v.scroll, maxScroll);
+
+      v.scroll = 2;
+      inp.pushRaw('wheel', '', '', false, 1);
+      menu.update(0.016, game);
+      assert.equal(v.scroll, 5);
+
+      inp.pushRaw('wheel', '', '', false, -1);
+      menu.update(0.016, game);
+      assert.equal(v.scroll, 2);
+    });
+  },
+
+  'AC-3 ControlsMenu two-stage reset confirmation and timeout'() {
+    withRig((inp, rig) => {
+      const k = inp.keymap;
+      k.setBinding('fire', 0, 'KeyZ');
+      assert.equal(k.isCustom('fire'), true);
+
+      const menu = new ControlsMenu(k, inp);
+      const game = fakeGame();
+      menu.open('title');
+      const v = menu.view;
+
+      menu.activateReset(game);
+      assert.equal(v.mode, 'confirmReset');
+      assert.equal(v.confirmTime, 2);
+      assert.equal(v.toastText, 'Press RESET ALL again to restore every default');
+      assert.equal(k.isCustom('fire'), true);
+
+      menu.update(2.1, game);
+      assert.equal(v.mode, 'browse');
+      assert.equal(k.isCustom('fire'), true);
+
+      menu.activateReset(game);
+      assert.equal(v.mode, 'confirmReset');
+      assert.equal(k.isCustom('fire'), true);
+
+      menu.activateReset(game);
+      assert.equal(v.mode, 'browse');
+      assert.equal(k.isCustom('fire'), false);
+      assert.equal(v.toastText, 'All controls reset');
+      assert.ok(game.events.includes('keycard'));
+
+      k.setBinding('fire', 0, 'KeyZ');
+      assert.equal(k.isCustom('fire'), true);
+
+      v.footerFocus = 0;
+      rig.down({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      assert.equal(v.mode, 'confirmReset');
+      assert.equal(k.isCustom('fire'), true);
+
+      rig.down({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Enter', key: 'Enter' });
+      menu.update(0.016, game);
+      assert.equal(v.mode, 'browse');
+      assert.equal(k.isCustom('fire'), false);
+    });
+  },
+
+  'AC-4 ControlsMenu Delete/Backspace unbinding and Escape cancellation'() {
+    withRig((inp, rig) => {
+      const menu = new ControlsMenu(inp.keymap, inp);
+      const game = fakeGame();
+      menu.open('title');
+      const v = menu.view;
+
+      const forwardLine = v.lines.findIndex((l) => l.id === 'moveForward');
+      assert.ok(forwardLine >= 0);
+      v.cursorLine = forwardLine;
+      // Test secondary slot unbinding on an action with two slots (moveForward)
+      // and single-binding action unbinding to 'UNBOUND' (jump).
+      v.cursorCol = 1;
+      rig.down({ code: 'Backspace', key: 'Backspace' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Backspace', key: 'Backspace' });
+      menu.update(0.016, game);
+
+      assert.equal(v.lines[forwardLine].slot1, '—');
+      assert.equal(v.toastText, 'Not saved: browser storage unavailable');
+      assert.ok(game.events.includes('keycard'));
+
+      // Now unbind single slot of 'jump'
+      const jumpLine = v.lines.findIndex((l) => l.id === 'jump');
+      assert.ok(jumpLine >= 0);
+      v.cursorLine = jumpLine;
+      v.cursorCol = 0;
+      rig.down({ code: 'Delete', key: 'Delete' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Delete', key: 'Delete' });
+      menu.update(0.016, game);
+
+      assert.equal(v.lines[jumpLine].slot0, 'UNBOUND');
+      assert.equal(v.lines[jumpLine].unbound, true);
+
+      menu.activateReset(game);
+      assert.equal(v.mode, 'confirmReset');
+
+      rig.down({ code: 'Escape', key: 'Escape' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Escape', key: 'Escape' });
+      menu.update(0.016, game);
+
+      assert.equal(v.mode, 'browse');
+      assert.equal(menu.isOpen, true);
+
+      rig.down({ code: 'Escape', key: 'Escape' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Escape', key: 'Escape' });
+      menu.update(0.016, game);
+
+      assert.equal(menu.isOpen, false);
+      assert.equal(inp.rawMode, false);
+    });
+  },
+
+  'AC-5 ControlsMenu mouse hit detection and button routing'() {
+    withRig((inp) => {
+      let currentHit = HIT_NONE;
+      const menu = new ControlsMenu(inp.keymap, inp, { hitAt: () => currentHit });
+      const game = fakeGame();
+      menu.open('title');
+      const v = menu.view;
+
+      v.scroll = 5;
+      currentHit = HIT_SCROLL_DOWN;
+      inp.pushRaw('buttondown', 'Mouse0', '', false, 0);
+      menu.update(0.016, game);
+      assert.equal(v.scroll, 8);
+
+      currentHit = HIT_SCROLL_UP;
+      inp.pushRaw('buttondown', 'Mouse0', '', false, 0);
+      menu.update(0.016, game);
+      assert.equal(v.scroll, 5);
+
+      inp.keymap.setBinding('fire', 0, 'KeyZ');
+      assert.equal(inp.keymap.isCustom('fire'), true);
+
+      currentHit = HIT_RESET_ALL;
+      inp.pushRaw('buttondown', 'Mouse0', '', false, 0);
+      menu.update(0.016, game);
+      assert.equal(v.mode, 'confirmReset');
+      assert.equal(v.footerFocus, 0);
+      assert.equal(inp.keymap.isCustom('fire'), true);
+
+      currentHit = HIT_RESET_ALL;
+      inp.pushRaw('buttondown', 'Mouse0', '', false, 0);
+      menu.update(0.016, game);
+      assert.equal(v.mode, 'browse');
+      assert.equal(inp.keymap.isCustom('fire'), false);
+
+      menu.activateReset(game);
+      assert.equal(v.mode, 'confirmReset');
+      currentHit = HIT_NONE;
+      inp.pushRaw('buttondown', 'Mouse0', '', false, 0);
+      menu.update(0.016, game);
+      assert.equal(v.mode, 'browse');
+
+      const targetLine = menu.actionLines[2];
+      const targetCol = 1;
+      currentHit = (targetLine << 1) | targetCol;
+      inp.pushRaw('buttondown', 'Mouse0', '', false, 0);
+      menu.update(0.016, game);
+      assert.equal(v.cursorLine, targetLine);
+      assert.equal(v.cursorCol, targetCol);
+      assert.equal(v.footerFocus, -1);
+      assert.equal(v.mode, 'capture');
+
+      menu.cancelCapture(game);
+      assert.equal(v.mode, 'browse');
+
+      const hoverLine = menu.actionLines[1];
+      const hoverCol = 0;
+      currentHit = (hoverLine << 1) | hoverCol;
+      inp.mouseMoved = true;
+      inp.mousePos.setScalar(123, 456);
+      menu.update(0.016, game);
+      assert.equal(v.cursorLine, hoverLine);
+      assert.equal(v.cursorCol, hoverCol);
+      assert.equal(v.footerFocus, -1);
+      assert.equal(game.events[game.events.length - 1], 'tallyTick');
+
+      currentHit = HIT_BACK;
+      inp.pushRaw('buttondown', 'Mouse0', '', false, 0);
+      menu.update(0.016, game);
+      assert.equal(menu.isOpen, false);
+    });
   },
 
   'AC-1 hud imports: ./game.js import in src/hud.js omits FIRE_COOLDOWN'() {
