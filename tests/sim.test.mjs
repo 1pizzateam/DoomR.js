@@ -12026,6 +12026,129 @@ const tests = {
     assert.equal(game.player.health, 91, 'player takes 9 damage from wraith rake');
     assert.ok(Math.abs(wraith.cooldown - 0.9) < 0.15, 'wraith cooldown resets to ~0.9');
   },
+
+  'AC-1 Input.prototype.axis resolves simultaneous opposing directions using insertion order'() {
+    withRig((inp) => {
+      assert.equal(inp.axis('moveForward', 'moveBack'), 0, '0 when neither key is pressed');
+      inp.keys.add('moveForward');
+      assert.equal(inp.axis('moveForward', 'moveBack'), 1, '1 when only positive key is pressed');
+      inp.keys.delete('moveForward');
+      inp.keys.add('moveBack');
+      assert.equal(inp.axis('moveForward', 'moveBack'), -1, '-1 when only negative key is pressed');
+
+      // Hold forward, then press back: moveBack is added later in Set insertion order -> axis resolves to -1
+      inp.keys.clear();
+      inp.keys.add('moveForward');
+      inp.keys.add('moveBack');
+      assert.equal(inp.axis('moveForward', 'moveBack'), -1, 'moveBack added after moveForward resolves to -1');
+
+      // Re-press forward: moveForward is re-added latest -> axis resolves to 1
+      inp.keys.delete('moveForward');
+      inp.keys.add('moveForward');
+      assert.equal(inp.axis('moveForward', 'moveBack'), 1, 'moveForward re-added after moveBack resolves to 1');
+    });
+  },
+
+  'AC-2 Input.prototype.lock safely ignores synchronous exceptions and rejected promises from requestPointerLock'() {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    globalThis.document = { addEventListener() {}, pointerLockElement: null };
+    globalThis.window = { addEventListener() {} };
+    try {
+      // Synchronous throw
+      const throwingCanvas = {
+        addEventListener() {},
+        requestPointerLock() {
+          throw new Error('DOMException: Permission denied');
+        },
+      };
+      const inpThrow = new Input(throwingCanvas, new Keymap({ storage: null, navigator: null }));
+      assert.doesNotThrow(() => inpThrow.lock(), 'synchronous exception in requestPointerLock is caught and ignored');
+
+      // Rejected Promise
+      let catchCalled = false;
+      const rejectingCanvas = {
+        addEventListener() {},
+        requestPointerLock() {
+          const rejectingPromise = Promise.reject(new Error('Pointer lock denied'));
+          return {
+            catch(fn) {
+              catchCalled = true;
+              return rejectingPromise.catch(fn);
+            },
+          };
+        },
+      };
+      const inpReject = new Input(rejectingCanvas, new Keymap({ storage: null, navigator: null }));
+      assert.doesNotThrow(() => inpReject.lock(), 'rejected promise in requestPointerLock is caught and ignored');
+      assert.equal(catchCalled, true, 'lock() safely invokes catch on the returned promise');
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
+  },
+
+  'AC-3 Input.prototype.pushRaw caps rawCount at RAW_RING_SIZE and preserves FIFO order'() {
+    withRig((inp) => {
+      inp.setRawMode(true);
+      assert.equal(inp.rawCount, 0);
+
+      // Push 20 events into ring buffer of capacity 16
+      for (let i = 0; i < 20; i++) {
+        inp.pushRaw('keydown', `Key${i}`, '', false, 0);
+        if (i < RAW_RING_SIZE)
+          assert.equal(inp.rawCount, i + 1, `rawCount increases to ${i + 1}`);
+        else
+          assert.equal(inp.rawCount, RAW_RING_SIZE, 'rawCount caps strictly at RAW_RING_SIZE');
+      }
+
+      // Drain all 16 events in FIFO order
+      for (let i = 0; i < RAW_RING_SIZE; i++) {
+        const item = inp.nextRaw();
+        assert.ok(item !== null, `item ${i} drained`);
+        assert.equal(item.code, `Key${i}`, `event ${i} matches Key${i} in original FIFO order`);
+      }
+      assert.equal(inp.rawCount, 0, 'all items drained, rawCount is 0');
+      assert.equal(inp.nextRaw(), null, 'subsequent nextRaw returns null');
+    });
+  },
+
+  'AC-4 Input.prototype.navigate resolves menu directions from fallback movement actions when navBits is unset'() {
+    withRig((inp) => {
+      inp.navBits = 0;
+      assert.equal(inp.navigate(), NAV_NONE, 'no input resolves to NAV_NONE');
+
+      // Fallback: moveForward -> NAV_UP
+      inp.pressed.clear();
+      inp.pressed.add('moveForward');
+      assert.equal(inp.navigate(), NAV_UP, 'moveForward resolves to NAV_UP');
+
+      // Fallback: moveBack -> NAV_DOWN
+      inp.pressed.clear();
+      inp.pressed.add('moveBack');
+      assert.equal(inp.navigate(), NAV_DOWN, 'moveBack resolves to NAV_DOWN');
+
+      // Fallback: turnLeft or strafeLeft -> NAV_LEFT
+      inp.pressed.clear();
+      inp.pressed.add('turnLeft');
+      assert.equal(inp.navigate(), NAV_LEFT, 'turnLeft resolves to NAV_LEFT');
+      inp.pressed.clear();
+      inp.pressed.add('strafeLeft');
+      assert.equal(inp.navigate(), NAV_LEFT, 'strafeLeft resolves to NAV_LEFT');
+
+      // Fallback: turnRight or strafeRight -> NAV_RIGHT
+      inp.pressed.clear();
+      inp.pressed.add('turnRight');
+      assert.equal(inp.navigate(), NAV_RIGHT, 'turnRight resolves to NAV_RIGHT');
+      inp.pressed.clear();
+      inp.pressed.add('strafeRight');
+      assert.equal(inp.navigate(), NAV_RIGHT, 'strafeRight resolves to NAV_RIGHT');
+
+      // Cleared pressed -> NAV_NONE
+      inp.pressed.clear();
+      assert.equal(inp.navigate(), NAV_NONE, 'cleared pressed resolves to NAV_NONE');
+    });
+  },
 };
 
 function pausedHud() {
