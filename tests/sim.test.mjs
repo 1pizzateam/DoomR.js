@@ -94,6 +94,10 @@ function fresh(levelIndex = 0) {
   return game;
 }
 
+function tileCenter(level, idx) {
+  return new Vec2((idx % level.width + 0.5) * 64, (Math.floor(idx / level.width) + 0.5) * 64);
+}
+
 function clearEnemies(game) {
   for (const enemy of game.enemies)
     game.damageEnemy(enemy, 999);
@@ -4636,7 +4640,7 @@ const tests = {
     const slimeIdx = game.level.slime.findIndex((v) => v === 1);
     const slimeX = (slimeIdx % game.level.width) * 64 + 32;
     const slimeY = Math.floor(slimeIdx / game.level.width) * 64 + 32;
-    assert.equal(game.level.slimeAt(slimeX, slimeY), true);
+    assert.equal(game.level.slimeAt(new Vec2(slimeX, slimeY)), true);
     game.player.body.setPosition(new Vec2(slimeX, slimeY));
     run(game, 0.4);
     game.events.length = 0;
@@ -5882,7 +5886,7 @@ const tests = {
         const partner = g.level.teleporterByTile.get(pad.targetIdx);
         assert.ok(partner && partner !== pad, 'every teleporter pad links to its partner pad');
         assert.equal(partner.targetIdx, pad.idx, 'teleporter pairing is symmetric');
-        assert.equal(g.level.teleporterAt(pad.center.x, pad.center.y), pad, 'teleporterAt resolves pad from world coordinates');
+        assert.equal(g.level.teleporterAt(pad.center), pad, 'teleporterAt resolves pad from world coordinates');
       }
     }
 
@@ -6390,12 +6394,12 @@ const tests = {
     assert.ok(slimeIdx >= 0, 'level has slime tiles');
     const sx = ((slimeIdx % game.level.width) + 0.5) * 64;
     const sy = (Math.floor(slimeIdx / game.level.width) + 0.5) * 64;
-    assert.equal(game.level.slimeAt(sx, sy), true);
+    assert.equal(game.level.slimeAt(new Vec2(sx, sy)), true);
 
     // Also pick a regular dry floor tile
     const dryX = 2 * 64 + 32;
     const dryY = 2 * 64 + 32;
-    assert.equal(game.level.slimeAt(dryX, dryY), false);
+    assert.equal(game.level.slimeAt(new Vec2(dryX, dryY)), false);
 
     game.blood.floorSplat(new Vec2(sx, sy), 8);
     game.blood.floorGib(new Vec2(sx, sy), 3.0, 0);
@@ -7431,6 +7435,88 @@ const tests = {
     assert.equal(level.inArena(new Vec2(1 * 64 + 32, 1 * 64 + 32)), false, 'known non-arena tile is not in arena');
     assert.equal(level.inArena(new Vec2(-10, -10)), false, 'negative coordinates outside grid return false');
     assert.equal(level.inArena(new Vec2(level.width * 64 + 100, level.rowCount * 64 + 100)), false, 'out-of-bounds coordinates return false');
+  },
+
+  'AC-1 spatial queries take a single Vec2 parameter'() {
+    for (const name of ['secretAt', 'slimeAt', 'teleporterAt', 'inArena'])
+      assert.equal(Level.prototype[name].length, 1, `${name} has an arity of 1`);
+  },
+
+  'AC-2 slimeAt resolves slime and dry tiles from a Vec2'() {
+    const game = fresh(0);
+    const { level } = game;
+    const slimeIdx = level.slime.findIndex((v) => v === 1);
+    assert.ok(slimeIdx >= 0, 'level has slime tiles');
+    const pos = new Vec2((slimeIdx % level.width + 0.5) * 64, (Math.floor(slimeIdx / level.width) + 0.5) * 64);
+    assert.equal(level.slimeAt(pos), true);
+    assert.equal(level.slimeAt(new Vec2(2 * 64 + 32, 2 * 64 + 32)), false);
+    assert.equal(level.slimeAt(new Vec2(-10, -10)), false);
+  },
+
+  'AC-3 teleporterAt returns the pad for its center Vec2 and null elsewhere'() {
+    for (let i = 0; i < 4; i++) {
+      const { level } = fresh(i);
+      for (const pad of level.teleporters)
+        assert.equal(level.teleporterAt(pad.center), pad, `level ${i} pad resolves from its center`);
+      const dry = level.teleporter.findIndex((v, idx) => v === 0 && level.slime[idx] === 0 && level.grid.getCell(tileCenter(level, idx)) >= 0);
+      assert.ok(dry >= 0);
+      assert.equal(level.teleporterAt(tileCenter(level, dry)), null, 'non-pad tile is null');
+      assert.equal(level.teleporterAt(new Vec2(-10, -10)), null, 'out-of-bounds is null');
+    }
+  },
+
+  'AC-4 secretAt returns the secret index for a secret tile Vec2 and -1 elsewhere'() {
+    const { level } = fresh(0);
+    const secretIdx = [...level.secrets[0]][0];
+    const expected = level.secretByTile[secretIdx];
+    assert.ok(expected >= 0);
+    assert.equal(level.secretAt(tileCenter(level, secretIdx)), expected);
+    const plain = level.secretByTile.findIndex((v) => v < 0);
+    assert.equal(level.secretAt(tileCenter(level, plain)), -1);
+    assert.equal(level.secretAt(new Vec2(-10, -10)), -1);
+  },
+
+  'AC-5 inArena behavior is unchanged for in-arena, out-of-arena and out-of-bounds Vec2'() {
+    const game = new Game();
+    game.load(1);
+    const { level } = game;
+    const [boss] = game.enemies.filter((e) => e.type === 'boss');
+    assert.equal(level.inArena(boss.pos), true);
+    assert.equal(level.inArena(new Vec2(1 * 64 + 32, 1 * 64 + 32)), false);
+    assert.equal(level.inArena(new Vec2(-10, -10)), false);
+    assert.equal(level.inArena(new Vec2(level.width * 64 + 100, level.rowCount * 64 + 100)), false);
+  },
+
+  'AC-6 spatial queries do not mutate their Vec2 argument'() {
+    const { level } = fresh(0);
+    const pos = new Vec2(96.5, 160.25);
+    level.secretAt(pos);
+    level.slimeAt(pos);
+    level.teleporterAt(pos);
+    assert.equal(pos.x, 96.5);
+    assert.equal(pos.y, 160.25);
+    const source = readFileSync(new URL('../src/level.js', import.meta.url), 'utf8');
+    assert.ok(!source.includes('scratchGridPt'), 'level.js has no scratchGridPt');
+  },
+
+  'AC-7 slime burn and secret discovery still trigger through the Vec2 callers'() {
+    const game = fresh(0);
+    clearEnemies(game);
+    const slimeIdx = game.level.slime.findIndex((v) => v === 1);
+    game.player.body.setPosition(tileCenter(game.level, slimeIdx));
+    run(game, 0.4);
+    game.events.length = 0;
+    run(game, 0.9);
+    assert.ok(game.events.some((e) => e.type === 'acid'), 'slime burn emits acid');
+
+    const g2 = fresh(0);
+    clearEnemies(g2);
+    const secretIdx = [...g2.level.secrets[0]][0];
+    g2.player.body.setPosition(tileCenter(g2.level, secretIdx));
+    g2.update(1 / 60, idle);
+    g2.update(1 / 60, idle);
+    assert.equal(g2.secretsFound, 1, 'secret discovered exactly once');
+    assert.equal(g2.discoveredSecrets.size, 1);
   },
 
   'AC-2 diagInfo returns Vec2 primitives without scalar fields'() {

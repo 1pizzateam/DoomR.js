@@ -2233,7 +2233,7 @@ export class Game {
     if (enemy.state === 'dead') {
       enemy.pain = 0;
       enemy.deadTime += dt;
-      enemy.inSlime = Boolean(this.level.slimeAt(enemy.pos.x, enemy.pos.y));
+      enemy.inSlime = Boolean(this.level.slimeAt(enemy.pos));
       if (enemy.type !== 'wraith' && enemy.deadTime <= 0.72) {
         enemy.deathFountain = (enemy.deathFountain ?? 0.08) - dt;
         if (enemy.deathFountain <= 0) {
@@ -2769,7 +2769,7 @@ export class Game {
       player.ammoFlash.bullets = Math.max(0, (player.ammoFlash.bullets ?? 0) - dt);
       player.ammoFlash.rockets = Math.max(0, (player.ammoFlash.rockets ?? 0) - dt);
     }
-    if (this.state === 'play' && player.z <= -ACID_PIT_DEPTH && this.level.slimeAt(player.pos.x, player.pos.y)) {
+    if (this.state === 'play' && player.z <= -ACID_PIT_DEPTH && this.level.slimeAt(player.pos)) {
       if ((player.radSuit ?? 0) > 0)
         player.slimeTimer = 0;
       else {
@@ -2825,7 +2825,7 @@ export class Game {
     player.teleFlash = Math.max(0, (player.teleFlash ?? 0) - dt);
     player.teleportCooldown = Math.max(0, (player.teleportCooldown ?? 0) - dt);
 
-    const pad = level.teleporterAt(player.pos.x, player.pos.y);
+    const pad = level.teleporterAt(player.pos);
     if (!pad || pad.idx !== player.teleportPad || player.pos.getDistance(pad.center) >= TILE * 0.48)
       player.teleportPad = -1;
 
@@ -2871,7 +2871,7 @@ export class Game {
       enemy.teleportCooldown = Math.max(0, (enemy.teleportCooldown ?? 0) - dt);
       if (this.state !== 'play' || enemy.state !== 'chase' || enemy.type === 'boss' || enemy.teleportCooldown > 0)
         continue;
-      const pad = level.teleporterAt(enemy.pos.x, enemy.pos.y);
+      const pad = level.teleporterAt(enemy.pos);
       if (!pad || pad.targetIdx === pad.idx || enemy.pos.getDistance(pad.center) >= TILE * 0.36)
         continue;
       if (pad.target.getDistance(player.pos) + 12 >= pad.center.getDistance(player.pos))
@@ -3045,7 +3045,7 @@ export class Game {
       this.fog.update(this.player.pos, this.player.angle, this.fogConeRange());
 
     if (this.state === 'play') {
-      const secretIdx = this.level.secretAt(this.player.pos.x, this.player.pos.y);
+      const secretIdx = this.level.secretAt(this.player.pos);
       if (secretIdx >= 0 && !this.discoveredSecrets.has(secretIdx)) {
         this.discoveredSecrets.add(secretIdx);
         this.secretsFound++;

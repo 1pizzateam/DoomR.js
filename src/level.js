@@ -29,7 +29,6 @@ const scratchS = new Vec2();
 const scratchA = new Vec2();
 const scratchB = new Vec2();
 const scratchO = new Vec2();
-const scratchGridPt = new Vec2();
 
 const SOLIDS = {
   '#': { kind: WALL, height: 64 },
@@ -282,8 +281,9 @@ export class Level {
     }
   }
 
-  secretAt(x, y) {
-    const idx = this.grid.getCell(scratchGridPt.setScalar(x, y));
+  /** Secret index at a 2D world point (`Vec2`), or -1. */
+  secretAt(pos) {
+    const idx = this.grid.getCell(pos);
     return idx >= 0 ? this.secretByTile[idx] : -1;
   }
 
@@ -291,8 +291,9 @@ export class Level {
     return this.inBounds(x, y) && this.slime[y * this.width + x] === 1;
   }
 
-  slimeAt(worldX, worldY) {
-    const idx = this.grid.getCell(scratchGridPt.setScalar(worldX, worldY));
+  /** Whether a 2D world point (`Vec2`) lies on a slime tile. */
+  slimeAt(pos) {
+    const idx = this.grid.getCell(pos);
     return idx >= 0 && this.slime[idx] === 1;
   }
 
@@ -300,8 +301,9 @@ export class Level {
     return this.inBounds(x, y) && this.teleporter[y * this.width + x] === 1;
   }
 
-  teleporterAt(worldX, worldY) {
-    const idx = this.grid.getCell(scratchGridPt.setScalar(worldX, worldY));
+  /** Teleporter pad at a 2D world point (`Vec2`), or null. */
+  teleporterAt(pos) {
+    const idx = this.grid.getCell(pos);
     return idx >= 0 ? (this.teleporterByTile.get(idx) ?? null) : null;
   }
 
