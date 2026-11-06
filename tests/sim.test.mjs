@@ -11887,6 +11887,145 @@ const tests = {
     assert.deepEqual(k.effectiveCodes('jump'), ['Space']);
     assert.ok(!k.effectiveCodes('grenade').includes('Space'));
   },
+
+  'AC-1 opened supply chest holding refused items presents TAKE use prompt verb'() {
+    const level = {
+      name: 'Refused prompt verb test',
+      rows: ['##########', '#........#', '#P...a...#', '#........#', '##########'],
+    };
+    const game = new Game();
+    game.load(level);
+    game.state = 'play';
+    assert.equal(game.caches.length, 1);
+    const cache = game.caches[0];
+    assert.equal(cache.state, 'closed');
+    assert.ok(cache.contents.includes('ammo'));
+
+    // Position player facing the chest within use range
+    game.player.body.setPosition(new Vec2(cache.pos.x - 60, cache.pos.y));
+    game.player.angle = 0;
+
+    // Set player shotgun ammo to maximum capacity so chest ammo is refused
+    game.player.shells = AMMO_TYPES.shells.max;
+
+    // Use to open chest
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(cache.state, 'opening');
+
+    // Run past lid opening animation
+    run(game, CACHE_LID_TIME + 2 / 60);
+    assert.equal(cache.state, 'open');
+    assert.ok(cache.contents.length > 0, 'refused ammo remains in chest');
+
+    // Idle update while in range and line of sight finds use target
+    game.update(1 / 60, idle);
+    assert.equal(game.findUseTarget(), true);
+    assert.equal(game.useTarget.kind, 'cache');
+    assert.equal(game.useTarget.cache, cache);
+    assert.equal(game.useTarget.verb, 'TAKE');
+  },
+
+  'AC-2 toggleNightVision rejects with Night Vision battery low message when battery is below minToggleBattery'() {
+    const game = fresh();
+    const player = game.player;
+    player.hasNightVision = true;
+    player.nightVisionActive = false;
+    player.nightVisionBattery = POWERUP_TYPES.nightvision.minToggleBattery - 0.5;
+
+    const activated = game.toggleNightVision();
+    assert.equal(activated, false);
+    assert.equal(player.nightVisionActive, false);
+    assert.equal(game.message.text, 'Night Vision battery low');
+  },
+
+  'AC-3 running night vision until battery is exhausted emits Night Vision battery depleted message and deactivates night vision'() {
+    const game = fresh();
+    const player = game.player;
+    player.hasNightVision = true;
+    player.nightVisionActive = true;
+    player.nightVisionBattery = 0.2;
+    player.nightVision = 0.2;
+
+    run(game, 0.5);
+    assert.equal(player.nightVisionActive, false);
+    assert.equal(player.nightVision, 0);
+    assert.equal(game.message.text, 'Night Vision battery depleted');
+  },
+
+  'AC-4 boss AI at distance >= reach triggers fan windup and fires 3 fireballs normally or 5 fireballs when enraged'() {
+    // Normal warden boss test (rage = 1)
+    const gameNormal = fresh();
+    clearEnemies(gameNormal);
+    gameNormal.player.body.setPosition(new Vec2(100, 200));
+
+    // Place warden boss at distance 220 from player: reach = def.radius (36) + PLAYER_RADIUS (16) + 38 = 90
+    // 220 >= 90 and 220 < 900
+    const bossNormal = gameNormal.addEnemy('boss', new Vec2(320, 200));
+    bossNormal.state = 'chase';
+    bossNormal.cooldown = 0;
+    bossNormal.los = true;
+    bossNormal.losTimer = 10;
+    bossNormal.windup = 0;
+
+    // Single step to trigger AI decision
+    gameNormal.update(1 / 60, idle);
+    assert.equal(bossNormal.mode, 'fan');
+    assert.ok(bossNormal.windup > 0);
+
+    const shotsBeforeNormal = gameNormal.shots.length;
+    // Step simulation past windup expiration (windup is 0.6)
+    run(gameNormal, 0.7);
+    const spawnedNormal = gameNormal.shots.length - shotsBeforeNormal;
+    assert.equal(spawnedNormal, 3, 'normal boss fires 3 fireballs in fan mode');
+
+    // Enraged warden boss test (rage > 1 when hp < def.hp * 0.4)
+    const gameRage = fresh();
+    clearEnemies(gameRage);
+    gameRage.player.body.setPosition(new Vec2(100, 200));
+
+    const bossRage = gameRage.addEnemy('boss', new Vec2(320, 200));
+    bossRage.state = 'chase';
+    bossRage.hp = bossRage.def.hp * 0.2; // hp < def.hp * 0.4 triggers rage = 1.5
+    bossRage.cooldown = 0;
+    bossRage.los = true;
+    bossRage.losTimer = 10;
+    bossRage.windup = 0;
+
+    gameRage.update(1 / 60, idle);
+    assert.equal(bossRage.mode, 'fan');
+    assert.ok(bossRage.windup > 0);
+
+    const shotsBeforeRage = gameRage.shots.length;
+    run(gameRage, 0.7);
+    const spawnedRage = gameRage.shots.length - shotsBeforeRage;
+    assert.equal(spawnedRage, 5, 'enraged boss fires 5 fireballs in fan mode');
+  },
+
+  'AC-5 wraith windup completion triggers rake sound and inflicts 9 damage to player'() {
+    const game = fresh();
+    clearEnemies(game);
+    game.player.body.setPosition(new Vec2(100, 200));
+    game.player.health = 100;
+    game.player.armor = 0;
+    game.player.armorType = null;
+
+    // Place wraith within reach: reach = def.radius (24) + PLAYER_RADIUS (16) + 12 = 52
+    // Place at distance 35
+    const wraith = game.addEnemy('wraith', new Vec2(135, 200));
+    wraith.state = 'chase';
+    wraith.windup = 0.05;
+    wraith.cooldown = 0;
+    wraith.los = true;
+    wraith.losTimer = 10;
+
+    game.events.length = 0;
+    // Advance simulation past windup expiration (0.05s)
+    run(game, 0.1);
+
+    assert.ok(game.events.some((e) => e.type === 'rake' && e.kind === 'wraith'), 'wraith emits rake event');
+    assert.equal(game.player.health, 91, 'player takes 9 damage from wraith rake');
+    assert.ok(Math.abs(wraith.cooldown - 0.9) < 0.15, 'wraith cooldown resets to ~0.9');
+  },
 };
 
 function pausedHud() {
