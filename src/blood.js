@@ -44,6 +44,7 @@ export class Blood {
     this.at3 = new Vec3();
     this.cell = new Vec2();
     this.next = new Vec2();
+    this.slimePt = new Vec2();
     this.probe = new Vec3();
     this.spanAt = new Vec2();
     this.wallPos = new Vec3();
@@ -220,7 +221,7 @@ export class Blood {
     this.trim();
     const gx = pos.x + dir.x * 10;
     const gy = pos.y + dir.y * 10;
-    const dissolving = Boolean(this.level?.slimeAt?.(gx, gy));
+    const dissolving = Boolean(this.level?.slimeAt?.(this.slimePt.setScalar(gx, gy)));
     if (dissolving)
       this.hasDissolving = true;
     const gibSize = 2.9 * sizeScale;
@@ -411,7 +412,7 @@ export class Blood {
 
   floorSplat(pos, size) {
     const { x, y } = pos;
-    const dissolving = Boolean(this.level?.slimeAt?.(x, y));
+    const dissolving = Boolean(this.level?.slimeAt?.(pos));
     if (dissolving)
       this.hasDissolving = true;
     const seed = this.rand.integer(1, 2147483647);
@@ -428,7 +429,7 @@ export class Blood {
   /** Deposit a chunk of meat, bone, skull, or organ on the floor; on acid it dissolves away. */
   floorGib(pos, size = this.float(2.0, 3.4), variant = this.rand.integer(0, GIB_VARIANTS - 1)) {
     const { x, y } = pos;
-    const dissolving = Boolean(this.level?.slimeAt?.(x, y));
+    const dissolving = Boolean(this.level?.slimeAt?.(pos));
     if (dissolving)
       this.hasDissolving = true;
     const baseHeight = 0.36 + (this.gibs.length % 5) * 0.01;
@@ -562,7 +563,7 @@ export class Blood {
     feet.travel = 0;
     feet.heading.setScalar(0, 0);
     feet.side = -feet.side;
-    if (this.level?.slimeAt?.(x, y))
+    if (this.level?.slimeAt?.(pos))
       feet.blood *= 0.45;
     if (feet.blood <= 0.08)
       return 1;
@@ -570,7 +571,7 @@ export class Blood {
     const offset = 5 * scale * feet.side;
     const px = x - hy * offset;
     const py = y + hx * offset;
-    const dissolving = Boolean(this.level?.slimeAt?.(px, py));
+    const dissolving = Boolean(this.level?.slimeAt?.(this.slimePt.setScalar(px, py)));
     if (dissolving)
       this.hasDissolving = true;
     this.prints.push({
@@ -740,7 +741,7 @@ export class Blood {
       const next = this.next.setScalar(p.x + p.vx * dt, p.y + p.vy * dt);
       const nz = p.z + p.vz * dt;
       if (nz <= 0) {
-        const onSlime = Boolean(this.level?.slimeAt?.(p.x, p.y));
+        const onSlime = Boolean(this.level?.slimeAt?.(this.slimePt.setScalar(p.x, p.y)));
         if (!onSlime && p.gib && p.bounces > 0 && Math.abs(p.vz) > 95 && p.age < 1.4) {
           p.bounces--;
           p.z = 0.5;
