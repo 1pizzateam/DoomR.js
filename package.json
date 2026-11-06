@@ -23,7 +23,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "start": "vite preview --host 0.0.0.0",
-    "test": "node tests/levels.test.mjs && node tests/sim.test.mjs && node tests/exports.test.mjs && node tests/arsenal-dead-code.test.mjs && node tests/render-allocations.test.mjs && node tests/lines.test.mjs && node tests/bumpr-zero-gc.test.mjs && node tests/add-static-box.test.mjs && node tests/mesh-buffers-stable.test.mjs && node tests/mesh-builders-vector.test.mjs && node tests/scene-node-vector-first.test.mjs && node tests/audio-groovr-delegation.test.mjs"
+    "test": "node tests/levels.test.mjs && node tests/sim.test.mjs && node tests/exports.test.mjs && node tests/arsenal-dead-code.test.mjs && node tests/render-allocations.test.mjs && node tests/lines.test.mjs && node tests/bumpr-zero-gc.test.mjs && node tests/add-static-box.test.mjs && node tests/mesh-buffers-stable.test.mjs && node tests/mesh-builders-vector.test.mjs && node tests/scene-node-vector-first.test.mjs && node tests/audio-groovr-delegation.test.mjs && node tests/main-menu.test.mjs"
   },
   "dependencies": {
     "@1pizzateam/bumpr": "1.3.0",

@@ -6,6 +6,7 @@ import { Sound } from './audio.js';
 import { Input, NAV_DOWN, NAV_LEFT, NAV_RIGHT, NAV_UP } from './input.js';
 import { ControlsMenu } from './controls.js';
 import { CONTROLS_STORAGE_KEY } from './keymap.js';
+import { MainMenu, MENU_OPTIONS, MENU_PLAY } from './menu.js';
 import { TitleDirector } from './title.js';
 import { World } from './world.js';
 
@@ -28,6 +29,8 @@ if (urlLevel) {
 }
 const controlsMenu = new ControlsMenu(keymap, input, { hitAt: (pos) => hud.controlsHitAt(pos) });
 hud.controlsView = controlsMenu.view;
+const mainMenu = new MainMenu(input, { hitAt: (pos) => hud.menuHitAt(pos) });
+hud.mainMenuView = mainMenu.view;
 game.keyLabel = (id) => keymap.actionLabel(id);
 window.addEventListener('storage', (event) => {
   if (event.key === CONTROLS_STORAGE_KEY || event.key === null)
@@ -132,7 +135,7 @@ function control(dt) {
   }
 
   if ((game.state === 'title' || game.state === 'paused' || game.state === 'play')
-    && (input.took('controls') || (input.took('Click') && !unlockedThisFrame && hud.controlsButtonAt(input.mousePos, game)))) {
+    && (input.took('controls') || (game.state === 'paused' && input.took('Click') && !unlockedThisFrame && hud.controlsButtonAt(input.mousePos, game)))) {
     if (game.state === 'play') {
       game.state = 'paused';
       input.unlock();
@@ -147,12 +150,17 @@ function control(dt) {
       game.time += dt;
       title.update(dt);
       if (!game.selectingDifficulty) {
-        if (confirmed() && !unlockedThisFrame)
+        mainMenu.update(unlockedThisFrame);
+        if (mainMenu.activated === MENU_PLAY) {
           game.selectingDifficulty = true;
+          mainMenu.focus(MENU_PLAY);
+        } else if (mainMenu.activated === MENU_OPTIONS)
+          controlsMenu.open('title');
         break;
       }
       if (input.took('menu')) {
         game.selectingDifficulty = false;
+        mainMenu.focus(MENU_PLAY);
         break;
       }
       const nav = input.navigate();

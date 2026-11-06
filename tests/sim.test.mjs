@@ -7116,7 +7116,7 @@ const tests = {
     game.setDifficulty('hard');
     hud.render(game);
     assert.ok(!texts.some((t) => t.includes('SELECT SKILL LEVEL')), 'first title screen does not show skill selector before pressing Enter');
-    assert.ok(texts.some((t) => t.includes('click or press ENTER to start')), 'first title screen shows press ENTER prompt');
+    assert.ok(texts.some((t) => t === 'PLAY') && texts.some((t) => t.startsWith('OPTIONS')), 'first title screen shows the PLAY and OPTIONS menu');
 
     texts.length = 0;
     game.selectingDifficulty = true;
@@ -10655,11 +10655,10 @@ const tests = {
         texts.length = 0;
         game.state = state;
         hud.render(game);
-        assert.ok(texts.includes('CONTROLS · F1'), state);
+        assert.ok(texts.includes(state === 'title' ? 'OPTIONS · F1' : 'CONTROLS · F1'), state);
         assert.ok(texts.includes('1 controls unbound — open CONTROLS'), state);
-        const dy = state === 'title' ? 80 : 58;
-        assert.equal(hud.controlsButtonAt(new Vec2(512, 384 + dy), game), true);
-        assert.equal(hud.controlsButtonAt(new Vec2(512, 384 + dy + 60), game), false);
+        assert.equal(hud.controlsButtonAt(new Vec2(512, 384 + 58), game), state === 'paused');
+        assert.equal(hud.controlsButtonAt(new Vec2(512, 384 + 58 + 60), game), false);
       }
     });
     const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
@@ -11116,7 +11115,7 @@ const tests = {
       game.state = state;
       hud.render(game);
       assert.ok(texts.includes('1 controls unbound — open CONTROLS'), state);
-      assert.ok(texts.includes('CONTROLS · F1'), state);
+      assert.ok(texts.includes(state === 'title' ? 'OPTIONS · F1' : 'CONTROLS · F1'), state);
     }
   },
 
@@ -15445,8 +15444,7 @@ const tests = {
     const cx = hud.width / 2;
     const cy = hud.height / 2;
     const game = { state: 'title', selectingDifficulty: false };
-    assert.equal(hud.controlsButtonAt(new Vec2(cx, cy + 80), game), true);
-    assert.equal(hud.controlsButtonAt(new Vec2(cx + 200, cy + 80), game), false);
+    assert.equal(hud.controlsButtonAt(new Vec2(cx, cy + 80), game), false);
 
     game.state = 'paused';
     assert.equal(hud.controlsButtonAt(new Vec2(cx, cy + 58), game), true);
