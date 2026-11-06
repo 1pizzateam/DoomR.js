@@ -6,7 +6,7 @@ import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera
 import { ACID_PIT_DEPTH, CACHE_LID_TIME, CACHE_OUTDOOR_LINK, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
 import { BLOOD, Blood, makeFeet } from '../src/blood.js';
-import { DUCK_FLOOR, RECIPES, Sound, spatial, renderRecipe } from '../src/audio.js';
+import { DUCK_FLOOR, RECIPES, Sound, spatial } from '../src/audio.js';
 import * as audioModule from '../src/audio.js';
 import { validateSong } from '@1pizzateam/groovr';
 import { FADE_IN, FADE_OUT, Music, SONGS } from '../src/music.js';
@@ -12525,114 +12525,17 @@ const tests = {
     assert.ok(true, 'suite execution confirms AC-4');
   },
 
-  async 'AC-1 renderRecipe offline audio synthesis renders buffer without clipping or NaN samples'() {
-    const makeMockOfflineCtx = (sampleRate, length, channels) => {
-      const channelData = Array.from({ length: channels }, () => new Float32Array(length));
-      return {
-        sampleRate,
-        length,
-        destination: { connect() {} },
-        createGain: () => ({
-          gain: {
-            value: 1,
-            setValueAtTime() {},
-            exponentialRampToValueAtTime() {},
-            linearRampToValueAtTime() {},
-            setTargetAtTime() {},
-            cancelScheduledValues() {},
-          },
-          connect() {},
-        }),
-        createOscillator: () => ({
-          type: 'sine',
-          frequency: {
-            value: 440,
-            setValueAtTime() {},
-            exponentialRampToValueAtTime() {},
-            linearRampToValueAtTime() {},
-          },
-          connect() {},
-          start() {},
-          stop() {},
-        }),
-        createBiquadFilter: () => ({
-          type: 'lowpass',
-          frequency: {
-            value: 1000,
-            setValueAtTime() {},
-            exponentialRampToValueAtTime() {},
-          },
-          Q: { value: 0.7 },
-          connect() {},
-        }),
-        createWaveShaper: () => ({
-          curve: null,
-          connect() {},
-        }),
-        createBuffer: (ch, len, sr) => ({
-          numberOfChannels: ch,
-          length: len,
-          sampleRate: sr,
-          getChannelData: () => new Float32Array(len),
-        }),
-        createBufferSource: () => ({
-          buffer: null,
-          connect() {},
-          start() {},
-          stop() {},
-        }),
-        startRendering: async () => {
-          // Fill channelData with non-clipping finite samples for verification
-          for (let c = 0; c < channels; c++) {
-            const data = channelData[c];
-            for (let i = 0; i < data.length; i++)
-              data[i] = Math.sin((i / sampleRate) * 440 * 2 * Math.PI) * 0.4;
-          }
-          return {
-            numberOfChannels: channels,
-            length,
-            sampleRate,
-            duration: length / sampleRate,
-            getChannelData: (ch) => channelData[ch],
-          };
-        },
-      };
-    };
-
-    const prevOfflineCtx = globalThis.OfflineAudioContext;
-    globalThis.OfflineAudioContext = function (channels, length, sampleRate) {
-      return makeMockOfflineCtx(sampleRate, length, channels);
-    };
-
-    try {
-      for (const recipeName of ['dry', 'fire', 'flesh']) {
-        const result = await renderRecipe(recipeName);
-        assert.ok(result && result.buffer, `${recipeName} produces a result with buffer`);
-        assert.ok(result.duration > 0, `${recipeName} duration is positive`);
-        const { buffer } = result;
-        assert.equal(buffer.numberOfChannels, 2, `${recipeName} defaults to 2 channels`);
-        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-          const data = buffer.getChannelData(ch);
-          assert.ok(data.length > 0, `channel ${ch} contains samples`);
-          for (let i = 0; i < data.length; i++) {
-            const s = data[i];
-            assert.ok(Number.isFinite(s), `${recipeName} channel ${ch} sample ${i} is finite`);
-            assert.ok(!Number.isNaN(s), `${recipeName} channel ${ch} sample ${i} is not NaN`);
-            assert.ok(Math.abs(s) <= 1.0, `${recipeName} channel ${ch} sample ${i} (${s}) does not clip`);
-          }
-        }
-      }
-
-      await assert.rejects(
-        () => renderRecipe('nonExistentRecipe123'),
-        /Unknown audio recipe/
-      );
-    } finally {
-      if (prevOfflineCtx === undefined)
-        delete globalThis.OfflineAudioContext;
-      else
-        globalThis.OfflineAudioContext = prevOfflineCtx;
-    }
+  'issue-54 AC-1 AC-2 AC-3 AC-4 renderRecipe export is removed and absent from audio.js exports'() {
+    assert.equal('renderRecipe' in audioModule, false, 'AC-1 renderRecipe is not an exported property of src/audio.js');
+    assert.equal(typeof audioModule.renderRecipe, 'undefined', 'AC-2 audioModule.renderRecipe is undefined');
+    assert.equal(audioModule.renderRecipe, undefined, 'AC-2 audioModule.renderRecipe is undefined');
+    assert.equal(typeof audioModule.Sound, 'function', 'AC-3 Sound remains exported');
+    assert.equal(typeof audioModule.spatial, 'function', 'AC-3 spatial remains exported');
+    assert.equal(typeof audioModule.DUCK_FLOOR, 'number', 'AC-3 DUCK_FLOOR remains exported');
+    assert.equal(typeof audioModule.RECIPES, 'object', 'AC-3 RECIPES remains exported');
+    const sound = new Sound();
+    assert.equal(typeof sound.play, 'function', 'AC-4 sound.play remains functional');
+    assert.equal(typeof sound.handle, 'function', 'AC-4 sound.handle remains functional');
   },
 
   'AC-2 effectiveMusicMode maps scene states and levels 0-4 to expected track modes'() {
