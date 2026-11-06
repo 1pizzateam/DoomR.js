@@ -43,6 +43,8 @@ export class Blood {
     this.back = new Vec2();
     this.at3 = new Vec3();
     this.cell = new Vec2();
+    this.next = new Vec2();
+    this.probe = new Vec3();
     this.spanAt = new Vec2();
     this.wallPos = new Vec3();
     this.wallNormal = new Vec2();
@@ -591,26 +593,34 @@ export class Blood {
     return 2;
   }
 
-  blocked(x, y, z) {
+  blocked(pos) {
     const { level } = this;
-    const tx = Math.floor(x / TILE);
-    const ty = Math.floor(y / TILE);
+    const tx = Math.floor(pos.x / TILE);
+    const ty = Math.floor(pos.y / TILE);
     if (!level.inBounds(tx, ty))
       return true;
     if (level.heightAtPoint) {
-      this.pt.x = x;
-      this.pt.y = y;
-      return level.heightAtPoint(this.pt) > z;
+      return level.heightAtPoint(this.pt.setScalar(pos.x, pos.y)) > pos.z;
     }
-    return level.heights[ty * level.width + tx] > z;
+    return level.heights[ty * level.width + tx] > pos.z;
   }
 
-  hitWall(p, nx, ny) {
+  solid(cell, faceDir, z) {
+    const { level } = this;
+    if (!level.inBounds(cell.x, cell.y))
+      return false;
+    const i = cell.y * level.width + cell.x;
+    if (level.diag?.[i] > 0 && !level.hasCardinalFace?.(i, faceDir))
+      return false;
+    return level.heights[i] > z;
+  }
+
+  hitWall(p, next) {
     const { level } = this;
     const ox = Math.floor(p.x / TILE);
     const oy = Math.floor(p.y / TILE);
-    const tx = Math.floor(nx / TILE);
-    const ty = Math.floor(ny / TILE);
+    const tx = Math.floor(next.x / TILE);
+    const ty = Math.floor(next.y / TILE);
     for (let k = 0; k < 2; k++) {
       const dtx = k === 0 ? ox : tx;
       const dty = k === 0 ? oy : ty;
@@ -620,7 +630,7 @@ export class Blood {
       if (level.diag?.[didx] > 0 && level.heights[didx] > p.z) {
         const df = level.diagInfo(didx);
         const d0 = df.tri.signedDistanceToHypotenuse(this.pt.setScalar(p.x, p.y));
-        const d1 = df.tri.signedDistanceToHypotenuse(this.pt.setScalar(nx, ny));
+        const d1 = df.tri.signedDistanceToHypotenuse(this.pt.setScalar(next.x, next.y));
         if (d0 >= -1e-4 && d1 <= 1e-4) {
           if (p.z >= 1 && (p.gib || this.rand.float(0, 1) <= 0.65)) {
             const s = p.scale ?? 1;
@@ -628,7 +638,7 @@ export class Blood {
             df.tri.projectOntoHypotenuse(this.pt.setScalar(p.x, p.y), 2, this.pt);
             const sx = this.pt.x;
             const sy = this.pt.y;
-            if (!this.blocked(sx + df.normal.x * 0.5, sy + df.normal.y * 0.5, p.z) && this.blocked(sx - df.normal.x * 0.5, sy - df.normal.y * 0.5, p.z))
+            if (!this.blocked(this.probe.setScalar(sx + df.normal.x * 0.5, sy + df.normal.y * 0.5, p.z)) && this.blocked(this.probe.setScalar(sx - df.normal.x * 0.5, sy - df.normal.y * 0.5, p.z)))
               this.wallSplat(this.wallPos.setScalar(sx, sy, p.z), df.normal, size, level.heights[didx], null);
           }
           return 'diag';
@@ -637,16 +647,8 @@ export class Blood {
     }
     // a face only exists where the tile next to the one the drop was in is solid. A drop that clips a corner
     // enters a tile diagonally, and the tiles beside it can be open floor: marking there would hang in the air.
-    const solid = (x, y, faceDir) => {
-      if (!level.inBounds(x, y))
-        return false;
-      const i = y * level.width + x;
-      if (level.diag?.[i] > 0 && !level.hasCardinalFace?.(i, faceDir))
-        return false;
-      return level.heights[i] > p.z;
-    };
-    const across = tx !== ox && solid(tx, oy, p.vx > 0 ? 3 : 1);
-    const along = ty !== oy && solid(ox, ty, p.vy > 0 ? 0 : 2);
+    const across = tx !== ox && this.solid(this.cell.setScalar(tx, oy), p.vx > 0 ? 3 : 1, p.z);
+    const along = ty !== oy && this.solid(this.cell.setScalar(ox, ty), p.vy > 0 ? 0 : 2, p.z);
     if (!across && !along)
       return false;
     // when the drop came through a corner of two walls, it struck the face it reached first
@@ -666,17 +668,17 @@ export class Blood {
       const sy = vertical ? plane : p.y;
       const wnx = vertical ? 0 : (p.vx > 0 ? -1 : 1);
       const wny = vertical ? (p.vy > 0 ? -1 : 1) : 0;
-      if (!this.blocked(sx + wnx * 0.5, sy + wny * 0.5, p.z) && this.blocked(sx - wnx * 0.5, sy - wny * 0.5, p.z))
+      if (!this.blocked(this.probe.setScalar(sx + wnx * 0.5, sy + wny * 0.5, p.z)) && this.blocked(this.probe.setScalar(sx - wnx * 0.5, sy - wny * 0.5, p.z)))
         this.wallSplat(this.wallPos.setScalar(sx, sy, z), this.wallNormal.setScalar(wnx, wny), size, top, door);
     }
     return vertical ? 'y' : 'x';
   }
 
   /** True where there is a ceiling to stick to: over open floor, doorways, and low pillars, and not over the giant's room. */
-  hitsCeiling(x, y) {
+  hitsCeiling(pos) {
     const { level } = this;
-    const tx = Math.floor(x / TILE);
-    const ty = Math.floor(y / TILE);
+    const tx = Math.floor(pos.x / TILE);
+    const ty = Math.floor(pos.y / TILE);
     if (!level.inBounds(tx, ty))
       return false;
     const idx = ty * level.width + tx;
@@ -735,8 +737,7 @@ export class Blood {
           }
         }
       }
-      const nx = p.x + p.vx * dt;
-      const ny = p.y + p.vy * dt;
+      const next = this.next.setScalar(p.x + p.vx * dt, p.y + p.vy * dt);
       const nz = p.z + p.vz * dt;
       if (nz <= 0) {
         const onSlime = Boolean(this.level?.slimeAt?.(p.x, p.y));
@@ -755,8 +756,8 @@ export class Blood {
         this.release(p);
         continue;
       }
-      if (this.blocked(nx, ny, nz)) {
-        const axis = this.hitWall(p, nx, ny);
+      if (this.blocked(this.probe.setScalar(next.x, next.y, nz))) {
+        const axis = this.hitWall(p, next);
         if (p.gib && p.bounces > 0 && axis && p.age < 1.4) {
           p.bounces--;
           if (axis === 'x')
@@ -777,9 +778,9 @@ export class Blood {
         continue;
       }
       // thrown up as far as the ceiling, it sticks there (not over the warden's room, which has none)
-      if (nz >= CEILING && p.vz > 0 && this.hitsCeiling(nx, ny)) {
+      if (nz >= CEILING && p.vz > 0 && this.hitsCeiling(next)) {
         if (p.gib || this.rand.float(0, 1) < 0.55)
-          this.ceilingSplat(this.at.setScalar(nx, ny), (p.gib ? this.float(4.8, 8.5) : this.float(1.6, 4.0)) * (p.scale ?? 1));
+          this.ceilingSplat(this.at.setScalar(next.x, next.y), (p.gib ? this.float(4.8, 8.5) : this.float(1.6, 4.0)) * (p.scale ?? 1));
         if (p.gib && p.bounces > 0) {
           p.bounces--;
           p.z = CEILING - 1;
@@ -792,8 +793,8 @@ export class Blood {
         this.release(p);
         continue;
       }
-      p.x = nx;
-      p.y = ny;
+      p.x = next.x;
+      p.y = next.y;
       p.z = nz;
       if (p.age < p.life)
         this.particles[keep++] = p;
