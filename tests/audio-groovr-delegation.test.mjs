@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { softClip } from '@1pizzateam/groovr';
-import { RECIPES, Sound } from '../src/audio.js';
+import { Vec2 } from '@1pizzateam/spock';
+import { RECIPES, Sound, spatial } from '../src/audio.js';
 
 let failed = 0;
 function test(name, fn) {
@@ -107,6 +108,62 @@ test('AC-5 reverb impulse keeps two channels, 1.8 s length and exponential decay
 test('AC-6 suite wired into npm test', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.match(pkg.scripts.test, /audio-groovr-delegation\.test\.mjs/);
+});
+
+const mainSource = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+const spatialBody = source.slice(source.indexOf('export function spatial('), source.indexOf('// ---- building blocks'));
+const origin = new Vec2(0, 0);
+
+test('AC-1 spatial delegates to spatial2D', () => {
+  assert.match(importLine, /spatial2D/);
+  assert.match(spatialBody, /spatial2D\(/);
+  assert.doesNotMatch(spatialBody, /scratchRight|halfpi|\*\* 2/);
+});
+
+test('AC-2 groovr pinned to 0.1.0-alpha.4', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const installed = JSON.parse(readFileSync(new URL('../node_modules/@1pizzateam/groovr/package.json', import.meta.url), 'utf8'));
+  assert.equal(pkg.dependencies['@1pizzateam/groovr'], '0.1.0-alpha.4');
+  assert.equal(installed.version, '0.1.0-alpha.4');
+});
+
+test('AC-3 pan follows side and facing', () => {
+  assert.ok(spatial(origin, new Vec2(200, 200)).pan > 0.3);
+  assert.ok(spatial(origin, new Vec2(200, -200)).pan < -0.3);
+  assert.ok(Math.abs(spatial(origin, new Vec2(300, 0)).pan) < 1e-9);
+  assert.ok(Math.abs(spatial(origin, new Vec2(-300, 0)).pan) < 1e-9);
+  assert.ok(spatial(origin, new Vec2(200, 200), { angle: Math.PI / 2 }).pan < -0.3);
+  assert.ok(spatial(origin, new Vec2(-200, 200), { angle: Math.PI / 2 }).pan > 0.3);
+});
+
+test('AC-4 gain falls off and cuts at range', () => {
+  assert.equal(spatial(origin, new Vec2(0, 0)).gain, 1);
+  const gains = [0, 100, 300, 600, 900].map((d) => spatial(origin, new Vec2(d, 0)).gain);
+  for (let i = 1; i < gains.length; i++)
+    assert.ok(gains[i] < gains[i - 1]);
+  assert.equal(spatial(origin, new Vec2(1000.5, 0)).gain, 0);
+  assert.equal(spatial(origin, new Vec2(5000, 0)).gain, 0);
+});
+
+test('AC-5 soft pan near the listener', () => {
+  assert.ok(Math.abs(spatial(origin, new Vec2(0, 20)).pan) < 0.3);
+  assert.ok(Math.abs(spatial(origin, new Vec2(0, 70)).pan - 0.9) < 1e-9);
+  assert.equal(spatial(origin, new Vec2(0, 0)).pan, 0);
+});
+
+test('AC-6 spatial takes Vec2s without mutation', () => {
+  const listener = new Vec2(10, -20);
+  const source = new Vec2(300, 40);
+  const got = spatial(listener, source, { angle: 0.7 });
+  assert.ok(spatial.length <= 3);
+  assert.deepEqual([listener.x, listener.y, source.x, source.y], [10, -20, 300, 40]);
+  for (const key of ['pan', 'gain', 'distance'])
+    assert.equal(typeof got[key], 'number');
+});
+
+test('AC-7 main.js passes no scalar coordinates to spatial', () => {
+  assert.ok(!mainSource.includes('spatial('));
+  assert.match(source, /spatial\(this\.listener\.pos, pos, this\.listener\)/);
 });
 
 process.exit(failed ? 1 : 0);
