@@ -3283,13 +3283,58 @@ const tests = {
     assert.ok(green > 40, 'the status lights are green');
     assert.equal(rusty, 0, 'no rust is baked in: it is worked out in the shader');
 
-    const { vertices, uvs } = doorBox(64, 64);
+    const { vertices, uvs } = doorBox(new Vec2(64, 64));
     assert.equal(vertices.length / 3, 30, 'four sides and a top, two triangles each');
     assert.equal(uvs.length / 2, 30);
     for (let i = 1; i < vertices.length; i += 3)
       assert.ok(vertices[i] >= 0 && vertices[i] <= 64, 'a door stands on the floor and no higher than its tile');
     assert.ok(DOOR_FRAGMENT.includes('vHeight < -0.01'), 'what has sunk below the floor is not drawn');
     assert.ok(DOOR_FRAGMENT.includes('vSurface'), 'rust follows the door, not the world, so it does not slide off as it sinks');
+  },
+
+  'AC-1 doorBox accepts a Vec2 or Vec3 dimensions primitive'() {
+    const a = doorBox(new Vec2(64, 64));
+    const b = doorBox(new Vec3(64, 64, 64));
+    assert.deepEqual(a.vertices, b.vertices);
+    assert.deepEqual(a.uvs, b.uvs);
+  },
+
+  'AC-2 doorBox takes a single dimensions parameter'() {
+    assert.equal(doorBox.length, 1);
+    assert.ok(/function doorBox\(\s*dimensions\s*\)/.test(doorBox.toString()));
+  },
+
+  'AC-3 doorBox honors non-square dimensions'() {
+    const { vertices, uvs } = doorBox(new Vec2(62.4, 64));
+    assert.equal(vertices.length / 3, 30);
+    assert.equal(uvs.length / 2, 30);
+    let top = -Infinity;
+    for (let i = 0; i < vertices.length; i += 3) {
+      assert.ok(Math.abs(vertices[i]) <= 31.2 + 1e-9);
+      assert.ok(Math.abs(vertices[i + 2]) <= 31.2 + 1e-9);
+      assert.ok(vertices[i + 1] >= 0 && vertices[i + 1] <= 64);
+      top = Math.max(top, vertices[i + 1]);
+    }
+    assert.equal(top, 64);
+  },
+
+  'AC-4 doorBox preserves legacy vertex positions and UVs'() {
+    const { vertices, uvs } = doorBox(new Vec2(64, 64));
+    assert.deepEqual(vertices.slice(0, 3), [-32, 0, 32]);
+    const inset = 0.25 / (64 * DOOR_CELLS);
+    assert.ok(Math.abs(uvs[0] - inset) < 1e-9);
+    assert.equal(uvs[1], 0);
+    assert.ok(Math.abs(uvs[2] - (1 / DOOR_CELLS - inset)) < 1e-9);
+    const topStart = vertices.length - 18;
+    for (let i = topStart; i < vertices.length; i += 3)
+      assert.equal(vertices[i + 1], 64);
+    assert.ok(Math.abs(uvs[uvs.length - 12] - (1 / DOOR_CELLS + inset)) < 1e-9, 'the top face uses the second atlas cell');
+  },
+
+  'AC-5 buildCrusher passes a Vec2 to doorBox'() {
+    const source = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+    assert.ok(source.includes('doorBox(new Vec2(TILE - 1.6, TILE))'));
+    assert.ok(!source.includes('doorBox(TILE'));
   },
 
   'the floor texture is a power-of-two atlas of opaque, dark deck tiles, rust is brown, and doorsteps are hazard stripes'() {
