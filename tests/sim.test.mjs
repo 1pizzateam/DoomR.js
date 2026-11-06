@@ -15947,6 +15947,195 @@ const tests = {
       globalThis.window = prevWin;
     }
   },
+
+  'AC-2 isSlime and slimeAt identify hazard tiles across tile indices and world coordinates'() {
+    const custom = new Level({
+      name: 'SlimeQueryTest',
+      rows: [
+        '#######',
+        '#P.~..#',
+        '#..~..#',
+        '#######',
+      ],
+    });
+
+    // In-bounds tile indices: (3, 1) and (3, 2) are slime '~'
+    assert.equal(custom.isSlime(3, 1), true, 'slime tile at (3, 1)');
+    assert.equal(custom.isSlime(3, 2), true, 'slime tile at (3, 2)');
+
+    // In-bounds non-slime tiles: player start, floor, wall
+    assert.equal(custom.isSlime(1, 1), false, 'floor tile at (1, 1) is not slime');
+    assert.equal(custom.isSlime(2, 1), false, 'floor tile at (2, 1) is not slime');
+    assert.equal(custom.isSlime(0, 0), false, 'wall tile at (0, 0) is not slime');
+
+    // Negative and out-of-bounds coordinates
+    assert.equal(custom.isSlime(-1, 0), false, 'negative x is not slime');
+    assert.equal(custom.isSlime(0, -1), false, 'negative y is not slime');
+    assert.equal(custom.isSlime(7, 1), false, 'out-of-bounds x is not slime');
+    assert.equal(custom.isSlime(3, 4), false, 'out-of-bounds y is not slime');
+    assert.equal(custom.isSlime(100, 100), false, 'far out-of-bounds is not slime');
+
+    // Continuous world positions for slimeAt(pos): center of (3, 1) is (3.5 * 64, 1.5 * 64) = (224, 96)
+    assert.equal(custom.slimeAt(new Vec2(224, 96)), true, 'world center of (3, 1) is slime');
+    assert.equal(custom.slimeAt(new Vec2(224, 160)), true, 'world center of (3, 2) is slime');
+
+    // Near tile boundaries within slime tile (3, 1): x in [192, 256), y in [64, 128)
+    assert.equal(custom.slimeAt(new Vec2(193, 65)), true, 'NW corner of slime tile');
+    assert.equal(custom.slimeAt(new Vec2(255, 127)), true, 'SE corner of slime tile');
+
+    // Non-slime world coordinates: dry floor, wall, out-of-bounds
+    assert.equal(custom.slimeAt(new Vec2(96, 96)), false, 'dry floor world pos is not slime');
+    assert.equal(custom.slimeAt(new Vec2(32, 32)), false, 'wall world pos is not slime');
+    assert.equal(custom.slimeAt(new Vec2(-10, -10)), false, 'negative world pos is not slime');
+    assert.equal(custom.slimeAt(new Vec2(800, 800)), false, 'out of bounds world pos is not slime');
+  },
+
+  'AC-3 isTeleporter and teleporterAt identify teleporter pads and resolve destination landing coordinates'() {
+    const custom = new Level({
+      name: 'TeleporterQueryTest',
+      rows: [
+        '#########',
+        '#P.T...T#',
+        '#.......#',
+        '#..T...T#',
+        '#########',
+      ],
+    });
+
+    // Pads are at:
+    // pad 0: (3, 1), idx = 1 * 9 + 3 = 12
+    // pad 1: (7, 1), idx = 1 * 9 + 7 = 16
+    // pad 2: (3, 3), idx = 3 * 9 + 3 = 30
+    // pad 3: (7, 3), idx = 3 * 9 + 7 = 34
+    // Pairs:
+    // pad 0 (even) mates with pad 1 (targetIdx = 16)
+    // pad 1 (odd) mates with pad 0 (targetIdx = 12)
+    // pad 2 (even) mates with pad 3 (targetIdx = 34)
+    // pad 3 (odd) mates with pad 2 (targetIdx = 30)
+
+    // isTeleporter checks
+    assert.equal(custom.isTeleporter(3, 1), true, 'pad 0 tile is teleporter');
+    assert.equal(custom.isTeleporter(7, 1), true, 'pad 1 tile is teleporter');
+    assert.equal(custom.isTeleporter(3, 3), true, 'pad 2 tile is teleporter');
+    assert.equal(custom.isTeleporter(7, 3), true, 'pad 3 tile is teleporter');
+
+    assert.equal(custom.isTeleporter(1, 1), false, 'floor tile is not teleporter');
+    assert.equal(custom.isTeleporter(0, 0), false, 'wall tile is not teleporter');
+    assert.equal(custom.isTeleporter(-1, 2), false, 'negative tile is not teleporter');
+    assert.equal(custom.isTeleporter(9, 1), false, 'out-of-bounds tile is not teleporter');
+
+    // teleporterAt continuous world checks
+    const pad0Center = new Vec2(3.5 * 64, 1.5 * 64);
+    const pad1Center = new Vec2(7.5 * 64, 1.5 * 64);
+    const pad2Center = new Vec2(3.5 * 64, 3.5 * 64);
+    const pad3Center = new Vec2(7.5 * 64, 3.5 * 64);
+
+    const pad0 = custom.teleporterAt(pad0Center);
+    assert.ok(pad0, 'pad0 found at center');
+    assert.equal(pad0.idx, 12);
+    assert.equal(pad0.x, 3);
+    assert.equal(pad0.y, 1);
+    assert.equal(pad0.pair, 0);
+    assert.equal(pad0.targetIdx, 16);
+    assert.deepEqual(pad0.target, pad1Center);
+    assert.deepEqual(pad0.center, pad0Center);
+
+    const pad1 = custom.teleporterAt(pad1Center);
+    assert.ok(pad1, 'pad1 found at center');
+    assert.equal(pad1.idx, 16);
+    assert.equal(pad1.targetIdx, 12);
+    assert.deepEqual(pad1.target, pad0Center);
+
+    const pad2 = custom.teleporterAt(pad2Center);
+    assert.ok(pad2, 'pad2 found at center');
+    assert.equal(pad2.idx, 30);
+    assert.equal(pad2.pair, 1);
+    assert.equal(pad2.targetIdx, 34);
+    assert.deepEqual(pad2.target, pad3Center);
+
+    const pad3 = custom.teleporterAt(pad3Center);
+    assert.ok(pad3, 'pad3 found at center');
+    assert.equal(pad3.idx, 34);
+    assert.equal(pad3.pair, 1);
+    assert.equal(pad3.targetIdx, 30);
+    assert.deepEqual(pad3.target, pad2Center);
+
+    // Near pad boundary
+    assert.ok(custom.teleporterAt(new Vec2(3 * 64 + 2, 1 * 64 + 2)));
+    assert.ok(custom.teleporterAt(new Vec2(4 * 64 - 2, 2 * 64 - 2)));
+
+    // Non-teleporter world positions
+    assert.equal(custom.teleporterAt(new Vec2(1.5 * 64, 1.5 * 64)), null, 'floor position returns null');
+    assert.equal(custom.teleporterAt(new Vec2(0.5 * 64, 0.5 * 64)), null, 'wall position returns null');
+    assert.equal(custom.teleporterAt(new Vec2(-100, -100)), null, 'negative position returns null');
+    assert.equal(custom.teleporterAt(new Vec2(1000, 1000)), null, 'out-of-bounds position returns null');
+  },
+
+  'AC-4 diagInfo returns triangle geometry, normal vectors, and tile bounds for diagonal walls'() {
+    const custom = new Level({
+      name: 'DiagGeometrySuite',
+      rows: [
+        '#######',
+        '#◤...◥#',
+        '#..P..#',
+        '#◣...◢#',
+        '#o.D..#',
+        '#######',
+      ],
+    });
+
+    const nwIdx = 1 * custom.width + 1;
+    const neIdx = 1 * custom.width + 5;
+    const swIdx = 3 * custom.width + 1;
+    const seIdx = 3 * custom.width + 5;
+
+    // Check all four orientations
+    const nwInfo = custom.diagInfo(nwIdx);
+    assert.ok(nwInfo);
+    assert.equal(nwInfo.idx, nwIdx);
+    assert.equal(nwInfo.x, 1);
+    assert.equal(nwInfo.y, 1);
+    assert.equal(nwInfo.diag, DIAG_NW);
+    assert.ok(nwInfo.tri);
+    assert.ok(nwInfo.a instanceof Vec2);
+    assert.ok(nwInfo.b instanceof Vec2);
+    assert.ok(nwInfo.s instanceof Vec2);
+    assert.ok(nwInfo.o instanceof Vec2);
+    assert.ok(nwInfo.normal instanceof Vec2);
+    assert.ok(Math.abs(nwInfo.normal.x - Math.SQRT1_2) < 1e-6);
+    assert.ok(Math.abs(nwInfo.normal.y - Math.SQRT1_2) < 1e-6);
+
+    const neInfo = custom.diagInfo(neIdx);
+    assert.ok(neInfo);
+    assert.equal(neInfo.diag, DIAG_NE);
+    assert.ok(Math.abs(neInfo.normal.x - (-Math.SQRT1_2)) < 1e-6);
+    assert.ok(Math.abs(neInfo.normal.y - Math.SQRT1_2) < 1e-6);
+
+    const swInfo = custom.diagInfo(swIdx);
+    assert.ok(swInfo);
+    assert.equal(swInfo.diag, DIAG_SW);
+    assert.ok(Math.abs(swInfo.normal.x - Math.SQRT1_2) < 1e-6);
+    assert.ok(Math.abs(swInfo.normal.y - (-Math.SQRT1_2)) < 1e-6);
+
+    const seInfo = custom.diagInfo(seIdx);
+    assert.ok(seInfo);
+    assert.equal(seInfo.diag, DIAG_SE);
+    assert.ok(Math.abs(seInfo.normal.x - (-Math.SQRT1_2)) < 1e-6);
+    assert.ok(Math.abs(seInfo.normal.y - (-Math.SQRT1_2)) < 1e-6);
+
+    // Check null for non-diagonal tiles: wall, floor, pillar, door, out-of-bounds
+    const wallIdx = 0 * custom.width + 0;
+    const floorIdx = 2 * custom.width + 3;
+    const pillarIdx = 4 * custom.width + 1;
+    const doorIdx = 4 * custom.width + 3;
+
+    assert.equal(custom.diagInfo(wallIdx), null, 'wall returns null');
+    assert.equal(custom.diagInfo(floorIdx), null, 'floor returns null');
+    assert.equal(custom.diagInfo(pillarIdx), null, 'pillar returns null');
+    assert.equal(custom.diagInfo(doorIdx), null, 'door returns null');
+    assert.equal(custom.diagInfo(-1), null, 'negative index returns null');
+    assert.equal(custom.diagInfo(9999), null, 'out-of-bounds index returns null');
+  },
 };
 
 function pausedHud() {
