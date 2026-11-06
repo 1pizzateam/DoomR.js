@@ -11699,6 +11699,43 @@ const tests = {
     assert.ok(!updateMatch[1].includes('.filter('), 'update() contains no .filter( calls');
     assert.ok(!gameSrc.includes('.filter('), 'src/game.js contains zero .filter( invocations');
   },
+
+  'AC-1 chainsaw idle alternates idle/pumpA with the two-stroke cycle'() {
+    // weaponFrame(-1, true, 'chainsaw', time) alternates between idle and pumpA based on (Math.floor(time * 14) & 1) === 0
+    assert.equal(weaponFrame(-1, true, 'chainsaw', 0.01), WEAPON_FRAMES.idle, 'even cycle 0 returns idle');
+    assert.equal(weaponFrame(-1, true, 'chainsaw', 0.1), WEAPON_FRAMES.pumpA, 'odd cycle 1 returns pumpA');
+    assert.equal(weaponFrame(-1, true, 'chainsaw', 0.16), WEAPON_FRAMES.idle, 'even cycle 2 returns idle');
+    assert.equal(weaponFrame(-1, true, 'chainsaw', 0.22), WEAPON_FRAMES.pumpA, 'odd cycle 3 returns pumpA');
+
+    // Non-finite elapsed value behaves the same as elapsed < 0
+    assert.equal(weaponFrame(NaN, true, 'chainsaw', 0.01), WEAPON_FRAMES.idle, 'NaN elapsed on even cycle returns idle');
+    assert.equal(weaponFrame(NaN, true, 'chainsaw', 0.1), WEAPON_FRAMES.pumpA, 'NaN elapsed on odd cycle returns pumpA');
+    assert.equal(weaponFrame(Infinity, true, 'chainsaw', 0.1), WEAPON_FRAMES.pumpA, 'Infinity elapsed on odd cycle returns pumpA');
+  },
+
+  'AC-2 chainsaw cutting shows flashA, flashB then idle'() {
+    assert.equal(weaponFrame(0.03, true, 'chainsaw'), WEAPON_FRAMES.flashA, 'chainsaw elapsed < 0.06 returns flashA');
+    assert.equal(weaponFrame(0.08, true, 'chainsaw'), WEAPON_FRAMES.flashB, 'chainsaw elapsed 0.06..0.12 returns flashB');
+    assert.equal(weaponFrame(0.15, true, 'chainsaw'), WEAPON_FRAMES.idle, 'chainsaw elapsed >= 0.12 returns idle');
+  },
+
+  'AC-3 rocket flash frames'() {
+    assert.equal(weaponFrame(0.05, true, 'rocket'), WEAPON_FRAMES.flashA, 'rocket elapsed < 0.09 returns flashA with ammo');
+    assert.equal(weaponFrame(0.15, true, 'rocket'), WEAPON_FRAMES.flashB, 'rocket elapsed 0.09..0.24 returns flashB with ammo');
+    assert.equal(weaponFrame(0.05, false, 'rocket'), WEAPON_FRAMES.flashA, 'rocket elapsed < 0.09 returns flashA without ammo');
+    assert.equal(weaponFrame(0.15, false, 'rocket'), WEAPON_FRAMES.flashB, 'rocket elapsed 0.09..0.24 returns flashB without ammo');
+  },
+
+  'AC-4 rocket reload recoil pumpA only with ammo'() {
+    assert.equal(weaponFrame(0.35, true, 'rocket'), WEAPON_FRAMES.pumpA, 'rocket elapsed 0.24..0.48 returns pumpA with ammo');
+    assert.equal(weaponFrame(0.35, false, 'rocket'), WEAPON_FRAMES.idle, 'rocket elapsed 0.24..0.48 returns idle without ammo');
+  },
+
+  'AC-5 rocket pumpB, settle to idle and empty gun'() {
+    assert.equal(weaponFrame(0.55, true, 'rocket'), WEAPON_FRAMES.pumpB, 'rocket elapsed 0.48..0.68 returns pumpB with ammo');
+    assert.equal(weaponFrame(0.8, true, 'rocket'), WEAPON_FRAMES.idle, 'rocket elapsed >= 0.68 settles to idle with ammo');
+    assert.equal(weaponFrame(0.55, false, 'rocket'), WEAPON_FRAMES.idle, 'rocket elapsed 0.48..0.68 returns idle without ammo');
+  },
 };
 
 function pausedHud() {
