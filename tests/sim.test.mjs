@@ -12446,6 +12446,145 @@ const tests = {
         globalThis.localStorage = prevLocalStorage;
     }
   },
+
+  'AC-1: cleanup() purges inactive shots and collected pickups in-place without filter'() {
+    const game = fresh(0);
+    let filterCalls = 0;
+    const originalFilter = Array.prototype.filter;
+    Array.prototype.filter = function (...args) {
+      filterCalls++;
+      return originalFilter.apply(this, args);
+    };
+
+    try {
+      const activeBody = { removeCalled: false };
+      const deadBody = { removeCalled: false };
+      const activeShot = { dead: false, body: activeBody, life: 1, age: 0 };
+      const deadShot = { dead: true, body: deadBody, life: 1, age: 2 };
+      game.shots.length = 0;
+      game.shots.push(activeShot, deadShot);
+
+      const keptPickupBody = { removeCalled: false };
+      const takenPickupBody = { removeCalled: false };
+      const keptPickup = { taken: false, body: keptPickupBody };
+      const takenPickup = { taken: true, body: takenPickupBody };
+      game.pickups.length = 0;
+      game.pickups.push(keptPickup, takenPickup);
+
+      const removedBodies = [];
+      const origRemoveBody = game.scene.removeBody;
+      game.scene.removeBody = (body) => {
+        removedBodies.push(body);
+        if (origRemoveBody)
+          origRemoveBody.call(game.scene, body);
+      };
+
+      const shotsArr = game.shots;
+      const pickupsArr = game.pickups;
+      game.cleanup();
+
+      assert.equal(filterCalls, 0, 'Array.prototype.filter must not be called during cleanup()');
+      assert.equal(game.shots, shotsArr, 'shots array identity is preserved');
+      assert.equal(game.pickups, pickupsArr, 'pickups array identity is preserved');
+      assert.equal(game.shots.length, 1);
+      assert.equal(game.shots[0], activeShot);
+      assert.equal(game.pickups.length, 1);
+      assert.equal(game.pickups[0], keptPickup);
+      assert.ok(removedBodies.includes(deadBody), 'dead shot collision body is removed from scene');
+      assert.ok(removedBodies.includes(takenPickupBody), 'taken pickup collision body is removed from scene');
+    } finally {
+      Array.prototype.filter = originalFilter;
+    }
+  },
+
+  'AC-2: update() prunes expired effects in-place without filter allocations'() {
+    const game = fresh(0);
+    clearEnemies(game);
+
+    const effectsArr = game.effects;
+    effectsArr.length = 0;
+    const alive1 = { id: 1, age: 0.1, life: 1.0 };
+    const expired = { id: 2, age: 0.95, life: 1.0 };
+    const alive2 = { id: 3, age: 0.2, life: 2.0 };
+    effectsArr.push(alive1, expired, alive2);
+
+    let filterCalledOnEffects = false;
+    const originalFilter = effectsArr.filter;
+    effectsArr.filter = function (...args) {
+      filterCalledOnEffects = true;
+      return originalFilter.apply(this, args);
+    };
+
+    try {
+      game.update(0.1, idle);
+
+      assert.equal(filterCalledOnEffects, false, 'effects.filter must not be called during update()');
+      assert.equal(game.effects, effectsArr, 'effects array identity is preserved');
+      assert.equal(game.effects.length, 2);
+      assert.equal(game.effects[0].id, 1);
+      assert.equal(game.effects[1].id, 3);
+    } finally {
+      effectsArr.filter = originalFilter;
+    }
+  },
+
+  'AC-3: actorNear() uses pre-allocated query options without inline filter closures'() {
+    const game = fresh(0);
+    const initialQuery = game.actorQuery;
+    const initialFilter = game.actorFilter;
+    const initialPoint = game.actorPoint;
+
+    assert.ok(initialQuery && typeof initialQuery === 'object', 'actorQuery is initialized on game instance');
+    assert.ok(typeof initialFilter === 'function', 'actorFilter is initialized on game instance');
+    assert.ok(initialPoint && typeof initialPoint.copy === 'function', 'actorPoint is initialized on game instance');
+
+    let queryOptionPassed = null;
+    const origQueryCircleFirst = game.scene.queryCircleFirst;
+    game.scene.queryCircleFirst = (point, radius, opts) => {
+      queryOptionPassed = opts;
+      return null;
+    };
+
+    try {
+      const testPoint = new Vec2(100, 100);
+      const res = game.actorNear(testPoint, 50, 40);
+      assert.equal(res, false);
+      assert.equal(queryOptionPassed, initialQuery, 'scene.queryCircleFirst received the pre-allocated actorQuery object');
+      assert.equal(queryOptionPassed.filter, initialFilter, 'actorQuery.filter uses the pre-allocated actorFilter function');
+      assert.equal(game.actorDistance, 40, 'actorDistance updated in-place');
+      assert.equal(game.actorPoint.x, 100, 'actorPoint updated in-place');
+      assert.equal(game.actorPoint.y, 100);
+    } finally {
+      game.scene.queryCircleFirst = origQueryCircleFirst;
+    }
+  },
+
+  'AC-4: updateMarsWeather() mutates pre-allocated dust particle instances in-place'() {
+    const game = fresh(4);
+    game.state = 'play';
+    assert.ok(game.dustPool.length > 0, 'dustPool is initialized');
+    assert.ok(game.dust.length > 0, 'dust particles are active');
+
+    const particlesBefore = new Set(game.dustPool);
+    const initialFreeCount = game.dustFree.length;
+
+    // Force all active particles to expire
+    for (const p of game.dust)
+      p.age = p.life + 1;
+
+    game.time += 1 / 60;
+    game.updateMarsWeather(1 / 60);
+
+    // Verify all active dust particles are still members of the pre-allocated pool
+    for (const p of game.dust)
+      assert.ok(particlesBefore.has(p), 'active dust particle must come from dustPool');
+
+    for (const p of game.dustFree)
+      assert.ok(particlesBefore.has(p), 'free dust particle must come from dustPool');
+
+    assert.equal(game.dustPool.length + game.dustFree.length >= game.dust.length, true);
+    assert.equal(new Set(game.dust).size, game.dust.length, 'no duplicate particle references in active dust list');
+  },
 };
 
 function pausedHud() {
