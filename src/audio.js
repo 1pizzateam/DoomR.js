@@ -8,6 +8,7 @@
  * of it should go to the room reverb. They also run in an OfflineAudioContext, which is
  * how they are checked for silence, clipping and clicks.
  */
+import { createImpulse, createNoise, softClip } from '@1pizzateam/groovr';
 import { Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { Music } from './music.js';
 import { SHOTGUN_PUMP, WEAPONS } from './weapon.js';
@@ -52,10 +53,7 @@ const noiseBuffers = new WeakMap();
 function noiseBuffer(ctx) {
   let buffer = noiseBuffers.get(ctx);
   if (!buffer) {
-    buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++)
-      data[i] = Rand.float(-1, 1);
+    buffer = createNoise(ctx);
     noiseBuffers.set(ctx, buffer);
   }
   return buffer;
@@ -68,18 +66,9 @@ function envelope(param, t, attack, peak, duration) {
   param.exponentialRampToValueAtTime(0.0001, t + duration);
 }
 
-const shaperCurves = new Map();
-
 function shaper(ctx, drive) {
-  let curve = shaperCurves.get(drive);
-  if (!curve) {
-    curve = new Float32Array(1024);
-    for (let i = 0; i < curve.length; i++)
-      curve[i] = Math.tanh(((i / (curve.length - 1)) * 2 - 1) * drive);
-    shaperCurves.set(drive, curve);
-  }
   const node = ctx.createWaveShaper();
-  node.curve = curve;
+  node.curve = softClip(drive);
   return node;
 }
 
@@ -943,13 +932,7 @@ export class Sound {
     limiter.connect(ctx.destination);
 
     // a small generated room: noise that decays, used as the reverb for loud sounds
-    const length = Math.round(ctx.sampleRate * 1.8);
-    const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
-    for (let channel = 0; channel < 2; channel++) {
-      const data = impulse.getChannelData(channel);
-      for (let i = 0; i < length; i++)
-        data[i] = Rand.float(-1, 1) * (1 - i / length) ** 2.5;
-    }
+    const impulse = createImpulse(ctx, 1.8, 2.5);
     this.reverb = ctx.createConvolver();
     this.reverb.buffer = impulse;
     const reverbLevel = ctx.createGain();
