@@ -567,12 +567,12 @@ export class Game {
         let run = 1;
         while (x + run < level.width && level.kind[idx + run] && level.kind[idx + run] !== DOOR && !level.diag[idx + run])
           run++;
-        this.addStaticBox(new Vec2((x + run / 2) * TILE, (y + 0.5) * TILE), run * TILE);
+        this.addStaticBox(new Vec2((x + run / 2) * TILE, (y + 0.5) * TILE), new Vec2(run * TILE, TILE));
         x += run;
       }
     }
     for (const door of level.doors.values())
-      door.body = this.addStaticBox(door.center, TILE);
+      door.body = this.addStaticBox(door.center, new Vec2(TILE, TILE));
   }
 
   addStaticTriangle(df) {
@@ -582,8 +582,8 @@ export class Game {
     return body;
   }
 
-  addStaticBox(center, width) {
-    const body = new Physics(center.clone(), new Vec2(), new Vec2(width, TILE), 0, 1, 0, 'aabb', 0, false, CAT.WALL, 0xFFFF, 0, 'static');
+  addStaticBox(center, size) {
+    const body = new Physics(center.clone(), new Vec2(), size.clone(), 0, 1, 0, 'aabb', 0, false, CAT.WALL, 0xFFFF, 0, 'static');
     body.ref = { kind: 'wall' };
     this.scene.addBody(body);
     return body;
