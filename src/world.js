@@ -320,22 +320,6 @@ function isChunkVisibleInFog(fog, bounds, levelWidth) {
   return false;
 }
 
-function setPos(node, x, y, z) {
-  node.setPosition(scratchPos.setScalar(x, y, z));
-}
-
-function setRot(node, x, y, z) {
-  node.setRotation(scratchRot.setScalar(x, y, z));
-}
-
-function setUniformScale(node, s) {
-  node.setScale(scratchScale.setScalar(s, s, s));
-}
-
-function setScale(node, x, y, z) {
-  node.setScale(scratchScale.setScalar(x, y, z));
-}
-
 /** Fades a colour towards the background. Writes straight into the material, so a frame allocates nothing. */
 function tint(material, color, amount) {
   tintScratch.lerpVectors(BG_VEC, color, amount);
@@ -750,7 +734,7 @@ export class World {
     root.addChild(bottomChain);
     root.addChild(noseChain);
     root.addChild(hands);
-    setScale(root, -0.68, 0.68, 0.68);
+    root.setScale(scratchScale.setScalar(-0.68, 0.68, 0.68));
     root.setInactive();
     this.scene.addMesh(root);
     this.chainsawView = {
@@ -776,7 +760,7 @@ export class World {
     hands.setPosition(parts.pivots.hands);
     root.addChild(rotor);
     root.addChild(hands);
-    setScale(root, -0.56, 0.56, 0.56);
+    root.setScale(scratchScale.setScalar(-0.56, 0.56, 0.56));
     root.setInactive();
     this.scene.addMesh(root);
     this.chaingunView = {
@@ -803,7 +787,7 @@ export class World {
     root.addChild(pump);
     root.addChild(arm);
     root.addChild(shell);
-    setScale(root, -0.68, 0.68, 0.68);
+    root.setScale(scratchScale.setScalar(-0.68, 0.68, 0.68));
     root.setInactive();
     this.scene.addMesh(root);
     this.shotgunView = {
@@ -828,7 +812,7 @@ export class World {
     hands.setPosition(parts.pivots.hands);
     root.addChild(warhead);
     root.addChild(hands);
-    setScale(root, -0.58, 0.58, 0.58);
+    root.setScale(scratchScale.setScalar(-0.58, 0.58, 0.58));
     root.setInactive();
     this.scene.addMesh(root);
     this.rocketLauncherView = {
@@ -846,7 +830,7 @@ export class World {
     const parts = knifeParts();
     const material = new Material({ diffuse: new Vec3(1, 1, 1) });
     const root = this.chainsawPartMesh(parts.body, this.knifePixels, material);
-    setScale(root, -0.58, 0.58, 0.58);
+    root.setScale(scratchScale.setScalar(-0.58, 0.58, 0.58));
     root.setInactive();
     this.scene.addMesh(root);
     this.knifeView = {
@@ -1978,7 +1962,7 @@ export class World {
       minFilter: gl.NEAREST_MIPMAP_NEAREST,
       generateMipmaps: true,
     });
-    setPos(root, door.center.x, 0, door.center.y);
+    root.setPosition(scratchPos.setScalar(door.center.x, 0, door.center.y));
     this.scene.addMesh(root);
     this.doorViews.set(door, root);
   }
@@ -1999,7 +1983,7 @@ export class World {
       minFilter: gl.NEAREST_MIPMAP_NEAREST,
       generateMipmaps: true,
     });
-    setPos(root, crusher.center.x, crusher.low, crusher.center.y);
+    root.setPosition(scratchPos.setScalar(crusher.center.x, crusher.low, crusher.center.y));
     this.scene.addMesh(root);
     this.crusherViews.set(crusher, root);
   }
@@ -2052,9 +2036,9 @@ export class World {
       animCtx.dt = dt;
       animCtx.player = player;
       MONSTERS[enemy.type].animate(view, enemy, animCtx);
-      setPos(root, enemy.pos.x, view.lift * view.scale, enemy.pos.y);
-      setRot(root, view.pitch ?? 0, view.yaw ?? 0, view.roll ?? 0);
-      setScale(root, view.scale * view.sx, view.scale * view.sy, view.scale * (view.sz ?? view.sx));
+      root.setPosition(scratchPos.setScalar(enemy.pos.x, view.lift * view.scale, enemy.pos.y));
+      root.setRotation(scratchRot.setScalar(view.pitch ?? 0, view.yaw ?? 0, view.roll ?? 0));
+      root.setScale(scratchScale.setScalar(view.scale * view.sx, view.scale * view.sy, view.scale * (view.sz ?? view.sx)));
       return;
     }
 
@@ -2174,8 +2158,8 @@ export class World {
     }
     view.root.setActive();
     const bob = 1.5 + Math.sin(time * 3 + pickup.phase) * 1.2;
-    setPos(view.root, pickup.pos.x, bob, pickup.pos.y);
-    setRot(view.root, 0, time * view.spinSpeed + pickup.phase, 0);
+    view.root.setPosition(scratchPos.setScalar(pickup.pos.x, bob, pickup.pos.y));
+    view.root.setRotation(scratchRot.setScalar(0, time * view.spinSpeed + pickup.phase, 0));
   }
 
   /** A supply chest: a textured body plus a lid child hinged at the back top edge. */
@@ -2212,10 +2196,10 @@ export class World {
     const root = new Mesh(gl, new CustomMesh());
     root.addChild(body);
     root.addChild(lid);
-    setPos(lid, CHEST_LID_HINGE.x, CHEST_LID_HINGE.y, CHEST_LID_HINGE.z);
+    lid.setPosition(scratchPos.setScalar(CHEST_LID_HINGE.x, CHEST_LID_HINGE.y, CHEST_LID_HINGE.z));
     const yaw = Trigo.halfpi - cache.angle;
-    setPos(root, cache.pos.x, 0, cache.pos.y);
-    setRot(root, 0, yaw, 0);
+    root.setPosition(scratchPos.setScalar(cache.pos.x, 0, cache.pos.y));
+    root.setRotation(scratchRot.setScalar(0, yaw, 0));
     this.scene.addMesh(root);
     return { root, body, lid, bodyMaterial, lidMaterial, yaw, lastLid: -1, lastState: '' };
   }
@@ -2228,7 +2212,7 @@ export class World {
     }
     view.root.setActive();
     if (cache.lid !== view.lastLid) {
-      setRot(view.lid, -cache.lid * CHEST_LID_OPEN_ANGLE, 0, 0);
+      view.lid.setRotation(scratchRot.setScalar(-cache.lid * CHEST_LID_OPEN_ANGLE, 0, 0));
       view.lastLid = cache.lid;
     }
     if (cache.state !== view.lastState) {
@@ -2331,7 +2315,7 @@ export class World {
     if (barrel.pos.x !== view.lastX || barrel.pos.y !== view.lastY) {
       view.lastX = barrel.pos.x;
       view.lastY = barrel.pos.y;
-      setPos(view.root, barrel.pos.x, 0, barrel.pos.y);
+      view.root.setPosition(scratchPos.setScalar(barrel.pos.x, 0, barrel.pos.y));
     }
     if (!barrel.gone) {
       if (view.wasGone) {
@@ -2351,7 +2335,8 @@ export class World {
       const skin = burning ? 0.8 + 0.6 * Math.abs(Math.sin(time * 70)) : 1;
       scratchPos.setScalar(skin, skin, skin);
       view.skinMaterial.setDiffuse(scratchPos);
-      setUniformScale(view.intact, burning ? 1 + 0.05 * Math.sin(time * 90) : 1);
+      const s = burning ? 1 + 0.05 * Math.sin(time * 90) : 1;
+      view.intact.setScale(scratchScale.setScalar(s, s, s));
       view.intactSettled = !burning;
       return;
     }
@@ -2447,14 +2432,15 @@ export class World {
     }
     view.root.setActive();
     if (shot.kind === 'grenade') {
-      setPos(view.root, shot.pos.x, shot.z, shot.pos.y);
-      setRot(view.root, time * 8, 0, time * 5);
+      view.root.setPosition(scratchPos.setScalar(shot.pos.x, shot.z, shot.pos.y));
+      view.root.setRotation(scratchRot.setScalar(time * 8, 0, time * 5));
       return;
     }
     view.root.setFrame(Math.floor((time * 18) % FIREBALL_FRAMES));
-    setPos(view.root, shot.pos.x, EYE - 4, shot.pos.y);
+    view.root.setPosition(scratchPos.setScalar(shot.pos.x, EYE - 4, shot.pos.y));
     const baseScale = shot.kind === 'rocket' ? 1.35 : 1;
-    setUniformScale(view.root, baseScale * (1 + 0.08 * Math.sin(time * 24)));
+    const s = baseScale * (1 + 0.08 * Math.sin(time * 24));
+    view.root.setScale(scratchScale.setScalar(s, s, s));
   }
 
   buildEffect(effect) {
@@ -2529,8 +2515,8 @@ export class World {
     if (view.spark) {
       const width = 19;
       view.root.setFrame(IMPACT_CELLS.spark + view.kind * SPARK_FRAMES + Math.floor(progress * SPARK_FRAMES));
-      setPos(view.root, effect.x, effect.z, effect.y);
-      setUniformScale(view.root, width);
+      view.root.setPosition(scratchPos.setScalar(effect.x, effect.z, effect.y));
+      view.root.setScale(scratchScale.setScalar(width, width, width));
       return;
     }
     if (view.boom) {
@@ -2540,18 +2526,20 @@ export class World {
         view.root.setInactive();
         return;
       }
-      setPos(
-        view.root,
-        effect.x + pose.pos.x * radius,
-        Math.max(0, effect.z) + pose.pos.y * radius,
-        effect.y + pose.pos.z * radius
+      view.root.setPosition(
+        scratchPos.setScalar(
+          effect.x + pose.pos.x * radius,
+          Math.max(0, effect.z) + pose.pos.y * radius,
+          effect.y + pose.pos.z * radius
+        )
       );
       view.root.setRotation(pose.rot);
-      setScale(
-        view.root,
-        pose.scale.x * radius,
-        pose.scale.y * radius,
-        pose.scale.z * radius
+      view.root.setScale(
+        scratchScale.setScalar(
+          pose.scale.x * radius,
+          pose.scale.y * radius,
+          pose.scale.z * radius
+        )
       );
       view.material.setDiffuse(pose.color);
       view.root.setCustomUniform('dissolve', pose.dissolve);
@@ -2563,8 +2551,8 @@ export class World {
     // projectile blasts and teleporter plasma sit at impact height as camera-facing sprites
     const width = explosionWidth(effect);
     view.root.setFrame(Math.min(EXPLOSION_FRAMES - 1, Math.floor(progress * EXPLOSION_FRAMES)));
-    setPos(view.root, effect.x, effect.z, effect.y);
-    setUniformScale(view.root, width);
+    view.root.setPosition(scratchPos.setScalar(effect.x, effect.z, effect.y));
+    view.root.setScale(scratchScale.setScalar(width, width, width));
   }
 
   /** Create views for new entities, update live ones, drop the ones that are gone. `keep` filters the list. */
@@ -2681,7 +2669,7 @@ export class World {
       const inRange = (!Number.isFinite(cullDistSq) || door.center.getDistance(scratchCam2d, true) <= cullDistSq) && (!occludeFog || occludeFog.canSeeNear(door.center));
       if (height > 0.02 && inRange) {
         // the door slides down into the floor whole; the part below the floor is not drawn
-        setPos(view, door.center.x, -door.open * game.level.baseHeight[door.idx], door.center.y);
+        view.setPosition(scratchPos.setScalar(door.center.x, -door.open * game.level.baseHeight[door.idx], door.center.y));
         view.setActive();
         this.syncDoorMarks(door, game.blood, true);
       } else {
@@ -2699,7 +2687,7 @@ export class World {
         continue;
       }
       view.setActive();
-      setPos(view, crusher.center.x, crusher.low, crusher.center.y);
+      view.setPosition(scratchPos.setScalar(crusher.center.x, crusher.low, crusher.center.y));
     }
 
     this.syncViews(
