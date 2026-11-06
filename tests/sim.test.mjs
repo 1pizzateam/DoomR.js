@@ -14143,6 +14143,377 @@ const tests = {
       assert.equal(passedOptions.wrapS, 33071);
     });
   },
+
+  'AC-1 renders soulsphere blue flash lines, radsuit green flash lines, and berserk pulsing red borders'() {
+    const lines = [];
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        fillText() {},
+      }),
+    };
+    const mockOverlay = {
+      clear() {},
+      glow: {
+        line(pts, col, alpha) {
+          lines.push({
+            pts: pts.map((p) => [p.x, p.y]),
+            col: [...col],
+            alpha,
+          });
+        },
+      },
+      crisp: {
+        fillRect() {},
+        rectLine() {},
+        line() {},
+        circleLine() {},
+        weapon: { quad() {} },
+        sprites: { quad() {} },
+        face: { quad() {} },
+      },
+    };
+
+    const BLUE_RGB = [1, 3, 5].map((i) => parseInt('#5b8cff'.slice(i, i + 2), 16) / 255);
+    const GREEN_RGB = [1, 3, 5].map((i) => parseInt('#38c793'.slice(i, i + 2), 16) / 255);
+    const RED_RGB = [1, 3, 5].map((i) => parseInt('#e8102c'.slice(i, i + 2), 16) / 255);
+
+    const width = 1280;
+    const height = 760;
+    const hud = new Hud(mockCanvas, mockOverlay);
+    hud.resize(width, height, 1);
+
+    // Helper: filter fullscreen rectangle loops (pts.length === 5 and spans screen-scale width/height)
+    const isFullscreenRect = (l) => l.pts.length === 5 && Math.abs(l.pts[1][0] - l.pts[0][0]) > 300;
+
+    // 1. Inactive powerup flashes: timers at 0 emit no fullscreen flash rectangles
+    const game = fresh(0);
+    game.state = 'play';
+    game.player.radSuit = 0;
+    game.player.nightVisionActive = false;
+    game.player.soulFlash = 0;
+    game.player.radFlash = 0;
+    game.player.berserkTimer = 0;
+    game.player.hurt = 0;
+    hud.render(game);
+    assert.equal(lines.filter(isFullscreenRect).length, 0, 'no fullscreen flash rectangles drawn when flash timers are 0');
+
+    // 2. Active Soulsphere blue screen flash: 3 concentric rectangle loops in BLUE with computed alpha
+    lines.length = 0;
+    game.player.soulFlash = 0.5;
+    hud.render(game);
+    const soulRects = lines.filter((l) => l.col[0] === BLUE_RGB[0] && l.col[1] === BLUE_RGB[1] && isFullscreenRect(l));
+    assert.equal(soulRects.length, 3, 'emits 3 blue rectangle loops for active soulFlash');
+    for (let i = 0; i < 3; i++) {
+      const inset = 5 + i * 7;
+      const expectedPts = [
+        [inset, inset],
+        [width - inset, inset],
+        [width - inset, height - inset],
+        [inset, height - inset],
+        [inset, inset],
+      ];
+      assert.deepEqual(soulRects[i].pts, expectedPts, `soulFlash loop ${i} matches inset coordinates`);
+      const expAlpha = 1.0 * (0.85 - i * 0.25);
+      assert.ok(Math.abs(soulRects[i].alpha - expAlpha) < 1e-4, `soulFlash loop ${i} alpha matches calculation`);
+    }
+
+    // 3. Active Radsuit green screen flash: 3 concentric rectangle loops in GREEN with computed alpha
+    game.player.soulFlash = 0;
+    game.player.radFlash = 0.35;
+    lines.length = 0;
+    hud.render(game);
+    const radRects = lines.filter((l) => l.col[0] === GREEN_RGB[0] && l.col[1] === GREEN_RGB[1] && isFullscreenRect(l));
+    assert.equal(radRects.length, 3, 'emits 3 green rectangle loops for active radFlash');
+    for (let i = 0; i < 3; i++) {
+      const inset = 6 + i * 7;
+      const expectedPts = [
+        [inset, inset],
+        [width - inset, inset],
+        [width - inset, height - inset],
+        [inset, height - inset],
+        [inset, inset],
+      ];
+      assert.deepEqual(radRects[i].pts, expectedPts, `radFlash loop ${i} matches inset coordinates`);
+      const expAlpha = 1.0 * (0.75 - i * 0.22);
+      assert.ok(Math.abs(radRects[i].alpha - expAlpha) < 1e-4, `radFlash loop ${i} alpha matches calculation`);
+    }
+
+    // 4. Active Berserk pulsing red screen borders: 2 concentric rectangle loops in RED
+    game.player.radFlash = 0;
+    game.player.berserkTimer = 3.0;
+    game.time = 0;
+    lines.length = 0;
+    hud.render(game);
+    const berserkRects = lines.filter((l) => l.col[0] === RED_RGB[0] && l.col[1] === RED_RGB[1] && isFullscreenRect(l));
+    assert.equal(berserkRects.length, 2, 'emits 2 red rectangle loops for active berserkTimer');
+    const pulse = 0.55 + 0.45 * Math.sin(0 * 7);
+    const fade = 1.0;
+    const a = fade * (0.28 + 0.32 * pulse);
+    for (let i = 0; i < 2; i++) {
+      const inset = 5 + i * 6;
+      const expectedPts = [
+        [inset, inset],
+        [width - inset, inset],
+        [width - inset, height - inset],
+        [inset, height - inset],
+        [inset, inset],
+      ];
+      assert.deepEqual(berserkRects[i].pts, expectedPts, `berserk loop ${i} matches inset coordinates`);
+      const expAlpha = a * (1 - i * 0.35);
+      assert.ok(Math.abs(berserkRects[i].alpha - expAlpha) < 1e-4, `berserk loop ${i} alpha matches calculation`);
+    }
+  },
+
+  'AC-2 renders night vision battery percentage and blinks warning indicators when battery is low'() {
+    const texts = [];
+    const glowLines = [];
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        fillText(str) { texts.push(str); },
+      }),
+    };
+    const mockOverlay = {
+      clear() {},
+      glow: {
+        line(pts, col, alpha) {
+          glowLines.push({ pts: pts.map((p) => [p.x, p.y]), col: [...col], alpha });
+        },
+      },
+      crisp: {
+        fillRect() {},
+        rectLine() {},
+        line() {},
+        circleLine() {},
+        weapon: { quad() {} },
+        sprites: { quad() {} },
+        face: { quad() {} },
+      },
+    };
+
+    const GREEN_RGB = [1, 3, 5].map((i) => parseInt('#38c793'.slice(i, i + 2), 16) / 255);
+    const hud = new Hud(mockCanvas, mockOverlay);
+    hud.resize(1024, 768, 1);
+    const game = fresh(0);
+    game.state = 'play';
+    const player = game.player;
+    player.radSuit = 0;
+
+    const isFullscreenRect = (l) => l.pts.length === 5 && Math.abs(l.pts[1][0] - l.pts[0][0]) > 300;
+
+    // 1. Without night vision equipped: no NVG text
+    hud.render(game);
+    assert.ok(!texts.some((t) => t.includes('NVG')), 'no NVG text when player hasNightVision is false');
+
+    // 2. Night vision equipped, inactive, full battery (45s): NVG 100% drawn with inactive color BLUE, alpha 0.72
+    player.hasNightVision = true;
+    player.nightVisionActive = false;
+    player.nightVisionBattery = 45;
+    texts.length = 0;
+    glowLines.length = 0;
+    let lastRenderTextOpts = null;
+    const origText = hud.text.bind(hud);
+    hud.text = (str, x, y, col, opts) => {
+      if (str.startsWith('NVG'))
+        lastRenderTextOpts = { str, col, ...opts };
+      origText(str, x, y, col, opts);
+    };
+
+    hud.render(game);
+    assert.equal(lastRenderTextOpts.str, 'NVG 100%');
+    assert.equal(lastRenderTextOpts.col, 0, 'inactive NVG badge is BLUE (0)');
+    assert.equal(lastRenderTextOpts.alpha, 0.72, 'inactive NVG badge alpha is 0.72');
+    assert.equal(glowLines.filter(isFullscreenRect).length, 0, 'no fullscreen NVG glow overlay when inactive');
+
+    // 3. Night vision active, partial battery (22.5s = 50%): badge is GREEN, alpha 0.95, fullscreen overlay emitted
+    player.nightVisionActive = true;
+    player.nightVisionBattery = 22.5;
+    texts.length = 0;
+    glowLines.length = 0;
+    hud.render(game);
+    assert.equal(lastRenderTextOpts.str, 'NVG 50%');
+    assert.equal(lastRenderTextOpts.col, 1, 'active NVG badge is GREEN (1)');
+    assert.equal(lastRenderTextOpts.alpha, 0.95, 'active NVG badge alpha is 0.95');
+    const nvgOverlay = glowLines.filter((l) => l.col[0] === GREEN_RGB[0] && l.col[1] === GREEN_RGB[1] && isFullscreenRect(l));
+    assert.equal(nvgOverlay.length, 1, 'active NVG emits fullscreen green glow rectangle');
+    assert.deepEqual(nvgOverlay[0].pts, [[12, 12], [1012, 12], [1012, 756], [12, 756], [12, 12]]);
+
+    // 4. Low battery (<= 5s): blinks between 0.95 and 0.3 on alternating fractional seconds
+    // Math.floor(bat * 4) % 2 === 0 vs 1
+    // At bat = 4.0: 4.0 * 4 = 16 -> 16 % 2 === 0 (blink ON -> alpha 0.95)
+    player.nightVisionBattery = 4.0;
+    texts.length = 0;
+    glowLines.length = 0;
+    hud.render(game);
+    assert.equal(lastRenderTextOpts.str, 'NVG 9%');
+    assert.equal(lastRenderTextOpts.alpha, 0.95, 'low battery even tick blinks ON at alpha 0.95');
+    assert.equal(glowLines.filter(isFullscreenRect).length, 1, 'even tick draws glow overlay');
+
+    // At bat = 4.3: 4.3 * 4 = 17 -> 17 % 2 === 1 (blink OFF -> alpha 0.3)
+    player.nightVisionBattery = 4.3;
+    texts.length = 0;
+    glowLines.length = 0;
+    hud.render(game);
+    assert.equal(lastRenderTextOpts.str, 'NVG 10%');
+    assert.equal(lastRenderTextOpts.alpha, 0.3, 'low battery odd tick blinks OFF at alpha 0.3');
+    assert.equal(glowLines.filter(isFullscreenRect).length, 0, 'odd tick withholds glow overlay');
+
+    // 5. Depleted battery (0s): no fullscreen overlay emitted
+    player.nightVisionBattery = 0;
+    glowLines.length = 0;
+    hud.render(game);
+    assert.equal(glowLines.filter(isFullscreenRect).length, 0, 'depleted battery emits no fullscreen overlay');
+    hud.text = origText;
+  },
+
+  'AC-3 renders diagnostic telemetry text when hud.diagnostics is non-empty'() {
+    const texts = [];
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        fillText(str) { texts.push(str); },
+      }),
+    };
+    const mockOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: {
+        fillRect() {},
+        rectLine() {},
+        line() {},
+        circleLine() {},
+        weapon: { quad() {} },
+        sprites: { quad() {} },
+        face: { quad() {} },
+      },
+    };
+
+    const hud = new Hud(mockCanvas, mockOverlay);
+    hud.resize(1024, 768, 1);
+    hud.fps = 60;
+    const game = fresh(0);
+    game.state = 'play';
+
+    let interceptedTexts = [];
+    const origText = hud.text.bind(hud);
+    hud.text = (str, x, y, col, opts) => {
+      interceptedTexts.push({ str, x, y, col, opts });
+      origText(str, x, y, col, opts);
+    };
+
+    // 1. Non-empty diagnostics string: drawn at (28, 26) in GREEN, default FPS counter is suppressed
+    hud.diagnostics = 'POS 12.3, 45.6 | DRAW CALLS 14';
+    interceptedTexts = [];
+    texts.length = 0;
+    hud.render(game);
+
+    const diagCall = interceptedTexts.find((t) => t.str === 'POS 12.3, 45.6 | DRAW CALLS 14');
+    assert.ok(diagCall, 'diagnostics text is rendered');
+    assert.equal(diagCall.x, 28, 'diagnostics rendered at x=28');
+    assert.equal(diagCall.y, 26, 'diagnostics rendered at y=26');
+    assert.equal(diagCall.col, 1, 'diagnostics rendered in GREEN (1)');
+    assert.equal(diagCall.opts.size, 11);
+    assert.equal(diagCall.opts.alpha, 0.8);
+    assert.equal(diagCall.opts.glow, 0);
+    assert.ok(!texts.some((t) => t.includes('FPS')), 'default FPS counter is suppressed when hud.diagnostics is active');
+
+    // 2. Empty diagnostics string: standard FPS readout resumes at (28, 26)
+    hud.diagnostics = '';
+    interceptedTexts = [];
+    texts.length = 0;
+    hud.render(game);
+
+    const fpsCall = interceptedTexts.find((t) => t.str === '60 FPS');
+    assert.ok(fpsCall, 'default FPS readout is restored when diagnostics is empty');
+    assert.equal(fpsCall.x, 28);
+    assert.equal(fpsCall.y, 26);
+    assert.equal(fpsCall.col, 1);
+    assert.equal(fpsCall.opts.size, 12);
+    assert.equal(fpsCall.opts.alpha, 0.8);
+
+    hud.text = origText;
+  },
+
+  'AC-4 renders episode completion headers and statistics upon finishing the final campaign level'() {
+    const texts = [];
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+        fillText(str) { texts.push(str); },
+      }),
+    };
+    const mockOverlay = {
+      clear() {},
+      glow: { line() {} },
+      crisp: {
+        fillRect() {},
+        rectLine() {},
+        line() {},
+        circleLine() {},
+        weapon: { quad() {} },
+        sprites: { quad() {} },
+        face: { quad() {} },
+      },
+    };
+
+    const hud = new Hud(mockCanvas, mockOverlay);
+    hud.resize(1280, 760, 1);
+
+    // 1. Final campaign level completed (cleared state on LEVELS.length - 1)
+    const finalLevelIdx = LEVELS.length - 1;
+    const finalGame = fresh(finalLevelIdx);
+    finalGame.state = 'cleared';
+    finalGame.kills = 30;
+    finalGame.totalEnemies = 30;
+    finalGame.itemsPicked = 15;
+    finalGame.totalItems = 20;
+    finalGame.secretsFound = 2;
+    finalGame.totalSecrets = 2;
+    finalGame.stats.time = 145;
+
+    texts.length = 0;
+    hud.render(finalGame);
+
+    assert.ok(texts.includes('EPISODE COMPLETE'), 'final level intermission renders EPISODE COMPLETE header');
+    assert.ok(!texts.includes('FINISHED'), 'final level intermission does NOT render FINISHED');
+    assert.ok(texts.includes(finalGame.level.name.toUpperCase()), 'renders final level name');
+    assert.ok(texts.includes('KILLS') && texts.includes('ITEMS') && texts.includes('SECRETS'), 'renders KILLS, ITEMS, SECRETS labels');
+    assert.ok(texts.includes('30/30') && texts.includes('15/20') && texts.includes('2/2'), 'renders raw stats for kills, items, secrets');
+    assert.ok(texts.includes('100%') && texts.includes('75%'), 'renders percentage values');
+    assert.ok(texts.includes('TIME') && texts.includes('PAR'), 'renders TIME and PAR metrics');
+    assert.ok(
+      texts.includes('PHOBOS ANOMALY SECURED · ALL FACILITIES CLEARED'),
+      'renders final victory overworld banner PHOBOS ANOMALY SECURED · ALL FACILITIES CLEARED',
+    );
+    assert.ok(
+      texts.includes('click or press ENTER to return to the title'),
+      'renders final prompt to return to the title',
+    );
+
+    // 2. Non-final campaign level completed (cleared state on levelIndex < LEVELS.length - 1)
+    const midGame = fresh(1);
+    midGame.state = 'cleared';
+    texts.length = 0;
+    hud.render(midGame);
+
+    assert.ok(texts.includes('FINISHED'), 'non-final level intermission renders FINISHED header');
+    assert.ok(!texts.includes('EPISODE COMPLETE'), 'non-final level intermission does NOT render EPISODE COMPLETE');
+    const nextLevelName = LEVELS[2].name.toUpperCase();
+    assert.ok(texts.some((t) => t.includes(`ENTERING: ${nextLevelName}`)), 'non-final level renders entering next facility banner');
+    assert.ok(
+      texts.includes('click or press ENTER for the next level'),
+      'renders prompt to advance to the next level',
+    );
+  },
 };
 
 function pausedHud() {
