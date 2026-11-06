@@ -1071,7 +1071,7 @@ const tests = {
     const door = level.doors.get(3 * level.width + 5);
     const y = door.center.y;
     for (let i = 0; i < 80; i++)
-      blood.hitWall({ x: 300, y, z: 30, vx: 100, vy: 0, gib: false }, 330, y);
+      blood.hitWall({ x: 300, y, z: 30, vx: 100, vy: 0, gib: false }, new Vec2(330, y));
     const onDoor = blood.walls.filter((w) => w.door === door);
     assert.ok(onDoor.length > 0, 'blood that hits a door should be attached to it');
     assert.ok(onDoor.length <= BLOOD.doorSplats, `door keeps at most ${BLOOD.doorSplats}, has ${onDoor.length}`);
@@ -1687,9 +1687,120 @@ const tests = {
     const { blood } = game;
     blood.reset(game.level, game.rand);
     const y = 4 * 64 + 32;
-    const axis = blood.hitWall({ x: 5 * 64 - 10, y, z: 30, vx: 100, vy: 0, gib: true }, 5 * 64 + 5, y);
+    const axis = blood.hitWall({ x: 5 * 64 - 10, y, z: 30, vx: 100, vy: 0, gib: true }, new Vec2(5 * 64 + 5, y));
     assert.equal(axis, 'x');
     assert.ok(blood.walls.length > 0, 'a gib hitting a wall leaves a splat');
+  },
+
+  'AC-1 blocked(Vec3) matches tile height, bounds and heightAtPoint'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood, level } = game;
+    blood.reset(level, game.rand);
+    let wall = -1;
+    for (let i = 0; i < level.heights.length && wall < 0; i++)
+      if (level.heights[i] > 10 && !(level.diag?.[i] > 0))
+        wall = i;
+    assert.ok(wall >= 0, 'level has a solid tile');
+    const pos = new Vec3((wall % level.width + 0.5) * 64, (Math.floor(wall / level.width) + 0.5) * 64, 5);
+    assert.equal(blood.blocked(pos), true, 'below the tile height');
+    pos.z = level.heights[wall] + 1;
+    assert.equal(blood.blocked(pos), false, 'above the tile height');
+    assert.equal(blood.blocked(new Vec3(-5, -5, 1000)), true, 'out of bounds');
+    if (level.heightAtPoint) {
+      const probe = new Vec3(pos.x, pos.y, 30);
+      assert.equal(blood.blocked(probe), level.heightAtPoint(new Vec2(probe.x, probe.y)) > probe.z);
+    }
+    assert.deepEqual([pos.x, pos.y], [(wall % level.width + 0.5) * 64, (Math.floor(wall / level.width) + 0.5) * 64]);
+    assert.equal(pos.z, level.heights[wall] + 1);
+  },
+
+  'AC-2 hitsCeiling(Vec2) is true over roofed floor and false out of bounds or in the arena'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood, level } = game;
+    blood.reset(level, game.rand);
+    assert.equal(blood.hitsCeiling(new Vec2(-5, -5)), false, 'out of bounds');
+    let floor = -1;
+    for (let i = 0; i < level.kind.length && floor < 0; i++)
+      if (level.kind[i] === 0 && !level.arena?.has(i))
+        floor = i;
+    if (floor >= 0)
+      assert.equal(blood.hitsCeiling(new Vec2((floor % level.width + 0.5) * 64, (Math.floor(floor / level.width) + 0.5) * 64)), level.kind[floor] === 0);
+    if (level.arena?.size) {
+      const a = level.arena.values().next().value;
+      assert.equal(blood.hitsCeiling(new Vec2((a % level.width + 0.5) * 64, (Math.floor(a / level.width) + 0.5) * 64)), false, 'inside the arena');
+    }
+  },
+
+  'AC-3 hitWall(p, Vec2) returns x and splats the wall, and attaches to doors'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood, level } = game;
+    blood.reset(level, game.rand);
+    const y = 4 * 64 + 32;
+    const next = new Vec2(5 * 64 + 5, y);
+    assert.equal(blood.hitWall({ x: 5 * 64 - 10, y, z: 30, vx: 100, vy: 0, gib: true }, next), 'x');
+    assert.ok(blood.walls.length > 0, 'a gib hitting a wall leaves a splat');
+    assert.deepEqual([next.x, next.y], [5 * 64 + 5, y]);
+    const door = level.doors.get(3 * level.width + 5);
+    const doorNext = new Vec2(330, door.center.y);
+    for (let i = 0; i < 40; i++)
+      blood.hitWall({ x: 300, y: door.center.y, z: 30, vx: 100, vy: 0, gib: true }, doorNext);
+    assert.ok(blood.walls.some((w) => w.door === door), 'splat attaches to the door');
+    assert.deepEqual([doorNext.x, doorNext.y], [330, door.center.y]);
+  },
+
+  'AC-4 blocked, hitsCeiling and hitWall have vector-only signatures'() {
+    for (const name of ['blocked', 'hitsCeiling', 'hitWall']) {
+      const src = Blood.prototype[name].toString();
+      const params = src.slice(src.indexOf('(') + 1, src.indexOf(')'));
+      assert.ok(!/\b(x|y|z|nx|ny)\b/.test(params), `${name}(${params})`);
+      assert.ok(!/typeof|Array\.isArray|instanceof/.test(src), `${name} has no type branching`);
+    }
+  },
+
+  'AC-5 update keeps trajectory and decal counts for a seeded run'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood } = game;
+    game.rand = Rand.create(5);
+    blood.reset(game.level, game.rand);
+    const origin = new Vec3(4 * 64 + 32, 4 * 64 + 32, 30);
+    blood.spray(origin, new Vec2(1, 0), 40, { speed: 120, spread: 30, up: 60 });
+    blood.spray(origin, new Vec2(1, 0.3), 12, { speed: 140, spread: 30, up: 80, gib: true });
+    for (let i = 0; i < 120; i++)
+      blood.update(1 / 60);
+    // recorded on the scalar-signature implementation before the refactor
+    assert.deepEqual([blood.particles.length, blood.walls.length, blood.floor.length, blood.ceiling.length], [0, 22, 94, 0]);
+  },
+
+  'AC-6 spawning and splat methods take vectors only'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood } = game;
+    blood.reset(game.level, game.rand);
+    const p3 = new Vec3(4 * 64 + 32, 4 * 64 + 32, 30);
+    const p2 = new Vec2(p3.x, p3.y);
+    const dir = new Vec2(1, 0);
+    const v0 = blood.version;
+    blood.spray(p3, dir, 5);
+    blood.hit(p3, dir, 1);
+    blood.gore(p2, 1, dir);
+    blood.drip(p2, 1);
+    blood.severBurst(p3, dir, 1, false);
+    blood.impact(p3, new Vec2(-1, 0));
+    blood.floorSplat(p2, 4);
+    blood.ceilingSplat(p2, 4);
+    blood.wallSplat(new Vec3(5 * 64, p3.y, 30), new Vec2(-1, 0), 4, 64, null);
+    blood.inPool(p2);
+    blood.walk({ placed: false, pos: new Vec2() }, p2);
+    assert.ok(blood.particles.length > 0 && blood.version > v0, 'spawning mutated state');
+    for (const name of ['spray', 'hit', 'gore', 'drip', 'severBurst', 'impact', 'floorSplat', 'ceilingSplat', 'wallSplat', 'inPool', 'walk']) {
+      const src = Blood.prototype[name].toString();
+      const params = src.slice(src.indexOf('(') + 1, src.indexOf(')'));
+      assert.ok(!/\b(x|y|z|dirX|dirY|nx|ny)\b/.test(params), `${name}(${params})`);
+    }
   },
 
   'AC-3 spray recycles pooled particles and resets every field'() {
@@ -7422,7 +7533,7 @@ const tests = {
     const pillarIdx = 3 * game.level.width + 2;
     assert.equal(game.level.kind[pillarIdx], PILLAR, 'tile (2, 3) is a half-size PILLAR');
     assert.equal(game.level.baseHeight[pillarIdx], 26, 'half-size PILLAR has height 26 (< 64 ceiling)');
-    assert.equal(game.blood.hitsCeiling(2.5 * 64, 3.5 * 64), true, 'ceiling exists above half-size wall in a roofed room');
+    assert.equal(game.blood.hitsCeiling(new Vec2(2.5 * 64, 3.5 * 64)), true, 'ceiling exists above half-size wall in a roofed room');
 
     // Tile (2, 3) satisfies ceilingCellFor(2, 3) === CEILING_CELLS.light (2 % 5 === 2 && 3 % 4 === 3)
     const fixtures = ceilingLightFixtures(game.level);
@@ -7444,7 +7555,7 @@ const tests = {
     const arenaPillarIdx = 2 * arenaGame.level.width + 4;
     assert.equal(arenaGame.level.kind[arenaPillarIdx], PILLAR);
     assert.ok(arenaGame.level.arena?.has(arenaPillarIdx), 'half-size wall inside the boss room is included in the roofless arena set');
-    assert.equal(arenaGame.blood.hitsCeiling(4.5 * 64, 2.5 * 64), false, 'no ceiling over a half-size wall inside the roofless boss arena');
+    assert.equal(arenaGame.blood.hitsCeiling(new Vec2(4.5 * 64, 2.5 * 64)), false, 'no ceiling over a half-size wall inside the roofless boss arena');
 
     // 3. Low cover tiles ('o' / PILLAR) render as 3D UAC futuristic cover crates (256x64 4-cell atlas + multi-part 3D mesh)
     const cAtlas = crateAtlas();
@@ -7493,7 +7604,7 @@ const tests = {
 
     // 1. Player spawns inside an enclosed indoor airlock room with a ceiling and overhead light fixture
     assert.equal(level.isOutdoor(g.player.pos), false, 'player starts indoors inside the airlock room');
-    assert.equal(g.blood.hitsCeiling(g.player.pos.x, g.player.pos.y), true, 'starting room has a solid ceiling overhead');
+    assert.equal(g.blood.hitsCeiling(new Vec2(g.player.pos.x, g.player.pos.y)), true, 'starting room has a solid ceiling overhead');
     const fixtures = ceilingLightFixtures(level);
     assert.ok(
       fixtures.some((f) => level.indoor.has(f.tile.y * level.width + f.tile.x)),
@@ -7513,7 +7624,7 @@ const tests = {
     assert.equal(level.isIndoorTile(3 * level.width + 7), false, 'tile outside the airlock door is outdoor so its walls use Martian rock');
     const outsidePos = new Vec2(7.5 * 64, 3.5 * 64);
     assert.equal(level.isOutdoor(outsidePos), true, 'stepping through the airlock door places the player on the outdoor Martian surface');
-    assert.equal(g.blood.hitsCeiling(outsidePos.x, outsidePos.y), false, 'Martian exterior is roofless (open to the orange sky)');
+    assert.equal(g.blood.hitsCeiling(new Vec2(outsidePos.x, outsidePos.y)), false, 'Martian exterior is roofless (open to the orange sky)');
 
     // 3. Outdoor Martian dirt floor atlas, rock cliff wall atlas, and 3D boulder outcrops replace base floor/walls/crates
     const dirt = marsDirtAtlas();
