@@ -15,7 +15,7 @@ import { FOG_FAR, FOG_NEAR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, mar
 import { faceCorners, quadTriangles } from './lines.js';
 import { MONSTERS } from './monsters.js';
 import { Overlay } from './overlay.js';
-import { LIGHT_GLSL, PARTICLE_FRAGMENT, PARTICLE_VERTEX, QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, texturedMesh } from './quads.js';
+import { PARTICLE_FRAGMENT, PARTICLE_VERTEX, QuadBatch, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, texturedMesh } from './quads.js';
 import { holeQuad, IMPACT_CELLS, impactAtlas, SPARK_FRAMES, SPARK_VARIANTS } from './impacts.js';
 import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
@@ -1540,9 +1540,9 @@ export class World {
     if (isMars) {
       if (boulderSectors.length)
         for (const sec of boulderSectors)
-          this.marsBoulderMesh = registerStaticChunk(this.staticChunks, this.track(this.marsBoulderBatch(level, sec), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
+          registerStaticChunk(this.staticChunks, this.track(this.marsBoulderBatch(level, sec), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
       else
-        this.marsBoulderMesh = this.track(this.marsBoulderBatch(level), this.staticMeshes);
+        this.track(this.marsBoulderBatch(level), this.staticMeshes);
     }
     this.ceilingMeshes = [];
     if (ceilingSectors.length)
