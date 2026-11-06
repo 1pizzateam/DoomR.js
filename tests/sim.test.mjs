@@ -9023,7 +9023,7 @@ const tests = {
     const d = new Keymap({ storage: { getItem: () => 'dvorak' }, navigator: null });
     assert.equal(d.hintLines[0].rows[0].keys, ', A O E');
     assert.equal(d.hintLines[1].rows[3].keys, '.');
-    assert.equal(d.hintLines[1].rows[3].label, 'use / open doors');
+    assert.equal(d.hintLines[1].rows[3].label, 'use');
   },
 
   'AC-6 keyboard layouts: live learning detects AZERTY once and F2 cycles and persists the override'() {
@@ -15036,6 +15036,47 @@ const tests = {
       const k = new Keymap({ storage: null, navigator: language !== undefined ? { language } : {} });
       assert.equal(k.languagePreset, 'qwerty', `locale ${language} defaults to qwerty`);
     }
+  },
+
+  'AC-1 DEFAULT_HINT_LINES COMBAT group row for use has label use'() {
+    assert.equal(DEFAULT_HINT_LINES[1].title, 'COMBAT');
+    assert.equal(DEFAULT_HINT_LINES[1].rows[3].keys, 'E');
+    assert.equal(DEFAULT_HINT_LINES[1].rows[3].label, 'use');
+  },
+
+  'AC-2 Keymap hintLines displays label use across QWERTY and Dvorak layouts'() {
+    const qwertyKeymap = new Keymap({ storage: null, navigator: null });
+    assert.equal(qwertyKeymap.hintLines[1].rows[3].keys, 'E');
+    assert.equal(qwertyKeymap.hintLines[1].rows[3].label, 'use');
+
+    const azertyKeymap = new Keymap({ storage: null, navigator: null });
+    azertyKeymap.applyLayoutMap(new Map(Object.entries(PRESETS.azerty.glyphs)));
+    assert.equal(azertyKeymap.hintLines[1].rows[3].keys, 'E');
+    assert.equal(azertyKeymap.hintLines[1].rows[3].label, 'use');
+
+    const dvorakKeymap = new Keymap({ storage: { getItem: () => 'dvorak' }, navigator: null });
+    assert.equal(dvorakKeymap.hintLines[1].rows[3].keys, '.');
+    assert.equal(dvorakKeymap.hintLines[1].rows[3].label, 'use');
+  },
+
+  'AC-3 Keymap rebuildHints preserves label use after rebinding'() {
+    const k = new Keymap({ storage: null, navigator: null });
+    assert.equal(k.hintLines[1].rows[3].label, 'use');
+
+    k.setBinding('use', 0, 'KeyU');
+    assert.equal(k.hintLines[1].rows[3].keys, 'U');
+    assert.equal(k.hintLines[1].rows[3].label, 'use');
+
+    k.rebuild();
+    assert.equal(k.hintLines[1].rows[3].keys, 'U');
+    assert.equal(k.hintLines[1].rows[3].label, 'use');
+  },
+
+  'AC-4 README controls table describes use action consistently'() {
+    const readmeSrc = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const useRowMatch = readmeSrc.match(/\|\s*E\s*\|\s*([^|]+)\s*\|/);
+    assert.ok(useRowMatch, 'README contains an entry for key E in the controls table');
+    assert.ok(useRowMatch[1].trim().startsWith('use'), 'README describes key E starting with use');
   },
 };
 

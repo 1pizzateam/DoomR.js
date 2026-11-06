@@ -111,7 +111,7 @@ const buildHints = (label, layoutText, custom = NO_OVERRIDES) => {
       hintRow(fire, 'fire'),
       hintRow(weapons, 'weapons'),
       hintRow(label('grenade'), 'grenade'),
-      hintRow(label('use'), 'use / open doors'),
+      hintRow(label('use'), 'use'),
     ]),
     hintGroup('WORLD', [
       hintRow(switchLevelKeys, 'switch level'),
