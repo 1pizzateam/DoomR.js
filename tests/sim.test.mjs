@@ -14514,6 +14514,413 @@ const tests = {
       'renders prompt to advance to the next level',
     );
   },
+  'AC-1 weapon viewmodel builders create articulated textured meshes'() {
+    const target = {
+      bufferSubData() {},
+      bindBuffer() {},
+      createBuffer: () => ({}),
+      UNSIGNED_SHORT: 5123,
+      NEAREST: 9728,
+      NEAREST_MIPMAP_NEAREST: 9984,
+      CLAMP_TO_EDGE: 33071,
+    };
+    const noop = () => ({});
+    const gl = new Proxy(target, {
+      get(obj, key) {
+        if (key in obj)
+          return obj[key];
+        if (typeof key === 'string' && key === key.toUpperCase())
+          return 1;
+        return noop;
+      },
+    });
+    const sceneMeshes = [];
+    const sharedTexturedMeshes = [];
+    const world = Object.create(World.prototype);
+    world.gl = gl;
+    world.scene = {
+      addMesh(mesh) {
+        sceneMeshes.push(mesh);
+      },
+    };
+    world.sharedTexture = (atlas) => ({ atlas });
+    world.sharedTexturedMeshes = sharedTexturedMeshes;
+    world.bindAtlasTexture = (mesh, atlas) => {
+      mesh.atlas = atlas;
+      return mesh;
+    };
+
+    // 1. buildKnife
+    world.buildKnife();
+    assert.ok(world.knifeView, 'knifeView created');
+    assert.ok(world.knifeView.root instanceof Mesh, 'knifeView root is a Mesh');
+    assert.ok(world.knifeView.material instanceof Material, 'knifeView material is a Material');
+    assert.ok(world.knifeView.pose, 'knifeView pose initialized');
+    assert.equal(world.knifeView.root.active, false, 'knifeView initially inactive');
+    assert.ok(sceneMeshes.includes(world.knifeView.root), 'knifeView root added to scene');
+
+    // 2. buildChainsaw
+    world.buildChainsaw();
+    assert.ok(world.chainsawView, 'chainsawView created');
+    assert.ok(world.chainsawView.root instanceof Mesh, 'chainsawView root is a Mesh');
+    assert.ok(world.chainsawView.topChain instanceof Mesh, 'chainsawView topChain is a Mesh');
+    assert.ok(world.chainsawView.bottomChain instanceof Mesh, 'chainsawView bottomChain is a Mesh');
+    assert.ok(world.chainsawView.noseChain instanceof Mesh, 'chainsawView noseChain is a Mesh');
+    assert.ok(world.chainsawView.hands instanceof Mesh, 'chainsawView hands is a Mesh');
+    assert.ok(world.chainsawView.material instanceof Material, 'chainsawView material is a Material');
+    assert.ok(world.chainsawView.pose, 'chainsawView pose initialized');
+    assert.equal(world.chainsawView.root.active, false, 'chainsawView initially inactive');
+    assert.ok(sceneMeshes.includes(world.chainsawView.root), 'chainsawView root added to scene');
+    const csPivots = chainsawParts().pivots;
+    assert.ok(world.chainsawView.topChain.position.equals(csPivots.topChain), 'topChain positioned at pivot');
+    assert.ok(world.chainsawView.bottomChain.position.equals(csPivots.bottomChain), 'bottomChain positioned at pivot');
+    assert.ok(world.chainsawView.noseChain.position.equals(csPivots.noseChain), 'noseChain positioned at pivot');
+    assert.ok(world.chainsawView.hands.position.equals(csPivots.hands), 'hands positioned at pivot');
+
+    // 3. buildChaingun
+    world.buildChaingun();
+    assert.ok(world.chaingunView, 'chaingunView created');
+    assert.ok(world.chaingunView.root instanceof Mesh, 'chaingunView root is a Mesh');
+    assert.ok(world.chaingunView.rotor instanceof Mesh, 'chaingunView rotor is a Mesh');
+    assert.ok(world.chaingunView.hands instanceof Mesh, 'chaingunView hands is a Mesh');
+    assert.ok(world.chaingunView.material instanceof Material, 'chaingunView material is a Material');
+    assert.ok(world.chaingunView.pose, 'chaingunView pose initialized');
+    assert.equal(world.chaingunView.root.active, false, 'chaingunView initially inactive');
+    assert.ok(sceneMeshes.includes(world.chaingunView.root), 'chaingunView root added to scene');
+    const cgPivots = chaingunParts().pivots;
+    assert.ok(world.chaingunView.rotor.position.equals(cgPivots.rotor), 'rotor positioned at pivot');
+    assert.ok(world.chaingunView.hands.position.equals(cgPivots.hands), 'hands positioned at pivot');
+
+    // 4. buildShotgun
+    world.buildShotgun();
+    assert.ok(world.shotgunView, 'shotgunView created');
+    assert.ok(world.shotgunView.root instanceof Mesh, 'shotgunView root is a Mesh');
+    assert.ok(world.shotgunView.pump instanceof Mesh, 'shotgunView pump is a Mesh');
+    assert.ok(world.shotgunView.arm instanceof Mesh, 'shotgunView arm is a Mesh');
+    assert.ok(world.shotgunView.shell instanceof Mesh, 'shotgunView shell is a Mesh');
+    assert.ok(world.shotgunView.material instanceof Material, 'shotgunView material is a Material');
+    assert.ok(world.shotgunView.pose, 'shotgunView pose initialized');
+    assert.equal(world.shotgunView.root.active, false, 'shotgunView initially inactive');
+    assert.ok(sceneMeshes.includes(world.shotgunView.root), 'shotgunView root added to scene');
+    const sgPivots = shotgunParts().pivots;
+    assert.ok(world.shotgunView.pump.position.equals(sgPivots.pump), 'pump positioned at pivot');
+    assert.ok(world.shotgunView.arm.position.equals(sgPivots.arm), 'arm positioned at pivot');
+    assert.ok(world.shotgunView.shell.position.equals(sgPivots.shell), 'shell positioned at pivot');
+
+    // 5. buildRocketLauncher
+    world.buildRocketLauncher();
+    assert.ok(world.rocketLauncherView, 'rocketLauncherView created');
+    assert.ok(world.rocketLauncherView.root instanceof Mesh, 'rocketLauncherView root is a Mesh');
+    assert.ok(world.rocketLauncherView.warhead instanceof Mesh, 'rocketLauncherView warhead is a Mesh');
+    assert.ok(world.rocketLauncherView.hands instanceof Mesh, 'rocketLauncherView hands is a Mesh');
+    assert.ok(world.rocketLauncherView.material instanceof Material, 'rocketLauncherView material is a Material');
+    assert.ok(world.rocketLauncherView.pose, 'rocketLauncherView pose initialized');
+    assert.equal(world.rocketLauncherView.root.active, false, 'rocketLauncherView initially inactive');
+    assert.ok(sceneMeshes.includes(world.rocketLauncherView.root), 'rocketLauncherView root added to scene');
+    const rlPivots = rocketLauncherParts().pivots;
+    assert.ok(world.rocketLauncherView.warhead.position.equals(rlPivots.warhead), 'warhead positioned at pivot');
+    assert.ok(world.rocketLauncherView.hands.position.equals(rlPivots.hands), 'hands positioned at pivot');
+  },
+
+  'AC-2 weapon viewmodel update routines update sway, bob, and flash'() {
+    const target = {
+      bufferSubData() {},
+      bindBuffer() {},
+      createBuffer: () => ({}),
+      UNSIGNED_SHORT: 5123,
+      NEAREST: 9728,
+      NEAREST_MIPMAP_NEAREST: 9984,
+      CLAMP_TO_EDGE: 33071,
+    };
+    const noop = () => ({});
+    const gl = new Proxy(target, {
+      get(obj, key) {
+        if (key in obj)
+          return obj[key];
+        if (typeof key === 'string' && key === key.toUpperCase())
+          return 1;
+        return noop;
+      },
+    });
+    const world = Object.create(World.prototype);
+    world.gl = gl;
+    world.scene = { addMesh() {} };
+    world.camera = { position: new Vec3(100, 32, 200) };
+    world.sharedTexture = () => ({});
+    world.sharedTexturedMeshes = [];
+    world.bindAtlasTexture = (mesh) => mesh;
+
+    world.buildKnife();
+    world.buildChainsaw();
+    world.buildChaingun();
+    world.buildShotgun();
+    world.buildRocketLauncher();
+
+    const game = {
+      time: 1.5,
+      cam: null,
+      automap: false,
+      state: 'play',
+      player: {
+        pos: new Vec2(100, 200),
+        angle: 0.2,
+        weapon: 'knife',
+        knifeAttack: 'thrust',
+        bob: 0.5,
+        moving: 0.8,
+        recoil: 0.3,
+        switchTimer: 0,
+        switchOffset: 0,
+        cooldown: 0.1,
+        flash: 0,
+        dryFire: false,
+        kick: { pitch: 0.05, yaw: -0.02, roll: 0.01, fov: 0 },
+      },
+    };
+
+    // 1. updateKnife active and inactive
+    world.updateKnife(game);
+    assert.equal(world.knifeView.root.active, true, 'knifeView active when weapon is knife');
+    assert.ok(world.knifeView.root.position.getDistance(world.camera.position) > 0, 'knifeView root positioned near camera');
+
+    game.player.weapon = 'shotgun';
+    world.updateKnife(game);
+    assert.equal(world.knifeView.root.active, false, 'knifeView inactive when weapon differs');
+
+    game.player.weapon = 'knife';
+    game.state = 'dead';
+    world.updateKnife(game);
+    assert.equal(world.knifeView.root.active, false, 'knifeView inactive when dead');
+    game.state = 'play';
+
+    // 2. updateChainsaw active and inactive
+    game.player.weapon = 'chainsaw';
+    game.player.attacking = true;
+    world.updateChainsaw(game);
+    assert.equal(world.chainsawView.root.active, true, 'chainsawView active when weapon is chainsaw');
+    assert.ok(world.chainsawView.noseChain.rotation.x !== 0, 'noseChain rotated during attack');
+
+    game.player.weapon = 'knife';
+    world.updateChainsaw(game);
+    assert.equal(world.chainsawView.root.active, false, 'chainsawView inactive when weapon differs');
+
+    // 3. updateChaingun active with rotor rotation and muzzle flash boost
+    game.player.weapon = 'chaingun';
+    game.player.attacking = true;
+    game.player.cooldown = 0.05;
+    game.player.flash = 0.08;
+    world.updateChaingun(game);
+    assert.equal(world.chaingunView.root.active, true, 'chaingunView active when weapon is chaingun');
+    assert.ok(world.chaingunView.rotor.rotation.z !== 0, 'chaingun rotor rotated');
+    assert.ok(world.chaingunView.material.diffuse.x > 1.0, 'chaingun diffuse boosted by muzzle flash');
+
+    game.automap = true;
+    world.updateChaingun(game);
+    assert.equal(world.chaingunView.root.active, false, 'chaingunView inactive in automap');
+    game.automap = false;
+
+    // 4. updateShotgun active with pump, arm, shell translation and muzzle flash boost
+    game.player.weapon = 'shotgun';
+    game.player.cooldown = 0.2;
+    game.player.flash = 0.06;
+    game.player.shells = 10;
+    world.updateShotgun(game);
+    assert.equal(world.shotgunView.root.active, true, 'shotgunView active when weapon is shotgun');
+    assert.ok(world.shotgunView.material.diffuse.x > 1.0, 'shotgun diffuse boosted by muzzle flash');
+
+    game.cam = { x: 0, y: 0, eye: 32, lookX: 0, lookY: 0, lookEye: 0, roll: 0, zoom: 1 };
+    world.updateShotgun(game);
+    assert.equal(world.shotgunView.root.active, false, 'shotgunView inactive during film cam');
+    game.cam = null;
+
+    // 5. updateRocketLauncher active with warhead positioning and muzzle flash boost
+    game.player.weapon = 'rocket';
+    game.player.cooldown = 0.3;
+    game.player.flash = 0.07;
+    game.player.rockets = 5;
+    world.updateRocketLauncher(game);
+    assert.equal(world.rocketLauncherView.root.active, true, 'rocketLauncherView active when weapon is rocket');
+    assert.ok(world.rocketLauncherView.material.diffuse.x > 1.0, 'rocket launcher diffuse boosted by muzzle flash');
+    assert.ok(world.rocketLauncherView.warhead.position.z !== 0, 'warhead offset updated');
+
+    game.player.weapon = 'chaingun';
+    world.updateRocketLauncher(game);
+    assert.equal(world.rocketLauncherView.root.active, false, 'rocketLauncherView inactive when weapon differs');
+  },
+
+  'AC-3 world builders create crushers, barrels, and pickup views'() {
+    const target = {
+      bufferSubData() {},
+      bindBuffer() {},
+      createBuffer: () => ({}),
+      UNSIGNED_SHORT: 5123,
+      NEAREST: 9728,
+      NEAREST_MIPMAP_NEAREST: 9984,
+      CLAMP_TO_EDGE: 33071,
+    };
+    const noop = () => ({});
+    const gl = new Proxy(target, {
+      get(obj, key) {
+        if (key in obj)
+          return obj[key];
+        if (typeof key === 'string' && key === key.toUpperCase())
+          return 1;
+        return noop;
+      },
+    });
+    const sceneMeshes = [];
+    const sharedTexturedMeshes = [];
+    const world = Object.create(World.prototype);
+    world.gl = gl;
+    world.crusherViews = new Map();
+    world.scene = {
+      addMesh(mesh) {
+        sceneMeshes.push(mesh);
+      },
+    };
+    world.sharedTexture = (atlas) => ({ atlas });
+    world.sharedTexturedMeshes = sharedTexturedMeshes;
+    world.bindAtlasTexture = (mesh, atlas) => {
+      mesh.atlas = atlas;
+      return mesh;
+    };
+
+    // 1. buildCrusher
+    const crusher = { center: new Vec2(128, 256), low: 16 };
+    world.buildCrusher(crusher);
+    assert.ok(world.crusherViews.has(crusher), 'crusher registered in crusherViews');
+    const crusherMesh = world.crusherViews.get(crusher);
+    assert.ok(crusherMesh instanceof Mesh, 'crusher view is a Mesh');
+    assert.equal(crusherMesh.position.x, 128);
+    assert.equal(crusherMesh.position.y, 16);
+    assert.equal(crusherMesh.position.z, 256);
+    assert.ok(sceneMeshes.includes(crusherMesh), 'crusher added to scene');
+
+    // 2. buildBarrel
+    const barrelView = world.buildBarrel();
+    assert.ok(barrelView.root instanceof Mesh, 'barrel root is a Mesh');
+    assert.ok(barrelView.intact instanceof Mesh, 'barrel intact is a Mesh');
+    assert.ok(barrelView.wreck instanceof Mesh, 'barrel wreck is a Mesh');
+    assert.ok(barrelView.lid instanceof Mesh, 'barrel lid is a Mesh');
+    assert.ok(Array.isArray(barrelView.staves) && barrelView.staves.length > 0, 'barrel has staves');
+    assert.ok(barrelView.pose, 'barrel pose created');
+    assert.ok(sceneMeshes.includes(barrelView.root), 'barrel root added to scene');
+    assert.ok(sharedTexturedMeshes.includes(barrelView.intact), 'barrel intact tracked in sharedTexturedMeshes');
+
+    // 3. buildPickup across keycards, armors, powerups, weapons, and ammo
+    const pickupTypes = [
+      'redKey', 'yellowKey', 'blueKey',
+      'greenArmor', 'blueArmor',
+      'soulsphere', 'berserk', 'radsuit', 'nightvision',
+      'chainsaw', 'shotgun', 'chaingun', 'rocket',
+      'health', 'bullets', 'rockets', 'ammo',
+    ];
+    for (const type of pickupTypes) {
+      const pickup = { type, pos: new Vec2(64, 128), phase: 0 };
+      const view = world.buildPickup(pickup);
+      assert.ok(view.root instanceof Mesh, `pickup ${type} root is a Mesh`);
+      assert.ok(typeof view.spinSpeed === 'number', `pickup ${type} has numeric spinSpeed`);
+      assert.ok(sceneMeshes.includes(view.root), `pickup ${type} added to scene`);
+      assert.ok(sharedTexturedMeshes.includes(view.root), `pickup ${type} tracked in sharedTexturedMeshes`);
+    }
+  },
+
+  'AC-4 restoreGpu resets renderer state, clears textureCache, and restores targets'() {
+    const calls = [];
+    const target = {
+      texture: { id: 'targetTex' },
+      restore() {
+        calls.push('target.restore');
+      },
+    };
+    const glowTarget = {
+      texture: { id: 'glowTargetTex' },
+      restore() {
+        calls.push('glowTarget.restore');
+      },
+    };
+    const scene = {
+      restore() {
+        calls.push('scene.restore');
+      },
+    };
+    const down = {
+      restore() {
+        calls.push('down.restore');
+      },
+    };
+    const post = {
+      restore() {
+        calls.push('post.restore');
+      },
+    };
+    const overlay = {
+      restore() {
+        calls.push('overlay.restore');
+      },
+    };
+    const downQuad = {};
+    const quad = {};
+    const glowQuad = {};
+    const reloadedTextures = [];
+    const sharedBatch = {
+      sharedAtlas: { width: 16, height: 16 },
+      sharedTexOptions: { wrapS: 123 },
+      setSharedTexture(tex) {
+        reloadedTextures.push(tex);
+      },
+    };
+
+    const world = Object.create(World.prototype);
+    world.renderer = {
+      disable(cap) {
+        calls.push(`renderer.disable:${cap}`);
+      },
+    };
+    world.textureCache = new Map([['dummy', {}]]);
+    world.target = target;
+    world.glowTarget = glowTarget;
+    world.downQuad = downQuad;
+    world.quad = quad;
+    world.glowQuad = glowQuad;
+    world.scene = scene;
+    world.down = down;
+    world.post = post;
+    world.overlay = overlay;
+    world.sharedTexturedMeshes = [sharedBatch];
+    world.sharedTexture = (atlas, opts) => ({ atlas, opts });
+    world.lost = true;
+
+    world.restoreGpu();
+
+    assert.equal(world.lost, false, 'lost reset to false');
+    assert.equal(world.textureCache.size, 0, 'textureCache cleared');
+    assert.ok(calls.includes('renderer.disable:CULL_FACE'), 'CULL_FACE disabled');
+    assert.ok(calls.includes('target.restore'), 'target restored');
+    assert.ok(calls.includes('glowTarget.restore'), 'glowTarget restored');
+    assert.ok(calls.includes('scene.restore'), 'scene restored');
+    assert.ok(calls.includes('down.restore'), 'down scene restored');
+    assert.ok(calls.includes('post.restore'), 'post scene restored');
+    assert.ok(calls.includes('overlay.restore'), 'overlay restored');
+    assert.equal(downQuad.WebGLTexture, target.texture, 'downQuad rebound to target texture');
+    assert.equal(quad.WebGLTexture, target.texture, 'quad rebound to target texture');
+    assert.equal(glowQuad.WebGLTexture, glowTarget.texture, 'glowQuad rebound to glowTarget texture');
+    assert.equal(reloadedTextures.length, 1, 'sharedTexturedMeshes re-bound with fresh texture');
+    assert.equal(reloadedTextures[0].atlas, sharedBatch.sharedAtlas);
+  },
+
+  'AC-5 world dispose cleanly disposes renderer resources'() {
+    let disposed = false;
+    const world = Object.create(World.prototype);
+    world.renderer = {
+      dispose() {
+        disposed = true;
+      },
+    };
+
+    assert.doesNotThrow(() => world.dispose(), 'world.dispose executes cleanly without error');
+    assert.equal(disposed, true, 'renderer.dispose was called');
+  },
 };
 
 function pausedHud() {
