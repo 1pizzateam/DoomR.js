@@ -6,6 +6,7 @@ import { faceCellUv, faceFrame, facePlacement } from './face.js';
 import { AMMO_FLASH_DURATION, DIFFICULTIES, DIFFICULTY_ORDER } from './game.js';
 import { AMMO_TYPES } from './ammo.js';
 import { DEFAULT_HINT_LINES, DEFAULT_SELECT_HINT, defaultActionLabel } from './keymap.js';
+import { MAIN_MENU_ITEMS } from './menu.js';
 import { HIT_BACK, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP } from './controls.js';
 import { WEAPON_SLOTS, WEAPONS, weaponCellUv, weaponFrame, weaponPlacement } from './weapon.js';
 
@@ -48,7 +49,6 @@ const CONTROLS_ROW_H = 20;
 const CONTROLS_TOP = 64;
 const CONTROLS_HEADER_H = 64;
 const CONTROLS_FOOTER_H = 72;
-const CONTROLS_ENTRY_TITLE_DY = 80;
 const CONTROLS_ENTRY_PAUSED_DY = 58;
 const RESUME_FALLBACK_TEXT = 'click or press ENTER to resume';
 const CONTROLS_LEGEND = '↑↓←→ select · ENTER / click rebind · DEL clear · R reset row · ESC back';
@@ -147,6 +147,25 @@ const layerDiamond = (layer, cx, cy, r, color, alpha = 1) => {
 const CONTROLS_LAYOUT = {
   boxX: 0, boxY: 0, boxW: 0, boxH: 0, rowsTop: 0, footerTop: 0, visibleRows: 4, rowH: CONTROLS_ROW_H,
   nameX: 0, slot0X: 0, slot1X: 0, slotHalf: 0, resetX: 0, backX: 0, buttonY: 0,
+};
+
+const MENU_BUTTON_H = 34;
+const MENU_BUTTON_GAP = 12;
+const MENU_LAYOUT = { width: -1, height: -1, buttonW: 0, buttonH: MENU_BUTTON_H, gap: MENU_BUTTON_GAP, x: 0, tops: [0, 0] };
+const MENU_FRAME = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+/** Shared by drawing and hit-testing so they never drift. */
+export const layoutMainMenu = (width, height) => {
+  const L = MENU_LAYOUT;
+  if (L.width === width && L.height === height)
+    return L;
+  L.width = width;
+  L.height = height;
+  L.buttonW = Utils.clamp(width - 48, 200, 260);
+  L.x = width / 2 - L.buttonW / 2;
+  L.tops[0] = height / 2 + 36;
+  L.tops[1] = L.tops[0] + MENU_BUTTON_H + MENU_BUTTON_GAP;
+  return L;
 };
 
 const HINT_TITLE_STYLE = Object.freeze({ size: 11, align: 'left', alpha: 0.55, weight: 800, glow: 3 });
@@ -269,6 +288,9 @@ export class Hud {
     this.selectHint = DEFAULT_SELECT_HINT;
     this.controlsView = null;
     this.controlsEntryText = 'CONTROLS · F1';
+    this.controlsKeyLabel = 'F1';
+    this.optionsText = 'OPTIONS · F1';
+    this.mainMenuView = { cursor: 0, items: MAIN_MENU_ITEMS };
     this.unboundText = '';
     this.pauseKeyLabel = '';
     this.resumeText = RESUME_FALLBACK_TEXT;
@@ -284,6 +306,8 @@ export class Hud {
 
   setControlsStatus(label, unboundCount) {
     this.controlsEntryText = `CONTROLS · ${label}`;
+    this.controlsKeyLabel = label;
+    this.optionsText = `OPTIONS · ${label}`;
     this.unboundText = unboundCount > 0 ? `${unboundCount} controls unbound — open CONTROLS` : '';
   }
 
@@ -1511,14 +1535,45 @@ export class Hud {
     return HIT_NONE;
   }
 
+  menuHitAt(pos) {
+    const L = layoutMainMenu(this.width, this.height);
+    if (pos.x < L.x || pos.x > L.x + L.buttonW)
+      return -1;
+    for (let i = 0; i < 2; i++)
+      if (pos.y >= L.tops[i] && pos.y < L.tops[i] + L.buttonH)
+        return i;
+    return -1;
+  }
+
+  drawMainMenu() {
+    const view = this.mainMenuView;
+    if (!view)
+      return;
+    const L = layoutMainMenu(this.width, this.height);
+    const cx = this.width / 2;
+    const F = MENU_FRAME;
+    for (let i = 0; i < view.items.length; i++) {
+      const focus = view.cursor === i;
+      const top = L.tops[i];
+      const left = L.x;
+      const right = L.x + L.buttonW;
+      const bottom = top + L.buttonH;
+      F[0] = left; F[1] = top; F[2] = right; F[3] = top; F[4] = right; F[5] = bottom;
+      F[6] = left; F[7] = bottom; F[8] = left; F[9] = top;
+      this.canvasLine(F, focus ? ORANGE : BLUE, focus ? 0.85 : 0.45, 1.5, focus ? 10 : 4);
+      const label = i === 1 ? this.optionsText : view.items[i].label;
+      this.text(label, cx, top + 22, focus ? ORANGE : GREEN, { size: 14, align: 'center', weight: focus ? 800 : 600, alpha: focus ? 1 : 0.8, glow: focus ? 10 : 3 });
+      if (focus) {
+        this.text('▸', left + 14, top + 22, ORANGE, { size: 14, align: 'center', glow: 8 });
+        this.text('◂', right - 14, top + 22, ORANGE, { size: 14, align: 'center', glow: 8 });
+      }
+    }
+  }
+
   controlsButtonAt(pos, game) {
-    let dy;
-    if (game.state === 'title' && !game.selectingDifficulty)
-      dy = CONTROLS_ENTRY_TITLE_DY;
-    else if (game.state === 'paused')
-      dy = CONTROLS_ENTRY_PAUSED_DY;
-    else
+    if (game.state !== 'paused')
       return false;
+    const dy = CONTROLS_ENTRY_PAUSED_DY;
     const cx = this.width / 2;
     const cy = this.height / 2;
     return Math.abs(pos.x - cx) <= 110 && pos.y >= cy + dy - 14 && pos.y <= cy + dy + 6;
@@ -1615,11 +1670,10 @@ export class Hud {
       if (!game.selectingDifficulty) {
         this.text('DOOMR', cx, cy - 60, BLUE, { size: Math.min(110, width / 7), align: 'center', weight: 800, glow: 22 });
         this.text('Rip and tear', cx, cy - 20, GREEN, { size: 15, align: 'center', alpha: 0.9 });
-        this.text('click or press ENTER to start', cx, cy + 56, ORANGE, { size: 16, align: 'center', alpha: 0.5 + blink * 0.5 });
-        this.text(this.controlsEntryText, cx, cy + CONTROLS_ENTRY_TITLE_DY, GREEN, { size: 13, align: 'center', alpha: 0.85 });
-        const panelH = this.drawControlHints(cx, cy + 100);
+        this.drawMainMenu();
+        const panelH = this.drawControlHints(cx, cy + 140);
         if (this.unboundText)
-          this.text(this.unboundText, cx, cy + 100 + panelH + 16, RED, { size: 12, align: 'center' });
+          this.text(this.unboundText, cx, cy + 140 + panelH + 16, RED, { size: 12, align: 'center' });
       } else {
         this.text('DOOMR', cx, cy - 116, BLUE, { size: Math.min(84, width / 8), align: 'center', weight: 800, glow: 22 });
         const boxW = Utils.clamp(width - 48, 280, 390);
