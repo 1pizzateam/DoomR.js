@@ -122,6 +122,41 @@ const checks = [
       assert.match(worldSrc, declPattern, `Module-level scratch object ${arg} definition not found`);
     }
   }],
+  ['AC-2 syncViews prune loop does not allocate entry tuples', () => {
+    const syncViewsBody = extractMethodBody(worldSrc, 'syncViews(');
+    assert.doesNotMatch(syncViewsBody, /for\s*\(\s*const\s*\[\s*\w+\s*,\s*\w+\s*\]\s*of\s*map\b/, 'syncViews prune loop must not allocate entry tuples via for (const [entity, view] of map)');
+    assert.match(syncViewsBody, /map\.forEach\s*\(/, 'syncViews prune sweep should iterate via map.forEach');
+  }],
+  ['AC-3 updateEnemy supplies hoisted animation context without object literal', () => {
+    const updateEnemyBody = extractMethodBody(worldSrc, 'updateEnemy(');
+    assert.doesNotMatch(updateEnemyBody, /animate\([^,]+,\s*[^,]+,\s*\{/, 'updateEnemy must not pass an inline object literal to animate');
+    assert.match(updateEnemyBody, /animate\([^,]+,\s*[^,]+,\s*(?:this\.animCtx|scratchAnimCtx|animCtx)\)/, 'updateEnemy must supply a hoisted scratch animation context object to animate');
+  }],
+  ['AC-1 syncViews callbacks reuse memoized handlers without per-frame closures', () => {
+    const viewNames = ['enemy', 'pickup', 'cache', 'barrel', 'shot', 'effect'];
+    for (const name of viewNames) {
+      const call = extractSyncViewsCall(worldSrc, name);
+      const eqMatches = call.match(/\?\?=/g);
+      assert.equal(eqMatches?.length, 2, `syncViews for ${name}Views should match ??= twice`);
+    }
+  }],
+  ['AC-4 weapon viewmodels mutate hoisted scratch options', () => {
+    const weaponPoses = [
+      ['chainsawPose', 'updateChainsaw('],
+      ['chaingunPose', 'updateChaingun('],
+      ['shotgunPose', 'updateShotgun('],
+      ['rocketLauncherPose', 'updateRocketLauncher('],
+      ['knifePose', 'updateKnife('],
+    ];
+    for (const [poseFn, methodDecl] of weaponPoses) {
+      const body = extractMethodBody(worldSrc, methodDecl);
+      const poseCallMatch = new RegExp(`\\b${poseFn}\\s*\\(\\s*([^,\\s]+)`).exec(body);
+      assert.ok(poseCallMatch, `${poseFn} call not found in ${methodDecl}`);
+      const arg = poseCallMatch[1].trim();
+      assert.match(arg, /^scratch\w+$/, `${poseFn} argument "${arg}" should be a scratch identifier`);
+      assert.ok(!arg.startsWith('{'), `${poseFn} argument "${arg}" must not be an object literal`);
+    }
+  }],
   ['AC-5 door marks reuse scratch marks', () => {
     const syncDoorMarksBody = extractMethodBody(worldSrc, 'syncDoorMarks(');
     assert.ok(syncDoorMarksBody.includes('scratchHoleMark'), 'syncDoorMarks should use scratchHoleMark');
