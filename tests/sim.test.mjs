@@ -15445,6 +15445,7 @@ const tests = {
     const cy = hud.height / 2;
     const game = { state: 'title', selectingDifficulty: false };
     assert.equal(hud.controlsButtonAt(new Vec2(cx, cy + 80), game), false);
+    assert.equal(hud.controlsButtonAt(new Vec2(cx + 200, cy + 80), game), false);
 
     game.state = 'paused';
     assert.equal(hud.controlsButtonAt(new Vec2(cx, cy + 58), game), true);

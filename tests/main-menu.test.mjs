@@ -131,12 +131,13 @@ const checks = [
   }],
 ];
 
+console.log('# file: tests/main-menu.test.mjs');
 for (const [name, fn] of checks) {
   try {
     fn();
-    console.log(`ok - ${name}`);
+    console.log(`ok   ${name}`);
   } catch (err) {
-    console.error(`not ok - ${name}`);
+    console.error(`FAIL ${name}`);
     console.error(err);
     process.exitCode = 1;
   }
