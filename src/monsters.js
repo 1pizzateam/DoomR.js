@@ -7,6 +7,7 @@ const scratchNormal = new Vec3();
 const scratchEdgeA = new Vec3();
 const scratchEdgeB = new Vec3();
 const scratchVec2 = new Vec2();
+const scratchMood = { idle: false, attack: 0, roar: 0, pain: 0, moving: 0, anger: 0, swing: 0, t: 0 };
 
 /**
  * 3D Articulated Horror Monsters:
@@ -1238,7 +1239,7 @@ function approachAngle(view, key, target, rate, dt) {
 }
 
 /** What a monster is doing, as smooth 0..1 numbers every animation shares. */
-function mood(view, enemy, c, windupTime) {
+function mood(view, enemy, c, windupTime, out = scratchMood) {
   const idle = enemy.state === 'idle';
   const attack = approach(view, 'attack', enemy.windup > 0 ? 1 - enemy.windup / windupTime : 0, enemy.windup > 0 ? 14 : 24, c.dt);
   const roarTime = enemy.def.roar ?? 0;
@@ -1246,7 +1247,15 @@ function mood(view, enemy, c, windupTime) {
   const pain = approach(view, 'pain', enemy.hurt > 0 || enemy.pain > 0 ? 1 : 0, 26, c.dt);
   const moving = approach(view, 'moving', idle || enemy.windup > 0 || enemy.roar > 0 ? 0 : 1, 9, c.dt);
   const anger = idle ? 0.25 : Math.max(0.7, attack, roar);
-  return { idle, attack, roar, pain, moving, anger, swing: Math.sin(enemy.walk) * moving, t: c.time + enemy.phase };
+  out.idle = idle;
+  out.attack = attack;
+  out.roar = roar;
+  out.pain = pain;
+  out.moving = moving;
+  out.anger = anger;
+  out.swing = Math.sin(enemy.walk) * moving;
+  out.t = c.time + enemy.phase;
+  return out;
 }
 
 function setMonsterGlare(view, glare) {
