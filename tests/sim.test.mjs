@@ -13699,6 +13699,221 @@ const tests = {
       assert.equal(view.settledY, enemy.pos.y, `${type} settled corpse y preserved`);
     }
   },
+
+  'AC-1 Input down query returns true if any code held and false otherwise'() {
+    withRig((inp) => {
+      // Empty keys
+      assert.equal(inp.down(), false, 'calling down() with no arguments returns false');
+      assert.equal(inp.down('moveForward'), false, 'single unheld key returns false');
+      assert.equal(inp.down('moveForward', 'fire'), false, 'multiple unheld keys return false');
+
+      // Populate keys
+      inp.keys.add('moveForward');
+      inp.keys.add('fire');
+
+      // Query single matching
+      assert.equal(inp.down('moveForward'), true, 'matching single held key returns true');
+      assert.equal(inp.down('fire'), true, 'matching second held key returns true');
+
+      // Query multiple with partial match
+      assert.equal(inp.down('strafeLeft', 'fire'), true, 'query with one matching and one unheld key returns true');
+      assert.equal(inp.down('moveForward', 'strafeRight'), true, 'query with held key first returns true');
+
+      // Query multiple with no match
+      assert.equal(inp.down('strafeLeft', 'strafeRight', 'jump'), false, 'query with only unheld keys returns false');
+
+      // Query empty arguments on populated keys
+      assert.equal(inp.down(), false, 'calling down() with no arguments on populated keys returns false');
+    });
+  },
+
+  'AC-2 Input axis resolves opposing simultaneous inputs by recency'() {
+    withRig((inp) => {
+      // Neither pressed
+      assert.equal(inp.axis('moveForward', 'moveBack'), 0, 'returns 0 when neither key is pressed');
+
+      // Only positive pressed
+      inp.keys.add('moveForward');
+      assert.equal(inp.axis('moveForward', 'moveBack'), 1, 'returns 1 when only positive key is pressed');
+
+      // Only negative pressed
+      inp.keys.delete('moveForward');
+      inp.keys.add('moveBack');
+      assert.equal(inp.axis('moveForward', 'moveBack'), -1, 'returns -1 when only negative key is pressed');
+
+      // Opposing simultaneous: forward registered first, back registered second -> -1
+      inp.keys.clear();
+      inp.keys.add('moveForward');
+      inp.keys.add('moveBack');
+      assert.equal(inp.axis('moveForward', 'moveBack'), -1, 'negative registered more recently than positive returns -1');
+
+      // Opposing simultaneous: back registered first, forward registered second -> 1
+      inp.keys.delete('moveForward');
+      inp.keys.add('moveForward');
+      assert.equal(inp.axis('moveForward', 'moveBack'), 1, 'positive registered more recently than negative returns 1');
+    });
+  },
+
+  'AC-3 Input raw mode mouse wheel listeners push wheel records with direction signs'() {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    const canvasHandlers = {};
+    const mockCanvas = {
+      addEventListener(name, handler) {
+        canvasHandlers[name] = handler;
+      },
+    };
+    globalThis.document = { addEventListener() {}, pointerLockElement: null };
+    globalThis.window = { addEventListener() {} };
+    try {
+      const inp = new Input(mockCanvas, new Keymap({ storage: null, navigator: null }));
+
+      // Default mode (rawMode: false) -> wheel events are ignored
+      let defaultPrevented = false;
+      canvasHandlers.wheel?.({ deltaY: 100, preventDefault() { defaultPrevented = true; } });
+      assert.equal(defaultPrevented, false, 'wheel event ignored when not in raw mode');
+      assert.equal(inp.nextRaw(), null, 'no raw events pushed when raw mode is inactive');
+
+      // Switch to raw mode
+      inp.setRawMode(true);
+
+      // Dispatch positive deltaY
+      let posPrevented = false;
+      canvasHandlers.wheel?.({ deltaY: 120, preventDefault() { posPrevented = true; } });
+      assert.equal(posPrevented, true, 'preventDefault called for positive wheel event');
+
+      // Dispatch negative deltaY
+      let negPrevented = false;
+      canvasHandlers.wheel?.({ deltaY: -80, preventDefault() { negPrevented = true; } });
+      assert.equal(negPrevented, true, 'preventDefault called for negative wheel event');
+
+      // Dispatch zero deltaY
+      let zeroPrevented = false;
+      canvasHandlers.wheel?.({ deltaY: 0, preventDefault() { zeroPrevented = true; } });
+      assert.equal(zeroPrevented, true, 'preventDefault called for zero wheel event');
+
+      // Read back records via nextRaw()
+      const rec1 = inp.nextRaw();
+      assert.deepStrictEqual(rec1, { kind: 'wheel', code: '', key: '', repeat: false, delta: 1 }, 'rec1 has delta 1');
+
+      const rec2 = inp.nextRaw();
+      assert.deepStrictEqual(rec2, { kind: 'wheel', code: '', key: '', repeat: false, delta: -1 }, 'rec2 has delta -1');
+
+      const rec3 = inp.nextRaw();
+      assert.deepStrictEqual(rec3, { kind: 'wheel', code: '', key: '', repeat: false, delta: 0 }, 'rec3 has delta 0');
+
+      assert.equal(inp.nextRaw(), null, 'ring buffer is now empty');
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
+  },
+
+  'AC-4 Input locked lock and unlock interface with canvas pointer lock APIs'() {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    let exitPointerLockCalls = 0;
+    const docMock = {
+      addEventListener() {},
+      pointerLockElement: null,
+      exitPointerLock() {
+        exitPointerLockCalls++;
+      },
+    };
+    globalThis.document = docMock;
+    globalThis.window = { addEventListener() {} };
+    try {
+      let requestPointerLockCalls = 0;
+      let rejectPromiseCatchCalled = false;
+      const mockCanvas = {
+        addEventListener() {},
+        requestPointerLock() {
+          requestPointerLockCalls++;
+          const p = Promise.reject(new Error('pointer lock denied'));
+          return {
+            catch(fn) {
+              rejectPromiseCatchCalled = true;
+              return p.catch(fn);
+            },
+          };
+        },
+      };
+
+      const inp = new Input(mockCanvas, new Keymap({ storage: null, navigator: null }));
+
+      // locked getter
+      assert.equal(inp.locked, false, 'locked is false when pointerLockElement is null');
+      const otherElement = {};
+      docMock.pointerLockElement = otherElement;
+      assert.equal(inp.locked, false, 'locked is false when pointerLockElement is another element');
+      docMock.pointerLockElement = mockCanvas;
+      assert.equal(inp.locked, true, 'locked is true when pointerLockElement === canvas');
+
+      // unlock() when locked is true -> invokes exitPointerLock
+      inp.unlock();
+      assert.equal(exitPointerLockCalls, 1, 'unlock() invokes exitPointerLock when locked is true');
+
+      // unlock() when locked is false -> does NOT invoke exitPointerLock
+      docMock.pointerLockElement = null;
+      assert.equal(inp.locked, false);
+      inp.unlock();
+      assert.equal(exitPointerLockCalls, 1, 'unlock() does not invoke exitPointerLock when locked is false');
+
+      // lock() with promise rejection -> safely handled
+      assert.doesNotThrow(() => inp.lock(), 'lock() does not throw on rejected promise');
+      assert.equal(requestPointerLockCalls, 1, 'canvas.requestPointerLock was called');
+      assert.equal(rejectPromiseCatchCalled, true, 'rejection was caught via promise.catch');
+
+      // lock() with synchronous exception -> safely handled
+      const throwingCanvas = {
+        addEventListener() {},
+        requestPointerLock() {
+          throw new Error('SecurityError');
+        },
+      };
+      const inpThrow = new Input(throwingCanvas, new Keymap({ storage: null, navigator: null }));
+      assert.doesNotThrow(() => inpThrow.lock(), 'lock() does not throw on synchronous exception');
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
+  },
+
+  'AC-5 Input releaseMetaHeld and syncMeta release meta keys and clear metaHeld'() {
+    withInput((inp, down, up) => {
+      const keyboardUpCalls = [];
+      const origUp = inp.keyboard.up.bind(inp.keyboard);
+      inp.keyboard.up = (payload) => {
+        keyboardUpCalls.push(payload.which);
+        return origUp(payload);
+      };
+
+      // Populate metaHeld directly
+      inp.metaHeld.add(65);
+      inp.metaHeld.add(87);
+
+      // Call releaseMetaHeld
+      inp.releaseMetaHeld();
+      assert.equal(inp.metaHeld.size, 0, 'metaHeld is cleared after releaseMetaHeld');
+      assert.ok(keyboardUpCalls.includes(91), 'keyboard.up dispatched for 91');
+      assert.ok(keyboardUpCalls.includes(93), 'keyboard.up dispatched for 93');
+      assert.ok(keyboardUpCalls.includes(65), 'keyboard.up dispatched for which 65');
+      assert.ok(keyboardUpCalls.includes(87), 'keyboard.up dispatched for which 87');
+
+      // Test syncMeta(event) when metaKey is false and metaHeld has entries
+      keyboardUpCalls.length = 0;
+      inp.metaHeld.add(68);
+      inp.syncMeta({ metaKey: false });
+      assert.equal(inp.metaHeld.size, 0, 'metaHeld is cleared by syncMeta when metaKey is false');
+      assert.ok(keyboardUpCalls.includes(68), 'keyboard.up dispatched for 68 during syncMeta');
+
+      // Test syncMeta(event) when metaKey is false and 91 is in heldWhich
+      keyboardUpCalls.length = 0;
+      inp.heldWhich.add(91);
+      inp.syncMeta({ metaKey: false });
+      assert.ok(keyboardUpCalls.includes(91), 'keyboard.up dispatched when 91 was in heldWhich');
+    });
+  },
 };
 
 function pausedHud() {
