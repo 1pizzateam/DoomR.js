@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { Mat4 } from '@1pizzateam/spock';
+import { Circ, Mat4, Rect } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { ACID_PIT_DEPTH, CACHE_LID_TIME, CACHE_OUTDOOR_LINK, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
@@ -12,6 +12,21 @@ import { validateSong } from '@1pizzateam/groovr';
 import { FADE_IN, FADE_OUT, Music, SONGS } from '../src/music.js';
 import { HOLE_VARIANTS, holeQuad, IMPACT_CELL_COUNT, IMPACT_CELLS, impactAtlas, impactCellUv, SLASH_VARIANTS, SPARK_FRAMES, SPARK_VARIANTS } from '../src/impacts.js';
 import { mulberry32 } from '../src/rng.js';
+
+const flatPoints = (pts) => pts.flatMap((p) => [p.x, p.y]);
+const pointList = (flat) => {
+  const out = [];
+  for (let i = 0; i < flat.length; i += 2)
+    out.push(new Vec2(flat[i], flat[i + 1]));
+  return out;
+};
+const edgeRect = (x0, y0, x1, y1) => {
+  const r = new Rect(new Vec2(x1 - x0, y1 - y0), new Vec2((x0 + x1) / 2, (y0 + y1) / 2));
+  r.topLeftCorner.setScalar(x0, y0);
+  r.bottomRightCorner.setScalar(x1, y1);
+  return r;
+};
+const rectBox = (r) => ({ x: r.topLeftCorner.x, y: r.topLeftCorner.y, w: r.size.x, h: r.size.y });
 
 const vecMark = ({ x, y, z, nx, ny, ...rest }) => ({ pos: new Vec3(x, y, z), normal: new Vec2(nx, ny), ...rest });
 import { LEVELS } from '../src/levels.js';
@@ -382,7 +397,7 @@ const tests = {
 
   'AC-7 hud drawBlood draws the baseline pixel rectangles with translucent fade'() {
     const drawn = [];
-    const hud = new Hud({ width: 800, height: 600, getContext: () => ({}) }, { crisp: { sprites: { quad(x0, y0, x1, y1, uv, a) { drawn.push({ x0, y0, x1, y1, a }); } } } });
+    const hud = new Hud({ width: 800, height: 600, getContext: () => ({}) }, { crisp: { sprites: { quad(r, uv, a) { drawn.push({ x0: r.topLeftCorner.x, y0: r.topLeftCorner.y, x1: r.bottomRightCorner.x, y1: r.bottomRightCorner.y, a }); } } } });
     hud.width = 800;
     hud.height = 600;
     hud.drawBlood({ blood: { splats: [{ x: 0.5, y: 0.4, size: 50, age: 2, life: 4, drip: 120, seed: 42 }] } });
@@ -3489,7 +3504,7 @@ const tests = {
       {
         crisp: {
           sprites: {
-            quad(_x0, _y0, _x1, _y1, _uv, a) {
+            quad(_rect, _uv, a) {
               drawnAlphas.push(a);
             },
           },
@@ -3592,11 +3607,13 @@ const tests = {
     const idleFrames = new Set([0, 1, 2, 3, 4, 5].map((s) => faceFrame({ health: 100, time: s / 1.15 + 0.01 })));
     assert.ok(idleFrames.has(FACE_POSES.center) && idleFrames.has(FACE_POSES.left) && idleFrames.has(FACE_POSES.right), 'glances left and right while idle');
 
-    const calm = facePlacement({ width: 1280, height: 760, hurt: 0 });
-    const jolted = facePlacement({ width: 1280, height: 760, hurt: 0.25 });
-    assert.equal(calm.x1 - calm.x0, FACE_CELL_W * calm.pixel);
-    assert.equal(calm.y1 - calm.y0, FACE_CELL_H * calm.pixel);
-    assert.ok(jolted.x0 !== calm.x0 || jolted.y0 !== calm.y0, 'taking damage jolts the portrait box');
+    const calm = facePlacement(new Vec2(1280, 760), 0);
+    const calmX = calm.rect.topLeftCorner.x;
+    const calmY = calm.rect.topLeftCorner.y;
+    assert.equal(calm.rect.size.x, FACE_CELL_W * calm.pixel);
+    assert.equal(calm.rect.size.y, FACE_CELL_H * calm.pixel);
+    const jolted = facePlacement(new Vec2(1280, 760), 0.25, { rect: new Rect(), pixel: 0 });
+    assert.ok(jolted.rect.topLeftCorner.x !== calmX || jolted.rect.topLeftCorner.y !== calmY, 'taking damage jolts the portrait box');
     const [u0, v0, u1, v1] = faceCellUv(3);
     assert.ok(u0 > 3 / FACE_FRAME_COUNT && u1 < 4 / FACE_FRAME_COUNT && v0 === 0 && v1 === 1);
 
@@ -4481,13 +4498,13 @@ const tests = {
       clear() {},
       glow: {
         line(pts, col, alpha) {
-          glowLines.push({ pts, col, alpha });
+          glowLines.push({ pts: flatPoints(pts), col, alpha });
         },
       },
       crisp: {
         fillRect() {},
-        rectLine(x, y, w, h, col, alpha) {
-          rectLines.push({ x, y, w, h, col, alpha });
+        rectLine(rect, col, alpha) {
+          rectLines.push({ ...rectBox(rect), col, alpha });
         },
         line() {},
         circleLine() {},
@@ -4819,7 +4836,7 @@ const tests = {
     mockHud.overlay = {
       crisp: {
         weapon: {
-          quad(_x0, _y0, _x1, _y1, uv) {
+          quad(_rect, uv) {
             recordedUvs.push(uv.slice());
           },
         },
@@ -5193,14 +5210,14 @@ const tests = {
         line() {},
       },
       crisp: {
-        fillRect(x, y, w, h, col) {
-          fills.push({ x, y, w, h, col });
+        fillRect(rect, col) {
+          fills.push({ ...rectBox(rect), col });
         },
-        rectLine(x, y, w, h, col, alpha) {
-          rectLines.push({ x, y, w, h, col, alpha });
+        rectLine(rect, col, alpha) {
+          rectLines.push({ ...rectBox(rect), col, alpha });
         },
         line(pts, col, alpha) {
-          crispLines.push({ pts, col, alpha });
+          crispLines.push({ pts: flatPoints(pts), col, alpha });
         },
         circleLine() {},
         weapon: {
@@ -6196,7 +6213,7 @@ const tests = {
     fakeHud.overlay = {
       crisp: {
         weapon: {
-          quad: (...args) => quadCalls.push(args),
+          quad: (rect, uv, bright) => quadCalls.push([rect.topLeftCorner.x, rect.topLeftCorner.y, rect.bottomRightCorner.x, rect.bottomRightCorner.y, uv, bright]),
         },
       },
     };
@@ -9159,7 +9176,7 @@ const tests = {
       glow: { line() {} },
       crisp: {
         fillRect() {},
-        rectLine(x, y, w, h, col, alpha) { markers.push({ x, y, w, h, col, alpha }); },
+        rectLine(rect, col, alpha) { markers.push({ ...rectBox(rect), col, alpha }); },
         line() {},
         circleLine() {},
         weapon: { quad() {} },
@@ -10629,8 +10646,8 @@ const tests = {
       glow: { line() {} },
       crisp: {
         fillRect() {},
-        rectLine(x, y, w, h, color, alpha) {
-          rects.push({ x, y, w, h, color: [...color], alpha });
+        rectLine(rect, color, alpha) {
+          rects.push({ ...rectBox(rect), color: [...color], alpha });
         },
         line() {},
         circleLine() {},
@@ -10696,8 +10713,8 @@ const tests = {
       glow: { line() {} },
       crisp: {
         fillRect() {},
-        rectLine(x, y, w, h) {
-          rects.push({ y, h });
+        rectLine(rect) {
+          rects.push({ y: rect.topLeftCorner.y, h: rect.size.y });
         },
         line() {},
         circleLine() {},
@@ -10867,14 +10884,14 @@ const tests = {
     assert.equal(sprite.positions.length, 12);
     assert.equal(sprite.brights.length, 18);
     assert.equal(sprite.uvs.length, 12);
-    sprite.quad(10, 20, 30, 50, [0.25, 0.5, 0.75, 1], 0.5);
+    sprite.quad(edgeRect(10, 20, 30, 50), [0.25, 0.5, 0.75, 1], 0.5);
     assert.equal(sprite.count, 6);
     assert.deepEqual(Array.from(sprite.positions), [10, 50, 30, 50, 30, 20, 10, 50, 30, 20, 10, 20]);
     assert.deepEqual(Array.from(sprite.uvs), [0.25, 0.5, 0.75, 0.5, 0.75, 1, 0.25, 0.5, 0.75, 1, 0.25, 1]);
     for (const v of [0, 3, 6, 9, 12, 15])
       assert.equal(sprite.brights[v], 0.5);
     const before = [Array.from(sprite.positions), Array.from(sprite.uvs), Array.from(sprite.brights)];
-    sprite.quad(1, 2, 3, 4, [0, 0, 1, 1], 1);
+    sprite.quad(edgeRect(1, 2, 3, 4), [0, 0, 1, 1], 1);
     assert.equal(sprite.count, 6);
     assert.deepEqual([Array.from(sprite.positions), Array.from(sprite.uvs), Array.from(sprite.brights)], before);
     sprite.clear();
@@ -10894,16 +10911,17 @@ const tests = {
     assert.equal(lines.count, 0);
     assert.equal(fills.mesh.active, false);
     assert.equal(lines.mesh.active, false);
-    fills.vertex(1, 2, [0.25, 0.5, 0.75]);
-    fills.vertex(3, 4, [1, 0, 0.5]);
+    fills.vertex(new Vec2(1, 2), [0.25, 0.5, 0.75]);
+    fills.vertex(new Vec2(3, 4), [1, 0, 0.5]);
     assert.equal(fills.count, 2);
     assert.deepEqual(Array.from(fills.positions.subarray(0, 4)), [1, 2, 3, 4]);
     assert.deepEqual(Array.from(fills.colors.subarray(0, 6)), [0.25, 0.5, 0.75, 1, 0, 0.5]);
     const shared = [0.5, 0.5, 0.5];
+    const at = new Vec2();
     for (let i = 2; i < 96; i++)
-      fills.vertex(i, i, shared);
+      fills.vertex(at.setScalar(i, i), shared);
     assert.equal(fills.count, 96);
-    fills.vertex(999, 999, shared);
+    fills.vertex(at.setScalar(999, 999), shared);
     assert.equal(fills.count, 96);
     assert.equal(fills.positions[190], 95);
     assert.equal(fills.positions[191], 95);
@@ -10930,46 +10948,46 @@ const tests = {
     const { fills, lines } = layer;
     const pos = (buffer) => Array.from(buffer.positions.subarray(0, buffer.count * 2));
 
-    layer.line([0, 0, 10, 0, 10, 10], [1, 0.5, 0.25], 0.5);
+    layer.line(pointList([0, 0, 10, 0, 10, 10]), [1, 0.5, 0.25], 0.5);
     assert.equal(lines.count, 4);
     assert.deepEqual(pos(lines), [0, 0, 10, 0, 10, 0, 10, 10]);
     for (let i = 0; i < 4; i++)
       assert.deepEqual(Array.from(lines.colors.subarray(i * 3, i * 3 + 3)), [0.5, 0.25, 0.125]);
     layer.clear();
-    layer.line([0, 0, 10, 0], [1, 0.5, 0.25]);
+    layer.line(pointList([0, 0, 10, 0]), [1, 0.5, 0.25]);
     assert.deepEqual(Array.from(lines.colors.subarray(0, 3)), [1, 0.5, 0.25]);
     layer.clear();
-    layer.line([0, 0, 1, 1], [1, 1, 1]);
+    layer.line(pointList([0, 0, 1, 1]), [1, 1, 1]);
     assert.equal(lines.count, 2);
     layer.clear();
-    layer.line([0, 0], [1, 1, 1]);
+    layer.line(pointList([0, 0]), [1, 1, 1]);
     assert.equal(lines.count, 0);
 
-    layer.rectLine(2, 4, 6, 8, [1, 1, 1]);
+    layer.rectLine(edgeRect(2, 4, 8, 12), [1, 1, 1]);
     assert.equal(lines.count, 8);
     assert.deepEqual(pos(lines), [2, 4, 8, 4, 8, 4, 8, 12, 8, 12, 2, 12, 2, 12, 2, 4]);
     layer.clear();
 
-    layer.circleLine(100, 50, 20, [1, 1, 1], 1, 8);
+    layer.circleLine(new Circ(20, new Vec2(100, 50)), [1, 1, 1], 1, 8);
     assert.equal(lines.count, 16);
     for (let i = 0; i < lines.count; i++)
       assert.ok(Math.abs(Math.hypot(lines.positions[i * 2] - 100, lines.positions[i * 2 + 1] - 50) - 20) < 1e-4);
     layer.clear();
-    layer.circleLine(100, 50, 20, [1, 1, 1]);
+    layer.circleLine(new Circ(20, new Vec2(100, 50)), [1, 1, 1]);
     assert.equal(lines.count, 20);
     layer.clear();
 
-    layer.fill([0, 0, 4, 0, 4, 4, 0, 4], [0.5, 0.25, 1]);
+    layer.fill(pointList([0, 0, 4, 0, 4, 4, 0, 4]), [0.5, 0.25, 1]);
     assert.equal(fills.count, 6);
     assert.deepEqual(pos(fills), [0, 0, 4, 0, 4, 4, 0, 0, 4, 4, 0, 4]);
     layer.clear();
-    layer.fill([0, 0, 4, 0, 4, 4], [1, 1, 1]);
+    layer.fill(pointList([0, 0, 4, 0, 4, 4]), [1, 1, 1]);
     assert.equal(fills.count, 3);
     layer.clear();
-    layer.fill([0, 0, 4, 0], [1, 1, 1]);
+    layer.fill(pointList([0, 0, 4, 0]), [1, 1, 1]);
     assert.equal(fills.count, 0);
 
-    layer.fillRect(1, 2, 3, 4, [1, 0, 0]);
+    layer.fillRect(edgeRect(1, 2, 4, 6), [1, 0, 0]);
     assert.equal(fills.count, 6);
     assert.deepEqual(pos(fills), [1, 2, 4, 2, 4, 6, 1, 2, 4, 6, 1, 6]);
 
@@ -10986,7 +11004,7 @@ const tests = {
       assert.equal(fills.mesh.active, true);
       assert.equal(lines.mesh.active, false);
       assert.equal(uploads.length, 2);
-      layer.line([0, 0, 1, 1], [1, 1, 1]);
+      layer.line(pointList([0, 0, 1, 1]), [1, 1, 1]);
       layer.render(camera, 0);
       assert.equal(lines.mesh.active, true);
     } finally {
@@ -11031,12 +11049,12 @@ const tests = {
       assert.ok(meshes.has(mesh));
 
     const buffers = [glow.fills, glow.lines, crisp.fills, crisp.lines, crisp.weapon, crisp.face, crisp.sprites];
-    glow.fills.vertex(0, 0, [1, 1, 1]);
-    glow.lines.vertex(0, 0, [1, 1, 1]);
-    crisp.fills.vertex(0, 0, [1, 1, 1]);
-    crisp.lines.vertex(0, 0, [1, 1, 1]);
+    glow.fills.vertex(new Vec2(0, 0), [1, 1, 1]);
+    glow.lines.vertex(new Vec2(0, 0), [1, 1, 1]);
+    crisp.fills.vertex(new Vec2(0, 0), [1, 1, 1]);
+    crisp.lines.vertex(new Vec2(0, 0), [1, 1, 1]);
     for (const sprite of [crisp.sprites, crisp.weapon, crisp.face])
-      sprite.quad(0, 0, 1, 1, [0, 0, 1, 1], 1);
+      sprite.quad(edgeRect(0, 0, 1, 1), [0, 0, 1, 1], 1);
     for (const buffer of buffers)
       assert.ok(buffer.count > 0);
     overlay.clear();
@@ -11054,7 +11072,7 @@ const tests = {
     const calls = [];
     const hud = new Hud(
       { width: 0, height: 0, getContext: () => ({}) },
-      { glow: { line: (pts, col, alpha) => calls.push({ ref: pts, pts: [...pts], col, alpha }) } },
+      { glow: { line: (pts, col, alpha) => calls.push({ ref: pts, pts: flatPoints(pts), col, alpha }) } },
     );
     hud.segment(1, 2, 3, 4, 0, 0.5);
     hud.segment(5, 6, 7, 8, 1);
@@ -11076,7 +11094,7 @@ const tests = {
     const calls = [];
     const hud = new Hud(
       { width: 0, height: 0, getContext: () => ({ setTransform() {}, fillText() {} }) },
-      { glow: { line: (pts, col, alpha) => calls.push({ pts: [...pts], col, alpha }) } },
+      { glow: { line: (pts, col, alpha) => calls.push({ pts: flatPoints(pts), col, alpha }) } },
     );
     hud.text = () => {};
     hud.drawKeys(100, 500, { blue: true });
@@ -11121,14 +11139,15 @@ const tests = {
       assert.deepEqual(wOut, expected);
     }
     assert.ok(wOut.pixel >= 2 && wOut.x1 - wOut.x0 === WEAPON_CELL_W * wOut.pixel);
-    const fOpts = [{ width: 1280, height: 760 }, { width: 1280, height: 760, hurt: 0.3 }, { width: 2560, height: 1440, hurt: 0.8 }];
-    const fOut = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
-    for (const o of fOpts) {
-      const expected = facePlacement(o);
-      assert.equal(facePlacement(o, fOut), fOut);
-      assert.deepEqual(fOut, expected);
+    const fOpts = [[new Vec2(1280, 760), 0], [new Vec2(1280, 760), 0.3], [new Vec2(2560, 1440), 0.8]];
+    const fOut = { rect: new Rect(), pixel: 0 };
+    const snap = (p) => [p.rect.topLeftCorner.x, p.rect.topLeftCorner.y, p.rect.bottomRightCorner.x, p.rect.bottomRightCorner.y, p.pixel];
+    for (const [size, hurt] of fOpts) {
+      const expected = snap(facePlacement(size, hurt, { rect: new Rect(), pixel: 0 }));
+      assert.equal(facePlacement(size, hurt, fOut), fOut);
+      assert.deepEqual(snap(fOut), expected);
     }
-    assert.notDeepEqual(fOut, facePlacement(fOpts[0]), 'a later call overwrote the same object');
+    assert.notDeepEqual(snap(fOut), snap(facePlacement(fOpts[0][0], fOpts[0][1], { rect: new Rect(), pixel: 0 })), 'a later call overwrote the same object');
   },
 
   'AC-4 weaponCellUv and faceCellUv return cached identical tuples with the original values'() {
@@ -11174,9 +11193,9 @@ const tests = {
         rectLine: noop,
         line: noop,
         circleLine: noop,
-        weapon: { quad: (...a) => weaponQuads.push(a) },
+        weapon: { quad: (r, ...a) => weaponQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y, ...a]) },
         sprites: { quad: noop },
-        face: { quad: (...a) => faceQuads.push(a) },
+        face: { quad: (r, ...a) => faceQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y, ...a]) },
       },
     };
     const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
@@ -11192,9 +11211,9 @@ const tests = {
       const wq = weaponQuads[weaponQuads.length - 1];
       const fq = faceQuads[faceQuads.length - 1];
       const wp = weaponPlacement({ width: 1280, height: 760, bob: f.bob, moving: f.moving, recoil: f.recoil, switchOffset: 0 });
-      const fp = facePlacement({ width: 1280, height: 760, hurt: f.hurt });
+      const fp = facePlacement(new Vec2(1280, 760), f.hurt, { rect: new Rect(), pixel: 0 });
       assert.deepEqual(wq.slice(0, 4), [wp.x0, wp.y0, wp.x1, wp.y1]);
-      assert.deepEqual(fq.slice(0, 4), [fp.x0, fp.y0, fp.x1, fp.y1]);
+      assert.deepEqual(fq.slice(0, 4), [fp.rect.topLeftCorner.x, fp.rect.topLeftCorner.y, fp.rect.bottomRightCorner.x, fp.rect.bottomRightCorner.y]);
       assert.ok(Object.isFrozen(wq[4]) && Object.isFrozen(fq[4]), 'UVs are the cached frozen tuples');
       assert.ok(Array.from({ length: FACE_FRAME_COUNT }, (_, i) => faceCellUv(i)).includes(fq[4]));
       assert.ok(Array.from({ length: WEAPON_FRAME_COUNT }, (_, i) => weaponCellUv(i, 'plasma')).includes(wq[4]));
@@ -11497,7 +11516,7 @@ const tests = {
     const calls = [];
     const hud = new Hud(
       { width: 0, height: 0, getContext: () => ({}) },
-      { glow: { line: (pts, col, alpha) => calls.push({ ref: pts, pts: [...pts], col, alpha }) } },
+      { glow: { line: (pts, col, alpha) => calls.push({ ref: pts, pts: flatPoints(pts), col, alpha }) } },
     );
     const GREEN = 1;
     const ORANGE = 2;
@@ -11527,7 +11546,7 @@ const tests = {
         circleLine: noop,
         weapon: { quad: noop },
         sprites: { quad: noop },
-        face: { quad: (...a) => faceQuads.push(a) },
+        face: { quad: (r, ...a) => faceQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y, ...a]) },
       },
     };
     const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
@@ -11543,9 +11562,9 @@ const tests = {
       game.time = f.time;
       hud.render(game);
       const quad = faceQuads[faceQuads.length - 1];
-      const expectedPlacement = facePlacement({ width: 1280, height: 760, hurt: f.hurt });
+      const expectedPlacement = facePlacement(new Vec2(1280, 760), f.hurt, { rect: new Rect(), pixel: 0 }).rect;
       const expectedFrame = faceFrame({ health: f.health, hurt: f.hurt, shotElapsed: -1, time: f.time });
-      assert.deepEqual(quad.slice(0, 4), [expectedPlacement.x0, expectedPlacement.y0, expectedPlacement.x1, expectedPlacement.y1]);
+      assert.deepEqual(quad.slice(0, 4), [expectedPlacement.topLeftCorner.x, expectedPlacement.topLeftCorner.y, expectedPlacement.bottomRightCorner.x, expectedPlacement.bottomRightCorner.y]);
       assert.deepEqual(quad[4], faceCellUv(expectedFrame));
     }
     assert.notDeepEqual(faceQuads[0].slice(0, 4), faceQuads[1].slice(0, 4));
@@ -11560,8 +11579,8 @@ const tests = {
   'AC-5 circleLine emits the same ring segments without per-segment arrays'() {
     const vertices = [];
     const layer = new Overlay(makeOverlayWorld().world).glow;
-    layer.lines.vertex = (x, y, col) => vertices.push({ x, y, col: [...col] });
-    layer.circleLine(50, 60, 10, [1, 1, 1], 1, 8);
+    layer.lines.vertex = (pos, col) => vertices.push({ x: pos.x, y: pos.y, col: [...col] });
+    layer.circleLine(new Circ(10, new Vec2(50, 60)), [1, 1, 1], 1, 8);
     assert.equal(vertices.length, 16);
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Trigo.twopi;
@@ -12784,6 +12803,127 @@ const tests = {
 
     assert.equal(game.dustPool.length + game.dustFree.length >= game.dust.length, true);
     assert.equal(new Set(game.dust).size, game.dust.length, 'no duplicate particle references in active dust list');
+  },
+
+  'AC-1 fillRect and rectLine accept a Rect and emit identical vertices'() {
+    const layer = new Overlay(makeOverlayWorld().world).glow;
+    const rect = new Rect(new Vec2(30, 40), new Vec2(25.5, 40.5));
+    assert.equal(rect.topLeftCorner.x, 10.5);
+    assert.equal(rect.topLeftCorner.y, 20.5);
+    layer.fillRect(rect, [1, 0, 0]);
+    assert.equal(layer.fills.count, 6);
+    assert.deepEqual(Array.from(layer.fills.positions.subarray(0, 12)), [10.5, 20.5, 40.5, 20.5, 40.5, 60.5, 10.5, 20.5, 40.5, 60.5, 10.5, 60.5]);
+    layer.rectLine(rect, [1, 0.5, 0.25], 0.5);
+    assert.equal(layer.lines.count, 8);
+    assert.deepEqual(Array.from(layer.lines.positions.subarray(0, 16)), [10.5, 20.5, 40.5, 20.5, 40.5, 20.5, 40.5, 60.5, 40.5, 60.5, 10.5, 60.5, 10.5, 60.5, 10.5, 20.5]);
+    assert.deepEqual(Array.from(layer.lines.colors.subarray(0, 3)), [0.5, 0.25, 0.125]);
+  },
+
+  'AC-2 SpriteBuffer.quad accepts a Rect and emits identical sprite vertices'() {
+    const sprite = new Overlay(makeOverlayWorld().world).crisp.weapon;
+    sprite.quad(edgeRect(5, 6, 25, 46), [0.1, 0.2, 0.3, 0.4], 0.75);
+    assert.equal(sprite.count, 6);
+    assert.deepEqual(Array.from(sprite.positions), [5, 46, 25, 46, 25, 6, 5, 46, 25, 6, 5, 6]);
+    assert.deepEqual(Array.from(sprite.uvs), [0.1, 0.2, 0.3, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4, 0.1, 0.4].map(Math.fround));
+    assert.equal(sprite.brights[0], 0.75);
+    sprite.quad(edgeRect(0, 0, 1, 1), [0, 0, 1, 1], 1);
+    assert.equal(sprite.count, 6, 'a call at full capacity appends nothing');
+  },
+
+  'AC-3 circleLine accepts a Circ without mutating it'() {
+    const layer = new Overlay(makeOverlayWorld().world).glow;
+    const circ = new Circ(2.5, new Vec2(100, 50));
+    layer.circleLine(circ, [1, 1, 1]);
+    assert.equal(layer.lines.count, 20);
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Trigo.twopi;
+      assert.ok(Math.abs(layer.lines.positions[i * 4] - (100 + Math.cos(a) * 2.5)) < 1e-4);
+      assert.ok(Math.abs(layer.lines.positions[i * 4 + 1] - (50 + Math.sin(a) * 2.5)) < 1e-4);
+    }
+    assert.equal(circ.radius, 2.5);
+    assert.equal(circ.position.x, 100);
+    assert.equal(circ.position.y, 50);
+  },
+
+  'AC-4 line and fill accept Vec2 arrays'() {
+    const layer = new Overlay(makeOverlayWorld().world).glow;
+    layer.line(pointList([0, 0, 5, 0, 5, 5]), [1, 1, 1]);
+    assert.equal(layer.lines.count, 4);
+    assert.deepEqual(Array.from(layer.lines.positions.subarray(0, 8)), [0, 0, 5, 0, 5, 0, 5, 5]);
+    layer.clear();
+    layer.line(pointList([3, 3]), [1, 1, 1]);
+    assert.equal(layer.lines.count, 0);
+    layer.fill(pointList([0, 0, 4, 0, 4, 4, 0, 4]), [1, 1, 1]);
+    assert.equal(layer.fills.count, 6);
+    assert.deepEqual(Array.from(layer.fills.positions.subarray(0, 12)), [0, 0, 4, 0, 4, 4, 0, 0, 4, 4, 0, 4]);
+  },
+
+  'AC-5 facePlacement takes a Vec2 viewport and returns a Rect'() {
+    const view = new Vec2(1280, 760);
+    const calm = facePlacement(view, 0);
+    assert.ok(calm.rect instanceof Rect);
+    assert.equal(calm.rect.size.x, FACE_CELL_W * calm.pixel);
+    assert.equal(calm.rect.size.y, FACE_CELL_H * calm.pixel);
+    assert.equal(calm.rect.bottomRightCorner.y, 760 - 18);
+    const calmTop = calm.rect.topLeftCorner.y;
+    const calmLeft = calm.rect.topLeftCorner.x;
+    const jolted = facePlacement(view, 0.25, { rect: new Rect(), pixel: 0 });
+    assert.ok(jolted.rect.topLeftCorner.x !== calmLeft || jolted.rect.topLeftCorner.y !== calmTop);
+    assert.equal(view.x, 1280);
+    assert.equal(view.y, 760);
+  },
+
+  'AC-6 Buffer.vertex accepts a Vec2 position and ignores overflow'() {
+    const { fills } = new Overlay(makeOverlayWorld().world).glow;
+    fills.vertex(new Vec2(7, 8), [0.25, 0.5, 0.75]);
+    assert.equal(fills.count, 1);
+    assert.deepEqual(Array.from(fills.positions.subarray(0, 2)), [7, 8]);
+    assert.deepEqual(Array.from(fills.colors.subarray(0, 3)), [0.25, 0.5, 0.75]);
+    const at = new Vec2(1, 1);
+    while (fills.count < fills.capacity)
+      fills.vertex(at, [0, 0, 0]);
+    fills.vertex(at, [1, 1, 1]);
+    assert.equal(fills.count, fills.capacity);
+  },
+
+  'AC-7 HUD overlay drawing passes spatial primitives with unchanged coordinates'() {
+    const rects = [];
+    const fillRects = [];
+    const circles = [];
+    const lineArgs = [];
+    const quadArgs = [];
+    const noop = () => {};
+    const ctx = new Proxy({}, { get: () => () => {}, set: () => true });
+    const overlay = {
+      clear: noop,
+      glow: { line: (pts) => lineArgs.push(pts) },
+      crisp: {
+        fillRect: (r) => fillRects.push(r instanceof Rect ? rectBox(r) : null),
+        rectLine: (r) => rects.push(r instanceof Rect ? rectBox(r) : null),
+        line: (pts) => lineArgs.push(pts),
+        circleLine: (c) => circles.push(c instanceof Circ),
+        weapon: { quad: (r) => quadArgs.push(r instanceof Rect) },
+        sprites: { quad: (r) => quadArgs.push(r instanceof Rect) },
+        face: { quad: (r) => quadArgs.push(r instanceof Rect) },
+      },
+    };
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
+    hud.resize(1280, 760, 1);
+    const game = fresh(0);
+    game.player.hurt = 0;
+    hud.render(game);
+    const face = facePlacement(new Vec2(1280, 760), 0, { rect: new Rect(), pixel: 0 }).rect;
+    const fx = face.topLeftCorner.x;
+    const fy = face.topLeftCorner.y;
+    assert.ok(rects.length > 0 && rects.every((r) => r !== null), 'every rectLine receives a Rect');
+    assert.ok(fillRects.every((r) => r !== null), 'every fillRect receives a Rect');
+    assert.ok(quadArgs.length > 0 && quadArgs.every(Boolean), 'every quad receives a Rect');
+    assert.ok(lineArgs.length > 0 && lineArgs.every((pts) => pts.every((p) => p instanceof Vec2)), 'every line receives Vec2 points');
+    assert.ok(rects.some((r) => r.x === fx - 4.5 && r.y === fy - 4.5 && r.w === face.size.x + 9 && r.h === face.size.y + 9), 'portrait border');
+    assert.ok(fillRects.some((r) => r.x === fx - 4 && r.y === fy - 4 && r.w === face.size.x + 8 && r.h === face.size.y + 8), 'portrait background');
+
+    hud.drawAutomap?.(game);
+    assert.ok(circles.every(Boolean), 'every circleLine receives a Circ');
   },
 };
 

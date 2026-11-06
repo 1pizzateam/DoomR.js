@@ -42,10 +42,14 @@ class SpriteBuffer {
     this.count = 0;
   }
 
-  /** A quad from (x0, y0) to (x1, y1), y down, showing the texture rectangle [u0, v0, u1, v1]. */
-  quad(x0, y0, x1, y1, uv, bright) {
+  /** A quad covering a Rect, y down, showing the texture rectangle [u0, v0, u1, v1]. */
+  quad(rect, uv, bright) {
     if (this.count + 6 > this.capacity)
       return;
+    const x0 = rect.topLeftCorner.x;
+    const y0 = rect.topLeftCorner.y;
+    const x1 = rect.bottomRightCorner.x;
+    const y1 = rect.bottomRightCorner.y;
     const u0 = uv[0];
     const v0 = uv[1];
     const u1 = uv[2];
@@ -140,12 +144,12 @@ class Buffer {
     this.count = 0;
   }
 
-  vertex(x, y, color) {
+  vertex(pos, color) {
     if (this.count >= this.capacity)
       return;
     const i = this.count++;
-    this.positions[i * 2] = x;
-    this.positions[i * 2 + 1] = y;
+    this.positions[i * 2] = pos.x;
+    this.positions[i * 2 + 1] = pos.y;
     this.colors[i * 3] = color[0];
     this.colors[i * 3 + 1] = color[1];
     this.colors[i * 3 + 2] = color[2];
@@ -167,6 +171,8 @@ class Buffer {
 }
 
 const scratch = [0, 0, 0];
+const cornerTR = new Vec2();
+const cornerBL = new Vec2();
 
 /** Flat 2D drawing for the HUD with RoostR: one opaque triangle buffer under one additive line buffer. */
 class Layer {
@@ -209,60 +215,72 @@ class Layer {
     this.face?.clear();
   }
 
-  /** Strokes a polyline given as x, y pairs. */
+  /** Strokes a polyline given as Vec2 points. */
   line(points, color, alpha = 1) {
     const { lines } = this;
     scratch[0] = color[0] * alpha;
     scratch[1] = color[1] * alpha;
     scratch[2] = color[2] * alpha;
-    for (let i = 0; i + 3 < points.length; i += 2) {
-      lines.vertex(points[i], points[i + 1], scratch);
-      lines.vertex(points[i + 2], points[i + 3], scratch);
+    for (let i = 0; i + 1 < points.length; i++) {
+      lines.vertex(points[i], scratch);
+      lines.vertex(points[i + 1], scratch);
     }
   }
 
-  /** Strokes the outline of an axis-aligned rectangle. */
-  rectLine(x, y, w, h, color, alpha = 1) {
+  /** Strokes the outline of an axis-aligned Rect. */
+  rectLine(rect, color, alpha = 1) {
     const { lines } = this;
     scratch[0] = color[0] * alpha;
     scratch[1] = color[1] * alpha;
     scratch[2] = color[2] * alpha;
-    const x2 = x + w;
-    const y2 = y + h;
-    lines.vertex(x, y, scratch); lines.vertex(x2, y, scratch);
-    lines.vertex(x2, y, scratch); lines.vertex(x2, y2, scratch);
-    lines.vertex(x2, y2, scratch); lines.vertex(x, y2, scratch);
-    lines.vertex(x, y2, scratch); lines.vertex(x, y, scratch);
+    const tl = rect.topLeftCorner;
+    const br = rect.bottomRightCorner;
+    cornerTR.setScalar(br.x, tl.y);
+    cornerBL.setScalar(tl.x, br.y);
+    lines.vertex(tl, scratch); lines.vertex(cornerTR, scratch);
+    lines.vertex(cornerTR, scratch); lines.vertex(br, scratch);
+    lines.vertex(br, scratch); lines.vertex(cornerBL, scratch);
+    lines.vertex(cornerBL, scratch); lines.vertex(tl, scratch);
   }
 
-  /** Strokes a closed circle approximated with segments. */
-  circleLine(cx, cy, radius, color, alpha = 1, segments = 10) {
+  /** Strokes a closed Circ approximated with segments. The Circ is not modified. */
+  circleLine(circ, color, alpha = 1, segments = 10) {
     const { lines } = this;
     scratch[0] = color[0] * alpha;
     scratch[1] = color[1] * alpha;
     scratch[2] = color[2] * alpha;
+    const cx = circ.position.x;
+    const cy = circ.position.y;
+    const radius = circ.radius;
     for (let i = 0; i < segments; i++) {
       const a = (i / segments) * Trigo.twopi;
       const b = ((i + 1) / segments) * Trigo.twopi;
-      lines.vertex(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius, scratch);
-      lines.vertex(cx + Math.cos(b) * radius, cy + Math.sin(b) * radius, scratch);
+      cornerTR.setScalar(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
+      cornerBL.setScalar(cx + Math.cos(b) * radius, cy + Math.sin(b) * radius);
+      lines.vertex(cornerTR, scratch);
+      lines.vertex(cornerBL, scratch);
     }
   }
 
-  /** Fills a convex polygon given as x, y pairs. The fill is opaque, so use it to hide what is behind. */
+  /** Fills a convex polygon given as Vec2 points. The fill is opaque, so use it to hide what is behind. */
   fill(points, color) {
     const { fills } = this;
-    for (let i = 4; i < points.length; i += 2) {
-      fills.vertex(points[0], points[1], color);
-      fills.vertex(points[i - 2], points[i - 1], color);
-      fills.vertex(points[i], points[i + 1], color);
+    for (let i = 2; i < points.length; i++) {
+      fills.vertex(points[0], color);
+      fills.vertex(points[i - 1], color);
+      fills.vertex(points[i], color);
     }
   }
 
-  fillRect(x, y, w, h, color) {
+  /** Fills an axis-aligned Rect. */
+  fillRect(rect, color) {
     const { fills } = this;
-    fills.vertex(x, y, color); fills.vertex(x + w, y, color); fills.vertex(x + w, y + h, color);
-    fills.vertex(x, y, color); fills.vertex(x + w, y + h, color); fills.vertex(x, y + h, color);
+    const tl = rect.topLeftCorner;
+    const br = rect.bottomRightCorner;
+    cornerTR.setScalar(br.x, tl.y);
+    cornerBL.setScalar(tl.x, br.y);
+    fills.vertex(tl, color); fills.vertex(cornerTR, color); fills.vertex(br, color);
+    fills.vertex(tl, color); fills.vertex(br, color); fills.vertex(cornerBL, color);
   }
 
   render(camera, time) {
