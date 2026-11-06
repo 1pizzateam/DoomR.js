@@ -138,9 +138,9 @@ test('AC-3 pan follows side and facing', () => {
 
 test('AC-4 gain falls off and cuts at range', () => {
   assert.equal(spatial(origin, new Vec2(0, 0)).gain, 1);
-  const gains = [300, 600, 900].map((d) => spatial(origin, new Vec2(d, 0)).gain);
-  assert.ok(gains[0] < spatial(origin, new Vec2(100, 0)).gain + 1e-12);
-  assert.ok(gains[1] < gains[0] && gains[2] < gains[1]);
+  const gains = [0, 100, 300, 600, 900].map((d) => spatial(origin, new Vec2(d, 0)).gain);
+  for (let i = 1; i < gains.length; i++)
+    assert.ok(gains[i] < gains[i - 1]);
   assert.equal(spatial(origin, new Vec2(1000.5, 0)).gain, 0);
   assert.equal(spatial(origin, new Vec2(5000, 0)).gain, 0);
 });

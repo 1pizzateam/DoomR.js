@@ -26,6 +26,11 @@ const scratchSpatial = { pan: 0, gain: 0, distance: 0 };
 const scratchSpatialOptions = { reference: 220, range: 1000, panMax: 0.9, easeDistance: 70 };
 const NO_OPTIONS = Object.freeze({});
 
+// groovr's spatial2D gain curve differs (flat inside the reference radius), so the game keeps its own falloff
+function distanceGain(distance, reference, range) {
+  return distance > range ? 0 : 1 / (1 + (distance / reference) ** 2);
+}
+
 /**
  * Where a sound at `sourcePos` (Vec2) is heard from a listener at `listenerPos` (Vec2) looking along `angle`.
  * Sound fades with distance and pans left/right by where it is relative to the facing
@@ -34,7 +39,9 @@ const NO_OPTIONS = Object.freeze({});
 export function spatial(listenerPos, sourcePos, { angle = 0, reference = 220, range = 1000 } = NO_OPTIONS) {
   scratchSpatialOptions.reference = reference;
   scratchSpatialOptions.range = range;
-  return spatial2D(listenerPos, angle, sourcePos, scratchSpatialOptions, scratchSpatial);
+  const result = spatial2D(listenerPos, angle, sourcePos, scratchSpatialOptions, scratchSpatial);
+  result.gain = distanceGain(result.distance, reference, range);
+  return result;
 }
 
 // ---- building blocks ------------------------------------------------------------------------
