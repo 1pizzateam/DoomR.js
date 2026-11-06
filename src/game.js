@@ -2689,18 +2689,27 @@ export class Game {
   }
 
   cleanup() {
-    this.shots = this.shots.filter((shot) => {
-      if (!shot.dead)
-        return true;
+    let keepShots = 0;
+    for (let i = 0; i < this.shots.length; i++) {
+      const shot = this.shots[i];
+      if (!shot.dead) {
+        this.shots[keepShots++] = shot;
+        continue;
+      }
       this.scene.removeBody(shot.body);
-      return false;
-    });
-    this.pickups = this.pickups.filter((pickup) => {
-      if (!pickup.taken)
-        return true;
+    }
+    this.shots.length = keepShots;
+
+    let keepPickups = 0;
+    for (let i = 0; i < this.pickups.length; i++) {
+      const pickup = this.pickups[i];
+      if (!pickup.taken) {
+        this.pickups[keepPickups++] = pickup;
+        continue;
+      }
       this.scene.removeBody(pickup.body);
-      return false;
-    });
+    }
+    this.pickups.length = keepPickups;
   }
 
   toggleNightVision() {

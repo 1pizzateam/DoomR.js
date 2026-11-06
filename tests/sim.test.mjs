@@ -11595,6 +11595,110 @@ const tests = {
     const hintsH = hud.drawControlHints(512, panelStartY);
     assert.ok(unboundMsg.y >= panelStartY + hintsH + 16, `Warning at y=${unboundMsg.y} is strictly below panel (start=${panelStartY}, h=${hintsH})`);
   },
+
+  'AC-1 cleanup purges dead shots in place preserving array reference'() {
+    const game = fresh();
+    clearEnemies(game);
+    const initialShots = game.shots;
+    const s1 = { dead: false, body: {} };
+    const s2 = { dead: true, body: {} };
+    const s3 = { dead: false, body: {} };
+    const s4 = { dead: true, body: {} };
+    const s5 = { dead: false, body: {} };
+    game.shots = [s1, s2, s3, s4, s5];
+    const initialRef = game.shots;
+    const removedBodies = [];
+    game.scene.removeBody = (body) => removedBodies.push(body);
+
+    game.cleanup();
+
+    assert.equal(game.shots, initialRef, 'shots array identity is preserved');
+    assert.deepEqual(game.shots, [s1, s3, s5], 'surviving shots preserve relative ordering');
+    assert.equal(game.shots.length, 3, 'shots length truncated to survivors count');
+    assert.deepEqual(removedBodies, [s2.body, s4.body], 'dead shot bodies are removed');
+  },
+
+  'AC-2 cleanup purges taken pickups in place preserving array reference'() {
+    const game = fresh();
+    clearEnemies(game);
+    const p1 = { taken: true, body: {} };
+    const p2 = { taken: false, body: {} };
+    const p3 = { taken: true, body: {} };
+    const p4 = { taken: false, body: {} };
+    game.pickups = [p1, p2, p3, p4];
+    const initialRef = game.pickups;
+    const removedBodies = [];
+    game.scene.removeBody = (body) => removedBodies.push(body);
+
+    game.cleanup();
+
+    assert.equal(game.pickups, initialRef, 'pickups array identity is preserved');
+    assert.deepEqual(game.pickups, [p2, p4], 'surviving pickups preserve relative ordering');
+    assert.equal(game.pickups.length, 2, 'pickups length truncated to survivors count');
+    assert.deepEqual(removedBodies, [p1.body, p3.body], 'taken pickup bodies are removed');
+  },
+
+  'AC-3 cleanup removes collision bodies for dead shots and taken pickups before truncation'() {
+    const game = fresh();
+    clearEnemies(game);
+    const orderOfOps = [];
+    const shotBody = { id: 'shot-body' };
+    const pickupBody = { id: 'pickup-body' };
+    game.shots = [
+      { dead: true, body: shotBody },
+      { dead: false, body: { id: 'alive-shot' } },
+    ];
+    game.pickups = [
+      { taken: true, body: pickupBody },
+      { taken: false, body: { id: 'alive-pickup' } },
+    ];
+    game.scene.removeBody = (body) => {
+      orderOfOps.push({
+        action: 'removeBody',
+        bodyId: body.id,
+        shotsLen: game.shots.length,
+        pickupsLen: game.pickups.length,
+      });
+    };
+
+    game.cleanup();
+
+    assert.deepEqual(orderOfOps, [
+      { action: 'removeBody', bodyId: 'shot-body', shotsLen: 2, pickupsLen: 2 },
+      { action: 'removeBody', bodyId: 'pickup-body', shotsLen: 1, pickupsLen: 2 },
+    ]);
+    assert.equal(game.shots.length, 1);
+    assert.equal(game.pickups.length, 1);
+  },
+
+  'AC-4 effects are pruned in place preserving order and array identity'() {
+    const game = fresh();
+    clearEnemies(game);
+    const effects = game.effects;
+    effects.length = 0;
+    effects.push(
+      { id: 'fx1', age: 0.1, life: 0.5 },
+      { id: 'fx2', age: 0.5, life: 0.5 },
+      { id: 'fx3', age: 0.0, life: 1.0 },
+    );
+    game.update(1 / 60, idle);
+    assert.equal(game.effects, effects, 'effects array reference identity is preserved');
+    assert.deepEqual(effects.map((e) => e.id), ['fx1', 'fx3'], 'expired effects purged preserving order');
+    assert.equal(effects.length, 2);
+  },
+
+  'AC-5 cleanup and update contain no Array.prototype.filter calls'() {
+    const gameSrc = readFileSync(new URL('../src/game.js', import.meta.url), 'utf8');
+    const cleanupMatch = gameSrc.match(/cleanup\(\)\s*\{([\s\S]*?)\n  \}/);
+    assert.ok(cleanupMatch, 'cleanup() method found in src/game.js');
+    assert.ok(!cleanupMatch[1].includes('.filter('), 'cleanup() contains no .filter( calls');
+    assert.ok(!cleanupMatch[1].includes('filter'), 'cleanup() contains no filter keyword');
+
+    const updateMatch = gameSrc.match(/update\(dt,\s*input\)\s*\{([\s\S]*?)\n  \}/);
+    assert.ok(updateMatch, 'update() method found in src/game.js');
+    assert.ok(!updateMatch[1].includes('.filter('), 'update() contains no .filter( calls');
+    assert.ok(!gameSrc.includes('.filter('), 'src/game.js contains zero .filter( invocations');
+  },
 };
 
 function pausedHud() {
