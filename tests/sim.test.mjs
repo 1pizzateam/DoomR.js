@@ -5693,6 +5693,125 @@ const tests = {
     assert.equal(pointLights[0].linearAttenuation, CEILING_LIGHT_ATTENUATION.y, 'slot 0 restores ceiling light attenuation when no dynamic lights are active');
   },
 
+  'AC-1 burning barrel fuse emits Fuse light with boom color'() {
+    const game = {
+      barrels: [
+        { pos: new Vec2(180, 210), gone: false, fuse: 0.05 },
+      ],
+    };
+    const camPos = new Vec3(100, 28, 200);
+    const dyn = collectDynamicLights(game, camPos, 0.3);
+    assert.equal(dyn.length, 1, 'exactly one dynamic light produced for burning barrel');
+    assert.equal(dyn[0].kind, 'Fuse');
+    assert.equal(dyn[0].color, BOOM_LIGHT_COLOR);
+    assert.equal(dyn[0].attenuation, DYNAMIC_LIGHT_ATTENUATION);
+    assert.equal(dyn[0].position.x, 180);
+    assert.equal(dyn[0].position.y, 18, 'fuse light fixed at y = 18');
+    assert.equal(dyn[0].position.z, 210);
+  },
+
+  'AC-2 barrel fuse light pulses with time and barrel index'() {
+    const b0 = { pos: new Vec2(100, 200), gone: false, fuse: 0.1 };
+    const b1 = { pos: new Vec2(120, 200), gone: false, fuse: 0.1 };
+    const game = { barrels: [b0, b1] };
+    const camPos = new Vec3(100, 18, 200);
+    const sampleTimes = [0, 0.013, 0.3, 1.7];
+
+    for (const time of sampleTimes) {
+      const dyn = collectDynamicLights(game, camPos, time);
+      assert.equal(dyn.length, 2);
+
+      const light0 = dyn.find((l) => l.position.x === 100);
+      const light1 = dyn.find((l) => l.position.x === 120);
+      assert.ok(light0 && light1, 'both barrel lights found');
+
+      const expected0 = 0.75 + 0.35 * Math.abs(Math.sin(time * 55 + 0));
+      const expected1 = 0.75 + 0.35 * Math.abs(Math.sin(time * 55 + 1));
+
+      assert.ok(Math.abs(light0.strength - expected0) < 1e-9, `barrel 0 strength matches formula at time ${time}`);
+      assert.ok(Math.abs(light1.strength - expected1) < 1e-9, `barrel 1 strength matches formula at time ${time}`);
+
+      assert.ok(light0.strength >= 0.75 && light0.strength <= 1.10, 'barrel 0 strength bounded in [0.75, 1.10]');
+      assert.ok(light1.strength >= 0.75 && light1.strength <= 1.10, 'barrel 1 strength bounded in [0.75, 1.10]');
+    }
+
+    // At time = 0, sin(0) = 0 and sin(1) ≈ 0.84147, so strengths differ significantly (> 1e-3)
+    const dynZero = collectDynamicLights(game, camPos, 0);
+    const l0 = dynZero.find((l) => l.position.x === 100);
+    const l1 = dynZero.find((l) => l.position.x === 120);
+    assert.ok(Math.abs(l0.strength - l1.strength) > 1e-3, 'barrels at index 0 and 1 differ in pulse phase');
+  },
+
+  'AC-3 gone barrel emits no fuse light'() {
+    const barrel = { pos: new Vec2(180, 210), gone: false, fuse: 0.05 };
+    const game = { barrels: [barrel] };
+    const camPos = new Vec3(100, 28, 200);
+
+    const dynActive = collectDynamicLights(game, camPos, 0.3);
+    const activeCount = dynActive.length;
+    assert.equal(activeCount, 1, 'active barrel emits 1 light');
+
+    barrel.gone = true;
+    const dynGone = collectDynamicLights(game, camPos, 0.3);
+    const goneCount = dynGone.length;
+    assert.equal(goneCount, 0, 'gone barrel emits 0 lights');
+  },
+
+  'AC-4 inactive fuse emits no light but zero fuse still burns'() {
+    const barrel = { pos: new Vec2(180, 210), gone: false, fuse: -1 };
+    const game = { barrels: [barrel] };
+    const camPos = new Vec3(100, 28, 200);
+
+    assert.equal(collectDynamicLights(game, camPos, 0).length, 0, 'fuse -1 emits no light');
+
+    barrel.fuse = -0.5;
+    assert.equal(collectDynamicLights(game, camPos, 0).length, 0, 'fuse -0.5 emits no light');
+
+    delete barrel.fuse;
+    assert.equal(collectDynamicLights(game, camPos, 0).length, 0, 'undefined fuse emits no light');
+
+    barrel.fuse = 0;
+    const dynZero = collectDynamicLights(game, camPos, 0);
+    assert.equal(dynZero.length, 1, 'fuse 0 emits 1 light');
+    assert.equal(dynZero[0].kind, 'Fuse');
+  },
+
+  'AC-5 fog occlusion culls barrel fuse light'() {
+    const barrel = { pos: new Vec2(180, 210), gone: false, fuse: 0.05 };
+    const game = { barrels: [barrel] };
+    const camPos = new Vec3(100, 28, 200);
+
+    let receivedPos = null;
+    const occludedFog = {
+      canSeeNear(pos) {
+        receivedPos = pos;
+        return false;
+      },
+    };
+    const dynOccluded = collectDynamicLights(game, camPos, 0.3, Infinity, occludedFog);
+    assert.equal(dynOccluded.length, 0, 'occluded barrel is culled');
+    assert.equal(receivedPos, barrel.pos, 'fog received barrel position');
+
+    const visibleFog = { canSeeNear: () => true };
+    const dynVisible = collectDynamicLights(game, camPos, 0.3, Infinity, visibleFog);
+    assert.equal(dynVisible.length, 1, 'visible barrel emits light');
+  },
+
+  'AC-6 barrel fuse light is culled beyond max radius'() {
+    // Barrel at (200, 18, 200), Camera at (100, 18, 200) -> distance exactly 100, distSq = 10000
+    const barrel = { pos: new Vec2(200, 200), gone: false, fuse: 0.05 };
+    const game = { barrels: [barrel] };
+    const camPos = new Vec3(100, 18, 200);
+
+    // With maxRadius = 90 (maxDistSq = 8100 < 10000), barrel is culled
+    const dynCulled = collectDynamicLights(game, camPos, 0.3, 90);
+    assert.equal(dynCulled.length, 0, 'culled beyond maxRadius (90 < 100)');
+
+    // With maxRadius = 110 (maxDistSq = 12100 > 10000), barrel is included
+    const dynIncluded = collectDynamicLights(game, camPos, 0.3, 110);
+    assert.equal(dynIncluded.length, 1, 'included within maxRadius (110 > 100)');
+  },
+
   'enemies are 3D articulated textured meshes with power-of-two horror skin atlases, vertex normals, and joint animation'() {
     const pow2 = (n) => (n & (n - 1)) === 0;
     const types = Object.keys(ENEMY_TYPES);
