@@ -3,6 +3,7 @@ import { mulberry32 } from './rng.js';
 import { field, GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile } from './floor.js';
 
 const scratchPt = new Vec2();
+const scratchTile = new Vec2();
 
 /**
  * The walls of an old space base: riveted steel bulkhead panels, vents, pipe runs, light strips, a console and the
@@ -526,11 +527,11 @@ export function wallCellUv(cell, v0 = 0, v1 = 1) {
   return [cell / WALL_CELL_COUNT + inset, v0, (cell + 1) / WALL_CELL_COUNT - inset, v1];
 }
 
-/** Which cell goes on a tile's face: the exit hatch on exits, otherwise a mix scattered by where the tile is. */
-export function wallCellFor(x, y, d, exit = false) {
+/** Which cell goes on a tile's face (`tile` is a Vec2 grid position): the exit hatch on exits, otherwise a mix scattered by where the tile is. */
+export function wallCellFor(tile, d, exit = false) {
   if (exit)
     return WALL_CELLS.exit;
-  let h = Math.imul(x * 73856093 ^ y * 19349663 ^ d * 83492791, 2654435761);
+  let h = Math.imul(tile.x * 73856093 ^ tile.y * 19349663 ^ d * 83492791, 2654435761);
   h ^= h >>> 15;
   const r = ((Math.imul(h, 2246822519) >>> 0) % 1000) / 1000;
   if (r < 0.5)
@@ -546,15 +547,17 @@ export function wallCellFor(x, y, d, exit = false) {
 
 /**
  * The quads of one flat wall face, one per tile along it and per 64 units up it, each with its cell and the part of the
- * picture that fits. `face` is { axis, plane, from, to (tiles), base, top, x, y, d, exit }. Corners come back as in
+ * picture that fits. `face` is { axis, plane, from, to (tiles), base, top, tile (Vec2), d, exit }. Corners come back as in
  * `faceCorners`: bottom-left, bottom-right, top-right, top-left.
  */
-export function wallFaceQuads({ axis, plane, from, to, base, top, x, y, d, exit }) {
+export function wallFaceQuads({ axis, plane, from, to, base, top, tile, d, exit }) {
   const out = [];
   for (let a = from; a <= to; a++) {
-    const tx = axis === 'x' ? x : a;
-    const ty = axis === 'x' ? a : y;
-    const cell = wallCellFor(tx, ty, d, exit);
+    if (axis === 'x')
+      scratchTile.setScalar(tile.x, a);
+    else
+      scratchTile.setScalar(a, tile.y);
+    const cell = wallCellFor(scratchTile, d, exit);
     for (let y0 = base, step = 0; y0 < top - 1e-6; y0 += SIZE, step++) {
       const y1 = Math.min(top, y0 + SIZE);
       const part = (y1 - y0) / SIZE;
@@ -572,16 +575,17 @@ export function wallFaceQuads({ axis, plane, from, to, base, top, x, y, d, exit 
 }
 
 /**
- * The quads of one diagonal (45-degree) wall hypotenuse face, stacked 64 units at a time from `base` to `top`.
+ * The quads of one diagonal (45-degree) wall hypotenuse face, stacked 64 units at a time. `a` and `b` are
+ * the Vec2 hypotenuse endpoints, `heights` is Vec2(base, top) and `tile` the Vec2 grid position.
  */
-export function diagWallFaceQuads({ ax, ay, bx, by, base, top, x, y, diag, exit }) {
+export function diagWallFaceQuads({ a, b, heights, tile, diag, exit }) {
   const out = [];
-  const cell = wallCellFor(x, y, 4 + diag, exit);
-  for (let y0 = base, step = 0; y0 < top - 1e-6; y0 += SIZE, step++) {
-    const y1 = Math.min(top, y0 + SIZE);
+  const cell = wallCellFor(tile, 4 + diag, exit);
+  for (let y0 = heights.x, step = 0; y0 < heights.y - 1e-6; y0 += SIZE, step++) {
+    const y1 = Math.min(heights.y, y0 + SIZE);
     const part = (y1 - y0) / SIZE;
     const uv = step === 0 ? wallCellUv(cell, 0, part) : wallCellUv(WALL_CELLS.seam, 1 - part, 1);
-    const corners = [[ax, y0, ay], [bx, y0, by], [bx, y1, by], [ax, y1, ay]];
+    const corners = [[a.x, y0, a.y], [b.x, y0, b.y], [b.x, y1, b.y], [a.x, y1, a.y]];
     out.push({ corners: corners.flat(), uv });
   }
   return out;

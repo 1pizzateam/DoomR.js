@@ -20,7 +20,7 @@ import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON
 import { ARSENAL_CELL, ARSENAL_FRAMES, CHAINSAW_TOOTH_PITCH, chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, KNIFE_ATTACKS, knifeAtlas, knifeMesh, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from '../src/arsenal.js';
 import { AMMO_FLASH_DURATION, FIRE_COOLDOWN } from '../src/game.js';
 import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DYNAMIC_LIGHT_ATTENUATION, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
-import { diagWallFaceQuads, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallFaceQuads } from '../src/wall.js';
+import { diagWallFaceQuads, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallCellUv, wallFaceQuads } from '../src/wall.js';
 import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
 import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
@@ -897,7 +897,7 @@ const tests = {
       assert.ok(ys.some((y) => Math.abs(y + 0.2) < 1e-6), 'lower edges reach the floor plane');
       assert.ok(ys.every((y) => y >= -0.2 - 1e-6), 'nothing is pushed below the floor plane');
     });
-    const quads = wallFaceQuads({ axis: 'x', plane: 64, from: 1, to: 1, base: 0, top: 64, x: 1, y: 1, d: 0, exit: false });
+    const quads = wallFaceQuads({ axis: 'x', plane: 64, from: 1, to: 1, base: 0, top: 64, tile: new Vec2(1, 1), d: 0, exit: false });
     assert.equal(quads.length, 1, 'a 64-unit wall stays a single quad');
   },
 
@@ -921,7 +921,7 @@ const tests = {
           low = Math.min(low, mesh.vertices[i]);
       assert.ok(Math.abs(low + 0.2) < 1e-6, `lowest wall vertex ${low}`);
     });
-    assert.equal(diagWallFaceQuads({ ax: 0, ay: 0, bx: 64, by: 64, base: 0, top: 64, x: 0, y: 0, diag: 0, exit: false }).length, 1);
+    assert.equal(diagWallFaceQuads({ a: new Vec2(0, 0), b: new Vec2(64, 64), heights: new Vec2(0, 64), tile: new Vec2(0, 0), diag: 0, exit: false }).length, 1);
   },
 
   'AC-3 wall and rock fragments keep y = -0.2 while doors still clip'() {
@@ -965,7 +965,7 @@ const tests = {
     withWallWorld((world, programs) => {
       for (const marsRock of [false, true])
         for (const exit of [false, true]) {
-          const faces = wallFaceQuads({ axis: 'x', plane: 64, from: 1, to: 1, base: 0, top: 64, x: 1, y: 1, d: 0, exit });
+          const faces = wallFaceQuads({ axis: 'x', plane: 64, from: 1, to: 1, base: 0, top: 64, tile: new Vec2(1, 1), d: 0, exit });
           const batch = world.wallBatch(faces, marsRock);
           assert.equal(batch.used, faces.length);
           assert.equal(programs.at(-1).fragment, marsRock ? MARS_ROCK_FRAGMENT : WALL_FRAGMENT);
@@ -3026,7 +3026,7 @@ const tests = {
     }
 
     // a face 3 tiles long and 104 high (a tall wall): 3 tiles, 2 pieces up each, and the pieces tile the face exactly
-    const quads = wallFaceQuads({ axis: 'x', plane: 128, from: 2, to: 4, base: 0, top: 104, x: 2, y: 0, d: 1, exit: false });
+    const quads = wallFaceQuads({ axis: 'x', plane: 128, from: 2, to: 4, base: 0, top: 104, tile: new Vec2(2, 0), d: 1, exit: false });
     assert.equal(quads.length, 6);
     let area = 0;
     for (const q of quads) {
@@ -3036,16 +3036,101 @@ const tests = {
       assert.ok(q.uv[2] > q.uv[0] && q.uv[3] > q.uv[1], 'its picture is a real rectangle');
     }
     assert.equal(area, 3 * 64 * 104, 'the pieces cover the face exactly, with no gaps and no overlap');
-    const exitQuads = wallFaceQuads({ axis: 'z', plane: 64, from: 1, to: 1, base: 0, top: 64, x: 1, y: 0, d: 3, exit: true });
+    const exitQuads = wallFaceQuads({ axis: 'z', plane: 64, from: 1, to: 1, base: 0, top: 64, tile: new Vec2(1, 0), d: 3, exit: true });
     assert.equal(exitQuads.length, 1);
-    assert.equal(wallCellFor(1, 0, 3, true), WALL_CELLS.exit, 'an exit wears the green hatch');
-    assert.equal(wallCellFor(5, 9, 2), wallCellFor(5, 9, 2), 'the same wall always looks the same');
+    assert.equal(wallCellFor(new Vec2(1, 0), 3, true), WALL_CELLS.exit, 'an exit wears the green hatch');
+    assert.equal(wallCellFor(new Vec2(5, 9), 2), wallCellFor(new Vec2(5, 9), 2), 'the same wall always looks the same');
     const seen = new Set();
     for (let y = 0; y < 30; y++) {
       for (let x = 0; x < 30; x++)
-        seen.add(wallCellFor(x, y, 0));
+        seen.add(wallCellFor(new Vec2(x, y), 0));
     }
     assert.ok(seen.size >= 5 && !seen.has(WALL_CELLS.exit), 'a wall mixes plain panels with vents, pipes, lights and consoles');
+  },
+
+  'AC-1 diagWallFaceQuads takes Vec2 endpoints and heights'() {
+    const quads = diagWallFaceQuads({ a: new Vec2(0, 0), b: new Vec2(64, 64), heights: new Vec2(0, 150), tile: new Vec2(0, 0), diag: 0, exit: false });
+    assert.equal(quads.length, 3);
+    assert.deepEqual(quads[0].corners.slice(0, 6), [0, 0, 0, 64, 0, 64]);
+    assert.equal(quads[1].corners[1], 64);
+  },
+
+  'AC-2 wallCellFor takes a Vec2 tile'() {
+    assert.equal(wallCellFor(new Vec2(5, 9), 2, true), WALL_CELLS.exit);
+    assert.equal(wallCellFor(new Vec2(5, 9), 2), wallCellFor(new Vec2(5, 9), 2));
+  },
+
+  'AC-3 wallCellFor keeps the legacy hash'() {
+    const legacy = (x, y, d) => {
+      let h = Math.imul(x * 73856093 ^ y * 19349663 ^ d * 83492791, 2654435761);
+      h ^= h >>> 15;
+      const r = ((Math.imul(h, 2246822519) >>> 0) % 1000) / 1000;
+      if (r < 0.5)
+        return WALL_CELLS.plain;
+      if (r < 0.64)
+        return WALL_CELLS.vent;
+      if (r < 0.78)
+        return WALL_CELLS.pipes;
+      if (r < 0.88)
+        return WALL_CELLS.lights;
+      return WALL_CELLS.console;
+    };
+    const seen = new Set();
+    for (let y = 0; y < 30; y++) {
+      for (let x = 0; x < 30; x++) {
+        for (let d = 0; d < 8; d++) {
+          const cell = wallCellFor(new Vec2(x, y), d);
+          assert.equal(cell, legacy(x, y, d));
+          seen.add(cell);
+        }
+      }
+    }
+    assert.ok(seen.size >= 5 && !seen.has(WALL_CELLS.exit));
+  },
+
+  'AC-4 wallFaceQuads takes a Vec2 tile'() {
+    const quads = wallFaceQuads({ axis: 'x', plane: 128, from: 2, to: 4, base: 0, top: 104, tile: new Vec2(2, 0), d: 1, exit: false });
+    assert.equal(quads.length, 6);
+    let area = 0;
+    for (const q of quads) {
+      for (let i = 0; i < 12; i += 3)
+        assert.equal(q.corners[i], 128);
+      area += 64 * (q.corners[7] - q.corners[1]);
+      assert.ok(q.uv[2] > q.uv[0] && q.uv[3] > q.uv[1]);
+    }
+    assert.equal(area, 3 * 64 * 104);
+  },
+
+  'AC-5 wallFaceQuads exit faces use the exit cell'() {
+    const quads = wallFaceQuads({ axis: 'z', plane: 64, from: 1, to: 1, base: 0, top: 64, tile: new Vec2(1, 0), d: 3, exit: true });
+    assert.equal(quads.length, 1);
+    assert.equal(quads[0].uv[0], wallCellUv(WALL_CELLS.exit, 0, 1)[0]);
+  },
+
+  'AC-6 vectorized wall quads keep geometry'() {
+    const quad = wallFaceQuads({ axis: 'x', plane: 64, from: 1, to: 1, base: 0, top: 64, tile: new Vec2(1, 1), d: 0, exit: false })[0];
+    assert.deepEqual(quad.corners, [64, 0, 64, 64, 0, 128, 64, 64, 128, 64, 64, 64]);
+    const level = new Level(LEVELS.find((entry) => entry.name.startsWith('E1M5')));
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, level);
+      let low = Infinity;
+      for (const { mesh, fragment } of programs) {
+        if (fragment !== WALL_FRAGMENT)
+          continue;
+        for (let i = 1; i < mesh.used * 3 && i < mesh.vertices.length; i += 3)
+          low = Math.min(low, mesh.vertices[i]);
+      }
+      assert.ok(Math.abs(low - -0.2) < 1e-4, `lowest wall vertex is at the floor plane, got ${low}`);
+    });
+  },
+
+  'AC-7 wall quad generators declare no scalar coordinates'() {
+    const wall = readFileSync(new URL('../src/wall.js', import.meta.url), 'utf8');
+    const world = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+    assert.ok(wall.includes('export function wallCellFor(tile'));
+    assert.ok(wall.includes('export function diagWallFaceQuads({ a, b, heights, tile'));
+    assert.doesNotMatch(world, /diagWallFaceQuads\(\{[^}]*\b(ax|ay|bx|by):/);
+    assert.doesNotMatch(wall, /export function wallFaceQuads\(\{[^}]*\b[xy],/);
   },
 
   'doors are a box in a power-of-two atlas of steel with green lights, rusted in the shader on the door itself'() {
@@ -6989,14 +7074,10 @@ const tests = {
       const info = custom.diagInfo(idx);
       assert.ok(Math.abs(info.normal.x - expectedNx) < 1e-6 && Math.abs(info.normal.y - expectedNy) < 1e-6);
       const quads = diagWallFaceQuads({
-        ax: info.a.x,
-        ay: info.a.y,
-        bx: info.b.x,
-        by: info.b.y,
-        base: 0,
-        top: 64,
-        x: idx % custom.width,
-        y: Math.floor(idx / custom.width),
+        a: info.a,
+        b: info.b,
+        heights: new Vec2(0, 64),
+        tile: new Vec2(idx % custom.width, Math.floor(idx / custom.width)),
         diag: info.diag,
         exit: null,
       });
