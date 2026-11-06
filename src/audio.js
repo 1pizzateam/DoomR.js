@@ -729,35 +729,6 @@ export const RECIPES = {
   },
 };
 
-/** Render one recipe offline: used to check that it is audible, does not clip and ends cleanly. */
-export async function renderRecipe(name, { params = {}, sampleRate = 44100, channels = 2, seconds, maxPeak = 1.0 } = {}) {
-  const recipe = RECIPES[name];
-  if (typeof recipe !== 'function')
-    throw new Error(`Unknown audio recipe: ${name}`);
-
-  const durationSec = seconds ?? 2.5;
-  const length = Math.max(1, Math.round(sampleRate * durationSec));
-  const Context = globalThis.OfflineAudioContext ?? globalThis.webkitOfflineAudioContext;
-  const ctx = new Context(channels, length, sampleRate);
-  const bus = ctx.createGain();
-  bus.connect(ctx.destination);
-  const info = recipe(ctx, bus, 0, params);
-  const buffer = await ctx.startRendering();
-
-  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-    const data = buffer.getChannelData(ch);
-    for (let i = 0; i < data.length; i++) {
-      const sample = data[i];
-      if (!Number.isFinite(sample))
-        throw new Error(`Invalid sample (${sample}) in rendered recipe ${name} at channel ${ch}, index ${i}`);
-      if (Math.abs(sample) > maxPeak)
-        throw new Error(`Clipping detected in rendered recipe ${name} (sample ${sample} exceeds ${maxPeak})`);
-    }
-  }
-
-  return { buffer, ...info };
-}
-
 // ---- the player-facing side -----------------------------------------------------------------
 
 /** Never play the same sound again sooner than this, so a shotgun volley is not 6 impacts at once. */
