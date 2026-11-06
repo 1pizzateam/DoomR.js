@@ -14921,6 +14921,122 @@ const tests = {
     assert.doesNotThrow(() => world.dispose(), 'world.dispose executes cleanly without error');
     assert.equal(disposed, true, 'renderer.dispose was called');
   },
+
+  'AC-1 Keymap.prototype.reload refreshes stored bindings and increments versions'() {
+    const storage = memoryStorage();
+    const k = new Keymap({ storage, navigator: null });
+    const initialBindingsVersion = k.bindingsVersion;
+    const initialVersion = k.version;
+
+    assert.equal(k.actionOf(k.whichByCode.get('KeyW')), 'moveForward');
+    assert.equal(k.isCustom('moveForward'), false);
+
+    // Write updated serialized controls bindings directly to storage
+    storage.data[CONTROLS_STORAGE_KEY] = JSON.stringify({
+      version: CONTROLS_VERSION,
+      bindings: {
+        moveForward: ['KeyI'],
+        fire: ['KeyJ', 'Mouse1'],
+      },
+    });
+
+    k.reload();
+
+    assert.equal(k.bindingsVersion, initialBindingsVersion + 1, 'bindingsVersion incremented by 1');
+    assert.equal(k.version, initialVersion + 1, 'version incremented by 1');
+    assert.equal(k.isCustom('moveForward'), true, 'moveForward override loaded');
+    assert.deepEqual([...k.effectiveCodes('moveForward')], ['KeyI']);
+    assert.deepEqual([...k.effectiveCodes('fire')], ['KeyJ', 'Mouse1']);
+    assert.equal(k.actionOf(k.whichByCode.get('KeyI')), 'moveForward');
+    assert.equal(k.actionOf(k.whichByCode.get('KeyJ')), 'fire');
+  },
+
+  'AC-2 Keymap.prototype.resetAction resets target action to default and preserves others'() {
+    const storage = memoryStorage();
+    const k = new Keymap({ storage, navigator: null });
+
+    // Set custom bindings on jump, crouch, and use
+    // Rebind crouch to KeyC (default) and use to KeyC (stealing KeyC from crouch)
+    k.setBinding('jump', 0, 'KeyJ');
+    k.setBinding('crouch', 0, 'KeyK');
+    k.setBinding('use', 0, 'KeyC'); // KeyC is default for crouch
+    assert.equal(k.isCustom('jump'), true);
+    assert.equal(k.isCustom('crouch'), true);
+    assert.equal(k.isCustom('use'), true);
+
+    const prevBindingsVersion = k.bindingsVersion;
+    const prevVersion = k.version;
+
+    // Reset only 'crouch'
+    const change = k.resetAction('crouch');
+    assert.equal(change.ok, true, 'resetAction succeeded');
+    assert.equal(k.isCustom('crouch'), false, 'crouch is no longer custom');
+    assert.deepEqual([...k.effectiveCodes('crouch')], ['KeyC'], 'crouch reclaimed default KeyC');
+    assert.equal(k.isCustom('jump'), true, 'jump custom binding is preserved');
+    assert.deepEqual([...k.effectiveCodes('jump')], ['KeyJ'], 'jump retains KeyJ override');
+    assert.equal(k.bindingsVersion, prevBindingsVersion + 1);
+    assert.equal(k.version, prevVersion + 1);
+
+    // Invalid / non-bindable action IDs return uncommitted change
+    const invalidChange = k.resetAction('nonExistentActionId');
+    assert.equal(invalidChange.ok, false);
+  },
+
+  'AC-3 Keymap.prototype.isBound indicates whether numeric keycodes are mapped'() {
+    const k = new Keymap({ storage: null, navigator: null });
+
+    // Every keycode present in allWhich should report true
+    assert.ok(k.allWhich.size > 0);
+    for (const which of k.allWhich)
+      assert.equal(k.isBound(which), true, `isBound(${which}) returns true for active binding`);
+
+    // Default positional and mnemonic keycodes are bound
+    assert.equal(k.isBound(87), true, 'KeyW (87) is bound');
+    assert.equal(k.isBound(65), true, 'KeyA (65) is bound');
+    assert.equal(k.isBound(83), true, 'KeyS (83) is bound');
+    assert.equal(k.isBound(68), true, 'KeyD (68) is bound');
+    assert.equal(k.isBound(32), true, 'Space (32) is bound');
+
+    // Mouse0 base code is bound
+    assert.equal(k.isBound(1000), true, 'Mouse0 (1000) is bound');
+
+    // Unmapped keycodes should report false
+    assert.equal(k.isBound(0), false, 'which 0 is unbound');
+    assert.equal(k.isBound(99999), false, 'which 99999 is unbound');
+    assert.equal(k.isBound(-1), false, 'which -1 is unbound');
+
+    // When an action is rebound to a new code, that new code becomes bound
+    const syntheticCode = 'F12';
+    const whichF12 = k.whichFor(syntheticCode);
+    k.setBinding('jump', 0, syntheticCode);
+    assert.equal(k.isBound(whichF12), true, 'newly assigned keycode is bound');
+  },
+
+  'AC-4 language preset detection selects qwertz for German and azerty for non-CA French'() {
+    // German locales select qwertz
+    for (const language of ['de', 'de-DE', 'de-AT', 'DE-CH']) {
+      const k = new Keymap({ storage: null, navigator: { language } });
+      assert.equal(k.languagePreset, 'qwertz', `locale ${language} selects qwertz`);
+    }
+
+    // European French and Belgian Dutch select azerty
+    for (const language of ['fr', 'fr-FR', 'fr-BE', 'nl-be', 'NL-BE']) {
+      const k = new Keymap({ storage: null, navigator: { language } });
+      assert.equal(k.languagePreset, 'azerty', `locale ${language} selects azerty`);
+    }
+
+    // French Canadian excludes azerty and falls back to qwerty
+    for (const language of ['fr-CA', 'fr-ca']) {
+      const k = new Keymap({ storage: null, navigator: { language } });
+      assert.equal(k.languagePreset, 'qwerty', `locale ${language} selects qwerty`);
+    }
+
+    // Other locales default to qwerty
+    for (const language of ['en-US', 'en-GB', 'es-ES', 'ja-JP', '', null, undefined]) {
+      const k = new Keymap({ storage: null, navigator: language !== undefined ? { language } : {} });
+      assert.equal(k.languagePreset, 'qwerty', `locale ${language} defaults to qwerty`);
+    }
+  },
 };
 
 function pausedHud() {
