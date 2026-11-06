@@ -8,26 +8,6 @@ const scratchEdgeA = new Vec3();
 const scratchEdgeB = new Vec3();
 const scratchVec2 = new Vec2();
 
-function mag2(x, y) {
-  return scratchVec2.setScalar(x, y).getMagnitude();
-}
-
-function setPos(node, x, y, z) {
-  node.setPosition(scratchPos.setScalar(x, y, z));
-}
-
-function setRot(node, x, y, z) {
-  node.setRotation(scratchRot.setScalar(x, y, z));
-}
-
-function setScale(node, x, y, z) {
-  node.setScale(scratchScale.setScalar(x, y, z));
-}
-
-function setUniformScale(node, s) {
-  node.setScale(scratchScale.setScalar(s, s, s));
-}
-
 /**
  * 3D Articulated Horror Monsters:
  * - Every enemy (`imp`, `brute`, `boss`, `skull`, `crawler`, `swarmer`, `wraith`) is an articulated 3D hierarchy of
@@ -150,7 +130,7 @@ function drawChestCell(put, type, pal) {
       } else if (type === 'boss') {
         // Pried-open ribcage & blazing chest hell-core
         if (y >= 6 && y <= 26 && dx <= 10) {
-          const distCore = mag2(dx, y - 15.5);
+          const distCore = scratchVec2.setScalar(dx, y - 15.5).getMagnitude();
           if (distCore <= 3.6)
             put(x, y, 255, 255, 190, 255);
           else if (distCore <= 6.2)
@@ -167,7 +147,7 @@ function drawChestCell(put, type, pal) {
         const robe = fold > 0.55 ? pal.flesh[2] : dither ? pal.flesh[1] : pal.flesh[0];
         put(x, y, robe.x, robe.y, robe.z, 1);
         if (y >= 7 && y <= 24 && dx <= 7.5) {
-          if (mag2(dx, y - 15) <= 2.8)
+          if (scratchVec2.setScalar(dx, y - 15).getMagnitude() <= 2.8)
             put(x, y, 205, 26, 255, 2);
           else if (y % 3 === 0 && dx >= 1.5)
             put(x, y, pal.bone[1].x, pal.bone[1].y, pal.bone[1].z, 1);
@@ -183,9 +163,9 @@ function drawChestCell(put, type, pal) {
           put(x, y, pal.hide[1].x, pal.hide[1].y, pal.hide[1].z, 1);
       } else if (type === 'crawler') {
         // Arachnid ventral chitin & weeping gore pustules
-        const p1 = mag2(x - 10, y - 11) <= 3.4;
-        const p2 = mag2(x - 21, y - 19) <= 3.8;
-        const p3 = mag2(x - 15, y - 24) <= 2.8;
+        const p1 = scratchVec2.setScalar(x - 10, y - 11).getMagnitude() <= 3.4;
+        const p2 = scratchVec2.setScalar(x - 21, y - 19).getMagnitude() <= 3.8;
+        const p3 = scratchVec2.setScalar(x - 15, y - 24).getMagnitude() <= 2.8;
         if (p1 || p2 || p3)
           put(x, y, 175 + 65 * noise(x, y, 7), 18, 255, 2);
         else if (y % 5 === 0)
@@ -193,7 +173,7 @@ function drawChestCell(put, type, pal) {
       } else {
         // Imp & Swarmer: torn thoracic cavity, exposed bone ribs & arterial core
         if (y >= 7 && y <= 25 && dx <= 8.5) {
-          if (mag2(dx, y - 16) <= 3.0)
+          if (scratchVec2.setScalar(dx, y - 16).getMagnitude() <= 3.0)
             put(x, y, 195 + 50 * noise(x, y, 9), 20, 255, 2);
           else if (y % 4 === 0 && dx >= 1.5) {
             const rib = dx < 5 ? pal.bone[2] : pal.bone[1];
@@ -245,16 +225,16 @@ function drawFaceCell(put, type, pal) {
       // Glowing supernatural eyes (G = 255)
       let isEye = false;
       if (type === 'crawler' || type === 'swarmer') {
-        const e1 = mag2(dx - 4.5, y - 13) <= 1.8;
-        const e2 = mag2(dx - 8.5, y - 15) <= 1.7;
-        const e3 = mag2(dx - 6.5, y - 10) <= 1.5;
+        const e1 = scratchVec2.setScalar(dx - 4.5, y - 13).getMagnitude() <= 1.8;
+        const e2 = scratchVec2.setScalar(dx - 8.5, y - 15).getMagnitude() <= 1.7;
+        const e3 = scratchVec2.setScalar(dx - 6.5, y - 10).getMagnitude() <= 1.5;
         isEye = e1 || e2 || e3;
       } else if (type === 'boss') {
-        const e1 = mag2(dx - 5.5, y - 14) <= 2.3;
-        const e2 = mag2(dx - 8.2, y - 9.5) <= 1.8;
+        const e1 = scratchVec2.setScalar(dx - 5.5, y - 14).getMagnitude() <= 2.3;
+        const e2 = scratchVec2.setScalar(dx - 8.2, y - 9.5).getMagnitude() <= 1.8;
         isEye = e1 || e2;
       } else
-        isEye = mag2(dx - 6.0, y - 13.5) <= 2.6;
+        isEye = scratchVec2.setScalar(dx - 6.0, y - 13.5).getMagnitude() <= 2.6;
 
       if (isEye) {
         put(x, y, 255, 255, 185, 255);
@@ -296,7 +276,7 @@ function drawJawCell(put, pal) {
           put(x, y, 16, 6, 14, 1);
       } else if (y <= 15 && dx <= 10) {
         // Abyssal throat interior with arterial blood pool
-        if (mag2(dx, y - 11) <= 4.5)
+        if (scratchVec2.setScalar(dx, y - 11).getMagnitude() <= 4.5)
           put(x, y, 180 + 60 * noise(x, y, 11), 18, 255, 2);
         else
           put(x, y, 24, 8, 16, 1);
@@ -449,8 +429,8 @@ export function monsterGoreSkinAtlas(type = 'imp') {
           putJaw(x, y, 155 + Math.round(90 * n), 18, 255, 2);
 
       // 5. Limb & Hide: shotgun/chainsaw craters with exposed white bone splinters
-      const c1 = mag2(x - 11, y - 11);
-      const c2 = mag2(x - 21, y - 20);
+      const c1 = scratchVec2.setScalar(x - 11, y - 11).getMagnitude();
+      const c2 = scratchVec2.setScalar(x - 21, y - 20).getMagnitude();
       if (c1 <= 5.2 || c2 <= 5.6) {
         if (c1 <= 1.6 || c2 <= 1.8) {
           putLimb(x, y, pal.bone[2].x, pal.bone[2].y, pal.bone[2].z, 1);
@@ -1310,18 +1290,18 @@ function resetLimbTransforms(view) {
   view.root.addChild(view.body);
   view.root.addChild(view.leftLeg);
   view.root.addChild(view.rightLeg);
-  setPos(view.body, pivots.body.x, pivots.body.y, pivots.body.z);
-  setPos(view.head, pivots.head.x, pivots.head.y, pivots.head.z);
-  setPos(view.jaw, pivots.jaw.x, pivots.jaw.y, pivots.jaw.z);
-  setPos(view.leftArm, pivots.leftArm.x, pivots.leftArm.y, pivots.leftArm.z);
-  setPos(view.rightArm, pivots.rightArm.x, pivots.rightArm.y, pivots.rightArm.z);
-  setPos(view.leftLeg, pivots.leftLeg.x, pivots.leftLeg.y, pivots.leftLeg.z);
-  setPos(view.rightLeg, pivots.rightLeg.x, pivots.rightLeg.y, pivots.rightLeg.z);
-  setPos(view.extra, pivots.extra.x, pivots.extra.y, pivots.extra.z);
-  setPos(view.goreViscera, 0, 0, 0);
-  setRot(view.goreViscera, 0, 0, 0);
+  view.body.setPosition(scratchPos.setScalar(pivots.body.x, pivots.body.y, pivots.body.z));
+  view.head.setPosition(scratchPos.setScalar(pivots.head.x, pivots.head.y, pivots.head.z));
+  view.jaw.setPosition(scratchPos.setScalar(pivots.jaw.x, pivots.jaw.y, pivots.jaw.z));
+  view.leftArm.setPosition(scratchPos.setScalar(pivots.leftArm.x, pivots.leftArm.y, pivots.leftArm.z));
+  view.rightArm.setPosition(scratchPos.setScalar(pivots.rightArm.x, pivots.rightArm.y, pivots.rightArm.z));
+  view.leftLeg.setPosition(scratchPos.setScalar(pivots.leftLeg.x, pivots.leftLeg.y, pivots.leftLeg.z));
+  view.rightLeg.setPosition(scratchPos.setScalar(pivots.rightLeg.x, pivots.rightLeg.y, pivots.rightLeg.z));
+  view.extra.setPosition(scratchPos.setScalar(pivots.extra.x, pivots.extra.y, pivots.extra.z));
+  view.goreViscera.setPosition(scratchPos.setScalar(0, 0, 0));
+  view.goreViscera.setRotation(scratchRot.setScalar(0, 0, 0));
   for (let i = 0; i < view.meshes.length; i++)
-    setUniformScale(view.meshes[i], 1);
+    view.meshes[i].setScale(scratchScale.setScalar(1, 1, 1));
   for (let i = 0; i < view.goreChunks.length; i++)
     view.goreChunks[i].setInactive();
   view.goreViscera.setInactive();
@@ -1344,7 +1324,7 @@ function buildMonster(w, enemy) {
     const mesh = w.monsterPartMesh(toCustomMesh(geo), atlas, material);
     mesh.activeAtlas = atlas;
     if (pivot)
-      setPos(mesh, pivot.x, pivot.y, pivot.z);
+      mesh.setPosition(scratchPos.setScalar(pivot.x, pivot.y, pivot.z));
     return mesh;
   };
 
@@ -1380,7 +1360,7 @@ function buildMonster(w, enemy) {
   root.addChild(leftLeg);
   root.addChild(rightLeg);
   root.addChild(gorePool);
-  setScale(root, cfg.scale, cfg.scale, cfg.scale);
+  root.setScale(scratchScale.setScalar(cfg.scale, cfg.scale, cfg.scale));
 
   const meshes = [body, head, jaw, leftArm, rightArm, leftLeg, rightLeg, extra, goreViscera, gorePool, ...goreChunks];
   w.scene.addMesh(root);
@@ -1476,16 +1456,18 @@ function animateMonster(view, enemy, c) {
       const ang = (i === 0 ? 0.35 : -0.45) + limbBlastSide * 1.2 + view.pose.seed;
       const dist = bt * 12.5 + 1.8;
       const arcY = socketBaseY * (1 - bt * 0.65) + Math.sin(bt * Trigo.pi) * 7.5 * (1 - bt * 0.4);
-      setPos(chunk, limbBlastSide * 2.5 + Math.cos(ang) * dist, Math.max(1.2, arcY), Math.sin(ang) * dist);
-      setRot(chunk, bt * 5.2, ang, bt * 4.1);
-      setUniformScale(chunk, 1.05 + (i % 2) * 0.25);
+      chunk.setPosition(scratchPos.setScalar(limbBlastSide * 2.5 + Math.cos(ang) * dist, Math.max(1.2, arcY), Math.sin(ang) * dist));
+      chunk.setRotation(scratchRot.setScalar(bt * 5.2, ang, bt * 4.1));
+      const s = 1.05 + (i % 2) * 0.25;
+      chunk.setScale(scratchScale.setScalar(s, s, s));
     } else if (painBurst && i < 1) {
       chunk.setActive();
       const ang = i * 2.1 + view.pose.seed;
       const dist = (1 - m.pain) * 9.5 + 2.5;
-      setPos(chunk, Math.cos(ang) * dist, pivots.body.y + 4 + Math.sin(m.pain * Trigo.pi) * 5 - (1 - m.pain) * 4, Math.sin(ang) * dist);
-      setRot(chunk, (1 - m.pain) * 4.2, ang, (1 - m.pain) * 3.1);
-      setUniformScale(chunk, 0.95 + 0.35 * m.pain);
+      chunk.setPosition(scratchPos.setScalar(Math.cos(ang) * dist, pivots.body.y + 4 + Math.sin(m.pain * Trigo.pi) * 5 - (1 - m.pain) * 4, Math.sin(ang) * dist));
+      chunk.setRotation(scratchRot.setScalar((1 - m.pain) * 4.2, ang, (1 - m.pain) * 3.1));
+      const s = 0.95 + 0.35 * m.pain;
+      chunk.setScale(scratchScale.setScalar(s, s, s));
     } else
       chunk.setInactive();
   }
@@ -1534,85 +1516,85 @@ function animateMonster(view, enemy, c) {
     const bodyPitch = 1.05 + m.attack * 0.18 - m.pain * 0.2 + Math.abs(stride) * m.moving * 0.12;
     const bodyYaw = stride * m.moving * 0.24 + idleSway * (1 - m.moving) * 0.05;
     const bodyRoll = stride * m.moving * 0.22 + m.pain * Math.sin(c.time * 45) * 0.12;
-    setPos(view.body, stride * m.moving * 0.85, crawlBodyY, 0);
-    setRot(view.body, bodyPitch, bodyYaw, bodyRoll);
+    view.body.setPosition(scratchPos.setScalar(stride * m.moving * 0.85, crawlBodyY, 0));
+    view.body.setRotation(scratchRot.setScalar(bodyPitch, bodyYaw, bodyRoll));
 
     const headPitch = -0.78 + m.attack * 0.22 - m.roar * 0.2 - m.pain * 0.18;
     const headYaw = -bodyYaw * 0.65 + Math.sin(m.t * 1.7) * 0.08;
     const headRoll = m.pain * 0.18 - bodyRoll * 0.45;
-    setRot(view.head, headPitch, headYaw, headRoll);
+    view.head.setRotation(scratchRot.setScalar(headPitch, headYaw, headRoll));
   } else {
-    setPos(view.body, pivots.body.x, pivots.body.y, pivots.body.z);
+    view.body.setPosition(scratchPos.setScalar(pivots.body.x, pivots.body.y, pivots.body.z));
     const bodyPitch = m.attack * 0.24 + (leaping ? 0.32 : 0) - m.roar * 0.22 - m.pain * 0.28 + m.moving * 0.08;
     const bodyRoll = stride * m.moving * 0.07 + m.pain * Math.sin(c.time * 45) * 0.12;
     const bodyYaw = stride * m.moving * 0.08 + idleSway * (1 - m.moving) * 0.05;
-    setRot(view.body, bodyPitch, bodyYaw, bodyRoll);
+    view.body.setRotation(scratchRot.setScalar(bodyPitch, bodyYaw, bodyRoll));
 
     // Head tracks slightly counter to torso twist and tilts back on roar/pain
     const headPitch = -bodyPitch * 0.45 - m.roar * 0.25 - m.pain * 0.2 + m.attack * 0.15;
     const headYaw = -bodyYaw * 0.6 + Math.sin(m.t * 1.7) * (m.idle ? 0.18 : 0.06);
     const headRoll = m.pain * 0.18 - bodyRoll * 0.5;
-    setRot(view.head, headPitch, headYaw, headRoll);
+    view.head.setRotation(scratchRot.setScalar(headPitch, headYaw, headRoll));
   }
 
   // Unhinging lower jaw / mandibles
-  setRot(view.jaw, jawOpen * 0.58, 0, 0);
+  view.jaw.setRotation(scratchRot.setScalar(jawOpen * 0.58, 0, 0));
 
   if (crawling) {
     // Claw-dragging gait on the floor using remaining arm(s) while trailing any remaining leg behind
     const pullL = Math.sin(enemy.walk * cfg.walkRate * 1.15) * m.moving;
     const pullR = rightArmOk && leftArmOk ? -pullL : pullL;
-    setRot(view.leftArm, -1.25 + pullL * 0.65 - m.attack * 0.45, 0.18, -0.22);
-    setRot(view.rightArm, -1.25 + pullR * 0.65 - m.attack * 0.45, -0.18, 0.22);
-    setRot(view.leftLeg, 1.22 + stride * m.moving * 0.25, -0.12, -0.15);
-    setRot(view.rightLeg, 1.22 - stride * m.moving * 0.25, 0.12, 0.15);
-    setRot(view.extra, -0.25 + counterStride * m.moving * 0.18, Math.sin(m.t * 3.8) * 0.25, 0);
+    view.leftArm.setRotation(scratchRot.setScalar(-1.25 + pullL * 0.65 - m.attack * 0.45, 0.18, -0.22));
+    view.rightArm.setRotation(scratchRot.setScalar(-1.25 + pullR * 0.65 - m.attack * 0.45, -0.18, 0.22));
+    view.leftLeg.setRotation(scratchRot.setScalar(1.22 + stride * m.moving * 0.25, -0.12, -0.15));
+    view.rightLeg.setRotation(scratchRot.setScalar(1.22 - stride * m.moving * 0.25, 0.12, 0.15));
+    view.extra.setRotation(scratchRot.setScalar(-0.25 + counterStride * m.moving * 0.18, Math.sin(m.t * 3.8) * 0.25, 0));
   } else if (type === 'crawler') {
     // 6-legged alternating tripod skitter + raised front scythes on lunge
     const skitter = Math.sin(enemy.walk * 2.2) * m.moving;
     const lungeLift = Math.max(m.attack, leaping ? 1 : 0);
-    setRot(view.leftArm, -lungeLift * 0.55 + skitter * 0.28, skitter * 0.32, lungeLift * 0.25);
-    setRot(view.rightArm, -lungeLift * 0.55 - skitter * 0.28, -skitter * 0.32, -lungeLift * 0.25);
-    setRot(view.leftLeg, -skitter * 0.32, -skitter * 0.35, 0);
-    setRot(view.rightLeg, skitter * 0.32, skitter * 0.35, 0);
-    setRot(view.extra, Math.sin(m.t * 4) * 0.12 + lungeLift * 0.25, skitter * 0.2, 0);
+    view.leftArm.setRotation(scratchRot.setScalar(-lungeLift * 0.55 + skitter * 0.28, skitter * 0.32, lungeLift * 0.25));
+    view.rightArm.setRotation(scratchRot.setScalar(-lungeLift * 0.55 - skitter * 0.28, -skitter * 0.32, -lungeLift * 0.25));
+    view.leftLeg.setRotation(scratchRot.setScalar(-skitter * 0.32, -skitter * 0.35, 0));
+    view.rightLeg.setRotation(scratchRot.setScalar(skitter * 0.32, skitter * 0.35, 0));
+    view.extra.setRotation(scratchRot.setScalar(Math.sin(m.t * 4) * 0.12 + lungeLift * 0.25, skitter * 0.2, 0));
   } else if (type === 'swarmer') {
     // Quadruped feral pack bound + snapping shark-maw + whipping tail
     const bound = Math.sin(enemy.walk * 2.0) * m.moving;
     const bite = Math.max(m.attack, m.roar);
-    setRot(view.leftArm, bound * 0.65 - bite * 0.55, 0, 0);
-    setRot(view.rightArm, -bound * 0.65 - bite * 0.55, 0, 0);
-    setRot(view.leftLeg, -bound * 0.65, 0, 0);
-    setRot(view.rightLeg, bound * 0.65, 0, 0);
-    setRot(view.extra, 0.2 + Math.sin(m.t * 5.5) * 0.22, Math.cos(m.t * 6.5) * 0.38, 0);
+    view.leftArm.setRotation(scratchRot.setScalar(bound * 0.65 - bite * 0.55, 0, 0));
+    view.rightArm.setRotation(scratchRot.setScalar(-bound * 0.65 - bite * 0.55, 0, 0));
+    view.leftLeg.setRotation(scratchRot.setScalar(-bound * 0.65, 0, 0));
+    view.rightLeg.setRotation(scratchRot.setScalar(bound * 0.65, 0, 0));
+    view.extra.setRotation(scratchRot.setScalar(0.2 + Math.sin(m.t * 5.5) * 0.22, Math.cos(m.t * 6.5) * 0.38, 0));
   } else if (type === 'skull') {
     // Floating skull: chattering jaw, swaying scalp tendrils, and sinuous dangling spine
     const sway = Math.sin(m.t * 3.2);
     const wave = Math.cos(m.t * 2.6);
-    setRot(view.leftArm, sway * 0.22, 0, -0.15 - Math.abs(sway) * 0.18);
-    setRot(view.rightArm, -sway * 0.22, 0, 0.15 + Math.abs(sway) * 0.18);
-    setRot(view.leftLeg, 0.15 + wave * 0.28, 0, sway * 0.25);
-    setRot(view.rightLeg, 0.25 - sway * 0.32, 0, wave * 0.32);
-    setRot(view.extra, -0.18 + sway * 0.25, wave * 0.2, 0);
+    view.leftArm.setRotation(scratchRot.setScalar(sway * 0.22, 0, -0.15 - Math.abs(sway) * 0.18));
+    view.rightArm.setRotation(scratchRot.setScalar(-sway * 0.22, 0, 0.15 + Math.abs(sway) * 0.18));
+    view.leftLeg.setRotation(scratchRot.setScalar(0.15 + wave * 0.28, 0, sway * 0.25));
+    view.rightLeg.setRotation(scratchRot.setScalar(0.25 - sway * 0.32, 0, wave * 0.32));
+    view.extra.setRotation(scratchRot.setScalar(-0.18 + sway * 0.25, wave * 0.2, 0));
   } else if (type === 'wraith') {
     // Drifting spectral horror: outstretched raking corpse claws & billowing shroud tatters
     const rake = Math.max(m.attack, m.roar * 0.8);
     const drift = Math.sin(m.t * 2.4);
-    setRot(view.leftArm, -0.45 - rake * 0.85 + drift * 0.12, 0.15 - rake * 0.25, -0.12 - rake * 0.2);
-    setRot(view.rightArm, -0.45 - rake * 0.85 - drift * 0.12, -0.15 + rake * 0.25, 0.12 + rake * 0.2);
-    setRot(view.leftLeg, drift * 0.22 + m.moving * 0.25, 0, -0.06);
-    setRot(view.rightLeg, -drift * 0.22 + m.moving * 0.25, 0, 0.06);
-    setRot(view.extra, 0.2 + Math.abs(drift) * 0.18, drift * 0.15, 0);
+    view.leftArm.setRotation(scratchRot.setScalar(-0.45 - rake * 0.85 + drift * 0.12, 0.15 - rake * 0.25, -0.12 - rake * 0.2));
+    view.rightArm.setRotation(scratchRot.setScalar(-0.45 - rake * 0.85 - drift * 0.12, -0.15 + rake * 0.25, 0.12 + rake * 0.2));
+    view.leftLeg.setRotation(scratchRot.setScalar(drift * 0.22 + m.moving * 0.25, 0, -0.06));
+    view.rightLeg.setRotation(scratchRot.setScalar(-drift * 0.22 + m.moving * 0.25, 0, 0.06));
+    view.extra.setRotation(scratchRot.setScalar(0.2 + Math.abs(drift) * 0.18, drift * 0.15, 0));
   } else {
     // Biped horrors (imp, brute, boss): swinging arms & digitigrade/pillar legs, overhead slam / fireball windup
     const armReach = m.attack * 1.25 + m.roar * 0.95;
     const armSpread = (type === 'boss' ? m.attack * 0.35 : 0) + m.roar * 0.4;
     const armSwing = stride * m.moving * 0.52 + idleSway * 0.08;
-    setRot(view.leftArm, -armReach + armSwing - m.pain * 0.45, armSpread * 0.4, -0.08 - armSpread);
-    setRot(view.rightArm, -armReach - armSwing - m.pain * 0.45, -armSpread * 0.4, 0.08 + armSpread);
-    setRot(view.leftLeg, -stride * m.moving * 0.62, 0, 0);
-    setRot(view.rightLeg, stride * m.moving * 0.62, 0, 0);
-    setRot(view.extra, 0.14 + counterStride * m.moving * 0.18, Math.sin(m.t * 3.8 + enemy.walk) * 0.35, 0);
+    view.leftArm.setRotation(scratchRot.setScalar(-armReach + armSwing - m.pain * 0.45, armSpread * 0.4, -0.08 - armSpread));
+    view.rightArm.setRotation(scratchRot.setScalar(-armReach - armSwing - m.pain * 0.45, -armSpread * 0.4, 0.08 + armSpread));
+    view.leftLeg.setRotation(scratchRot.setScalar(-stride * m.moving * 0.62, 0, 0));
+    view.rightLeg.setRotation(scratchRot.setScalar(stride * m.moving * 0.62, 0, 0));
+    view.extra.setRotation(scratchRot.setScalar(0.14 + counterStride * m.moving * 0.18, Math.sin(m.t * 3.8 + enemy.walk) * 0.35, 0));
   }
 
   // Apply localized arm dismemberment: falling 3D arm over 0.55s, then a ragged bloody shoulder stump
@@ -1620,54 +1602,54 @@ function animateMonster(view, enemy, c) {
   if (!leftArmOk) {
     const severAge = limbs?.severedAt?.leftArm >= 0 ? Math.max(0, c.time - limbs.severedAt.leftArm) : 99;
     if (severAge < 0.55) {
-      setScale(view.leftArm, 1, 1, 1);
+      view.leftArm.setScale(scratchScale.setScalar(1, 1, 1));
       scratchStart.setScalar(pivots.leftArm.x, activeBodyY + pivots.leftArm.y, pivots.leftArm.z);
       scratchEnd.setScalar(pivots.leftArm.x - 5.5, 1.4, pivots.leftArm.z + 2.5);
       scratchSpin.setScalar(1.8, -1.4, -1.55);
       launchSeveredPart(view, view.leftArm, scratchStart, scratchEnd, scratchSpin, severAge / 0.55, 4.5);
     } else {
       view.body.addChild(view.leftArm);
-      setPos(view.leftArm, pivots.leftArm.x, pivots.leftArm.y, pivots.leftArm.z);
-      setScale(view.leftArm, 0.24, 0.18, 0.24);
+      view.leftArm.setPosition(scratchPos.setScalar(pivots.leftArm.x, pivots.leftArm.y, pivots.leftArm.z));
+      view.leftArm.setScale(scratchScale.setScalar(0.24, 0.18, 0.24));
     }
   } else {
     view.body.addChild(view.leftArm);
-    setPos(view.leftArm, pivots.leftArm.x, pivots.leftArm.y, pivots.leftArm.z);
-    setScale(view.leftArm, 1, 1, 1);
+    view.leftArm.setPosition(scratchPos.setScalar(pivots.leftArm.x, pivots.leftArm.y, pivots.leftArm.z));
+    view.leftArm.setScale(scratchScale.setScalar(1, 1, 1));
   }
 
   if (!rightArmOk) {
     const severAge = limbs?.severedAt?.rightArm >= 0 ? Math.max(0, c.time - limbs.severedAt.rightArm) : 99;
     if (severAge < 0.55) {
-      setScale(view.rightArm, 1, 1, 1);
+      view.rightArm.setScale(scratchScale.setScalar(1, 1, 1));
       scratchStart.setScalar(pivots.rightArm.x, activeBodyY + pivots.rightArm.y, pivots.rightArm.z);
       scratchEnd.setScalar(pivots.rightArm.x + 5.5, 1.4, pivots.rightArm.z + 2.5);
       scratchSpin.setScalar(1.8, 1.4, 1.55);
       launchSeveredPart(view, view.rightArm, scratchStart, scratchEnd, scratchSpin, severAge / 0.55, 4.5);
     } else {
       view.body.addChild(view.rightArm);
-      setPos(view.rightArm, pivots.rightArm.x, pivots.rightArm.y, pivots.rightArm.z);
-      setScale(view.rightArm, 0.24, 0.18, 0.24);
+      view.rightArm.setPosition(scratchPos.setScalar(pivots.rightArm.x, pivots.rightArm.y, pivots.rightArm.z));
+      view.rightArm.setScale(scratchScale.setScalar(0.24, 0.18, 0.24));
     }
   } else {
     view.body.addChild(view.rightArm);
-    setPos(view.rightArm, pivots.rightArm.x, pivots.rightArm.y, pivots.rightArm.z);
-    setScale(view.rightArm, 1, 1, 1);
+    view.rightArm.setPosition(scratchPos.setScalar(pivots.rightArm.x, pivots.rightArm.y, pivots.rightArm.z));
+    view.rightArm.setScale(scratchScale.setScalar(1, 1, 1));
   }
 
   // Apply localized leg explosion stumps and crawling hip positions
   const legY = crawling ? crawlBodyY * 0.65 : pivots.leftLeg.y;
   const legZ = crawling ? pivots.leftLeg.z - 2.5 : pivots.leftLeg.z;
-  setPos(view.leftLeg, pivots.leftLeg.x, legY, legZ);
-  setPos(view.rightLeg, pivots.rightLeg.x, crawling ? crawlBodyY * 0.65 : pivots.rightLeg.y, crawling ? pivots.rightLeg.z - 2.5 : pivots.rightLeg.z);
+  view.leftLeg.setPosition(scratchPos.setScalar(pivots.leftLeg.x, legY, legZ));
+  view.rightLeg.setPosition(scratchPos.setScalar(pivots.rightLeg.x, crawling ? crawlBodyY * 0.65 : pivots.rightLeg.y, crawling ? pivots.rightLeg.z - 2.5 : pivots.rightLeg.z));
   if (!leftLegOk)
-    setScale(view.leftLeg, 0.28, 0.18, 0.28);
+    view.leftLeg.setScale(scratchScale.setScalar(0.28, 0.18, 0.28));
   else
-    setScale(view.leftLeg, 1, 1, 1);
+    view.leftLeg.setScale(scratchScale.setScalar(1, 1, 1));
   if (!rightLegOk)
-    setScale(view.rightLeg, 0.28, 0.18, 0.28);
+    view.rightLeg.setScale(scratchScale.setScalar(0.28, 0.18, 0.28));
   else
-    setScale(view.rightLeg, 1, 1, 1);
+    view.rightLeg.setScale(scratchScale.setScalar(1, 1, 1));
 
   const glare = Math.min(1, 0.3 + 0.7 * m.anger * (1 + 0.18 * Math.sin(c.time * 31 + view.pose.seed)));
   setMonsterGlare(view, glare);
@@ -1697,8 +1679,8 @@ function launchSeveredPart(view, part, startPos, endPos, spinTarget, t, peakLift
     const u = (t - 0.86) / 0.14;
     y = endPos.y + Math.sin(u * Trigo.pi) * (peakLift * 0.09);
   }
-  setPos(part, x, y, z);
-  setRot(part, spinTarget.x * out, spinTarget.y * out, spinTarget.z * out);
+  part.setPosition(scratchPos.setScalar(x, y, z));
+  part.setRotation(scratchRot.setScalar(spinTarget.x * out, spinTarget.y * out, spinTarget.z * out));
 }
 
 function dieMonster(view, enemy) {
@@ -1743,13 +1725,13 @@ function dieMonster(view, enemy) {
 
   if (dissolve <= 0.02) {
     view.goreViscera.setInactive();
-    setScale(view.root, 0.001, 0.001, 0.001);
+    view.root.setScale(scratchScale.setScalar(0.001, 0.001, 0.001));
     return;
   }
 
-  setPos(view.root, enemy.pos.x, -(1 - dissolve) * 6, enemy.pos.y);
-  setRot(view.root, 0, view.yaw, 0);
-  setScale(view.root, s, s, s);
+  view.root.setPosition(scratchPos.setScalar(enemy.pos.x, -(1 - dissolve) * 6, enemy.pos.y));
+  view.root.setRotation(scratchRot.setScalar(0, view.yaw, 0));
+  view.root.setScale(scratchScale.setScalar(s, s, s));
 
   if (enemy.type === 'wraith' && !burst) {
     view.goreViscera.setInactive();
@@ -1758,11 +1740,11 @@ function dieMonster(view, enemy) {
     // Ghostly collapse: shroud folds down into the floor and flattens
     const collapseY = Math.max(0.08, 1 - ease * 0.9);
     const spread = 1 + ease * 0.45;
-    setPos(view.body, 0, view.parts.pivots.body.y * collapseY, 0);
-    setScale(view.body, spread, collapseY, spread);
-    setRot(view.body, ease * 0.35, ease * 0.8, 0);
-    setScale(view.leftLeg, spread, collapseY, spread);
-    setScale(view.rightLeg, spread, collapseY, spread);
+    view.body.setPosition(scratchPos.setScalar(0, view.parts.pivots.body.y * collapseY, 0));
+    view.body.setScale(scratchScale.setScalar(spread, collapseY, spread));
+    view.body.setRotation(scratchRot.setScalar(ease * 0.35, ease * 0.8, 0));
+    view.leftLeg.setScale(scratchScale.setScalar(spread, collapseY, spread));
+    view.rightLeg.setScale(scratchScale.setScalar(spread, collapseY, spread));
     return;
   }
 
@@ -1802,24 +1784,24 @@ function dieMonster(view, enemy) {
     const bodyPitch = shock * 0.38 - collapseEase * Trigo.pi * 0.47 + twitch * 0.08;
     const bodyYaw = fallDir * (shock * -0.25 + collapseEase * 0.32);
     const bodyRoll = fallDir * (collapseEase * 0.28 + twitch * 0.1);
-    setPos(view.body, fallDir * collapseEase * 1.8, hipY, -collapseEase * 5.2 + shock * 1.4);
-    setScale(view.body, 1 + shock * 0.14, 1 - shock * 0.08, 1 + shock * 0.14);
-    setRot(view.body, bodyPitch, bodyYaw, bodyRoll);
-    setScale(view.goreViscera, 1.08 + collapseEase * 0.18, 1.08 + collapseEase * 0.15, 1.12 + collapseEase * 0.22);
+    view.body.setPosition(scratchPos.setScalar(fallDir * collapseEase * 1.8, hipY, -collapseEase * 5.2 + shock * 1.4));
+    view.body.setScale(scratchScale.setScalar(1 + shock * 0.14, 1 - shock * 0.08, 1 + shock * 0.14));
+    view.body.setRotation(scratchRot.setScalar(bodyPitch, bodyYaw, bodyRoll));
+    view.goreViscera.setScale(scratchScale.setScalar(1.08 + collapseEase * 0.18, 1.08 + collapseEase * 0.15, 1.12 + collapseEase * 0.22));
 
     // Decapitation or head trauma
     if (mode === 0 || mode === 3) {
       view.head.addChild(view.jaw);
-      setPos(view.jaw, pivots.jaw.x, pivots.jaw.y, pivots.jaw.z);
-      setRot(view.jaw, 0.75, 0, 0);
+      view.jaw.setPosition(scratchPos.setScalar(pivots.jaw.x, pivots.jaw.y, pivots.jaw.z));
+      view.jaw.setRotation(scratchRot.setScalar(0.75, 0, 0));
       scratchStart.setScalar(pivots.head.x, baseBodyY + pivots.head.y, pivots.head.z);
       scratchEnd.setScalar(fallDir * 9.5, 2.6, 11.5);
       scratchSpin.setScalar(2.6, fallDir * 3.1, fallDir * 1.9);
       launchSeveredPart(view, view.head, scratchStart, scratchEnd, scratchSpin, t, 14.5);
     } else {
       view.body.addChild(view.head);
-      setPos(view.head, pivots.head.x, pivots.head.y, pivots.head.z);
-      setRot(view.head, -shock * 0.65 - collapseEase * 0.42 + twitch * 0.18, fallDir * collapseEase * 0.48, fallDir * collapseEase * 0.32);
+      view.head.setPosition(scratchPos.setScalar(pivots.head.x, pivots.head.y, pivots.head.z));
+      view.head.setRotation(scratchRot.setScalar(-shock * 0.65 - collapseEase * 0.42 + twitch * 0.18, fallDir * collapseEase * 0.48, fallDir * collapseEase * 0.32));
     }
 
     // Jaw unhinged or blown free
@@ -1830,61 +1812,61 @@ function dieMonster(view, enemy) {
       launchSeveredPart(view, view.jaw, scratchStart, scratchEnd, scratchSpin, t, 11.0);
     } else if (mode !== 0 && mode !== 3) {
       view.head.addChild(view.jaw);
-      setPos(view.jaw, pivots.jaw.x, pivots.jaw.y, pivots.jaw.z);
-      setRot(view.jaw, 0.82 * ease + Math.abs(twitch) * 0.25, 0, 0);
+      view.jaw.setPosition(scratchPos.setScalar(pivots.jaw.x, pivots.jaw.y, pivots.jaw.z));
+      view.jaw.setRotation(scratchRot.setScalar(0.82 * ease + Math.abs(twitch) * 0.25, 0, 0));
     }
 
     // Left arm severed or convulsing (or already a stump from combat dismemberment)
     if (leftArmAlreadyGone) {
       view.body.addChild(view.leftArm);
-      setPos(view.leftArm, pivots.leftArm.x, pivots.leftArm.y, pivots.leftArm.z);
-      setScale(view.leftArm, 0.24, 0.18, 0.24);
+      view.leftArm.setPosition(scratchPos.setScalar(pivots.leftArm.x, pivots.leftArm.y, pivots.leftArm.z));
+      view.leftArm.setScale(scratchScale.setScalar(0.24, 0.18, 0.24));
     } else if (mode === 1 || mode === 3) {
-      setScale(view.leftArm, 1, 1, 1);
+      view.leftArm.setScale(scratchScale.setScalar(1, 1, 1));
       scratchStart.setScalar(pivots.leftArm.x, baseBodyY + pivots.leftArm.y, pivots.leftArm.z);
       scratchEnd.setScalar(-12.5, 1.8, 6.5 * fallDir);
       scratchSpin.setScalar(2.2, -2.6, -1.7);
       launchSeveredPart(view, view.leftArm, scratchStart, scratchEnd, scratchSpin, t, 13.0);
     } else {
       view.body.addChild(view.leftArm);
-      setScale(view.leftArm, 1, 1, 1);
-      setPos(view.leftArm, pivots.leftArm.x, pivots.leftArm.y, pivots.leftArm.z);
-      setRot(view.leftArm, -shock * 0.9 - collapseEase * 1.25 + twitch * 0.35, -collapseEase * 0.35, -0.35 - collapseEase * 0.65);
+      view.leftArm.setScale(scratchScale.setScalar(1, 1, 1));
+      view.leftArm.setPosition(scratchPos.setScalar(pivots.leftArm.x, pivots.leftArm.y, pivots.leftArm.z));
+      view.leftArm.setRotation(scratchRot.setScalar(-shock * 0.9 - collapseEase * 1.25 + twitch * 0.35, -collapseEase * 0.35, -0.35 - collapseEase * 0.65));
     }
 
     // Right arm severed or convulsing (or already a stump from combat dismemberment)
     if (rightArmAlreadyGone) {
       view.body.addChild(view.rightArm);
-      setPos(view.rightArm, pivots.rightArm.x, pivots.rightArm.y, pivots.rightArm.z);
-      setScale(view.rightArm, 0.24, 0.18, 0.24);
+      view.rightArm.setPosition(scratchPos.setScalar(pivots.rightArm.x, pivots.rightArm.y, pivots.rightArm.z));
+      view.rightArm.setScale(scratchScale.setScalar(0.24, 0.18, 0.24));
     } else if (mode === 2) {
-      setScale(view.rightArm, 1, 1, 1);
+      view.rightArm.setScale(scratchScale.setScalar(1, 1, 1));
       scratchStart.setScalar(pivots.rightArm.x, baseBodyY + pivots.rightArm.y, pivots.rightArm.z);
       scratchEnd.setScalar(12.8, 1.8, -5.8 * fallDir);
       scratchSpin.setScalar(-2.4, 2.8, 1.8);
       launchSeveredPart(view, view.rightArm, scratchStart, scratchEnd, scratchSpin, t, 13.5);
     } else {
       view.body.addChild(view.rightArm);
-      setScale(view.rightArm, 1, 1, 1);
-      setPos(view.rightArm, pivots.rightArm.x, pivots.rightArm.y, pivots.rightArm.z);
-      setRot(view.rightArm, -shock * 0.85 - collapseEase * 1.15 - twitch * 0.35, collapseEase * 0.35, 0.35 + collapseEase * 0.65);
+      view.rightArm.setScale(scratchScale.setScalar(1, 1, 1));
+      view.rightArm.setPosition(scratchPos.setScalar(pivots.rightArm.x, pivots.rightArm.y, pivots.rightArm.z));
+      view.rightArm.setRotation(scratchRot.setScalar(-shock * 0.85 - collapseEase * 1.15 - twitch * 0.35, collapseEase * 0.35, 0.35 + collapseEase * 0.65));
     }
 
     // Buckling & twitching legs (keeping exploded legs as stumps)
     view.root.addChild(view.leftLeg);
     view.root.addChild(view.rightLeg);
-    setPos(view.leftLeg, pivots.leftLeg.x - collapseEase * 1.2, hipY, collapseEase * 1.5);
-    setPos(view.rightLeg, pivots.rightLeg.x + collapseEase * 1.2, hipY, -collapseEase * 1.2);
-    setRot(view.leftLeg, collapseEase * 1.32 - shock * 0.35 + twitch * 0.42, -collapseEase * 0.25, -collapseEase * 0.38);
-    setRot(view.rightLeg, collapseEase * 1.18 + shock * 0.25 - twitch * 0.38, collapseEase * 0.25, collapseEase * 0.42);
+    view.leftLeg.setPosition(scratchPos.setScalar(pivots.leftLeg.x - collapseEase * 1.2, hipY, collapseEase * 1.5));
+    view.rightLeg.setPosition(scratchPos.setScalar(pivots.rightLeg.x + collapseEase * 1.2, hipY, -collapseEase * 1.2));
+    view.leftLeg.setRotation(scratchRot.setScalar(collapseEase * 1.32 - shock * 0.35 + twitch * 0.42, -collapseEase * 0.25, -collapseEase * 0.38));
+    view.rightLeg.setRotation(scratchRot.setScalar(collapseEase * 1.18 + shock * 0.25 - twitch * 0.38, collapseEase * 0.25, collapseEase * 0.42));
     if (leftLegAlreadyGone)
-      setScale(view.leftLeg, 0.28, 0.18, 0.28);
+      view.leftLeg.setScale(scratchScale.setScalar(0.28, 0.18, 0.28));
     else
-      setScale(view.leftLeg, 1, 1, 1);
+      view.leftLeg.setScale(scratchScale.setScalar(1, 1, 1));
     if (rightLegAlreadyGone)
-      setScale(view.rightLeg, 0.28, 0.18, 0.28);
+      view.rightLeg.setScale(scratchScale.setScalar(0.28, 0.18, 0.28));
     else
-      setScale(view.rightLeg, 1, 1, 1);
+      view.rightLeg.setScale(scratchScale.setScalar(1, 1, 1));
 
     for (let i = 0; i < view.goreChunks.length; i++) {
       const chunk = view.goreChunks[i];
@@ -1896,7 +1878,8 @@ function dieMonster(view, enemy) {
         scratchEnd.setScalar(Math.cos(ang) * radius, 1.4, Math.sin(ang) * radius);
         scratchSpin.setScalar(3.4 * (i % 2 ? 1 : -1), ang * 1.5, 2.8);
         launchSeveredPart(view, chunk, scratchStart, scratchEnd, scratchSpin, t, 15.0 + i * 2.5);
-        setUniformScale(chunk, 1.05 + (i % 2) * 0.25);
+        const sChunk = 1.05 + (i % 2) * 0.25;
+        chunk.setScale(scratchScale.setScalar(sChunk, sChunk, sChunk));
       } else
         chunk.setInactive();
     }
@@ -1911,8 +1894,8 @@ function dieMonster(view, enemy) {
   scratchEnd.setScalar(0, 2.4, -2.5);
   scratchSpin.setScalar(-1.55, 2.4, 0.95);
   launchSeveredPart(view, view.body, scratchStart, scratchEnd, scratchSpin, t, 11.5);
-  setScale(view.body, 0.92, 0.72, 0.92);
-  setScale(view.goreViscera, 1.35, 1.35, 1.35);
+  view.body.setScale(scratchScale.setScalar(0.92, 0.72, 0.92));
+  view.goreViscera.setScale(scratchScale.setScalar(1.35, 1.35, 1.35));
 
   // 1. Severed head flying forward-right
   scratchStart.setScalar(pivots.head.x, baseBodyY + pivots.head.y, pivots.head.z);
@@ -1970,7 +1953,8 @@ function dieMonster(view, enemy) {
       scratchEnd.setScalar(Math.cos(ang) * radius, 1.3, Math.sin(ang) * radius);
       scratchSpin.setScalar(4.2 * (i % 2 ? 1 : -1), ang * 2.1, 3.5);
       launchSeveredPart(view, chunk, scratchStart, scratchEnd, scratchSpin, chunkT, 16.5 + (i % 2) * 3.5);
-      setUniformScale(chunk, 1.15 + (i % 2) * 0.3);
+      const sChunk = 1.15 + (i % 2) * 0.3;
+      chunk.setScale(scratchScale.setScalar(sChunk, sChunk, sChunk));
     } else
       chunk.setInactive();
   }
