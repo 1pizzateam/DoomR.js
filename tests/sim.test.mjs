@@ -13099,6 +13099,313 @@ const tests = {
     hud.drawAutomap?.(game);
     assert.ok(circles.every(Boolean), 'every circleLine receives a Circ');
   },
+
+  'AC-1 resetLimbTransforms restores hierarchy and limb pivot offsets on recycled monster views'() {
+    const mockWorld = {
+      gl: null,
+      material: () => new Material(),
+      monsterPartMesh: (geo) => {
+        const m = new Mesh(null, geo);
+        m.setCustomUniform = () => {};
+        return m;
+      },
+      scene: { addMesh: () => {} },
+      sharedTexture: () => {},
+    };
+
+    for (const type of ['imp', 'brute']) {
+      const enemy = {
+        type,
+        def: ENEMY_TYPES[type],
+        hp: ENEMY_TYPES[type].hp,
+        pos: new Vec2(100, 100),
+        body: { velocity: new Vec2(0, 0) },
+        state: 'chase',
+        walk: 0,
+        phase: 0,
+        windup: 0,
+        roar: 0,
+        hurt: 0,
+        pain: 0,
+        leap: 0,
+        deadTime: 0,
+        gibbed: false,
+        inSlime: false,
+        limbs: { leftArm: true, rightArm: true, leftLeg: true, rightLeg: true },
+      };
+
+      const view = MONSTERS[type].build(mockWorld, enemy);
+      const { pivots } = view.parts;
+
+      // Advance enemy into dead state and execute dieMonster
+      enemy.state = 'dead';
+      enemy.deadTime = 0.5;
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.wasDead, true, `${type} view wasDead flagged after death`);
+
+      // Modify hierarchy and state to simulate mangled corpse dismemberment
+      view.jaw.parent?.removeChild?.(view.jaw);
+      view.root.addChild(view.jaw);
+      view.head.parent?.removeChild?.(view.head);
+      view.root.addChild(view.head);
+      view.leftArm.parent?.removeChild?.(view.leftArm);
+      view.root.addChild(view.leftArm);
+      view.rightArm.parent?.removeChild?.(view.rightArm);
+      view.root.addChild(view.rightArm);
+      view.leftArm.setScale(new Vec3(0.24, 0.18, 0.24));
+      view.rightArm.setScale(new Vec3(0.24, 0.18, 0.24));
+      view.leftLeg.setScale(new Vec3(0.28, 0.18, 0.28));
+      view.rightLeg.setScale(new Vec3(0.28, 0.18, 0.28));
+      view.goreViscera.setActive();
+      view.gorePool.setActive();
+      for (let i = 0; i < view.goreChunks.length; i++)
+        view.goreChunks[i].setActive();
+
+      // Resurrect/recycle enemy back into living state
+      enemy.state = 'chase';
+      enemy.deadTime = 0;
+      MONSTERS[type].animate(view, enemy, { time: 1.0, dt: 1 / 60, player: { pos: new Vec2(200, 100) } });
+
+      // Verify resetLimbTransforms restored hierarchy and transform state
+      assert.equal(view.wasDead, false, `${type} wasDead reset to false after animate`);
+      assert.equal(view.jaw.parent, view.head, `${type} jaw reparented under head`);
+      assert.equal(view.head.parent, view.body, `${type} head reparented under body`);
+      assert.equal(view.leftArm.parent, view.body, `${type} leftArm reparented under body`);
+      assert.equal(view.rightArm.parent, view.body, `${type} rightArm reparented under body`);
+      assert.equal(view.extra.parent, view.body, `${type} extra reparented under body`);
+      assert.equal(view.goreViscera.parent, view.body, `${type} goreViscera reparented under body`);
+      assert.equal(view.body.parent, view.root, `${type} body parent is root`);
+      assert.equal(view.leftLeg.parent, view.root, `${type} leftLeg parent is root`);
+      assert.equal(view.rightLeg.parent, view.root, `${type} rightLeg parent is root`);
+
+      assert.equal(view.head.position.x, pivots.head.x, `${type} head pivot x restored`);
+      assert.equal(view.head.position.y, pivots.head.y, `${type} head pivot y restored`);
+      assert.equal(view.head.position.z, pivots.head.z, `${type} head pivot z restored`);
+
+      assert.equal(view.jaw.position.x, pivots.jaw.x, `${type} jaw pivot x restored`);
+      assert.equal(view.jaw.position.y, pivots.jaw.y, `${type} jaw pivot y restored`);
+      assert.equal(view.jaw.position.z, pivots.jaw.z, `${type} jaw pivot z restored`);
+
+      assert.equal(view.leftArm.position.x, pivots.leftArm.x, `${type} leftArm pivot x restored`);
+      assert.equal(view.leftArm.position.y, pivots.leftArm.y, `${type} leftArm pivot y restored`);
+      assert.equal(view.leftArm.position.z, pivots.leftArm.z, `${type} leftArm pivot z restored`);
+
+      assert.equal(view.rightArm.position.x, pivots.rightArm.x, `${type} rightArm pivot x restored`);
+      assert.equal(view.rightArm.position.y, pivots.rightArm.y, `${type} rightArm pivot y restored`);
+      assert.equal(view.rightArm.position.z, pivots.rightArm.z, `${type} rightArm pivot z restored`);
+
+      assert.equal(view.leftLeg.position.x, pivots.leftLeg.x, `${type} leftLeg pivot x restored`);
+      assert.equal(view.rightLeg.position.x, pivots.rightLeg.x, `${type} rightLeg pivot x restored`);
+
+      assert.equal(view.leftArm.scale.x, 1, `${type} leftArm scale x restored to 1`);
+      assert.equal(view.leftArm.scale.y, 1, `${type} leftArm scale y restored to 1`);
+      assert.equal(view.leftArm.scale.z, 1, `${type} leftArm scale z restored to 1`);
+
+      assert.equal(view.rightArm.scale.x, 1, `${type} rightArm scale x restored to 1`);
+      assert.equal(view.rightArm.scale.y, 1, `${type} rightArm scale y restored to 1`);
+      assert.equal(view.rightArm.scale.z, 1, `${type} rightArm scale z restored to 1`);
+
+      assert.equal(view.leftLeg.scale.x, 1, `${type} leftLeg scale x restored to 1`);
+      assert.equal(view.rightLeg.scale.x, 1, `${type} rightLeg scale x restored to 1`);
+
+      assert.equal(view.goreViscera.isActive(), false, `${type} goreViscera deactivated on healthy recycled view`);
+      assert.equal(view.gorePool.isActive(), false, `${type} gorePool deactivated`);
+      for (let i = 0; i < view.goreChunks.length; i++)
+        assert.equal(view.goreChunks[i].isActive(), false, `${type} goreChunk ${i} deactivated`);
+    }
+  },
+
+  'AC-2 right arm dismemberment animates severed ballistic launch and scales to shoulder stump'() {
+    const mockWorld = {
+      gl: null,
+      material: () => new Material(),
+      monsterPartMesh: (geo) => {
+        const m = new Mesh(null, geo);
+        m.setCustomUniform = () => {};
+        return m;
+      },
+      scene: { addMesh: () => {} },
+      sharedTexture: () => {},
+    };
+
+    for (const type of ['imp', 'brute']) {
+      const enemy = {
+        type,
+        def: ENEMY_TYPES[type],
+        hp: ENEMY_TYPES[type].hp,
+        pos: new Vec2(100, 100),
+        body: { velocity: new Vec2(0, 0) },
+        state: 'chase',
+        walk: 0,
+        phase: 0,
+        windup: 0,
+        roar: 0,
+        hurt: 0,
+        pain: 0,
+        leap: 0,
+        deadTime: 0,
+        gibbed: false,
+        inSlime: false,
+        limbs: {
+          leftArm: true,
+          rightArm: false,
+          leftLeg: true,
+          rightLeg: true,
+          severedAt: { rightArm: 10.0 },
+        },
+      };
+
+      const view = MONSTERS[type].build(mockWorld, enemy);
+
+      // 1. Initial falling phase: severAge = 0.2s < 0.45s / 0.55s
+      MONSTERS[type].animate(view, enemy, { time: 10.2, dt: 1 / 60, player: { pos: new Vec2(200, 100) } });
+      assert.equal(view.rightArm.parent, view.root, `${type} rightArm reparented to root during ballistic flight`);
+      assert.equal(view.rightArm.scale.x, 1, `${type} rightArm scale x is 1 during ballistic flight`);
+      assert.equal(view.rightArm.scale.y, 1, `${type} rightArm scale y is 1 during ballistic flight`);
+      assert.equal(view.rightArm.scale.z, 1, `${type} rightArm scale z is 1 during ballistic flight`);
+      assert.equal(view.goreChunks.filter((c) => c.isActive()).length, 2, `${type} rightArm severing emits 2 directional limb fragments`);
+
+      // 2. Settled shoulder stump phase: severAge = 0.6s >= 0.55s
+      MONSTERS[type].animate(view, enemy, { time: 10.6, dt: 1 / 60, player: { pos: new Vec2(200, 100) } });
+      assert.equal(view.rightArm.parent, view.body, `${type} rightArm reattached to body as shoulder stump`);
+      assert.ok(Math.abs(view.rightArm.scale.x - 0.24) < 1e-5, `${type} rightArm stump scale x is 0.24`);
+      assert.ok(Math.abs(view.rightArm.scale.y - 0.18) < 1e-5, `${type} rightArm stump scale y is 0.18`);
+      assert.ok(Math.abs(view.rightArm.scale.z - 0.24) < 1e-5, `${type} rightArm stump scale z is 0.24`);
+
+      // Intact left arm remains normal scale on body
+      assert.equal(view.leftArm.parent, view.body, `${type} intact leftArm remains attached to body`);
+      assert.equal(view.leftArm.scale.x, 1, `${type} intact leftArm scale x is 1`);
+      assert.equal(view.leftArm.scale.y, 1, `${type} intact leftArm scale y is 1`);
+      assert.equal(view.leftArm.scale.z, 1, `${type} intact leftArm scale z is 1`);
+    }
+  },
+
+  'AC-3 death mode 3 detaches both head and left arm while retaining jaw child attachment'() {
+    const mockWorld = {
+      gl: null,
+      material: () => new Material(),
+      monsterPartMesh: (geo) => {
+        const m = new Mesh(null, geo);
+        m.setCustomUniform = () => {};
+        return m;
+      },
+      scene: { addMesh: () => {} },
+      sharedTexture: () => {},
+    };
+
+    for (const type of ['imp', 'brute']) {
+      const enemy = {
+        type,
+        def: ENEMY_TYPES[type],
+        hp: ENEMY_TYPES[type].hp,
+        pos: new Vec2(100, 100),
+        body: { velocity: new Vec2(0, 0) },
+        state: 'dead',
+        walk: 0,
+        phase: 0,
+        windup: 0,
+        roar: 0,
+        hurt: 0,
+        pain: 0,
+        leap: 0,
+        deadTime: 0.35,
+        gibbed: false,
+        inSlime: false,
+        limbs: { leftArm: true, rightArm: true, leftLeg: true, rightLeg: true },
+      };
+
+      const view = MONSTERS[type].build(mockWorld, enemy);
+      // Select seed where Math.floor(Math.abs(seed * 13.37)) % 4 === 3 (e.g. 0.23 -> 0.23 * 13.37 = 3.0751 -> floor is 3)
+      view.pose.seed = 0.23;
+
+      MONSTERS[type].die(view, enemy);
+
+      assert.equal(view.dismemberMode, 3, `${type} selected death dismemberment mode 3`);
+      assert.equal(view.head.parent, view.root, `${type} head detached into root space`);
+      assert.equal(view.leftArm.parent, view.root, `${type} leftArm detached into root space`);
+      assert.equal(view.jaw.parent, view.head, `${type} jaw retained child attachment under head`);
+      assert.notEqual(view.jaw.parent, view.root, `${type} jaw is not directly attached to root`);
+    }
+  },
+
+  'AC-4 post-gib corpse mutilation activates additional gore chunks and invalidates settled cache'() {
+    const mockWorld = {
+      gl: null,
+      material: () => new Material(),
+      monsterPartMesh: (geo) => {
+        const m = new Mesh(null, geo);
+        m.setCustomUniform = () => {};
+        return m;
+      },
+      scene: { addMesh: () => {} },
+      sharedTexture: () => {},
+    };
+
+    for (const type of ['imp', 'brute']) {
+      const enemy = {
+        type,
+        def: ENEMY_TYPES[type],
+        hp: ENEMY_TYPES[type].hp,
+        pos: new Vec2(100, 100),
+        body: { velocity: new Vec2(0, 0) },
+        state: 'dead',
+        walk: 0,
+        phase: 0,
+        windup: 0,
+        roar: 0,
+        hurt: 0,
+        pain: 0,
+        leap: 0,
+        deadTime: 2.0,
+        gibbed: true,
+        inSlime: false,
+        postGibHits: 0,
+        limbs: { leftArm: true, rightArm: true, leftLeg: true, rightLeg: true },
+      };
+
+      const view = MONSTERS[type].build(mockWorld, enemy);
+
+      // Initial settled corpse state (deadTime >= 1.9, burst duration = 0.62)
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.deadSettled, true, `${type} corpse is settled at deadTime 2.0`);
+      assert.equal(view.settledHits, 0, `${type} settledHits is 0`);
+      assert.equal(view.goreChunks.filter((c) => c.isActive()).length, 2, `${type} initial gib has 2 active gore chunks`);
+
+      // Post-gib hit 1: shot lands, enemy.postGibHits increments to 1
+      enemy.postGibHits = 1;
+      enemy.postGibTime1 = 2.0;
+      enemy.deadTime = 2.1; // in-flight burst
+
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.deadSettled, false, `${type} settled cache invalidated during in-flight post-gib burst 1`);
+      assert.equal(view.goreChunks.filter((c) => c.isActive()).length, 4, `${type} post-gib hit 1 activates 4 gore chunks (2 + 1 * 2)`);
+      assert.equal(enemy.state, 'dead', `${type} remains dead after post-gib hit 1`);
+
+      // Settle again after hit 1 (deadTime - postGibTime1 >= 0.62)
+      enemy.deadTime = 2.7;
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.deadSettled, true, `${type} corpse settles again after hit 1`);
+      assert.equal(view.settledHits, 1, `${type} settledHits updated to 1`);
+
+      // Post-gib hit 2: second shot lands, enemy.postGibHits increments to 2
+      enemy.postGibHits = 2;
+      enemy.postGibTime2 = 2.7;
+      enemy.deadTime = 2.8; // in-flight burst
+
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.deadSettled, false, `${type} settled cache invalidated during in-flight post-gib burst 2`);
+      assert.equal(view.goreChunks.filter((c) => c.isActive()).length, 6, `${type} post-gib hit 2 activates 6 gore chunks (2 + 2 * 2)`);
+      assert.equal(enemy.state, 'dead', `${type} remains dead after post-gib hit 2`);
+
+      // Settle again after hit 2
+      enemy.deadTime = 3.4;
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.deadSettled, true, `${type} corpse settles again after hit 2`);
+      assert.equal(view.settledHits, 2, `${type} settledHits updated to 2`);
+      assert.equal(view.settledX, enemy.pos.x, `${type} settled corpse x preserved`);
+      assert.equal(view.settledY, enemy.pos.y, `${type} settled corpse y preserved`);
+    }
+  },
 };
 
 function pausedHud() {
