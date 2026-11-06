@@ -1,4 +1,4 @@
-import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Circ, Rect, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { CEILING, DOOR, EXIT, PILLAR, TILE } from './level.js';
 import { LEVELS } from './levels.js';
 import { createQuadTarget, screenSplatQuads } from './bloodsprites.js';
@@ -67,7 +67,6 @@ const controlsSeg = (x0, y0, x1, y1) => {
   return SEG4;
 };
 const POLY6 = [0, 0, 0, 0, 0, 0];
-const POLY8 = [0, 0, 0, 0, 0, 0, 0, 0];
 const KEYCARD_SLOTS = Object.freeze([
   Object.freeze(['blue', BLUE]),
   Object.freeze(['yellow', ORANGE]),
@@ -80,31 +79,68 @@ const AMMO_POOL_KEYS = Object.freeze([
 ]);
 const WEAPON_PLACE_OPTS = { width: 0, height: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0 };
 const WEAPON_RECT = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
-const FACE_PLACE_OPTS = { width: 0, height: 0, hurt: 0 };
-const FACE_RECT = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
+const FACE_VIEWPORT = new Vec2();
+const FACE_PLACEMENT = { rect: new Rect(), pixel: 0 };
 const FACE_FRAME_OPTS = { health: 100, hurt: 0, shotElapsed: -1, time: 0 };
 
-// Scalar drawing into a Layer through the shared scratch arrays: no per-call coordinate arrays.
+const SCRATCH_SIZE = new Vec2();
+const SCRATCH_POS = new Vec2();
+const WEAPON_QUAD = new Rect();
+const BLOOD_QUAD = new Rect();
+const DRAW_RECT = new Rect();
+const DRAW_CIRC = new Circ(1);
+const SEG_V = [new Vec2(), new Vec2()];
+const POLY3_V = [new Vec2(), new Vec2(), new Vec2()];
+const TRI_V = [new Vec2(), new Vec2(), new Vec2(), new Vec2()];
+const RECT_V = [new Vec2(), new Vec2(), new Vec2(), new Vec2(), new Vec2()];
+
+// Writes the edges into a reused Rect; corners are set exactly rather than derived from a centre and half size.
+const setRectEdges = (rect, x0, y0, x1, y1) => {
+  SCRATCH_SIZE.setScalar(x1 - x0, y1 - y0);
+  rect.setSize(SCRATCH_SIZE);
+  SCRATCH_POS.setScalar((x0 + x1) * 0.5, (y0 + y1) * 0.5);
+  rect.setPosition(SCRATCH_POS);
+  rect.topLeftCorner.setScalar(x0, y0);
+  rect.bottomRightCorner.setScalar(x1, y1);
+  return rect;
+};
+// Top-left corner and size, with the far corner computed as x + w, y + h.
+const setRect = (x, y, w, h) => {
+  setRectEdges(DRAW_RECT, x, y, x + w, y + h);
+  DRAW_RECT.size.setScalar(w, h);
+  return DRAW_RECT;
+};
+const setCirc = (cx, cy, radius) => {
+  DRAW_CIRC.position.setScalar(cx, cy);
+  DRAW_CIRC.radius = radius;
+  return DRAW_CIRC;
+};
+const segmentPoints = (x0, y0, x1, y1) => {
+  SEG_V[0].setScalar(x0, y0);
+  SEG_V[1].setScalar(x1, y1);
+  return SEG_V;
+};
+
+// Scalar drawing into a Layer through shared scratch Vec2 arrays: no per-call coordinate arrays.
 const layerSegment = (layer, x0, y0, x1, y1, color, alpha = 1) => {
-  SEG4[0] = x0; SEG4[1] = y0; SEG4[2] = x1; SEG4[3] = y1;
-  layer.line(SEG4, color, alpha);
+  layer.line(segmentPoints(x0, y0, x1, y1), color, alpha);
 };
 const cornerBracket = (x0, y0, x1, y1, x2, y2) => {
   POLY6[0] = x0; POLY6[1] = y0; POLY6[2] = x1; POLY6[3] = y1; POLY6[4] = x2; POLY6[5] = y2;
   return POLY6;
 };
 const layerPoly3 = (layer, x0, y0, x1, y1, x2, y2, color, alpha = 1) => {
-  POLY6[0] = x0; POLY6[1] = y0; POLY6[2] = x1; POLY6[3] = y1; POLY6[4] = x2; POLY6[5] = y2;
-  layer.line(POLY6, color, alpha);
+  POLY3_V[0].setScalar(x0, y0); POLY3_V[1].setScalar(x1, y1); POLY3_V[2].setScalar(x2, y2);
+  layer.line(POLY3_V, color, alpha);
 };
 const layerTriangle = (layer, x0, y0, x1, y1, x2, y2, color, alpha = 1) => {
-  POLY8[0] = x0; POLY8[1] = y0; POLY8[2] = x1; POLY8[3] = y1; POLY8[4] = x2; POLY8[5] = y2; POLY8[6] = x0; POLY8[7] = y0;
-  layer.line(POLY8, color, alpha);
+  TRI_V[0].setScalar(x0, y0); TRI_V[1].setScalar(x1, y1); TRI_V[2].setScalar(x2, y2); TRI_V[3].setScalar(x0, y0);
+  layer.line(TRI_V, color, alpha);
 };
 const layerDiamond = (layer, cx, cy, r, color, alpha = 1) => {
-  RECT10[0] = cx; RECT10[1] = cy - r; RECT10[2] = cx + r; RECT10[3] = cy; RECT10[4] = cx;
-  RECT10[5] = cy + r; RECT10[6] = cx - r; RECT10[7] = cy; RECT10[8] = cx; RECT10[9] = cy - r;
-  layer.line(RECT10, color, alpha);
+  RECT_V[0].setScalar(cx, cy - r); RECT_V[1].setScalar(cx + r, cy); RECT_V[2].setScalar(cx, cy + r);
+  RECT_V[3].setScalar(cx - r, cy); RECT_V[4].setScalar(cx, cy - r);
+  layer.line(RECT_V, color, alpha);
 };
 
 /** Written by layoutControls and read by both drawing and hit-testing so they never drift. */
@@ -387,24 +423,23 @@ export class Hud {
     this.skipCanvasText = false;
   }
 
-  /** A polyline in the glowing layer: it goes through the same neon pass as the 3D world. */
+  /** A polyline of Vec2 points in the glowing layer: it goes through the same neon pass as the 3D world. */
   line(points, color, alpha = 1) {
     this.overlay?.glow?.line(points, RGB[color], alpha);
   }
 
   /** One segment in the glowing layer, from scalar coordinates. */
   segment(x0, y0, x1, y1, color, alpha = 1) {
-    SEG4[0] = x0; SEG4[1] = y0; SEG4[2] = x1; SEG4[3] = y1;
-    this.overlay?.glow?.line(SEG4, RGB[color], alpha);
+    this.overlay?.glow?.line(segmentPoints(x0, y0, x1, y1), RGB[color], alpha);
   }
 
   /** A closed rectangle outline in the glowing layer: top-left corner, size. */
   rect(x0, y0, w, h, color, alpha = 1) {
     const x1 = x0 + w;
     const y1 = y0 + h;
-    RECT10[0] = x0; RECT10[1] = y0; RECT10[2] = x1; RECT10[3] = y0; RECT10[4] = x1;
-    RECT10[5] = y1; RECT10[6] = x0; RECT10[7] = y1; RECT10[8] = x0; RECT10[9] = y0;
-    this.overlay?.glow?.line(RECT10, RGB[color], alpha);
+    RECT_V[0].setScalar(x0, y0); RECT_V[1].setScalar(x1, y0); RECT_V[2].setScalar(x1, y1);
+    RECT_V[3].setScalar(x0, y1); RECT_V[4].setScalar(x0, y0);
+    this.overlay?.glow?.line(RECT_V, RGB[color], alpha);
   }
 
   /** A polyline on the canvas, for the few frames that must sit above the dimming screens. */
@@ -468,7 +503,8 @@ export class Hud {
     WEAPON_PLACE_OPTS.moving = player.moving;
     WEAPON_PLACE_OPTS.recoil = player.recoil;
     WEAPON_PLACE_OPTS.switchOffset = switchOffset;
-    const { x0, y0, x1, y1 } = weaponPlacement(WEAPON_PLACE_OPTS, WEAPON_RECT);
+    const placed = weaponPlacement(WEAPON_PLACE_OPTS, WEAPON_RECT);
+    setRectEdges(WEAPON_QUAD, placed.x0, placed.y0, placed.x1, placed.y1);
     const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
     const spinDown = player.spinDown ?? player.shootFace ?? 0;
     let elapsed =
@@ -483,7 +519,7 @@ export class Hud {
       elapsed += 0.065;
     const currentAmmo = def.ammoType ? (player[def.ammoType] ?? player.ammo ?? 0) : Infinity;
     const frame = weaponFrame(elapsed, currentAmmo >= def.ammoCost, weapon, game.time);
-    this.overlay.crisp.weapon.quad(x0, y0, x1, y1, weaponCellUv(frame, weapon), 1);
+    this.overlay.crisp.weapon.quad(WEAPON_QUAD, weaponCellUv(frame, weapon), 1);
   }
 
   /** Blood on the player's view: always translucent on the visor so the 3D world remains visible behind it. */
@@ -500,7 +536,7 @@ export class Hud {
       const target = screenSplatQuads(scratchBloodSplat, scratchBloodViewport, fade, this.bloodQuads);
       for (let i = 0; i < target.count; i++) {
         const q = target.quads[i];
-        sprites.quad(q.x0, q.y0, q.x1, q.y1, q.uv, q.fade);
+        sprites.quad(setRectEdges(BLOOD_QUAD, q.x0, q.y0, q.x1, q.y1), q.uv, q.fade);
       }
     }
   }
@@ -525,7 +561,7 @@ export class Hud {
     const y0 = cy + USE_PROMPT_TOP;
     const locked = prompt.verb === 'LOCKED' && USE_LOCK_COLOR[prompt.lock] !== undefined;
     const color = locked ? USE_LOCK_COLOR[prompt.lock] : GREEN;
-    this.overlay.crisp.rectLine(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(w), USE_PROMPT_H, RGB[color], USE_PROMPT_FRAME_ALPHA * prompt.fade);
+    this.overlay.crisp.rectLine(setRect(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(w), USE_PROMPT_H), RGB[color], USE_PROMPT_FRAME_ALPHA * prompt.fade);
     USE_LABEL_STYLE.alpha = USE_PROMPT_LABEL_ALPHA * prompt.fade;
     USE_VERB_STYLE.alpha = USE_PROMPT_VERB_ALPHA * prompt.fade;
     this.text(label, cx, y0 + USE_PROMPT_H / 2 + 4, color, USE_LABEL_STYLE);
@@ -555,10 +591,10 @@ export class Hud {
 
     this.drawUsePrompt(game, cx, cy);
 
-    FACE_PLACE_OPTS.width = width;
-    FACE_PLACE_OPTS.height = height;
-    FACE_PLACE_OPTS.hurt = player.hurt;
-    const faceRect = facePlacement(FACE_PLACE_OPTS, FACE_RECT);
+    FACE_VIEWPORT.setScalar(width, height);
+    const faceRect = facePlacement(FACE_VIEWPORT, player.hurt, FACE_PLACEMENT).rect;
+    const faceTL = faceRect.topLeftCorner;
+    const faceBR = faceRect.bottomRightCorner;
     const weaponDef = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
     const shotElapsed =
       (player.soulFlash ?? 0) > 0 || (player.berserkTimer ?? 0) > 18.5
@@ -584,12 +620,12 @@ export class Hud {
             : player.hurt > 0 || player.health < 30
               ? RGB[ORANGE]
               : RGB[BLUE];
-    crisp.fillRect(faceRect.x0 - 4, faceRect.y0 - 4, faceRect.x1 - faceRect.x0 + 8, faceRect.y1 - faceRect.y0 + 8, BACKGROUND_RGB);
-    crisp.rectLine(faceRect.x0 - 4.5, faceRect.y0 - 4.5, faceRect.x1 - faceRect.x0 + 9, faceRect.y1 - faceRect.y0 + 9, borderCol, player.hurt > 0 || (player.berserkTimer ?? 0) > 0 || (player.soulFlash ?? 0) > 0 || (player.teleFlash ?? 0) > 0 ? 0.85 : 0.45);
-    crisp.face?.quad(faceRect.x0, faceRect.y0, faceRect.x1, faceRect.y1, faceCellUv(frameIdx), 1);
+    crisp.fillRect(setRect(faceTL.x - 4, faceTL.y - 4, faceBR.x - faceTL.x + 8, faceBR.y - faceTL.y + 8), BACKGROUND_RGB);
+    crisp.rectLine(setRect(faceTL.x - 4.5, faceTL.y - 4.5, faceBR.x - faceTL.x + 9, faceBR.y - faceTL.y + 9), borderCol, player.hurt > 0 || (player.berserkTimer ?? 0) > 0 || (player.soulFlash ?? 0) > 0 || (player.teleFlash ?? 0) > 0 ? 0.85 : 0.45);
+    crisp.face?.quad(faceRect, faceCellUv(frameIdx), 1);
 
     const base = height - 28;
-    const hx = faceRect.x1 + 18;
+    const hx = faceBR.x + 18;
     const overcharged = player.health > 100;
     const healthCol = overcharged ? BLUE : player.health < 30 ? ORANGE : GREEN;
     this.text(overcharged ? 'SOUL' : 'HEALTH', hx, base - 24, BLUE, { size: 11, alpha: 0.8 });
@@ -867,8 +903,8 @@ export class Hud {
     const ox = width - mw - 20;
     const oy = 44;
 
-    layer.fillRect(ox - 6, oy - 6, mw + 12, mh + 12, BACKGROUND_RGB);
-    layer.rectLine(ox - 6.5, oy - 6.5, mw + 13, mh + 13, RGB[BLUE], 0.25);
+    layer.fillRect(setRect(ox - 6, oy - 6, mw + 12, mh + 12), BACKGROUND_RGB);
+    layer.rectLine(setRect(ox - 6.5, oy - 6.5, mw + 13, mh + 13), RGB[BLUE], 0.25);
 
     // fog of war: only tiles that have been seen are drawn, and the ones in view right now are brighter
     const fog = game.fog;
@@ -890,12 +926,12 @@ export class Hud {
         const k = kindArr[idx];
         if (!k || heightsArr[idx] <= 0) {
           if (level.teleporter?.[idx] === 1) {
-            layer.rectLine(colX + 0.5, rowY + 0.5, boxS, boxS, RGB[GREEN], visible ? 0.95 : 0.65);
+            layer.rectLine(setRect(colX + 0.5, rowY + 0.5, boxS, boxS), RGB[GREEN], visible ? 0.95 : 0.65);
             continue;
           }
           const isSlime = level.slime?.[idx] === 1;
           const col = isSlime ? (visible ? SLIME_VISIBLE : SLIME_SEEN) : (visible ? FLOOR_VISIBLE : FLOOR_SEEN);
-          layer.fillRect(colX + halfS, rowY + halfS, isSlime ? 1.5 : 1, isSlime ? 1.5 : 1, col);
+          layer.fillRect(setRect(colX + halfS, rowY + halfS, isSlime ? 1.5 : 1, isSlime ? 1.5 : 1), col);
           continue;
         }
         const doorObj = k === DOOR ? level.doors.get(idx) : null;
@@ -919,7 +955,7 @@ export class Hud {
           layerTriangle(layer, sx, sy, ax, ay, bx, by, RGB[BLUE], visible ? 0.9 : 0.35);
           continue;
         }
-        layer.rectLine(colX + 0.5, rowY + 0.5, s - 1, s - 1, door ? doorCol : RGB[BLUE], door ? (visible ? 1 : 0.55) : (visible ? 0.9 : 0.35));
+        layer.rectLine(setRect(colX + 0.5, rowY + 0.5, s - 1, s - 1), door ? doorCol : RGB[BLUE], door ? (visible ? 1 : 0.55) : (visible ? 0.9 : 0.35));
       }
     }
 
@@ -927,13 +963,13 @@ export class Hud {
     for (const enemy of game.enemies) {
       if (enemy.state === 'dead' || !fog.canSee(enemy.pos))
         continue;
-      layer.fillRect(ox + (enemy.pos.x / TILE) * s - 1.5, oy + (enemy.pos.y / TILE) * s - 1.5, 3, 3, RGB[ORANGE]);
+      layer.fillRect(setRect(ox + (enemy.pos.x / TILE) * s - 1.5, oy + (enemy.pos.y / TILE) * s - 1.5, 3, 3), RGB[ORANGE]);
     }
     const player = game.player;
     const x = ox + (player.pos.x / TILE) * s;
     const y = oy + (player.pos.y / TILE) * s;
     layerSegment(layer, x, y, x + Math.cos(player.angle) * 9, y + Math.sin(player.angle) * 9, RGB[GREEN]);
-    layer.circleLine(x, y, 2.5, RGB[GREEN]);
+    layer.circleLine(setCirc(x, y, 2.5), RGB[GREEN]);
   }
 
   /**
@@ -959,8 +995,8 @@ export class Hud {
     const footerH = 24;
 
     // tactical CRT dark screen backdrop and outer neon frame
-    layer.fillRect(x0, y0, w, h, BACKGROUND_RGB);
-    layer.rectLine(x0 + 0.5, y0 + 0.5, w - 1, h - 1, RGB[BLUE], 0.48);
+    layer.fillRect(setRect(x0, y0, w, h), BACKGROUND_RGB);
+    layer.rectLine(setRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1), RGB[BLUE], 0.48);
     layerSegment(layer, x0, y0 + headerH, x1, y0 + headerH, RGB[BLUE], 0.3);
     layerSegment(layer, x0, y1 - footerH, x1, y1 - footerH, RGB[BLUE], 0.3);
 
@@ -1027,16 +1063,16 @@ export class Hud {
           const isTeleporter = level.teleporter?.[idx] === 1;
           const isSlime = level.slime?.[idx] === 1;
           if (isTeleporter) {
-            layer.rectLine(tx + 1.5, ty + 1.5, Math.max(2, s - 3), Math.max(2, s - 3), RGB[GREEN], visible ? 0.95 : 0.72);
-            layer.circleLine(tx + s * 0.5, ty + s * 0.5, Math.max(1.5, s * 0.28), RGB[BLUE], visible ? 0.85 : 0.55);
+            layer.rectLine(setRect(tx + 1.5, ty + 1.5, Math.max(2, s - 3), Math.max(2, s - 3)), RGB[GREEN], visible ? 0.95 : 0.72);
+            layer.circleLine(setCirc(tx + s * 0.5, ty + s * 0.5, Math.max(1.5, s * 0.28)), RGB[BLUE], visible ? 0.85 : 0.55);
             this.text('T', tx + s * 0.5, ty + s * 0.5 + 3, GREEN, { size: Utils.clamp(Math.floor(s * 0.55), 8, 11), align: 'center', weight: 800, glow: 5 });
           } else if (isSlime) {
-            layer.fillRect(tx + 1.5, ty + 1.5, Math.max(1, s - 3), Math.max(1, s - 3), visible ? SLIME_VISIBLE : SLIME_SEEN);
+            layer.fillRect(setRect(tx + 1.5, ty + 1.5, Math.max(1, s - 3), Math.max(1, s - 3)), visible ? SLIME_VISIBLE : SLIME_SEEN);
             layerSegment(layer, tx + 2, ty + s - 2, tx + s - 2, ty + 2, RGB[GREEN], visible ? 0.55 : 0.3);
           } else
-            layer.fillRect(tx + s * 0.5 - 0.5, ty + s * 0.5 - 0.5, 1.5, 1.5, visible ? FLOOR_VISIBLE : FLOOR_SEEN);
+            layer.fillRect(setRect(tx + s * 0.5 - 0.5, ty + s * 0.5 - 0.5, 1.5, 1.5), visible ? FLOOR_VISIBLE : FLOOR_SEEN);
           if (game.discoveredSecrets?.has(idx)) {
-            layer.rectLine(tx + 2, ty + 2, Math.max(2, s - 4), Math.max(2, s - 4), RGB[ORANGE], 0.8);
+            layer.rectLine(setRect(tx + 2, ty + 2, Math.max(2, s - 4), Math.max(2, s - 4)), RGB[ORANGE], 0.8);
             this.text('S', tx + s * 0.5, ty + s * 0.5 + 3, ORANGE, { size: Utils.clamp(Math.floor(s * 0.6), 8, 12), align: 'center', weight: 800, glow: 5 });
           }
           continue;
@@ -1045,7 +1081,7 @@ export class Hud {
         const doorObj = kind === DOOR ? level.doors.get(idx) : null;
         const hiddenSecret = doorObj?.secret && !doorObj.revealed;
         if (kind === EXIT) {
-          layer.rectLine(tx + 1, ty + 1, s - 2, s - 2, RGB[GREEN], 0.95);
+          layer.rectLine(setRect(tx + 1, ty + 1, s - 2, s - 2), RGB[GREEN], 0.95);
           layerSegment(layer, tx + 2, ty + 2, tx + s - 2, ty + s - 2, RGB[ORANGE], 0.85);
           layerSegment(layer, tx + s - 2, ty + 2, tx + 2, ty + s - 2, RGB[ORANGE], 0.85);
           this.text('X', tx + s * 0.5, ty + s * 0.5 + 3, GREEN, { size: Utils.clamp(Math.floor(s * 0.55), 8, 11), align: 'center', weight: 800, glow: 6 });
@@ -1064,7 +1100,7 @@ export class Hud {
                   ? RGB[BLUE]
                   : RGB[GREEN];
           const alpha = visible ? 1 : 0.7;
-          layer.rectLine(tx + 1, ty + 1, s - 2, s - 2, doorCol, alpha);
+          layer.rectLine(setRect(tx + 1, ty + 1, s - 2, s - 2), doorCol, alpha);
           const closed = 1 - (doorObj?.open ?? 0);
           if (closed > 0.05 && isSecret)
             layerSegment(layer, tx + 2, ty + s * 0.5, tx + 2 + (s - 4) * closed, ty + s * 0.5, doorCol, alpha);
@@ -1081,7 +1117,7 @@ export class Hud {
         }
 
         if (kind === PILLAR || (hVal > 0 && hVal < CEILING)) {
-          layer.rectLine(tx + 1.5, ty + 1.5, Math.max(2, s - 3), Math.max(2, s - 3), RGB[ORANGE], visible ? 0.95 : 0.55);
+          layer.rectLine(setRect(tx + 1.5, ty + 1.5, Math.max(2, s - 3), Math.max(2, s - 3)), RGB[ORANGE], visible ? 0.95 : 0.55);
           continue;
         }
 
@@ -1125,7 +1161,7 @@ export class Hud {
 
         // full-height wall (or unrevealed secret door disguised as a normal wall):
         // subtle blue block outline + classic Doom red vector boundary lines against open space
-        layer.rectLine(tx + 0.5, ty + 0.5, s - 1, s - 1, RGB[BLUE], visible ? 0.38 : 0.2);
+        layer.rectLine(setRect(tx + 0.5, ty + 0.5, s - 1, s - 1), RGB[BLUE], visible ? 0.38 : 0.2);
         if (isOpenNeighbor(x, y - 1, 0))
           layerSegment(layer, tx, ty + 0.5, tx + s, ty + 0.5, RGB[RED], edgeAlpha);
         if (isOpenNeighbor(x, y + 1, 2))
@@ -1145,7 +1181,7 @@ export class Hud {
         const cy = oy + crusher.y * s;
         if (cx + s < mapX0 || cx > mapX0 + mapW || cy + s < mapY0 || cy > mapY0 + mapH)
           continue;
-        layer.rectLine(cx + 2, cy + 2, Math.max(2, s - 4), Math.max(2, s - 4), RGB[RED], 0.8);
+        layer.rectLine(setRect(cx + 2, cy + 2, Math.max(2, s - 4), Math.max(2, s - 4)), RGB[RED], 0.8);
         layerSegment(layer, cx + 2, cy + 2, cx + s - 2, cy + s - 2, RGB[ORANGE], 0.75);
         layerSegment(layer, cx + s - 2, cy + 2, cx + 2, cy + s - 2, RGB[ORANGE], 0.75);
       }
@@ -1193,7 +1229,7 @@ export class Hud {
       const emptied = cache.state === 'emptied';
       const major = cache.hasWeapon && !emptied;
       const r = Math.max(2.5, s * 0.22) * (major ? 1.25 : 1);
-      layer.rectLine(sx - r, sy - r, 2 * r, 2 * r, major ? RGB[ORANGE] : RGB[GREEN], major ? 0.95 : emptied ? 0.3 : 0.85);
+      layer.rectLine(setRect(sx - r, sy - r, 2 * r, 2 * r), major ? RGB[ORANGE] : RGB[GREEN], major ? 0.95 : emptied ? 0.3 : 0.85);
     }
 
     // visible enemies (only while currently in line-of-sight)

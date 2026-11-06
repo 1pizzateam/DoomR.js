@@ -1,4 +1,4 @@
-import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Rect, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 
 /**
  * The marine's HUD portrait (modelled on the classic Doom status-bar mugshot, STFST / STFOUCH / STFEVL / STFKILL):
@@ -172,23 +172,31 @@ export function faceFrame({ health = 100, hurt = 0, shotElapsed = -1, time = 0 }
   return tier * FACE_POSE_COUNT + pose;
 }
 
+const scratchPlaceSize = new Vec2();
+const scratchPlacePos = new Vec2();
+const defaultPlacement = { rect: new Rect(), pixel: 0 };
+
 /**
- * Screen rectangle `{ x0, y0, x1, y1, pixel }` for the HUD portrait box at the bottom-left of the screen.
- * The rectangle is written onto `out` (pass a reused scratch rect to avoid allocating) and `out` is returned.
+ * Screen placement `{ rect, pixel }` for the HUD portrait box at the bottom-left of a `viewportSize` Vec2.
+ * `hurt` is a plain intensity. The result is written onto `out` (pass a reused scratch to avoid allocating) and returned.
  */
-export function facePlacement({ width, height, hurt = 0 } = {}, out = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 }) {
-  const scale = Utils.clamp(height / 760, 0.75, 1.35);
+export function facePlacement(viewportSize, hurt = 0, out = defaultPlacement) {
+  const scale = Utils.clamp(viewportSize.y / 760, 0.75, 1.35);
   const pixel = Math.max(1, Math.round(1.5 * scale));
   const w = W * pixel;
   const h = H * pixel;
   const joltX = hurt > 0 ? Math.round(Math.sin(hurt * 55) * 2 * pixel) : 0;
   const joltY = hurt > 0 ? Math.round(hurt * 4 * pixel) : 0;
   const x0 = 24 + joltX;
-  const y1 = height - 18 + joltY;
-  out.x0 = x0;
-  out.y0 = y1 - h;
-  out.x1 = x0 + w;
-  out.y1 = y1;
+  const y1 = viewportSize.y - 18 + joltY;
+  const { rect } = out;
+  scratchPlaceSize.setScalar(w, h);
+  rect.setSize(scratchPlaceSize);
+  scratchPlacePos.setScalar(x0 + w * 0.5, y1 - h * 0.5);
+  rect.setPosition(scratchPlacePos);
+  // the corners are written exactly, so they never depend on a centre / half-size round trip
+  rect.topLeftCorner.setScalar(x0, y1 - h);
+  rect.bottomRightCorner.setScalar(x0 + w, y1);
   out.pixel = pixel;
   return out;
 }
