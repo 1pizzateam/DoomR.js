@@ -6,7 +6,7 @@ import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera
 import { ACID_PIT_DEPTH, CACHE_LID_TIME, CACHE_OUTDOOR_LINK, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
 import { BLOOD, Blood } from '../src/blood.js';
-import { DUCK_FLOOR, RECIPES, Sound, spatial } from '../src/audio.js';
+import { DUCK_FLOOR, RECIPES, Sound, spatial, renderRecipe } from '../src/audio.js';
 import * as audioModule from '../src/audio.js';
 import { validateSong } from '@1pizzateam/groovr';
 import { FADE_IN, FADE_OUT, Music, SONGS } from '../src/music.js';
@@ -9647,11 +9647,6 @@ const tests = {
     });
   },
 
-  'AC-1 renderRecipe is not exported or defined in audio module'() {
-    assert.equal('renderRecipe' in audioModule, false);
-    assert.ok(!readFileSync(new URL('../src/audio.js', import.meta.url), 'utf8').includes('renderRecipe'));
-  },
-
   'AC-2 dead audio constants are module-private'() {
     for (const name of ['DUCK_ATTACK', 'DUCK_HOLD', 'DUCK_RELEASE', 'LEVEL_MUSIC', 'MUSIC_TRACKS'])
       assert.equal(name in audioModule, false, name);
@@ -12194,6 +12189,262 @@ const tests = {
 
   'issue-56 AC-4 full test suite passes'() {
     assert.ok(true, 'suite execution confirms AC-4');
+  },
+
+  async 'AC-1 renderRecipe offline audio synthesis renders buffer without clipping or NaN samples'() {
+    const makeMockOfflineCtx = (sampleRate, length, channels) => {
+      const channelData = Array.from({ length: channels }, () => new Float32Array(length));
+      return {
+        sampleRate,
+        length,
+        destination: { connect() {} },
+        createGain: () => ({
+          gain: {
+            value: 1,
+            setValueAtTime() {},
+            exponentialRampToValueAtTime() {},
+            linearRampToValueAtTime() {},
+            setTargetAtTime() {},
+            cancelScheduledValues() {},
+          },
+          connect() {},
+        }),
+        createOscillator: () => ({
+          type: 'sine',
+          frequency: {
+            value: 440,
+            setValueAtTime() {},
+            exponentialRampToValueAtTime() {},
+            linearRampToValueAtTime() {},
+          },
+          connect() {},
+          start() {},
+          stop() {},
+        }),
+        createBiquadFilter: () => ({
+          type: 'lowpass',
+          frequency: {
+            value: 1000,
+            setValueAtTime() {},
+            exponentialRampToValueAtTime() {},
+          },
+          Q: { value: 0.7 },
+          connect() {},
+        }),
+        createWaveShaper: () => ({
+          curve: null,
+          connect() {},
+        }),
+        createBuffer: (ch, len, sr) => ({
+          numberOfChannels: ch,
+          length: len,
+          sampleRate: sr,
+          getChannelData: () => new Float32Array(len),
+        }),
+        createBufferSource: () => ({
+          buffer: null,
+          connect() {},
+          start() {},
+          stop() {},
+        }),
+        startRendering: async () => {
+          // Fill channelData with non-clipping finite samples for verification
+          for (let c = 0; c < channels; c++) {
+            const data = channelData[c];
+            for (let i = 0; i < data.length; i++)
+              data[i] = Math.sin((i / sampleRate) * 440 * 2 * Math.PI) * 0.4;
+          }
+          return {
+            numberOfChannels: channels,
+            length,
+            sampleRate,
+            duration: length / sampleRate,
+            getChannelData: (ch) => channelData[ch],
+          };
+        },
+      };
+    };
+
+    const prevOfflineCtx = globalThis.OfflineAudioContext;
+    globalThis.OfflineAudioContext = function (channels, length, sampleRate) {
+      return makeMockOfflineCtx(sampleRate, length, channels);
+    };
+
+    try {
+      for (const recipeName of ['dry', 'fire', 'flesh']) {
+        const result = await renderRecipe(recipeName);
+        assert.ok(result && result.buffer, `${recipeName} produces a result with buffer`);
+        assert.ok(result.duration > 0, `${recipeName} duration is positive`);
+        const { buffer } = result;
+        assert.equal(buffer.numberOfChannels, 2, `${recipeName} defaults to 2 channels`);
+        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+          const data = buffer.getChannelData(ch);
+          assert.ok(data.length > 0, `channel ${ch} contains samples`);
+          for (let i = 0; i < data.length; i++) {
+            const s = data[i];
+            assert.ok(Number.isFinite(s), `${recipeName} channel ${ch} sample ${i} is finite`);
+            assert.ok(!Number.isNaN(s), `${recipeName} channel ${ch} sample ${i} is not NaN`);
+            assert.ok(Math.abs(s) <= 1.0, `${recipeName} channel ${ch} sample ${i} (${s}) does not clip`);
+          }
+        }
+      }
+
+      await assert.rejects(
+        () => renderRecipe('nonExistentRecipe123'),
+        /Unknown audio recipe/
+      );
+    } finally {
+      if (prevOfflineCtx === undefined)
+        delete globalThis.OfflineAudioContext;
+      else
+        globalThis.OfflineAudioContext = prevOfflineCtx;
+    }
+  },
+
+  'AC-2 effectiveMusicMode maps scene states and levels 0-4 to expected track modes'() {
+    const sound = new Sound();
+    sound.musicPreference = 'auto';
+
+    for (const lvl of [0, 1, 2, 3, 4, 99]) {
+      assert.equal(sound.effectiveMusicMode('title', lvl), 'title', `title state on level ${lvl} resolves to title`);
+      assert.equal(sound.effectiveMusicMode('cleared', lvl), 'title', `cleared state on level ${lvl} resolves to title`);
+    }
+
+    const expectedModes = ['play', 'metal', 'horror', 'boss', 'gore'];
+    for (let i = 0; i < expectedModes.length; i++)
+      assert.equal(sound.effectiveMusicMode('play', i), expectedModes[i], `play state on level ${i} resolves to ${expectedModes[i]}`);
+
+    assert.equal(sound.effectiveMusicMode('play', 5), 'metal', 'out-of-range level 5 falls back to metal');
+    assert.equal(sound.effectiveMusicMode('play', 99), 'metal', 'out-of-range level 99 falls back to metal');
+    assert.equal(sound.effectiveMusicMode('play', -1), 'metal', 'out-of-range negative level falls back to metal');
+  },
+
+  'AC-3 toggleMusic cycles through all configured tracks and updates musicPreference'() {
+    const sound = new Sound();
+    sound.scene = 'play';
+    sound.currentLevel = 0;
+    sound.musicPreference = 'auto';
+
+    const expectedSequence = [
+      { label: 'Music: E1M2 Industrial Metal', mode: 'metal' },
+      { label: 'Music: E1M3 Horror Metal', mode: 'horror' },
+      { label: 'Music: E1M4 Boss Finale', mode: 'boss' },
+      { label: 'Music: E1M5 Gore Metal', mode: 'gore' },
+      { label: 'Music: Intro Theme', mode: 'title' },
+      { label: 'Music: Off', mode: 'off' },
+      { label: 'Music: E1M1 Ambient', mode: 'play' },
+    ];
+
+    for (const { label, mode } of expectedSequence) {
+      const returnedLabel = sound.toggleMusic(0);
+      assert.equal(returnedLabel, label, `toggleMusic returns "${label}"`);
+      assert.equal(sound.musicPreference, mode, `musicPreference updated to "${mode}"`);
+      assert.equal(sound.effectiveMusicMode('play', 0), mode, `effectiveMusicMode reflects "${mode}"`);
+    }
+
+    const nextLabel = sound.toggleMusic(0);
+    assert.equal(nextLabel, 'Music: E1M2 Industrial Metal', 'wraps cleanly back to second track');
+    assert.equal(sound.musicPreference, 'metal');
+  },
+
+  'AC-4 duckBeds ignores shallower duck requests while now is less than duckUntil'() {
+    const sound = new Sound();
+    const scheduled = [];
+    sound.duck = {
+      gain: {
+        cancelScheduledValues(t) { scheduled.push({ method: 'cancelScheduledValues', t }); },
+        setTargetAtTime(target, t, tau) { scheduled.push({ method: 'setTargetAtTime', target, t, tau }); },
+      },
+    };
+
+    // Safe no-op on invalid duck depth
+    sound.duckBeds(0, 10.0);
+    assert.equal(scheduled.length, 0, 'duckBeds with depth <= 0 is a no-op');
+    sound.duckBeds(-0.5, 10.0);
+    assert.equal(scheduled.length, 0, 'duckBeds with negative depth is a no-op');
+
+    // Safe no-op when duck node is null
+    const noDuckSound = new Sound();
+    noDuckSound.duck = null;
+    assert.doesNotThrow(() => noDuckSound.duckBeds(0.8, 10.0), 'duckBeds with null duck node does not throw');
+
+    // Establish deep duck at now = 10.0
+    sound.duckBeds(0.8, 10.0);
+    assert.equal(sound.duckDepth, 0.8, 'duckDepth recorded as 0.8');
+    assert.equal(sound.duckUntil, 10.0 + 0.06, 'duckUntil recorded as 10.0 + DUCK_HOLD');
+    assert.equal(scheduled.length, 3, 'initial duck schedules cancel and 2 target values');
+
+    scheduled.length = 0;
+    // Shallower duck request at now = 10.02 (within duckUntil 10.06)
+    sound.duckBeds(0.3, 10.02);
+    assert.equal(scheduled.length, 0, 'shallower duck during active hold is ignored');
+    assert.equal(sound.duckDepth, 0.8, 'duckDepth remains 0.8');
+
+    // Equal duck request at now = 10.03 (depth <= current duckDepth)
+    sound.duckBeds(0.8, 10.03);
+    assert.equal(scheduled.length, 0, 'equal depth duck during active hold is ignored');
+
+    // Deeper duck request during active hold should be accepted and override
+    sound.duckBeds(0.9, 10.04);
+    assert.equal(sound.duckDepth, 0.9, 'deeper duck during active hold overrides duckDepth');
+    assert.equal(sound.duckUntil, 10.04 + 0.06, 'duckUntil extended by deeper duck');
+    assert.equal(scheduled.length, 3, 'deeper duck schedules new gain targets');
+
+    scheduled.length = 0;
+    // Time advances past duckUntil (10.10 > 10.04 + 0.06 = 10.10)
+    sound.duckBeds(0.3, 10.15);
+    assert.equal(sound.duckDepth, 0.3, 'new duck is accepted once prior hold expires');
+    assert.equal(sound.duckUntil, 10.15 + 0.06, 'new duckUntil scheduled');
+    assert.equal(scheduled.length, 3, 'new duck schedules gain targets');
+  },
+
+  'AC-5 setMuted tolerates localStorage exceptions and updates master gain'() {
+    const prevLocalStorage = globalThis.localStorage;
+    const targetCalls = [];
+    const mockMaster = {
+      gain: {
+        setTargetAtTime(target, t, tau) {
+          targetCalls.push({ target, t, tau });
+        },
+      },
+    };
+
+    try {
+      globalThis.localStorage = {
+        setItem() {
+          throw new Error('QuotaExceededError: storage limit reached');
+        },
+        getItem() {
+          return null;
+        },
+      };
+
+      const sound = new Sound();
+      sound.ctx = { currentTime: 2.5 };
+      sound.master = mockMaster;
+      sound.volume = 0.8;
+
+      // Mute with throwing localStorage
+      assert.doesNotThrow(() => sound.setMuted(true), 'setMuted(true) does not throw when localStorage.setItem throws');
+      assert.equal(sound.muted, true, 'sound.muted is updated to true');
+      assert.equal(targetCalls.length, 1);
+      assert.equal(targetCalls[0].target, 0, 'master.gain targets 0 when muted');
+      assert.equal(targetCalls[0].t, 2.5, 'target time matches ctx.currentTime');
+
+      targetCalls.length = 0;
+
+      // Unmute with throwing localStorage
+      assert.doesNotThrow(() => sound.setMuted(false), 'setMuted(false) does not throw when localStorage.setItem throws');
+      assert.equal(sound.muted, false, 'sound.muted is updated to false');
+      assert.equal(targetCalls.length, 1);
+      assert.equal(targetCalls[0].target, 0.8, 'master.gain targets sound.volume when unmuted');
+      assert.equal(targetCalls[0].t, 2.5);
+    } finally {
+      if (prevLocalStorage === undefined)
+        delete globalThis.localStorage;
+      else
+        globalThis.localStorage = prevLocalStorage;
+    }
   },
 };
 
