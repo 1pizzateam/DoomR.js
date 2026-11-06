@@ -77,14 +77,15 @@ const checks = [
   }],
 ];
 
+console.log('# file: tests/mesh-buffers-stable.test.mjs');
 let failed = 0;
 for (const [name, fn] of checks) {
   try {
     fn();
-    console.log(`ok - ${name}`);
+    console.log(`ok   ${name}`);
   } catch (e) {
     failed++;
-    console.error(`not ok - ${name}\n${e.message}`);
+    console.error(`FAIL ${name}\n     ${e.message}`);
   }
 }
 process.exit(failed ? 1 : 0);
