@@ -1,4 +1,4 @@
-import { Grid, Rand, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Grid, Rand, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { Physics, Raycast, Scene } from '@1pizzateam/bumpr';
 import { Blood, makeFeet } from './blood.js';
 import { CONE_RANGE, Fog, marsFogNearFar } from './fog.js';
@@ -169,6 +169,11 @@ export class Game {
     this.dustPool = [];
     this.dustFree = [];
     this.blood = new Blood();
+    // scratch vectors handed to the blood APIs, which read them immediately and keep no reference
+    this.bloodPos = new Vec3();
+    this.bloodDir = new Vec2();
+    this.bloodNormal = new Vec2();
+    this.bloodAt = new Vec2();
     // sound events for main.js to hand to the audio layer; the rules never touch audio themselves
     this.events = [];
     this.eventPool = [];
@@ -1110,7 +1115,7 @@ export class Game {
       if (wallHit) {
         const nx = Math.abs(wallHit.normal.x) > 0.9 ? Math.round(wallHit.normal.x) : wallHit.normal.x;
         const ny = Math.abs(wallHit.normal.y) > 0.9 ? Math.round(wallHit.normal.y) : wallHit.normal.y;
-        this.blood.impact(wallHit.point.x, wallHit.point.y, nx, ny, this.player.eye - 2);
+        this.blood.impact(this.bloodPos.setScalar(wallHit.point.x, wallHit.point.y, this.player.eye - 2), this.bloodNormal.setScalar(nx, ny));
       }
     }
 
@@ -1435,7 +1440,8 @@ export class Game {
     player.hurt = 0.4;
     this.emit('hurt');
     this.blood.splat(Math.ceil(amount / 5) + 1);
-    this.blood.floorSplat(player.pos.x + this.rand.float(-18, 18), player.pos.y + this.rand.float(-18, 18), this.rand.float(6, 12));
+    this.bloodAt.setScalar(player.pos.x + this.rand.float(-18, 18), player.pos.y + this.rand.float(-18, 18));
+    this.blood.floorSplat(this.bloodAt, this.rand.float(6, 12));
     if (!player.health) {
       this.state = 'dead';
       this.resetKick();
@@ -1487,7 +1493,7 @@ export class Game {
     enemy.deathDirX = dirX;
     enemy.deathDirY = dirY;
     enemy.deathFountain = 0.08;
-    this.blood.gore(enemy.pos.x, enemy.pos.y, enemy.def.gore, dirX, dirY);
+    this.blood.gore(enemy.pos, enemy.def.gore, this.bloodDir.setScalar(dirX, dirY));
     // killing at point-blank range sprays the player too
     if (enemy.pos.getDistance(this.player.pos) < 130)
       this.blood.splat(Math.max(1, Math.round(4 * enemy.def.gore)), 0.8 + 0.5 * Math.min(enemy.def.gore, 2));
@@ -1517,9 +1523,10 @@ export class Game {
     const gore = enemy.def.gore;
     const sizeScale = Math.sqrt(gore);
     const freshKill = enemy.diedAt === this.time;
-    this.blood.gore(enemy.pos.x, enemy.pos.y, gore * (freshKill ? 0.55 : 1.15), dirX, dirY);
-    this.blood.spray(enemy.pos.x, enemy.pos.y, 26, dirX, dirY, Math.max(2, Math.round(36 * gore)), { speed: 290, spread: 165 * sizeScale, up: 320, scale: sizeScale });
-    this.blood.spray(enemy.pos.x, enemy.pos.y, 30, dirX, dirY, Math.max(1, Math.round(2 * gore)), { speed: 170, spread: 230 * sizeScale, up: 380, gib: true, scale: sizeScale });
+    this.bloodDir.setScalar(dirX, dirY);
+    this.blood.gore(enemy.pos, gore * (freshKill ? 0.55 : 1.15), this.bloodDir);
+    this.blood.spray(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, 26), this.bloodDir, Math.max(2, Math.round(36 * gore)), { speed: 290, spread: 165 * sizeScale, up: 320, scale: sizeScale });
+    this.blood.spray(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, 30), this.bloodDir, Math.max(1, Math.round(2 * gore)), { speed: 170, spread: 230 * sizeScale, up: 380, gib: true, scale: sizeScale });
     if (enemy.pos.getDistance(this.player.pos) < 170) {
       this.blood.splat(Math.max(1, Math.round(6 * gore)), 0.9 + 0.5 * Math.min(gore, 2));
       this.shake = Math.max(this.shake, 0.35 * gore);
@@ -1542,15 +1549,19 @@ export class Game {
         enemy.postGibTime1 = enemy.deadTime;
       else
         enemy.postGibTime2 = enemy.deadTime;
-      this.blood.hit(enemy.pos.x + this.rand.float(-8, 8) * sizeScale, enemy.pos.y + this.rand.float(-8, 8) * sizeScale, this.rand.float(6, 20), dirX, dirY, gore * 1.35);
-      this.blood.spray(enemy.pos.x, enemy.pos.y, 12, dirX, dirY, Math.max(3, Math.round(3 * gore)), { speed: 165, spread: 160 * sizeScale, up: 240, gib: true, scale: sizeScale });
+      this.bloodDir.setScalar(dirX, dirY);
+      this.bloodPos.setScalar(enemy.pos.x + this.rand.float(-8, 8) * sizeScale, enemy.pos.y + this.rand.float(-8, 8) * sizeScale, this.rand.float(6, 20));
+      this.blood.hit(this.bloodPos, this.bloodDir, gore * 1.35);
+      this.blood.spray(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, 12), this.bloodDir, Math.max(3, Math.round(3 * gore)), { speed: 165, spread: 160 * sizeScale, up: 240, gib: true, scale: sizeScale });
       this.emit('flesh', enemy.pos);
       if (enemy.pos.getDistance(this.player.pos) < 120)
         this.blood.splat(1, 0.55 + 0.25 * Math.min(gore, 2));
       return;
     }
     enemy.corpseDamage = (enemy.corpseDamage ?? 0) + (forceGib ? 999 : PELLET_DAMAGE);
-    this.blood.hit(enemy.pos.x + this.rand.float(-8, 8) * sizeScale, enemy.pos.y + this.rand.float(-8, 8) * sizeScale, this.rand.float(6, 20), dirX, dirY, gore);
+    this.bloodDir.setScalar(dirX, dirY);
+    this.bloodPos.setScalar(enemy.pos.x + this.rand.float(-8, 8) * sizeScale, enemy.pos.y + this.rand.float(-8, 8) * sizeScale, this.rand.float(6, 20));
+    this.blood.hit(this.bloodPos, this.bloodDir, gore);
     this.emit('flesh', enemy.pos);
     if (enemy.pos.getDistance(this.player.pos) < 120)
       this.blood.splat(1, 0.55 + 0.25 * Math.min(gore, 2));
@@ -1572,7 +1583,7 @@ export class Game {
       enemy.crawling = true;
       enemy.leap = 0;
     }
-    this.blood.severBurst(enemy.pos.x, enemy.pos.y, isLeg ? 12 : 28, dirX, dirY, enemy.def.gore, isLeg);
+    this.blood.severBurst(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, isLeg ? 12 : 28), this.bloodDir.setScalar(dirX, dirY), enemy.def.gore, isLeg);
     return true;
   }
 
@@ -1737,8 +1748,9 @@ export class Game {
       enemy.volley = 1e6;
     enemy.pain = Math.max(enemy.pain, 0.22);
     const hitZ = this.rand.float(16, 44) - (player.crouch ?? 0) * 12;
-    this.blood.hit(hit.point.x, hit.point.y, hitZ, cos, sin, gore);
-    this.blood.spray(hit.point.x, hit.point.y, 20, -cos, -sin, Math.max(2, Math.round((player.berserk ? 14 : 5) * gore)), { speed: 170, spread: 130 * sizeScale, up: 200, gib: Boolean(player.berserk), scale: sizeScale });
+    this.bloodPos.setScalar(hit.point.x, hit.point.y, hitZ);
+    this.blood.hit(this.bloodPos, this.bloodDir.setScalar(cos, sin), gore);
+    this.blood.spray(this.bloodPos.setScalar(hit.point.x, hit.point.y, 20), this.bloodDir.setScalar(-cos, -sin), Math.max(2, Math.round((player.berserk ? 14 : 5) * gore)), { speed: 170, spread: 130 * sizeScale, up: 200, gib: Boolean(player.berserk), scale: sizeScale });
     this.blood.splat(Math.max(1, Math.round((player.berserk ? 4 : 1) * Math.min(gore, 1.8))), 0.65 + 0.25 * Math.min(gore, 2));
     this.shake = Math.max(this.shake, player.berserk ? 0.42 : 0.2);
     this.emit('flesh', hit.point);
@@ -1780,7 +1792,7 @@ export class Game {
       const height = player.eye - 2 + this.rand.float(-5, 5);
       const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
       const ny = Math.abs(hit.normal.y) > 0.9 ? Math.round(hit.normal.y) : hit.normal.y;
-      const marked = this.blood.impact(hit.point.x, hit.point.y, nx, ny, height, 'slash');
+      const marked = this.blood.impact(this.bloodPos.setScalar(hit.point.x, hit.point.y, height), this.bloodNormal.setScalar(nx, ny), 'slash');
       this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
       this.emit('clang', hit.point);
       this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
@@ -1791,8 +1803,9 @@ export class Game {
     enemy.volley = 1e6;
     enemy.pain = Math.max(enemy.pain, 0.22);
     const hitZ = this.rand.float(16, 44) - (player.crouch ?? 0) * 12;
-    this.blood.hit(hit.point.x, hit.point.y, hitZ, cos, sin, gore);
-    this.blood.spray(hit.point.x, hit.point.y, 20, -cos, -sin, Math.max(2, Math.round((player.berserk ? 16 : 8) * gore)), { speed: 190, spread: 140 * sizeScale, up: 220, gib: player.berserk || this.rand.float(0, 1) < 0.35, scale: sizeScale });
+    this.bloodPos.setScalar(hit.point.x, hit.point.y, hitZ);
+    this.blood.hit(this.bloodPos, this.bloodDir.setScalar(cos, sin), gore);
+    this.blood.spray(this.bloodPos.setScalar(hit.point.x, hit.point.y, 20), this.bloodDir.setScalar(-cos, -sin), Math.max(2, Math.round((player.berserk ? 16 : 8) * gore)), { speed: 190, spread: 140 * sizeScale, up: 220, gib: player.berserk || this.rand.float(0, 1) < 0.35, scale: sizeScale });
     this.blood.splat(Math.max(1, Math.round((player.berserk ? 4 : 2) * Math.min(gore, 1.8))), 0.75 + 0.25 * Math.min(gore, 2));
     this.shake = Math.max(this.shake, player.berserk ? 0.48 : 0.28);
     this.emit('flesh', hit.point);
@@ -1898,13 +1911,13 @@ export class Game {
         const height = player.eye + this.rand.float(-PELLET_VERTICAL_SPREAD, PELLET_VERTICAL_SPREAD) * maxDist;
         const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
         const ny = Math.abs(hit.normal.y) > 0.9 ? Math.round(hit.normal.y) : hit.normal.y;
-        const marked = this.blood.impact(hit.point.x, hit.point.y, nx, ny, height);
+        const marked = this.blood.impact(this.bloodPos.setScalar(hit.point.x, hit.point.y, height), this.bloodNormal.setScalar(nx, ny));
         this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
         this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
         continue;
       }
       const hitZ = this.rand.float(14, 50) - (player.crouch ?? 0) * 12;
-      this.blood.hit(hit.point.x, hit.point.y, hitZ, cos, sin, enemy.def.gore);
+      this.blood.hit(this.bloodPos.setScalar(hit.point.x, hit.point.y, hitZ), this.bloodDir.setScalar(cos, sin), enemy.def.gore);
       this.emit('flesh', hit.point);
       if (maxDist < 110)
         this.blood.splat(1, 0.55 + 0.25 * Math.min(enemy.def.gore, 2));
@@ -1954,13 +1967,13 @@ export class Game {
       const height = player.eye + this.rand.float(-0.02, 0.02) * maxDist;
       const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
       const ny = Math.abs(hit.normal.y) > 0.9 ? Math.round(hit.normal.y) : hit.normal.y;
-      const marked = this.blood.impact(hit.point.x, hit.point.y, nx, ny, height);
+      const marked = this.blood.impact(this.bloodPos.setScalar(hit.point.x, hit.point.y, height), this.bloodNormal.setScalar(nx, ny));
       this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
       this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
       return;
     }
     const hitZ = this.rand.float(14, 48) - (player.crouch ?? 0) * 12;
-    this.blood.hit(hit.point.x, hit.point.y, hitZ, cos, sin, enemy.def.gore);
+    this.blood.hit(this.bloodPos.setScalar(hit.point.x, hit.point.y, hitZ), this.bloodDir.setScalar(cos, sin), enemy.def.gore);
     this.emit('flesh', hit.point);
     if (maxDist < 110)
       this.blood.splat(1, 0.5 + 0.25 * Math.min(enemy.def.gore, 2));
@@ -2229,14 +2242,14 @@ export class Game {
           const z = Math.max(6, (enemy.gibbed ? 14 : 26) * (1 - progress * 0.65));
           const scale = Math.sqrt(Math.max(0.18, gore));
           const count = Math.max(2, Math.round((1 - progress * 0.45) * 9 * gore));
-          this.blood.spray(enemy.pos.x, enemy.pos.y, z, (enemy.deathDirX ?? 0) * 0.35, (enemy.deathDirY ?? 0) * 0.35, count, {
+          this.blood.spray(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, z), this.bloodDir.setScalar((enemy.deathDirX ?? 0) * 0.35, (enemy.deathDirY ?? 0) * 0.35), count, {
             speed: 95,
             spread: 195 * scale,
             up: 265,
             scale,
           });
           if (progress < 0.65)
-            this.blood.spray(enemy.pos.x, enemy.pos.y, z + 4, 0, 0, Math.max(2, Math.round(5 * gore)), {
+            this.blood.spray(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, z + 4), this.bloodDir.setScalar(0, 0), Math.max(2, Math.round(5 * gore)), {
               speed: 55,
               spread: 115 * scale,
               up: 285,
@@ -2249,7 +2262,7 @@ export class Game {
     // wounded enemies leave a trail proportional to their size
     if (enemy.hp < enemy.def.hp * 0.6 && enemy.bleed <= 0) {
       enemy.bleed = 0.14 / Math.sqrt(Math.max(0.35, gore));
-      this.blood.drip(enemy.pos.x, enemy.pos.y, gore);
+      this.blood.drip(enemy.pos, gore);
     }
 
     if (this.state === 'dead' || this.player.health <= 0) {
@@ -2668,14 +2681,14 @@ export class Game {
       for (const enemy of this.enemies)
         if (enemy.state === 'dead' && enemy.body.overlapsCircle(player.pos, PLAYER_RADIUS))
           player.feet.blood = 1;
-      this.blood.walk(player.feet, player.pos.x, player.pos.y, 1, PLAYER_STRIDE);
+      this.blood.walk(player.feet, player.pos, 1, PLAYER_STRIDE);
     }
     for (const enemy of this.enemies) {
       if (enemy.state === 'dead')
         continue;
       if (enemy.def.flying)
         continue;
-      const step = this.blood.walk(enemy.feet, enemy.pos.x, enemy.pos.y, 1, Trigo.pi / enemy.def.gait, false);
+      const step = this.blood.walk(enemy.feet, enemy.pos, 1, Trigo.pi / enemy.def.gait, false);
       if (!step || !enemy.def.steps)
         continue;
       if (enemy.def.stomp) {
@@ -2802,7 +2815,7 @@ export class Game {
       if (this.state === 'play' && crusher.low < player.eye + 4 && crusher.hurtCooldown <= 0 && this.scene.queryCircleFirst(crusher.center, TILE * 0.42, QUERY_PLAYER)) {
         crusher.hurtCooldown = 0.35;
         this.hurtPlayer(18, crusher.center);
-        this.blood.spray(player.pos.x, player.pos.y, player.eye * 0.6, 0, 0, 14);
+        this.blood.spray(this.bloodPos.setScalar(player.pos.x, player.pos.y, player.eye * 0.6), this.bloodDir.setScalar(0, 0), 14);
       }
     }
   }

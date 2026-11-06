@@ -5,7 +5,7 @@ import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { ACID_PIT_DEPTH, CACHE_LID_TIME, CACHE_OUTDOOR_LINK, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
-import { BLOOD, Blood } from '../src/blood.js';
+import { BLOOD, Blood, makeFeet } from '../src/blood.js';
 import { DUCK_FLOOR, RECIPES, Sound, spatial, renderRecipe } from '../src/audio.js';
 import * as audioModule from '../src/audio.js';
 import { validateSong } from '@1pizzateam/groovr';
@@ -1026,8 +1026,8 @@ const tests = {
           for (const along of [0.2, 1, 5, 32, 59, 63, 63.8]) {
             const x = nx ? fx : tx * 64 + along;
             const y = ny ? fy : ty * 64 + along;
-            blood.impact(x, y, nx, ny, 10);
-            blood.wallSplat(x, y, 10, nx, ny, 9, level.heights[i]);
+            blood.impact(new Vec3(x, y, 10), new Vec2(nx, ny));
+            blood.wallSplat(new Vec3(x, y, 10), new Vec2(nx, ny), 9, level.heights[i]);
             marks += 2;
           }
         }
@@ -1055,12 +1055,12 @@ const tests = {
     game.load(0);
     const { blood, level } = game;
     // west face of the wall between the first two rooms: two wall tiles (rows 1 and 2) above a door
-    const span = blood.faceSpan(5 * 64, 1 * 64 + 10, -1, 0);
+    const span = blood.faceSpan(new Vec2(5 * 64, 1 * 64 + 10), new Vec2(-1, 0));
     // the tangent of a west-facing wall points up the map: 10 units to the corner above, 118 down to the door
     assert.ok(Math.abs(span.hi - 10) < 0.01 && Math.abs(span.lo + 118) < 0.01, `got ${span.lo}..${span.hi}`);
     // the door below is its own tile, however long the wall around it is
     const door = level.doors.get(3 * level.width + 5);
-    const own = blood.faceSpan(5 * 64, door.center.y, -1, 0, door);
+    const own = blood.faceSpan(new Vec2(5 * 64, door.center.y), new Vec2(-1, 0), door);
     assert.ok(Math.abs(own.hi - own.lo - 64) < 0.01, `a door face is one tile wide, got ${own.hi - own.lo}`);
   },
 
@@ -1653,7 +1653,7 @@ const tests = {
     clearEnemies(game);
     game.blood.reset(game.level, game.rand);
     // east wall of the first room is x = 5 * 64; spray at it from the west
-    game.blood.spray(4 * 64 + 40, 4 * 64 + 32, 30, 1, 0, 200, { speed: 300, spread: 40, up: 60 });
+    game.blood.spray(new Vec3(4 * 64 + 40, 4 * 64 + 32, 30), new Vec2(1, 0), 200, { speed: 300, spread: 40, up: 60 });
     run(game, 2);
     assert.ok(game.blood.walls.length > 0, 'no wall splats');
     for (const w of game.blood.walls) {
@@ -1667,7 +1667,7 @@ const tests = {
     clearEnemies(game);
     const { blood } = game;
     blood.reset(game.level, game.rand);
-    blood.spray(4 * 64 + 32, 4 * 64 + 32, 30, 0, 0, 6, { speed: 0, spread: 20, up: 150, gib: true });
+    blood.spray(new Vec3(4 * 64 + 32, 4 * 64 + 32, 30), new Vec2(0, 0), 6, { speed: 0, spread: 20, up: 150, gib: true });
     let droplets = 0;
     for (let i = 0; i < 60; i++) {
       blood.update(1 / 60);
@@ -1697,7 +1697,7 @@ const tests = {
     clearEnemies(game);
     const { blood } = game;
     blood.reset(game.level, game.rand);
-    blood.spray(4 * 64 + 32, 4 * 64 + 32, 30, 0, 0, 20, { speed: 50, spread: 30, up: 60, gib: true });
+    blood.spray(new Vec3(4 * 64 + 32, 4 * 64 + 32, 30), new Vec2(0, 0), 20, { speed: 50, spread: 30, up: 60, gib: true });
     const before = new Set(blood.particles);
     for (const p of blood.particles) {
       p.bounces = 7;
@@ -1708,7 +1708,7 @@ const tests = {
     for (let i = 0; i < 400 && blood.particles.length; i++)
       blood.update(1 / 30);
     assert.equal(blood.particles.length, 0, 'every particle eventually dies');
-    blood.spray(4 * 64 + 32, 4 * 64 + 32, 30, 0, 0, 20, { speed: 50, spread: 30, up: 60 });
+    blood.spray(new Vec3(4 * 64 + 32, 4 * 64 + 32, 30), new Vec2(0, 0), 20, { speed: 50, spread: 30, up: 60 });
     const reused = blood.particles.filter((p) => before.has(p));
     assert.ok(reused.length > 0, 'dead particles are recycled');
     for (const p of reused) {
@@ -1719,7 +1719,7 @@ const tests = {
       assert.equal(p.variant, 0);
       assert.equal(p.gib, false);
     }
-    blood.spray(4 * 64 + 32, 4 * 64 + 32, 30, 0, 0, BLOOD.particles + 50);
+    blood.spray(new Vec3(4 * 64 + 32, 4 * 64 + 32, 30), new Vec2(0, 0), BLOOD.particles + 50);
     assert.ok(blood.particles.length <= BLOOD.particles);
     assert.equal(new Set(blood.particles).size, blood.particles.length, 'no particle is listed twice');
     assert.ok(blood.particles.every((p) => !blood.pool.includes(p)), 'a live particle is never in the pool');
@@ -1793,7 +1793,7 @@ const tests = {
     const game = fresh();
     clearEnemies(game);
     for (let i = 0; i < 80; i++)
-      game.blood.gore(7 * 64, 8 * 64, 1.5);
+      game.blood.gore(new Vec2(7 * 64, 8 * 64), 1.5);
     assert.ok(game.blood.particles.length <= BLOOD.particles);
     assert.ok(game.blood.floor.length <= BLOOD.floor);
     run(game, 6);
@@ -1815,7 +1815,7 @@ const tests = {
 
   'a new level starts clean and bumps the splat version'() {
     const game = fresh();
-    game.blood.gore(7 * 64, 8 * 64);
+    game.blood.gore(new Vec2(7 * 64, 8 * 64));
     const version = game.blood.version;
     game.load(1);
     assert.equal(game.blood.floor.length + game.blood.particles.length + game.blood.splats.length, 0);
@@ -1829,7 +1829,7 @@ const tests = {
     const start = new Vec2(6 * 64, 9 * 64 + 32);
     game.player.body.setPosition(start);
     game.player.angle = 0;
-    game.blood.floorSplat(start.x + 40, start.y, 22);
+    game.blood.floorSplat(new Vec2(start.x + 40, start.y), 22);
     run(game, 0.1);
     run(game, 3, input({ forward: 1 }));
     const prints = game.blood.prints;
@@ -1854,13 +1854,128 @@ const tests = {
     run(game, 2, input({ forward: 1 }));
     assert.equal(game.blood.prints.length, 0, 'dry feet left prints');
     // wet but still: no prints
-    game.blood.floorSplat(game.player.pos.x, game.player.pos.y, 22);
+    game.blood.floorSplat(new Vec2(game.player.pos.x, game.player.pos.y), 22);
     run(game, 2);
     assert.equal(game.blood.prints.length, 0, 'standing still left prints');
     // a jump is a teleport, not a step
     game.player.body.setPosition(new Vec2(12 * 64, 9 * 64 + 32));
     run(game, 0.1);
     assert.equal(game.blood.prints.length, 0, 'teleport left prints');
+  },
+
+  'AC-1 spray, hit and severBurst accept Vec3 position and Vec2 direction without mutating them'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood } = game;
+    blood.reset(game.level, game.rand);
+    const pos = new Vec3(4 * 64 + 32, 4 * 64 + 32, 30);
+    const dir = new Vec2(1, 0);
+    blood.spray(pos, dir, 20, { speed: 300, spread: 10 });
+    assert.equal(blood.particles.length, 20);
+    for (const p of blood.particles)
+      assert.ok(p.x === pos.x && p.y === pos.y && p.z === pos.z, 'particles must start at the position');
+    assert.ok(blood.particles.reduce((sum, p) => sum + p.vx, 0) / 20 > 0, 'velocity must lean along the direction');
+    const before = blood.particles.length;
+    blood.hit(pos, dir, 1);
+    assert.ok(blood.particles.length > before, 'hit sprayed nothing');
+    assert.ok(blood.floor.length > 0, 'hit left no floor splat');
+    const gibs = blood.gibs.length;
+    blood.severBurst(pos, dir, 1, true);
+    assert.equal(blood.gibs.length, gibs + 1, 'severBurst left no gib');
+    assert.ok(pos.x === 4 * 64 + 32 && pos.y === 4 * 64 + 32 && pos.z === 30, 'position was mutated');
+    assert.ok(dir.x === 1 && dir.y === 0, 'direction was mutated');
+  },
+
+  'AC-2 floorSplat, floorGib, ceilingSplat and inPool take Vec2 positions'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood } = game;
+    blood.reset(game.level, game.rand);
+    const pos = new Vec2(6 * 64, 9 * 64 + 32);
+    blood.floorSplat(pos, 22);
+    assert.ok(blood.floor[0].x === pos.x && blood.floor[0].y === pos.y);
+    blood.floorGib(pos, 3, 1);
+    assert.ok(blood.gibs[0].x === pos.x && blood.gibs[0].y === pos.y);
+    blood.ceilingSplat(pos, 5);
+    assert.ok(blood.ceiling[0].x === pos.x && blood.ceiling[0].y === pos.y);
+    assert.equal(blood.inPool(new Vec2(pos.x + 22 * 0.75 * 0.5, pos.y)), true);
+    assert.equal(blood.inPool(new Vec2(pos.x + 22 * 0.75 * 1.1, pos.y)), false);
+    blood.reset(game.level, game.rand);
+    blood.floorSplat(pos, 4);
+    assert.equal(blood.inPool(pos), false, 'a splat under size 5 is not a pool');
+  },
+
+  'AC-3 makeFeet stores a Vec2 pos and walk leaves alternating prints, none on teleport'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood } = game;
+    blood.reset(game.level, game.rand);
+    const feet = makeFeet();
+    assert.ok(feet.pos instanceof Vec2);
+    assert.ok(!('x' in feet) && !('y' in feet));
+    const start = new Vec2(6 * 64, 9 * 64 + 32);
+    blood.floorSplat(start, 22);
+    assert.equal(blood.walk(feet, start), 0);
+    assert.ok(feet.pos.x === start.x && feet.pos.y === start.y);
+    const at = new Vec2();
+    for (let i = 1; i <= 40; i++)
+      blood.walk(feet, at.setScalar(start.x + i * 5, start.y));
+    const { prints } = blood;
+    assert.ok(prints.length >= 3, `only ${prints.length} prints`);
+    for (let i = 1; i < prints.length; i++) {
+      assert.notEqual(prints[i].side, prints[i - 1].side, 'feet must alternate');
+      assert.ok(prints[i].strength <= prints[i - 1].strength, 'the trail must not strengthen');
+    }
+    const count = prints.length;
+    assert.equal(blood.walk(feet, at.setScalar(at.x + 200, at.y)), 0);
+    assert.equal(blood.walk(feet, at), 0);
+    assert.equal(blood.prints.length, count, 'a teleport or standing still left prints');
+  },
+
+  'AC-4 impact, wallSplat and faceSpan take vector position and normal'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood } = game;
+    blood.reset(game.level, game.rand);
+    assert.equal(blood.impact(new Vec3(9 * 64, 2 * 64 + 32, 0.5), new Vec2(-1, 0)), false, 'a pellet in the floor marks nothing');
+    const span = blood.faceSpan(new Vec2(5 * 64, 1 * 64 + 10), new Vec2(-1, 0));
+    assert.ok(span.lo < 0 && span.hi > 0 && span.hi - span.lo <= 64 * 64, 'span must straddle the point');
+    const pos = new Vec3(5 * 64, 1 * 64 + 10, 30);
+    const normal = new Vec2(-1, 0);
+    blood.wallSplat(pos, normal, 9, 64);
+    const w = blood.walls[blood.walls.length - 1];
+    assert.ok(w.nx === -1 && w.ny === 0 && w.z === 30, 'splat must record the normal and height');
+    assert.ok(pos.x === 5 * 64 && normal.x === -1, 'arguments were mutated');
+  },
+
+  'AC-5 blood method signatures declare no loose scalar coordinate or direction parameters'() {
+    const source = readFileSync(new URL('../src/blood.js', import.meta.url), 'utf8');
+    const methods = ['spray', 'hit', 'gore', 'drip', 'severBurst', 'boulderPlacement', 'impact', 'faceSpan', 'floorSplat', 'floorGib', 'wallSplat', 'ceilingSplat', 'inPool', 'walk'];
+    for (const name of methods) {
+      const match = new RegExp(`^  ${name}\\((.*)\\) \\{$`, 'm').exec(source);
+      assert.ok(match, `${name} not found`);
+      const params = match[1];
+      assert.ok(!/\b(dirX|dirY|nx|ny|wx|wy)\b/.test(params), `${name} takes loose direction components: ${params}`);
+      assert.ok(!/(^|[(,]\s*)[xyz]\s*[,=)]/.test(`(${params})`), `${name} takes loose coordinates: ${params}`);
+    }
+  },
+
+  'AC-6 shotgun hits and footprints still produce splats and prints via vector APIs'() {
+    const game = fresh();
+    clearEnemies(game);
+    const { blood } = game;
+    blood.reset(game.level, game.rand);
+    blood.gore(new Vec2(7 * 64, 8 * 64), 1.5, new Vec2(1, 0));
+    run(game, 6);
+    assert.ok(blood.floor.length >= 3, `only ${blood.floor.length} floor splats`);
+    assert.equal(blood.particles.length, 0, 'droplets never settled');
+    const start = new Vec2(6 * 64, 9 * 64 + 32);
+    game.player.body.setPosition(start);
+    game.player.angle = 0;
+    blood.floorSplat(new Vec2(start.x + 40, start.y), 22);
+    run(game, 0.1);
+    run(game, 3, input({ forward: 1 }));
+    assert.ok(blood.prints.length >= 6, `only ${blood.prints.length} prints`);
   },
 
   'footprints point the way they were walked, left and right mirrored, thin ones plain outlines'() {
@@ -1905,10 +2020,10 @@ const tests = {
     clearEnemies(game);
     game.blood.reset(game.level, game.rand);
     // a pellet in the floor has nothing to mark
-    assert.equal(game.blood.impact(9 * 64, 2 * 64 + 32, -1, 0, 0.5), false, 'a pellet in the floor marks nothing');
+    assert.equal(game.blood.impact(new Vec3(9 * 64, 2 * 64 + 32, 0.5), new Vec2(-1, 0)), false, 'a pellet in the floor marks nothing');
     // cap
     for (let i = 0; i < BLOOD.holes + 60; i++)
-      game.blood.impact(64, 4 * 64 + 32, 1, 0, 20 + (i % 20));
+      game.blood.impact(new Vec3(64, 4 * 64 + 32, 20 + (i % 20)), new Vec2(1, 0));
     assert.equal(game.blood.holes.length, BLOOD.holes);
     assert.ok(game.blood.holes.every((h) => Number.isFinite(h.x) && Number.isFinite(h.z)));
     const version = game.blood.holesVersion;
@@ -1965,11 +2080,11 @@ const tests = {
     }
     // fully sunk: nothing left to mark
     game.level.setDoorOpen(door, 1);
-    assert.equal(game.blood.impact(320, 3 * 64 + 32, -1, 0, 20), false, 'marked a door that has sunk away');
+    assert.equal(game.blood.impact(new Vec3(320, 3 * 64 + 32, 20), new Vec2(-1, 0)), false, 'marked a door that has sunk away');
     // each door keeps a bounded number of holes
     game.level.setDoorOpen(door, 0);
     for (let i = 0; i < BLOOD.doorHoles + 40; i++)
-      game.blood.impact(320, 3 * 64 + 32, -1, 0, 10 + (i % 40));
+      game.blood.impact(new Vec3(320, 3 * 64 + 32, 10 + (i % 40)), new Vec2(-1, 0));
     assert.ok(game.blood.holes.filter((h) => h.door === door).length <= BLOOD.doorHoles, 'door hole cap exceeded');
     assert.ok(game.blood.holes.length <= BLOOD.holes);
   },
@@ -2752,7 +2867,7 @@ const tests = {
     assert.ok(dry.length >= 4, `only ${dry.length} steps in 1.5s`);
     assert.ok(dry.every((e) => e.wet === false && e.who === 'player'), 'dry floor, dry steps');
 
-    game.blood.floorSplat(game.player.pos.x + 30, game.player.pos.y, 22);
+    game.blood.floorSplat(new Vec2(game.player.pos.x + 30, game.player.pos.y), 22);
     game.events.length = 0;
     run(game, 1.5, input({ forward: 1 }));
     assert.ok(game.events.some((e) => e.type === 'step' && e.wet), 'no wet steps after the pool');
@@ -2804,7 +2919,7 @@ const tests = {
     const brute = game.enemies[0];
     game.player.body.setPosition(new Vec2(6 * 64, 9 * 64 + 32));
     brute.state = 'chase';
-    game.blood.floorSplat(brute.pos.x, brute.pos.y, 24);
+    game.blood.floorSplat(new Vec2(brute.pos.x, brute.pos.y), 24);
     game.events.length = 0;
     run(game, 3);
     assert.equal(game.blood.prints.length, 0, `the brute left ${game.blood.prints.length} prints`);
@@ -2812,7 +2927,7 @@ const tests = {
     assert.ok(game.events.some((e) => e.type === 'stomp'), 'but it is still heard walking');
 
     for (let i = 0; i < 400; i++)
-      game.blood.walk({ blood: 1, travel: 1000, side: 1, x: 0, y: 0, hx: 1, hy: 0 }, 1, 0);
+      game.blood.walk({ blood: 1, travel: 1000, side: 1, placed: true, pos: new Vec2(0, 0), heading: new Vec2(1, 0) }, new Vec2(1, 0));
     assert.ok(game.blood.prints.length <= BLOOD.prints, 'prints exceeded their cap');
     for (const p of game.blood.prints)
       assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.angle), 'NaN print');
@@ -2861,7 +2976,7 @@ const tests = {
           if (!near)
             continue;
           for (let round = 0; round < 6; round++) {
-            blood.spray(tx * 64 + 32, ty * 64 + 32, 20, 0, 0, 60, { spread: 300, up: 120 });
+            blood.spray(new Vec3(tx * 64 + 32, ty * 64 + 32, 20), new Vec2(0, 0), 60, { spread: 300, up: 120 });
             for (let i = 0; i < 40; i++)
               blood.update(1 / 60);
             verify();
@@ -3304,7 +3419,7 @@ const tests = {
     const { blood } = game;
     blood.reset(game.level, game.rand);
     // a fountain straight up in the first room
-    blood.spray(2 * 64, 3 * 64, 30, 0, 0, 200, { speed: 0, spread: 40, up: 560 });
+    blood.spray(new Vec3(2 * 64, 3 * 64, 30), new Vec2(0, 0), 200, { speed: 0, spread: 40, up: 560 });
     for (let i = 0; i < 90; i++)
       blood.update(1 / 60);
     assert.ok(blood.ceiling.length > 10, `only ${blood.ceiling.length} ceiling splats`);
@@ -3396,7 +3511,7 @@ const tests = {
     assert.equal(narrow.length, 0);
     // the sim keeps the time the renderer needs to stop redrawing
     blood.reset(game.level, game.rand);
-    blood.wallSplat(192, 64, 40, 0, 1, 10, 64);
+    blood.wallSplat(new Vec3(192, 64, 40), new Vec2(0, 1), 10, 64);
     assert.equal(blood.walls[0].dripTime, dripTime(blood.walls[0].seed, 10));
     blood.update(0.1);
     assert.equal(blood.dripping, true, 'a fresh splat is dripping');
@@ -3456,7 +3571,7 @@ const tests = {
           for (const along of [0.2, 3, 32, 61, 63.8]) {
             const x = nx ? fx : tx * 64 + along;
             const y = ny ? fy : ty * 64 + along;
-            blood.wallSplat(x, y, 30, nx, ny, 12, level.heights[i]);
+            blood.wallSplat(new Vec3(x, y, 30), new Vec2(nx, ny), 12, level.heights[i]);
             const splat = blood.walls[blood.walls.length - 1];
             const quad = wallSplatQuad(splat);
             if (!quad)
@@ -4237,7 +4352,7 @@ const tests = {
     const game = fresh();
     clearEnemies(game);
     game.blood.reset(game.level, game.rand);
-    game.blood.gore(6 * 64 + 32, 9 * 64 + 32, 1.4, 1, 0);
+    game.blood.gore(new Vec2(6 * 64 + 32, 9 * 64 + 32), 1.4, new Vec2(1, 0));
     const initialGibParticles = game.blood.particles.filter((p) => p.gib);
     assert.ok(initialGibParticles.length >= 3, 'gore spawns subtle flying gibs');
     assert.ok(initialGibParticles.every((p) => p.bounces >= 1), 'flying gibs can bounce');
@@ -6081,7 +6196,7 @@ const tests = {
       game.addEnemy(type, pos);
       const enemy = game.enemies[0];
       game.player.body.setPosition(new Vec2(6 * 64, 3 * 64 + 32));
-      game.blood.hit(pos.x, pos.y, 24, 1, 0, enemy.def.gore);
+      game.blood.hit(new Vec3(pos.x, pos.y, 24), new Vec2(1, 0), enemy.def.gore);
       const hitParticles = game.blood.particles.length;
       const hitSplatSize = game.blood.floor[0]?.size ?? 0;
 
@@ -6126,10 +6241,10 @@ const tests = {
     const dryY = 2 * 64 + 32;
     assert.equal(game.level.slimeAt(dryX, dryY), false);
 
-    game.blood.floorSplat(sx, sy, 8);
-    game.blood.floorGib(sx, sy, 3.0, 0);
-    game.blood.floorSplat(dryX, dryY, 8);
-    game.blood.floorGib(dryX, dryY, 3.0, 1);
+    game.blood.floorSplat(new Vec2(sx, sy), 8);
+    game.blood.floorGib(new Vec2(sx, sy), 3.0, 0);
+    game.blood.floorSplat(new Vec2(dryX, dryY), 8);
+    game.blood.floorGib(new Vec2(dryX, dryY), 3.0, 1);
 
     assert.equal(game.blood.floor[0].dissolving, true, 'splat on acid is marked dissolving');
     assert.equal(game.blood.gibs[0].dissolving, true, 'gib on acid is marked dissolving');
@@ -7138,8 +7253,8 @@ const tests = {
     // Bullet holes and blood splats on diagonal wall hypotenuse are recorded and clamped to hypotenuse span
     game.blood.holes.length = 0;
     game.blood.walls.length = 0;
-    game.blood.impact(96, 96, Math.SQRT1_2, Math.SQRT1_2, 32);
-    game.blood.wallSplat(96, 96, 32, Math.SQRT1_2, Math.SQRT1_2, 10, 64);
+    game.blood.impact(new Vec3(96, 96, 32), new Vec2(Math.SQRT1_2, Math.SQRT1_2));
+    game.blood.wallSplat(new Vec3(96, 96, 32), new Vec2(Math.SQRT1_2, Math.SQRT1_2), 10, 64);
     assert.equal(game.blood.holes.length, 1, 'bullet hole attaches to diagonal wall hypotenuse');
     assert.equal(game.blood.walls.length, 1, 'blood splat attaches to diagonal wall hypotenuse');
     assert.ok(game.blood.holes[0].lo < -40 && game.blood.holes[0].hi > 40, 'diagonal face span covers the ~90.5-unit hypotenuse');
@@ -7447,7 +7562,7 @@ const tests = {
     const bSouthY = (bty + 1) * 64;
     g.blood.holes.length = 0;
     g.blood.walls.length = 0;
-    const hitH = g.blood.impact(bcx, bSouthY, 0, 1, 16, 'hole');
+    const hitH = g.blood.impact(new Vec3(bcx, bSouthY, 16), new Vec2(0, 1), 'hole');
     assert.equal(hitH, 16, 'bullet impact on Martian boulder records at hit height');
     const bHole = g.blood.holes[g.blood.holes.length - 1];
     assert.equal(bHole.slope, MARS_BOULDER_SLOPE, 'boulder bullet hole carries MARS_BOULDER_SLOPE');
@@ -7460,7 +7575,7 @@ const tests = {
     const expectedSlope = (hQuad.corners[2] - hQuad.corners[8]) / (hQuad.corners[7] - hQuad.corners[1]);
     assert.ok(Math.abs(expectedSlope - MARS_BOULDER_SLOPE) < 1e-4, 'boulder bullet hole quad slope matches MARS_BOULDER_SLOPE');
 
-    g.blood.wallSplat(bcx, bSouthY, 18, 0, 1, 5, 26, null);
+    g.blood.wallSplat(new Vec3(bcx, bSouthY, 18), new Vec2(0, 1), 5, 26, null);
     const bSplat = g.blood.walls[g.blood.walls.length - 1];
     assert.equal(bSplat.slope, MARS_BOULDER_SLOPE, 'boulder blood splat carries MARS_BOULDER_SLOPE');
     const sQuad = wallSplatQuad(bSplat);
@@ -7577,7 +7692,7 @@ const tests = {
     assert.equal(g.player.pos.y, stationaryY, 'Martian wind does not push the player character Y position');
 
     g.blood.particles.length = 0;
-    g.blood.spray(outsidePos.x, outsidePos.y, 24, 0, 0, 4, { speed: 10, spread: 5, up: 120 });
+    g.blood.spray(new Vec3(outsidePos.x, outsidePos.y, 24), new Vec2(0, 0), 4, { speed: 10, spread: 5, up: 120 });
     const drop = g.blood.particles[0];
     const vxBefore = drop.vx;
     g.blood.update(0.1);
