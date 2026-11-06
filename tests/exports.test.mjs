@@ -166,6 +166,23 @@ const checks = [
     assert.ok(!('HINTS_LAYOUT' in hudMod), 'HINTS_LAYOUT internal should not be exported');
     assert.ok(!('layoutHints' in hudMod), 'layoutHints internal should not be exported');
   }],
+  ['issue-56 AC-1 world.js has no dead MARS tint exports', () => {
+    const src = read('world');
+    assert.ok(!/MARS_FLOOR_TINT/.test(src), 'world.js still references or exports MARS_FLOOR_TINT');
+    assert.ok(!/MARS_WALL_TINT/.test(src), 'world.js still references or exports MARS_WALL_TINT');
+    assert.ok(exported(src, 'MARS_DUST_TINT'), 'world.js lost export MARS_DUST_TINT');
+    assert.ok(exported(src, 'MARS_AMBIENT_COLOR'), 'world.js lost export MARS_AMBIENT_COLOR');
+  }],
+  ['issue-56 AC-2 world.js has no unused quads imports', () => {
+    const src = read('world');
+    const quadsImportMatch = src.match(/import\s*\{([^}]+)\}\s*from\s*['"]\.\/quads\.js['"]/);
+    assert.ok(quadsImportMatch, 'world.js does not import from ./quads.js');
+    const imported = quadsImportMatch[1].split(',').map((s) => s.trim());
+    assert.ok(!imported.includes('LIGHT_GLSL'), 'world.js still imports LIGHT_GLSL from ./quads.js');
+    assert.ok(!imported.includes('SOLID_ALPHA'), 'world.js still imports SOLID_ALPHA from ./quads.js');
+    for (const expected of ['PARTICLE_FRAGMENT', 'PARTICLE_VERTEX', 'QuadBatch', 'SOLID_TEXTURED_FRAGMENT', 'TEXTURED_FRAGMENT', 'texturedMesh'])
+      assert.ok(imported.includes(expected), `world.js missing expected import ${expected} from ./quads.js`);
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');
