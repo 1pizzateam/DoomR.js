@@ -5,10 +5,12 @@ import { Vec2, Vec3 } from '@1pizzateam/roostr';
 const worldSrc = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 const ceilingSrc = readFileSync(new URL('../src/ceiling.js', import.meta.url), 'utf8');
 const hudSrc = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
+const monstersSrc = readFileSync(new URL('../src/monsters.js', import.meta.url), 'utf8');
 const arsenal = await import('../src/arsenal.js');
 const ceiling = await import('../src/ceiling.js');
 const { Hud } = await import('../src/hud.js');
 const { DEFAULT_HINT_LINES } = await import('../src/keymap.js');
+const { MONSTERS } = await import('../src/monsters.js');
 
 function extractMethodBody(src, methodName) {
   const cleanName = methodName.replace(/\(.*$/, '').trim();
@@ -363,6 +365,135 @@ const checks = [
 
     assert.ok(textCallCount > 0, 'drawControlHints should have rendered text');
     assert.ok(lineCallCount > 0, 'drawControlHints should have rendered line-art keycaps');
+  }],
+  ['AC-1 mood has no per-call return object literal allocation and reuses scratchMood', () => {
+    const moodBody = extractExportFunctionBody(monstersSrc, 'mood');
+    assert.doesNotMatch(moodBody, /return\s*\{/, 'mood() must not return an inline object literal');
+    assert.match(moodBody, /return\s+out\b/, 'mood() must return target out object');
+    assert.match(monstersSrc, /const\s+scratchMood\s*=\s*\{[^}]*idle:\s*false/, 'scratchMood should be hoisted at module scope');
+  }],
+  ['AC-2 mood populates and returns custom caller-provided target object', () => {
+    const moodDecl = /function\s+mood\s*\([^)]*\)/.exec(monstersSrc);
+    assert.ok(moodDecl, 'mood declaration not found in monsters.js');
+    assert.match(moodDecl[0], /out\s*=\s*scratchMood/, 'mood signature should accept out target defaulting to scratchMood');
+
+    const moodFn = new Function(
+      'approach',
+      'approachAngle',
+      'Trigo',
+      'scratchMood',
+      `return ${moodDecl[0].replace(/out\s*=\s*scratchMood/, 'out = scratchMood')} {
+        ${extractExportFunctionBody(monstersSrc, 'mood')}
+      }`
+    )(
+      (view, key, target) => { view.pose[key] = target; return target; },
+      (view, key, target) => { view.pose[key] = target; return target; },
+      { pi: Math.PI },
+      { idle: false, attack: 0, roar: 0, pain: 0, moving: 0, anger: 0, swing: 0, t: 0 }
+    );
+
+    const customTarget = { idle: true, attack: 99, roar: 99, pain: 99, moving: 99, anger: 99, swing: 99, t: 99 };
+    const view = { pose: {} };
+    const enemy = { state: 'chase', windup: 0, roar: 0, hurt: 0, pain: 0, walk: 1.5, phase: 0.2, def: { roar: 0 } };
+    const c = { time: 2.0, dt: 1 / 60 };
+
+    const returned = moodFn(view, enemy, c, 0.4, customTarget);
+    assert.equal(returned, customTarget, 'mood must return the caller-provided target instance');
+    assert.equal(customTarget.idle, false);
+    assert.equal(customTarget.t, 2.2);
+    assert.equal(customTarget.attack, 0);
+  }],
+  ['AC-3 mood calculates all blending properties matching baseline math', () => {
+    const moodBody = extractExportFunctionBody(monstersSrc, 'mood');
+    const expectedProps = ['idle', 'attack', 'roar', 'pain', 'moving', 'anger', 'swing', 't'];
+    for (const prop of expectedProps) {
+      assert.match(moodBody, new RegExp(`out\\.${prop}\\s*=`), `mood must assign out.${prop}`);
+    }
+  }],
+  ['AC-4 monster animation executes repeated frames without stale state or regression', () => {
+    const createMockMesh = () => ({
+      setPosition() {},
+      setRotation() {},
+      setScale() {},
+      setActive() {},
+      setInactive() {},
+      addChild() {},
+      setCustomUniform() {},
+    });
+
+    const mockView = {
+      type: 'imp',
+      scale: 1,
+      baseLift: 0,
+      lift: 0,
+      sx: 1,
+      sy: 1,
+      sz: 1,
+      yaw: 0,
+      pitch: 0,
+      roll: 0,
+      wasDead: false,
+      deadSettled: false,
+      settledHits: -1,
+      goreSkin: false,
+      pose: { seed: 1.4, yaw: 0 },
+      parts: {
+        pivots: {
+          body: new Vec3(0, 0, 0),
+          head: new Vec3(0, 0, 0),
+          jaw: new Vec3(0, 0, 0),
+          leftArm: new Vec3(0, 0, 0),
+          rightArm: new Vec3(0, 0, 0),
+          leftLeg: new Vec3(0, 0, 0),
+          rightLeg: new Vec3(0, 0, 0),
+          extra: new Vec3(0, 0, 0),
+        },
+      },
+      root: createMockMesh(),
+      body: createMockMesh(),
+      head: createMockMesh(),
+      jaw: createMockMesh(),
+      leftArm: createMockMesh(),
+      rightArm: createMockMesh(),
+      leftLeg: createMockMesh(),
+      rightLeg: createMockMesh(),
+      extra: createMockMesh(),
+      goreViscera: createMockMesh(),
+      gorePool: createMockMesh(),
+      goreChunks: [createMockMesh(), createMockMesh(), createMockMesh(), createMockMesh(), createMockMesh(), createMockMesh()],
+      meshes: [],
+    };
+
+    const mockEnemy = {
+      type: 'imp',
+      state: 'chase',
+      windup: 0.1,
+      roar: 0,
+      hurt: 0,
+      pain: 0,
+      walk: 0.5,
+      phase: 0.3,
+      def: { hp: 50, windup: 0.4 },
+      hp: 50,
+      pos: new Vec2(10, 20),
+    };
+
+    const c = { time: 1.0, dt: 1 / 60, player: { pos: new Vec2(15, 20) } };
+
+    // Run multiple animation steps
+    for (let frame = 0; frame < 10; frame++) {
+      c.time += c.dt;
+      mockEnemy.walk += 0.05;
+      MONSTERS.imp.animate(mockView, mockEnemy, c);
+      assert.ok(Number.isFinite(mockView.yaw), 'yaw must be finite number');
+      assert.ok(Number.isFinite(mockView.sx), 'sx must be finite number');
+      assert.ok(Number.isFinite(mockView.sy), 'sy must be finite number');
+    }
+  }],
+  ['AC-5 source analysis confirms hoisted scratchMood and zero return object literals', () => {
+    const moodBody = extractExportFunctionBody(monstersSrc, 'mood');
+    assert.doesNotMatch(moodBody, /return\s*\{[^}]*\}/, 'mood() source must not contain return { ... }');
+    assert.match(monstersSrc, /const\s+scratchMood\s*=\s*\{/, 'src/monsters.js must declare scratchMood at module scope');
   }],
 ];
 
