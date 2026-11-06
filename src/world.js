@@ -177,6 +177,7 @@ const scratchChaingunOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffse
 const scratchShotgunOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, hasAmmo: true };
 const scratchRocketOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, hasAmmo: true };
 const scratchKnifeOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, attack: 'vertical' };
+const scratchAnimCtx = { time: 0, dt: 0, player: null };
 const scratchPos = new Vec3();
 const scratchRot = new Vec3();
 const scratchScale = new Vec3();
@@ -422,6 +423,7 @@ export class World {
     this.frameCullDistSq = Infinity;
     this.frameEffectCullDistSq = Infinity;
     this.frameOccludeFog = null;
+    this.animCtx = { time: 0, dt: 0, player: null };
     this.barrelViews = new Map();
     this.shotViews = new Map();
     this.effectViews = new Map();
@@ -2045,7 +2047,11 @@ export class World {
 
     const { root } = view;
     if (!dead) {
-      MONSTERS[enemy.type].animate(view, enemy, { time, dt, player });
+      const animCtx = this.animCtx ?? scratchAnimCtx;
+      animCtx.time = time;
+      animCtx.dt = dt;
+      animCtx.player = player;
+      MONSTERS[enemy.type].animate(view, enemy, animCtx);
       setPos(root, enemy.pos.x, view.lift * view.scale, enemy.pos.y);
       setRot(root, view.pitch ?? 0, view.yaw ?? 0, view.roll ?? 0);
       setScale(root, view.scale * view.sx, view.scale * view.sy, view.scale * (view.sz ?? view.sx));
@@ -2575,11 +2581,12 @@ export class World {
       view.stamp = stamp;
       update(entity, view);
     }
-    for (const [entity, view] of map)
+    map.forEach((view, entity) => {
       if (view.stamp !== stamp) {
         this.discard(view.root);
         map.delete(entity);
       }
+    });
   }
 
   // ---- frame --------------------------------------------------------------
