@@ -157,11 +157,13 @@ export function lockedDoorAtlas(color = 'red') {
 }
 
 /**
- * The door as a box: four sides showing the face and a top, standing on y = 0, `size` wide and deep and `height` tall.
+ * The door as a box: four sides showing the face and a top, standing on y = 0. `dimensions` is a
+ * Vec2(size, height) or Vec3(size, height, depth); the box is `size` wide and deep and `height` tall.
  * Vertices, texture coordinates (v = 1 at the top of a picture) and a primitive, for a RoostR CustomMesh.
  */
-export function doorBox(size, height) {
-  const h = size / 2;
+export function doorBox(dimensions) {
+  const h = dimensions.x / 2;
+  const height = dimensions.y;
   const sides = [
     [[-h, 0, h], [h, 0, h], [h, height, h], [-h, height, h]],
     [[h, 0, -h], [-h, 0, -h], [-h, height, -h], [h, height, -h]],

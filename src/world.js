@@ -1971,7 +1971,7 @@ export class World {
     // a hydraulic ceiling crusher piston that slams down from the roof and retracts back into the ceiling
     const { gl } = this;
     this.doorPixels ??= doorAtlas();
-    const { vertices, uvs } = doorBox(TILE - 1.6, TILE);
+    const { vertices, uvs } = doorBox(new Vec2(TILE - 1.6, TILE));
     const geometry = new CustomMesh();
     geometry.vertices = new Float32Array(vertices);
     geometry.setUvs(uvs);
