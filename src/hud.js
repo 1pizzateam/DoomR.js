@@ -571,7 +571,7 @@ export class Hud {
   drawBar(x, y, w, ticks, value, color, lowColor, critColor = lowColor, lowThreshold = 0.5, critThreshold = 0.3) {
     const gap = w / ticks;
     const lit = Math.ceil(value * ticks);
-    const activeColor = value < critThreshold ? critColor : value <= lowThreshold ? lowColor : color;
+    const activeColor = value <= critThreshold ? critColor : value <= lowThreshold ? lowColor : color;
     for (let i = 0; i < ticks; i++) {
       const on = i < lit;
       this.segment(x + i * gap, y, x + i * gap, y - 16, on ? activeColor : BLUE, on ? 1 : 0.22);
@@ -655,7 +655,7 @@ export class Hud {
     const base = height - 28;
     const hx = faceBR.x + 18;
     const overcharged = player.health > 100;
-    const healthCol = overcharged ? BLUE : player.health < 30 ? RED : player.health <= 50 ? ORANGE : GREEN;
+    const healthCol = overcharged ? BLUE : player.health <= 30 ? RED : player.health <= 50 ? ORANGE : GREEN;
     this.text(overcharged ? 'SOUL' : 'HEALTH', hx, base - 24, BLUE, { size: 11, alpha: 0.8 });
     this.drawBar(hx, base, 160, 20, Utils.clamp(player.health / 100, 0, 1), GREEN, ORANGE, RED, 0.5, 0.3);
     if (overcharged)
