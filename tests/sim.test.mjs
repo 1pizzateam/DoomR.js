@@ -39,7 +39,7 @@ import { diagWallFaceQuads, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtla
 import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
 import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
-import { CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
+import { ACID_MIST_FRAGMENT, CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
 import { LIGHT_GLSL, PARTICLE_FRAGMENT, QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, TEXTURED_VERTEX, texturedMesh } from '../src/quads.js';
 import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads as wallDripQuadsVec, screenSplatQuads as screenSplatQuadsVec, createQuadTarget, bloodAtlas, CELL, cellUv, floorGibQuad as floorGibQuadVec, floorSplatQuad as floorSplatQuadVec, particleQuad, printQuad as printQuadVec, wallSplatQuad as wallSplatQuadVec } from '../src/bloodsprites.js';
 import { CEILING, CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
@@ -184,6 +184,7 @@ function withWallWorld(check) {
     floorBatch: stub,
     marsDirtBatch: stub,
     slimeBatch: stub,
+    acidMistBatch: stub,
     teleporterBatch: stub,
     crateBatch: stub,
     marsBoulderBatch: stub,
@@ -195,6 +196,16 @@ function withWallWorld(check) {
   } finally {
     Mesh.prototype.addProgram = addProgram;
   }
+}
+
+function withMistWorld(game, check) {
+  withWallWorld((world, programs) => {
+    world.floorBatch = World.prototype.floorBatch;
+    world.slimeBatch = World.prototype.slimeBatch;
+    world.acidMistBatch = World.prototype.acidMistBatch;
+    World.prototype.buildStatic.call(world, game.level);
+    check(world, programs);
+  });
 }
 
 function withQuadHarness(check) {
@@ -4229,6 +4240,71 @@ const tests = {
       acid.mesh.setCustomUniform('time', 2);
       assert.equal(acid.mesh.customUniforms.time.value, 2, 'animation time remains updateable');
     });
+  },
+
+  'issue-181 AC-1 acid mist batch layers cover every acid tile'() {
+    const game = acidPitGame();
+    withMistWorld(game, (world, programs) => {
+      const mist = programs.find(({ fragment }) => fragment === ACID_MIST_FRAGMENT);
+      const acid = programs.find(({ fragment }) => fragment === SLIME_FRAGMENT);
+      assert.ok(mist, 'mist batch is built');
+      assert.equal(mist.vertex, FLOOR_VERTEX);
+      assert.ok(mist.mesh.used >= 27, '3 layers x 9 tiles plus rim curtains');
+      assert.equal(acid.mesh.used, 9, 'acid surface batch is unchanged');
+    });
+  },
+
+  'issue-181 AC-2 acid mist stays below the deck and above the acid'() {
+    const game = acidPitGame();
+    withMistWorld(game, (world, programs) => {
+      const mist = programs.find(({ fragment }) => fragment === ACID_MIST_FRAGMENT);
+      for (let i = 1; i < mist.mesh.used * 18; i += 3) {
+        assert.ok(mist.mesh.vertices[i] < -0.2 - 1e-3, 'below the deck plane');
+        assert.ok(mist.mesh.vertices[i] > -ACID_PIT_DEPTH - 0.35, 'above the acid surface');
+      }
+    });
+  },
+
+  'issue-181 AC-3 acid mist shader is animated, fogged and lit with a time uniform'() {
+    const game = acidPitGame();
+    withMistWorld(game, (world, programs) => {
+      const mist = programs.find(({ fragment }) => fragment === ACID_MIST_FRAGMENT);
+      assert.match(mist.fragment, /uniform float uTime;/);
+      assert.match(mist.fragment, /uTime\s*\*/);
+      assert.ok(mist.fragment.includes('uHasFog') && mist.fragment.includes('uFogColor'));
+      assert.ok(mist.fragment.includes('uFogNear') && mist.fragment.includes('uFogFar'));
+      assert.ok(mist.fragment.includes('surfaceLight('));
+      assert.equal(mist.mesh.customUniforms.time.value, 0);
+      mist.mesh.setCustomUniform('time', 2);
+      assert.equal(mist.mesh.customUniforms.time.value, 2);
+    });
+  },
+
+  'issue-181 AC-4 acid mist batch is empty without acid'() {
+    const game = acidPitGame();
+    withMistWorld(game, (world) => {
+      const level = { width: game.level.width, rowCount: game.level.rowCount, slime: new Uint8Array(game.level.slime.length), inBounds: (x, y) => game.level.inBounds(x, y) };
+      let batch;
+      assert.doesNotThrow(() => { batch = World.prototype.acidMistBatch.call(world, level); });
+      assert.equal(batch.used, 0);
+      assert.ok(batch.capacity >= 1);
+    });
+  },
+
+  'issue-181 AC-5 acid mist mesh is tracked and reset'() {
+    const game = acidPitGame();
+    withMistWorld(game, (world) => {
+      assert.ok(world.acidMistMesh, 'tracked after buildStatic');
+      assert.ok(world.staticMeshes.includes(world.acidMistMesh));
+    });
+    const worldSrc = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+    assert.equal((worldSrc.match(/this\.acidMistMesh = null;/g) ?? []).length, 2, 'initialised and reset beside slimeMesh');
+  },
+
+  'issue-181 AC-7 render updates the acid mist time uniform'() {
+    const src = World.prototype.render.toString();
+    assert.ok(src.includes("this.acidMistMesh.setCustomUniform('time', time)"));
+    assert.ok(src.includes("this.slimeMesh.setCustomUniform('time', time)"));
   },
 
   'crouching lowers the player eye below low pillars, slows movement, and stands back up when released'() {
@@ -8572,6 +8648,7 @@ const tests = {
       floorBatch: () => 'floor',
       marsDirtBatch: () => 'marsDirt',
       slimeBatch: () => 'slime',
+      acidMistBatch: () => 'acidMist',
       teleporterBatch: () => 'teleporter',
       crateBatch: () => 'crate',
       marsBoulderBatch: () => 'marsBoulder',
@@ -13170,6 +13247,7 @@ const tests = {
       floorBatch: () => ({ name: 'floor' }),
       marsDirtBatch: () => ({ name: 'marsDirt' }),
       slimeBatch: () => ({ name: 'slime' }),
+      acidMistBatch: () => ({ name: 'acidMist' }),
       teleporterBatch: () => ({ name: 'teleporter' }),
       crateBatch: () => ({ name: 'crate' }),
       marsBoulderBatch: (_lvl, sec) => {

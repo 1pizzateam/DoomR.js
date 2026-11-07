@@ -9,7 +9,7 @@ import { WALL_CELLS, diagWallFaceQuads, marsRockAtlas, wallAtlas, wallCellUv, wa
 import { createExplosion3dPose, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from './explosion.js';
 import { FIREBALL_FRAMES, fireballAtlas } from './fireball.js';
 import { grenadeAtlas, grenadeParts } from './grenade.js';
-import { CRATE_FRAGMENT, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
+import { ACID_MIST_FRAGMENT, CRATE_FRAGMENT, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
 import { CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
 import { FOG_FAR, FOG_NEAR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar } from './fog.js';
 import { faceCorners, quadTriangles } from './lines.js';
@@ -415,6 +415,7 @@ export class World {
     this.staticChunks = [];
     this.skyMesh = null;
     this.slimeMesh = null;
+    this.acidMistMesh = null;
     this.chainsawView = null;
     this.chaingunView = null;
     this.shotgunView = null;
@@ -892,6 +893,7 @@ export class World {
     this.lightConesMeshes = [];
     this.skyMesh = null;
     this.slimeMesh = null;
+    this.acidMistMesh = null;
     this.knifeView = null;
     this.chainsawView = null;
     this.chaingunView = null;
@@ -1511,6 +1513,7 @@ export class World {
         this.track(this.marsDirtBatch(level), this.staticMeshes);
     }
     this.slimeMesh = this.track(this.slimeBatch(level), this.staticMeshes);
+    this.acidMistMesh = this.track(this.acidMistBatch(level), this.staticMeshes);
     this.teleporterMesh = this.track(this.teleporterBatch(level), this.staticMeshes);
     this.crateMeshes = [];
     if (crateSectors.length)
@@ -1798,6 +1801,76 @@ export class World {
         const z0 = ty * TILE;
         const z1 = z0 + TILE;
         batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], [0, 0, 1, 1]);
+      }
+    return batch.end();
+  }
+
+  /** Toxic mist: stacked translucent layers and rim curtains hovering inside recessed acid pits, below the deck plane. */
+  acidMistBatch(level) {
+    const { gl } = this;
+    this.slimePixels ??= slimeAtlas();
+    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST, wrapS: gl.REPEAT, wrapT: gl.REPEAT };
+    const sharedTexture = this.sharedTexture(this.slimePixels, texOpts);
+    const layerFractions = [0.25, 0.55, 0.9];
+    const surface = -ACID_PIT_DEPTH - 0.35;
+    const maxY = -0.2 - 0.3;
+    const layerY = (layer, tx, ty) => Math.min(maxY, surface + layerFractions[layer] * ACID_PIT_DEPTH + (((tx * 7 + ty * 13 + layer * 5) % 5) - 2) * 0.1);
+    const lowY = surface + layerFractions[0] * ACID_PIT_DEPTH - 0.2;
+    const highY = maxY - 0.2;
+    const edgeOpen = (tx, ty, d) => {
+      const nx = tx + (d === 0 ? -1 : d === 1 ? 1 : 0);
+      const ny = ty + (d === 2 ? -1 : d === 3 ? 1 : 0);
+      return !(level.inBounds(nx, ny) && level.slime[ny * level.width + nx]);
+    };
+    let tileCount = 0;
+    let rimCount = 0;
+    for (let ty = 0; ty < level.rowCount; ty++)
+      for (let tx = 0; tx < level.width; tx++) {
+        if (!level.slime[ty * level.width + tx])
+          continue;
+        tileCount++;
+        for (let d = 0; d < 4; d++)
+          if (edgeOpen(tx, ty, d))
+            rimCount++;
+      }
+    const batch = new QuadBatch(gl, {
+      capacity: Math.max(1, layerFractions.length * tileCount + rimCount),
+      atlas: this.slimePixels,
+      sharedTexture,
+      vertex: FLOOR_VERTEX,
+      fragment: ACID_MIST_FRAGMENT,
+      textureOptions: texOpts,
+    });
+    if (sharedTexture) {
+      batch.sharedAtlas = this.slimePixels;
+      batch.sharedTexOptions = texOpts;
+      this.sharedTexturedMeshes.push(batch);
+    }
+    batch.addCustomUniform('time', 'uniform1f', 0);
+    batch.begin();
+    for (let ty = 0; ty < level.rowCount; ty++)
+      for (let tx = 0; tx < level.width; tx++) {
+        if (!level.slime[ty * level.width + tx])
+          continue;
+        const x0 = tx * TILE;
+        const x1 = x0 + TILE;
+        const z0 = ty * TILE;
+        const z1 = z0 + TILE;
+        for (let layer = 0; layer < layerFractions.length; layer++) {
+          const y = layerY(layer, tx, ty);
+          batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], [0, 0, 1, 1]);
+        }
+        for (let d = 0; d < 4; d++) {
+          if (!edgeOpen(tx, ty, d))
+            continue;
+          const axis = d < 2 ? 'x' : 'z';
+          const plane = (d < 2 ? tx + (d === 1 ? 1 : 0) : ty + (d === 3 ? 1 : 0)) * TILE;
+          const along = (d < 2 ? ty : tx) * TILE;
+          const corners = axis === 'x'
+            ? faceCorners(axis, new Vec3(plane, lowY, along), new Vec3(plane, highY, along + TILE))
+            : faceCorners(axis, new Vec3(along, lowY, plane), new Vec3(along + TILE, highY, plane));
+          batch.quad([corners[0].x, corners[0].y, corners[0].z, corners[1].x, corners[1].y, corners[1].z, corners[2].x, corners[2].y, corners[2].z, corners[3].x, corners[3].y, corners[3].z], [0, 0, 1, 1]);
+        }
       }
     return batch.end();
   }
@@ -2652,6 +2725,8 @@ export class World {
 
     if (this.slimeMesh)
       this.slimeMesh.setCustomUniform('time', time);
+    if (this.acidMistMesh)
+      this.acidMistMesh.setCustomUniform('time', time);
     if (this.teleporterMesh)
       this.teleporterMesh.setCustomUniform('time', time);
     if (this.crateMeshes)

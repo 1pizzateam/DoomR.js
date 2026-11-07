@@ -37,6 +37,8 @@ Every action can be rebound. The home screen shows PLAY and OPTIONS buttons, ope
 | F3 | show fps and render scale | position |
 | F1 | open the controls page (rebind any action) | position |
 
+Acid pools emit a glowing, drifting toxic mist that hovers inside the recess.
+
 ## Tests
 
 The game rules in `src/game.js` have no DOM dependency, so they run headless in Node:
