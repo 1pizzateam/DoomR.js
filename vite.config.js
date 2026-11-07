@@ -15,9 +15,10 @@ const alias = localRoostr
 
 export default defineConfig({
   base: './',
-  resolve: { alias },
+  // FaceR ships beside the game; one copy of Spock and RoostR keeps `instanceof Vec3` working across them
+  resolve: { alias, dedupe: ['@1pizzateam/spock', '@1pizzateam/roostr', '@1pizzateam/facer'] },
   optimizeDeps: {
-    exclude: ['@1pizzateam/groovr', '@1pizzateam/roostr'],
+    exclude: ['@1pizzateam/groovr', '@1pizzateam/roostr', '@1pizzateam/facer'],
   },
   server: {
     watch: usePolling ? { usePolling: true, interval: 300 } : undefined,

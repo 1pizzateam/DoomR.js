@@ -56,6 +56,16 @@ import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.j
 import { GRENADE_CELL, GRENADE_FRAMES, grenadeAtlas, grenadeParts, skinGrenadeCylinder } from '../src/grenade.js';
 import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
+import { registerBaseHead, deserializeBaseHead, registerHairStyle, deserializeHairStyle, registerAtlasPainter, registerFaceProfile, deserializeFaceProfile } from '@1pizzateam/facer';
+import { paintFaceAtlas } from '../src/skin/atlas.js';
+registerAtlasPainter(paintFaceAtlas);
+// FaceR bundles no heads: register the marine's head asset from src/heads before any HeadView is built
+registerFaceProfile(deserializeFaceProfile(JSON.parse(
+  readFileSync(new URL('../src/face/doomr.facerprofile.json', import.meta.url), 'utf8'))));
+registerBaseHead('african_sculpt', deserializeBaseHead(JSON.parse(
+  readFileSync(new URL('../src/heads/african_sculpt.facerhead.json', import.meta.url), 'utf8'))));
+registerHairStyle(deserializeHairStyle(JSON.parse(
+  readFileSync(new URL('../src/hair/buzz_fade.facerhair.json', import.meta.url), 'utf8'))));
 import { Overlay } from '../src/overlay.js';
 import { ACTIONS, CONTROLS_STORAGE_KEY, CONTROLS_VERSION, CONTROL_GROUPS, DEFAULT_HINT_LINES, Keymap, LAYOUT_STORAGE_KEY, MAX_SLOTS, PRESETS, RESERVED_CODES } from '../src/keymap.js';
 import { ControlsMenu, HIT_BACK, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP, TONE_RED } from '../src/controls.js';
@@ -9950,6 +9960,31 @@ const tests = {
     assert.ok(game.events.some((e) => e.type === 'dry'));
   },
 
+  'AC-6 shotgun hit-stop slows the world only when enabled and a pellet connects'() {
+    const make = (enabled, enemyDist) => {
+      const game = fresh(0);
+      clearEnemies(game);
+      game.rand = Rand.create(7);
+      game.hitStopEnabled = enabled;
+      Object.assign(game.player, { weapon: 'shotgun', shells: 5, cooldown: 0, angle: 0 });
+      const { x, y } = game.player.pos;
+      if (enemyDist)
+        game.addEnemy('imp', new Vec2(x + enemyDist, y));
+      game.fire();
+      return game;
+    };
+    assert.equal(make(false, 40).hitStop, 0, 'AC-6 disabled by default');
+    assert.equal(make(true, 0).hitStop, 0, 'AC-6 a miss never stalls');
+    const hit = make(true, 40);
+    assert.ok(hit.hitStop > 0, 'AC-6 a connecting blast stalls');
+    const before = hit.time;
+    hit.update(0.01, input({}));
+    assert.ok(hit.time - before < 0.01 * 0.2, 'AC-6 world time crawls during the stall');
+    for (let i = 0; i < 20; i++)
+      hit.update(0.01, input({}));
+    assert.equal(hit.hitStop, 0, 'AC-6 the stall ends');
+  },
+
   'AC-5 ranged fire no longer raises Game.shake but explosions still do'() {
     for (const weapon of ['shotgun', 'chaingun', 'rocket']) {
       const game = fresh(0);
@@ -11592,18 +11627,34 @@ const tests = {
 
   'AC-3 pause toggle: paused freezes the simulation and play resumes it'() {
     const game = fresh(0);
+    const { hud } = pausedHud();
+    const overlay = new Overlay(makeOverlayWorld().world);
+    hud.overlay = overlay;
+    const dt = 1 / 60;
+    game.state = 'play';
+    game.update(dt, idle);
+    hud.render(game);
+    const headBeforePause = Float32Array.from(overlay.head.facer.deformedPositions);
+    const gameTime = game.time;
     game.state = 'paused';
     const x = game.player.pos.x;
     const y = game.player.pos.y;
     const time = game.stats.time;
-    const dt = 1 / 60;
-    game.update(dt, input({ forward: 1 }));
+    for (let i = 0; i < 30; i++) {
+      game.update(dt, input({ forward: 1 }));
+      hud.render(game);
+    }
     assert.equal(game.player.pos.x, x);
     assert.equal(game.player.pos.y, y);
     assert.equal(game.stats.time, time);
+    assert.equal(game.time, gameTime, 'game.time does not advance while paused');
+    assert.deepEqual(overlay.head.facer.deformedPositions, headBeforePause, 'portrait does not move while paused');
+    assert.equal(overlay.head.visible, true, 'portrait stays placed while paused');
     game.state = 'play';
     game.update(dt, input({ forward: 1 }));
+    hud.render(game);
     assert.ok(Math.abs(game.stats.time - (time + dt)) < 1e-9);
+    assert.notDeepEqual(overlay.head.facer.deformedPositions, headBeforePause, 'portrait resumes moving on play');
   },
 
   'AC-4 pause toggle: the pause overlay names the default P key'() {
@@ -11680,7 +11731,7 @@ const tests = {
     assert.equal(sprite.count, 0);
     assert.equal(sprite.capacity, 6);
     assert.equal(overlay.glow.weapon, null);
-    assert.equal(overlay.glow.face, null);
+    assert.ok(overlay.head, 'the marine portrait is a live 3D head');
     assert.equal(overlay.glow.sprites, null);
     assert.equal(overlay.crisp.sprites.capacity, 128 * 6);
   },
@@ -11803,7 +11854,8 @@ const tests = {
     assert.equal(crisp.fills.capacity, 8192);
     assert.equal(crisp.lines.capacity, 8192);
     assert.equal(glow.sprites, null);
-    assert.ok(crisp.weapon && crisp.face && crisp.sprites);
+    assert.ok(crisp.weapon && crisp.sprites && crisp.wall);
+    assert.equal(crisp.face, undefined, 'the portrait is no longer a sprite');
 
     const sizes = [];
     const setCustomUniform = Mesh.prototype.setCustomUniform;
@@ -11827,15 +11879,15 @@ const tests = {
       assert.equal(call.value.y, 600);
     }
     const meshes = new Set(sizes.map((c) => c.mesh));
-    for (const mesh of [glow.fills.mesh, glow.lines.mesh, crisp.fills.mesh, crisp.lines.mesh, crisp.sprites.mesh, crisp.weapon.mesh, crisp.face.mesh])
+    for (const mesh of [glow.fills.mesh, glow.lines.mesh, crisp.fills.mesh, crisp.lines.mesh, crisp.sprites.mesh, crisp.weapon.mesh, crisp.wall.mesh])
       assert.ok(meshes.has(mesh));
 
-    const buffers = [glow.fills, glow.lines, crisp.fills, crisp.lines, crisp.weapon, crisp.face, crisp.sprites];
+    const buffers = [glow.fills, glow.lines, crisp.fills, crisp.lines, crisp.weapon, crisp.wall, crisp.sprites];
     glow.fills.vertex(new Vec2(0, 0), [1, 1, 1]);
     glow.lines.vertex(new Vec2(0, 0), [1, 1, 1]);
     crisp.fills.vertex(new Vec2(0, 0), [1, 1, 1]);
     crisp.lines.vertex(new Vec2(0, 0), [1, 1, 1]);
-    for (const sprite of [crisp.sprites, crisp.weapon, crisp.face])
+    for (const sprite of [crisp.sprites, crisp.weapon, crisp.wall])
       sprite.quad(edgeRect(0, 0, 1, 1), [0, 0, 1, 1], 1);
     for (const buffer of buffers)
       assert.ok(buffer.count > 0);
@@ -11977,8 +12029,8 @@ const tests = {
         circleLine: noop,
         weapon: { quad: (r, ...a) => weaponQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y, ...a]) },
         sprites: { quad: noop },
-        face: { quad: (r, ...a) => faceQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y, ...a]) },
       },
+      head: { update: noop, place: (r) => faceQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y]) },
     };
     const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
     hud.resize(1280, 760, 1);
@@ -11995,15 +12047,14 @@ const tests = {
       const wp = weaponPlacement({ width: 1280, height: 760, bob: f.bob, moving: f.moving, recoil: f.recoil, switchOffset: 0 });
       const fp = facePlacement(new Vec2(1280, 760), f.hurt, { rect: new Rect(), pixel: 0 });
       assert.deepEqual(wq.slice(0, 4), [wp.x0, wp.y0, wp.x1, wp.y1]);
-      assert.deepEqual(fq.slice(0, 4), [fp.rect.topLeftCorner.x, fp.rect.topLeftCorner.y, fp.rect.bottomRightCorner.x, fp.rect.bottomRightCorner.y]);
-      assert.ok(Object.isFrozen(wq[4]) && Object.isFrozen(fq[4]), 'UVs are the cached frozen tuples');
-      assert.ok(Array.from({ length: FACE_FRAME_COUNT }, (_, i) => faceCellUv(i)).includes(fq[4]));
+      assert.deepEqual(fq, [fp.rect.topLeftCorner.x, fp.rect.topLeftCorner.y, fp.rect.bottomRightCorner.x, fp.rect.bottomRightCorner.y]);
+      assert.ok(Object.isFrozen(wq[4]), 'UVs are the cached frozen tuples');
       assert.ok(Array.from({ length: WEAPON_FRAME_COUNT }, (_, i) => weaponCellUv(i, 'plasma')).includes(wq[4]));
       weaponRect = wq;
       faceRect = fq;
     }
     assert.notDeepEqual(weaponQuads[0].slice(0, 4), weaponRect.slice(0, 4), 'second frame moved the weapon quad');
-    assert.notDeepEqual(faceQuads[0].slice(0, 4), faceRect.slice(0, 4), 'second frame moved the face quad');
+    assert.notDeepEqual(faceQuads[0], faceRect, 'second frame moved the face box');
   },
 
   'AC-1 QuadBatch defaults pass geometry sizes, default shaders and material to the superclass'() {
@@ -12315,6 +12366,7 @@ const tests = {
   },
 
   'AC-4 drawHud reuses scratch options and rect for face placement and frame'() {
+    const updates = [];
     const faceQuads = [];
     const ctx = new Proxy({}, { get: () => () => {}, set: () => true });
     const noop = () => {};
@@ -12328,7 +12380,10 @@ const tests = {
         circleLine: noop,
         weapon: { quad: noop },
         sprites: { quad: noop },
-        face: { quad: (r, ...a) => faceQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y, ...a]) },
+      },
+      head: {
+        update: (player, time) => updates.push([player.health, player.hurt, time]),
+        place: (r) => faceQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y]),
       },
     };
     const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
@@ -12345,17 +12400,10 @@ const tests = {
       hud.render(game);
       const quad = faceQuads[faceQuads.length - 1];
       const expectedPlacement = facePlacement(new Vec2(1280, 760), f.hurt, { rect: new Rect(), pixel: 0 }).rect;
-      const expectedFrame = faceFrame({ health: f.health, hurt: f.hurt, shotElapsed: -1, time: f.time });
-      assert.deepEqual(quad.slice(0, 4), [expectedPlacement.topLeftCorner.x, expectedPlacement.topLeftCorner.y, expectedPlacement.bottomRightCorner.x, expectedPlacement.bottomRightCorner.y]);
-      assert.deepEqual(quad[4], faceCellUv(expectedFrame));
+      assert.deepEqual(quad, [expectedPlacement.topLeftCorner.x, expectedPlacement.topLeftCorner.y, expectedPlacement.bottomRightCorner.x, expectedPlacement.bottomRightCorner.y]);
+      assert.deepEqual(updates[updates.length - 1], [f.health, f.hurt, f.time], 'the 3D head is fed the live player state and game clock');
     }
-    assert.notDeepEqual(faceQuads[0].slice(0, 4), faceQuads[1].slice(0, 4));
-    assert.notDeepEqual(faceQuads[0][4], faceQuads[1][4]);
-
-    const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
-    assert.ok(/^const FACE_FRAME_OPTS = /m.test(src));
-    assert.ok(/faceFrame\(FACE_FRAME_OPTS\)/.test(src));
-    assert.ok(!src.includes('faceFrame({'));
+    assert.notDeepEqual(faceQuads[0], faceQuads[1]);
   },
 
   'AC-5 circleLine emits the same ring segments without per-segment arrays'() {
@@ -13589,8 +13637,8 @@ const tests = {
         circleLine: (c) => circles.push(c instanceof Circ),
         weapon: { quad: (r) => quadArgs.push(r instanceof Rect) },
         sprites: { quad: (r) => quadArgs.push(r instanceof Rect) },
-        face: { quad: (r) => quadArgs.push(r instanceof Rect) },
       },
+      head: { update: noop, place: (r) => quadArgs.push(r instanceof Rect) },
     };
     const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
     hud.resize(1280, 760, 1);
@@ -14847,7 +14895,7 @@ const tests = {
     game.player.shells = 10;
     world.updateShotgun(game);
     assert.equal(world.shotgunView.root.active, true, 'shotgunView active when weapon is shotgun');
-    assert.ok(world.shotgunView.material.diffuse.x > 1.0, 'shotgun diffuse boosted by muzzle flash');
+    assert.equal(world.shotgunView.material.diffuse.x, 1, 'shotgun model is not tinted by the muzzle flash');
 
     game.cam = { x: 0, y: 0, eye: 32, lookX: 0, lookY: 0, lookEye: 0, roll: 0, zoom: 1 };
     world.updateShotgun(game);

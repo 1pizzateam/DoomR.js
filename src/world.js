@@ -174,7 +174,7 @@ function fillParticleOpts(p) {
 }
 const scratchChainsawOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, attacking: false };
 const scratchChaingunOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, attacking: false, spinDown: 0 };
-const scratchShotgunOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, hasAmmo: true };
+const scratchShotgunOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, hasAmmo: true, jolt: 0 };
 const scratchRocketOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, hasAmmo: true };
 const scratchKnifeOpts = { time: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0, elapsed: -1, attack: 'vertical' };
 const scratchAnimCtx = { time: 0, dt: 0, player: null };
@@ -186,8 +186,7 @@ const scratchForward = new Vec3();
 const scratchRight = new Vec3();
 const scratchUp = new Vec3();
 const scratchQuat = new Quat();
-const ZERO_KICK = Object.freeze({ pitch: 0, yaw: 0, roll: 0, fov: 0 });
-const SHOTGUN_FLASH = WEAPONS.shotgun.feel.flash;
+const ZERO_KICK = Object.freeze({ pitch: 0, yaw: 0, roll: 0, fov: 0, settle: 0, push: 0 });
 const ROCKET_FLASH = WEAPONS.rocket.feel.flash;
 
 /** Writes the kicked view basis into scratchForward / scratchRight / scratchUp. */
@@ -195,8 +194,9 @@ function writeViewBasis(angle, kick) {
   const a = angle + kick.yaw;
   const cosA = Math.cos(a);
   const sinA = Math.sin(a);
-  const cosP = Math.cos(kick.pitch);
-  const sinP = Math.sin(kick.pitch);
+  const pitch = kick.pitch + (kick.settle ?? 0);
+  const cosP = Math.cos(pitch);
+  const sinP = Math.sin(pitch);
   const cosR = Math.cos(kick.roll);
   const sinR = Math.sin(kick.roll);
   scratchForward.setScalar(cosA * cosP, sinP, sinA * cosP);
@@ -210,7 +210,7 @@ function writeViewBasis(angle, kick) {
 function writeViewQuat(angle, kick, rotation) {
   scratchQuat
     .setFromEuler(scratchRot.setScalar(0, Trigo.halfpi - (angle + kick.yaw), 0))
-    .rotateX(-kick.pitch)
+    .rotateX(-(kick.pitch + (kick.settle ?? 0)))
     .rotateZ(kick.roll)
     .rotateY(rotation.y)
     .rotateX(rotation.x)
@@ -2751,6 +2751,7 @@ export class World {
     this.post.clear();
     this.post.render(this.postCamera, time);
     this.overlay.crisp.render(this.postCamera, time);
+    this.overlay.head?.render(time);
   }
 
   /** Positions and animates the 3D textured chainsaw viewmodel in front of the player camera. */
@@ -2866,13 +2867,12 @@ export class World {
     scratchShotgunOpts.switchOffset = switchOffset;
     scratchShotgunOpts.elapsed = elapsed;
     scratchShotgunOpts.hasAmmo = hasAmmo;
+    // a delayed pulse after a pellet connects: 0 at the hit, peaking mid-marker, 0 when it expires
+    scratchShotgunOpts.jolt = (player.hitMarker ?? 0) > 0 ? Math.sin((1 - Math.min(1, player.hitMarker / 0.15)) * Trigo.pi) : 0;
     const pose = shotgunPose(scratchShotgunOpts, view.pose);
 
-    const flashBoost =
-      isFiring && ((player.flash ?? 0) > 0 || (elapsed >= 0 && elapsed < SHOTGUN_FLASH))
-        ? Math.max(Math.min(1, (player.flash ?? 0) / SHOTGUN_FLASH), elapsed >= 0 && elapsed < SHOTGUN_FLASH ? 1 - elapsed / SHOTGUN_FLASH : 0) * 0.45
-        : 0;
-    tintScratch.setScalar(1 + flashBoost, 1 + flashBoost * 0.78, 1 + flashBoost * 0.42);
+    // no tint flash on the shotgun: the muzzle light and kick carry the blast
+    tintScratch.setScalar(1, 1, 1);
     view.material.setDiffuse(tintScratch);
 
     const kick = player.kick ?? ZERO_KICK;
@@ -3039,10 +3039,12 @@ export class World {
     }
     const baseEye = player.eye ?? EYE;
     const eyeY = Math.max(8, baseEye - drop) + bob;
+    // the shot shoves the eye straight back along the aim; render-only, relaxes in game.relaxKick
+    const push = kick.push ?? 0;
     camera.position.setScalar(
-      player.pos.x + Rand.float(-0.5, 0.5) * shake,
+      player.pos.x + Rand.float(-0.5, 0.5) * shake - Math.cos(player.angle) * push,
       eyeY + Rand.float(-0.5, 0.5) * shake,
-      player.pos.y + Rand.float(-0.5, 0.5) * shake
+      player.pos.y + Rand.float(-0.5, 0.5) * shake - Math.sin(player.angle) * push
     );
     writeViewBasis(player.angle, kick);
     camera.target.setScalar(

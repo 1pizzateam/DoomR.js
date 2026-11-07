@@ -65,7 +65,9 @@ export const WEAPONS = {
     falloffStart: 120,
     falloffEnd: 480,
     // feel.flash must equal the player.flash literal set by the matching fire method.
-    feel: Object.freeze({ pitch: 0.045, yaw: 0, roll: 0.012, fov: 0.03, halfLife: 0.09, cap: 0.06, climb: 0, heatGain: 0, heatHalfLife: 0.3, flash: 0.1, duck: 0.4 }),
+    // pitch/yaw/roll/fov are the fast snap (halfLife); settle is the slow second stage of the muzzle climb and push shoves
+    // the camera back along the aim, both with their own half-lives.
+    feel: Object.freeze({ pitch: 0.055, yaw: 0.008, roll: 0.015, fov: 0.05, halfLife: 0.05, cap: 0.08, climb: 0, heatGain: 0, heatHalfLife: 0.3, settle: 0.02, settleHalfLife: 0.25, push: 1.5, pushHalfLife: 0.06, flash: 0.1, duck: 0.5 }),
   },
   chaingun: {
     id: 'chaingun',
@@ -77,7 +79,7 @@ export const WEAPONS = {
     damage: 2,
     spread: 0.035,
     // feel.flash must equal the player.flash literal set by the matching fire method.
-    feel: Object.freeze({ pitch: 0.008, yaw: 0.004, roll: 0.003, fov: 0, halfLife: 0.045, cap: 0.035, climb: 2.8, heatGain: 0.2, heatHalfLife: 0.3, flash: 0.06, duck: 0.15 }),
+    feel: Object.freeze({ pitch: 0.008, yaw: 0.004, roll: 0.003, fov: 0, halfLife: 0.045, cap: 0.035, climb: 2.8, heatGain: 0.2, heatHalfLife: 0.3, settle: 0, settleHalfLife: 0.25, push: 0, pushHalfLife: 0.06, flash: 0.06, duck: 0.15 }),
   },
   rocket: {
     id: 'rocket',
@@ -91,7 +93,7 @@ export const WEAPONS = {
     splashRadius: 165,
     speed: 520,
     // feel.flash must equal the player.flash literal set by the matching fire method.
-    feel: Object.freeze({ pitch: 0.06, yaw: 0, roll: 0.015, fov: 0.04, halfLife: 0.16, cap: 0.07, climb: 0, heatGain: 0, heatHalfLife: 0.3, flash: 0.14, duck: 0.5 }),
+    feel: Object.freeze({ pitch: 0.06, yaw: 0, roll: 0.015, fov: 0.04, halfLife: 0.16, cap: 0.07, climb: 0, heatGain: 0, heatHalfLife: 0.3, settle: 0, settleHalfLife: 0.25, push: 0, pushHalfLife: 0.06, flash: 0.14, duck: 0.5 }),
   },
 };
 

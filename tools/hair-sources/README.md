@@ -1,0 +1,1 @@
+Archived FaceR sources from before hair styles became DoomR assets (`src/hair`): the procedural style code in `baseHead.ts` (`applyHaircutStyleToPositions`), the hair-region atlas painting in `facerMesh.ts`, and `interfaces.ts`. `tools/bake-hair.mjs` baked them into the assets. Not part of any build.

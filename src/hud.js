@@ -2,7 +2,8 @@ import { Circ, Rect, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { CEILING, DOOR, EXIT, PILLAR, TILE } from './level.js';
 import { LEVELS } from './levels.js';
 import { createQuadTarget, screenSplatQuads } from './bloodsprites.js';
-import { faceCellUv, faceFrame, facePlacement } from './face.js';
+import { facePlacement, portraitBackdrop } from './face.js';
+import { WALL_CELLS, wallCellUv } from './wall.js';
 import { AMMO_FLASH_DURATION, DIFFICULTIES, DIFFICULTY_ORDER } from './game.js';
 import { AMMO_TYPES } from './ammo.js';
 import { DEFAULT_HINT_LINES, DEFAULT_SELECT_HINT, defaultActionLabel } from './keymap.js';
@@ -82,7 +83,9 @@ const WEAPON_PLACE_OPTS = { width: 0, height: 0, bob: 0, moving: 0, recoil: 0, s
 const WEAPON_RECT = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
 const FACE_VIEWPORT = new Vec2();
 const FACE_PLACEMENT = { rect: new Rect(), pixel: 0 };
-const FACE_FRAME_OPTS = { health: 100, hurt: 0, shotElapsed: -1, time: 0 };
+const WALL_LOWER = new Rect();
+const WALL_UPPER = new Rect();
+const WALL_ALPHA = 0.4;
 
 const SCRATCH_SIZE = new Vec2();
 const SCRATCH_POS = new Vec2();
@@ -609,7 +612,7 @@ export class Hud {
     this.segment(cx, cy - 10, cx, cy - 4, GREEN, 0.9);
     this.segment(cx, cy + 4, cx, cy + 10, GREEN, 0.9);
     if (player.hitMarker > 0) {
-      const m = 8 + (0.15 - player.hitMarker) * 40;
+      const m = 12 + (0.15 - player.hitMarker) * 70;
       this.segment(cx - m, cy - m, cx - m / 2, cy - m / 2, ORANGE);
       this.segment(cx + m, cy - m, cx + m / 2, cy - m / 2, ORANGE);
       this.segment(cx - m, cy + m, cx - m / 2, cy + m / 2, ORANGE);
@@ -623,19 +626,6 @@ export class Hud {
     const faceTL = faceRect.topLeftCorner;
     const faceBR = faceRect.bottomRightCorner;
     const weaponDef = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
-    const shotElapsed =
-      (player.soulFlash ?? 0) > 0 || (player.berserkTimer ?? 0) > 18.5
-        ? 0.1
-        : (player.shootFace ?? 0) > 0
-          ? 0.42 - player.shootFace
-          : !player.dryFire && player.cooldown > 0 && (player.switchTimer ?? 0) <= 0
-            ? Math.max(0, weaponDef.cooldown - player.cooldown)
-            : -1;
-    FACE_FRAME_OPTS.health = player.health;
-    FACE_FRAME_OPTS.hurt = player.hurt;
-    FACE_FRAME_OPTS.shotElapsed = shotElapsed;
-    FACE_FRAME_OPTS.time = game.time;
-    const frameIdx = faceFrame(FACE_FRAME_OPTS);
     const crisp = this.overlay.crisp;
     const borderCol =
       (player.teleFlash ?? 0) > 0
@@ -647,9 +637,12 @@ export class Hud {
             : player.hurt > 0 || player.health < 30
               ? RGB[ORANGE]
               : RGB[BLUE];
-    crisp.fillRect(setRect(faceTL.x - 4, faceTL.y - 4, faceBR.x - faceTL.x + 8, faceBR.y - faceTL.y + 8), BACKGROUND_RGB);
+    crisp.fillRect(setRect(faceTL.x - 4, faceTL.y - 4, faceBR.x - faceTL.x + 8, faceBR.y - faceTL.y + 8), portraitBackdrop(player));
     crisp.rectLine(setRect(faceTL.x - 4.5, faceTL.y - 4.5, faceBR.x - faceTL.x + 9, faceBR.y - faceTL.y + 9), borderCol, player.hurt > 0 || (player.berserkTimer ?? 0) > 0 || (player.soulFlash ?? 0) > 0 || (player.teleFlash ?? 0) > 0 ? 0.85 : 0.45);
-    crisp.face?.quad(faceRect, faceCellUv(frameIdx), 1);
+    this.drawPortraitWall(faceRect);
+    if (game.state !== 'paused')
+      this.overlay.head?.update(player, game.time);
+    this.overlay.head?.place(faceRect);
 
     const base = height - 28;
     const hx = faceBR.x + 18;
@@ -835,6 +828,26 @@ export class Hud {
   }
 
   /** Active weapon ammo readout and classic Doom 3-pool tally (Bullets, Shells, Rockets). */
+  /**
+   * The wall behind the portrait: a plain bulkhead panel at the foot, a pipe run above it, at the texels' true proportions,
+   * drawn see-through so the state's backdrop colour tints it.
+   */
+  drawPortraitWall(faceRect) {
+    const wall = this.overlay.crisp.wall;
+    if (!wall)
+      return;
+    const tl = faceRect.topLeftCorner;
+    const br = faceRect.bottomRightCorner;
+    const w = br.x - tl.x;
+    const pieceH = Math.min(w, br.y - tl.y);
+    const topH = br.y - tl.y - pieceH;
+    wall.quad(setRectEdges(WALL_LOWER, tl.x, br.y - pieceH, br.x, br.y), wallCellUv(WALL_CELLS.plain), WALL_ALPHA);
+    if (topH > 0.5) {
+      // the top part of a pipe panel, as much of it as fits
+      wall.quad(setRectEdges(WALL_UPPER, tl.x, tl.y, br.x, tl.y + topH), wallCellUv(WALL_CELLS.pipes, 1 - topH / w, 1), WALL_ALPHA);
+    }
+  }
+
   drawAmmo(rightX, base, player, weaponDef) {
     const ammoType = weaponDef?.ammoType ?? null;
     const ammoDef = ammoType ? AMMO_TYPES[ammoType] : null;

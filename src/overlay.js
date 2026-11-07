@@ -1,7 +1,8 @@
 import { CustomMesh, Material, Mesh, Scene, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { Trigo } from '@1pizzateam/spock';
 import { bloodAtlas } from './bloodsprites.js';
-import { faceAtlas } from './face.js';
+import { HeadView } from './head.js';
+import { wallAtlas } from './wall.js';
 import { arsenalAtlas } from './weapon.js';
 import hudOverlayShader from './shaders/hud-overlay.shadergun.json' with { type: 'json' };
 import hudTexturedShader from './shaders/hud-textured.shadergun.json' with { type: 'json' };
@@ -188,9 +189,10 @@ class Layer {
     this.weapon = withWeapon ? new SpriteBuffer(gl, 1, arsenalAtlas()) : null;
     if (this.weapon)
       this.scene.addMesh(this.weapon.mesh);
-    this.face = withWeapon ? new SpriteBuffer(gl, 1, faceAtlas()) : null;
-    if (this.face)
-      this.scene.addMesh(this.face.mesh);
+    // the portrait's backdrop is the base's own wall texture, so the marine stands in front of the bulkheads he fights through
+    this.wall = withWeapon ? new SpriteBuffer(gl, 2, wallAtlas()) : null;
+    if (this.wall)
+      this.scene.addMesh(this.wall.mesh);
     this.sprites = spriteCapacity ? new SpriteBuffer(gl, spriteCapacity, bloodAtlas()) : null;
     if (this.sprites)
       this.scene.addMesh(this.sprites.mesh);
@@ -204,7 +206,7 @@ class Layer {
     this.lines.mesh.setCustomUniform('size', size);
     this.sprites?.mesh.setCustomUniform('size', size);
     this.weapon?.mesh.setCustomUniform('size', size);
-    this.face?.mesh.setCustomUniform('size', size);
+    this.wall?.mesh.setCustomUniform('size', size);
   }
 
   clear() {
@@ -212,7 +214,7 @@ class Layer {
     this.lines.clear();
     this.sprites?.clear();
     this.weapon?.clear();
-    this.face?.clear();
+    this.wall?.clear();
   }
 
   /** Strokes a polyline given as Vec2 points. */
@@ -287,7 +289,7 @@ class Layer {
     this.fills.upload();
     this.lines.upload();
     this.weapon?.upload();
-    this.face?.upload();
+    this.wall?.upload();
     this.sprites?.upload();
     this.scene.render(camera, time);
   }
@@ -303,20 +305,25 @@ export class Overlay {
     this.glow = new Layer(world, 96, 8192);
     // blood on the view is a picture, so it goes on the finished image where nothing blurs it
     this.crisp = new Layer(world, 8192, 8192, 128, true);
+    // the marine's portrait is a live 3D head, drawn in its box after the crisp layer
+    this.head = new HeadView(world.gl);
   }
 
   resize(cssWidth, cssHeight, width, height) {
     this.glow.resize(cssWidth, cssHeight, width, height);
     this.crisp.resize(cssWidth, cssHeight, width, height);
+    this.head.resize(cssWidth, cssHeight, width, height);
   }
 
   clear() {
     this.glow.clear();
     this.crisp.clear();
+    this.head.hide();
   }
 
   restore() {
     this.glow.scene.restore();
     this.crisp.scene.restore();
+    this.head.restore();
   }
 }

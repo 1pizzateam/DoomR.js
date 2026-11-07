@@ -79,6 +79,11 @@ export const DIFFICULTIES = {
 const LEAP_SPEED = 470;
 
 const PLAYER_RADIUS = 14;
+// Hit-stop: a brief world slowdown when a shotgun blast lands. Off unless a front end opts in (hitStopEnabled),
+// so the deterministic sim keeps its timing. Seconds of real time, and the fraction of speed during it.
+const HITSTOP_SCALE = 0.12;
+const HITSTOP_HIT = 0.04;
+const HITSTOP_CLOSE_KILL = 0.085;
 const KICK_EPSILON = 1e-5;
 const KICK_FALLBACK_HALF_LIFE = 0.05;
 const GRID_CELL = TILE * 2;
@@ -156,6 +161,8 @@ export class Game {
     this.pitStepStart = new Vec2();
     this.pitStepTarget = new Vec2();
     this.shake = 0;
+    this.hitStopEnabled = false;
+    this.hitStop = 0;
     // set by the title screen's film: a camera that is not the player's, and a fade to black between shots
     this.cam = null;
     this.fade = 0;
@@ -638,7 +645,7 @@ export class Game {
       dryFire: false,
       triggerHeld: false,
       spinDown: 0,
-      kick: { pitch: 0, yaw: 0, roll: 0, fov: 0, heat: 0, shots: 0, burst: 0 },
+      kick: { pitch: 0, yaw: 0, roll: 0, fov: 0, settle: 0, push: 0, heat: 0, shots: 0, burst: 0 },
       shootFace: 0,
       flash: 0,
       recoil: 0,
@@ -1821,6 +1828,8 @@ export class Game {
     kick.yaw = 0;
     kick.roll = 0;
     kick.fov = 0;
+    kick.settle = 0;
+    kick.push = 0;
     kick.heat = 0;
     kick.shots = 0;
     kick.burst = 0;
@@ -1836,6 +1845,8 @@ export class Game {
     kick.yaw = Utils.clamp(kick.yaw + feel.yaw * side, -feel.cap, feel.cap);
     kick.roll = Utils.clamp(kick.roll + feel.roll * (feel.yaw > 0 ? side : 1), -feel.cap, feel.cap);
     kick.fov = Math.max(kick.fov, feel.fov);
+    kick.settle = Math.min(feel.cap, kick.settle + feel.settle);
+    kick.push = Math.min(feel.push * 1.5, kick.push + feel.push);
     kick.heat = Math.min(1, kick.heat + feel.heatGain);
   }
 
@@ -1849,6 +1860,8 @@ export class Game {
     kick.yaw *= k;
     kick.roll *= k;
     kick.fov *= k;
+    kick.settle *= Math.exp((-dt * Math.LN2) / (feel ? feel.settleHalfLife : KICK_FALLBACK_HALF_LIFE));
+    kick.push *= Math.exp((-dt * Math.LN2) / (feel ? feel.pushHalfLife : KICK_FALLBACK_HALF_LIFE));
     kick.heat *= h;
     if (Math.abs(kick.pitch) < KICK_EPSILON)
       kick.pitch = 0;
@@ -1858,6 +1871,10 @@ export class Game {
       kick.roll = 0;
     if (Math.abs(kick.fov) < KICK_EPSILON)
       kick.fov = 0;
+    if (Math.abs(kick.settle) < KICK_EPSILON)
+      kick.settle = 0;
+    if (Math.abs(kick.push) < KICK_EPSILON)
+      kick.push = 0;
     if (Math.abs(kick.heat) < KICK_EPSILON)
       kick.heat = 0;
   }
@@ -1886,6 +1903,13 @@ export class Game {
         enemy.limbs.severedThisShot = false;
     }
     this.inShot = true;
+    let hitFlesh = false;
+    let closeFlesh = false;
+    let deadBefore = 0;
+    for (const enemy of this.enemies) {
+      if (enemy.state === 'dead')
+        deadBefore++;
+    }
     const end = this.scratch;
     for (let i = 0; i < PELLETS; i++) {
       const angle = player.angle + this.rand.float(-PELLET_SPREAD, PELLET_SPREAD);
@@ -1919,12 +1943,23 @@ export class Game {
       const hitZ = this.rand.float(14, 50) - (player.crouch ?? 0) * 12;
       this.blood.hit(this.bloodPos.setScalar(hit.point.x, hit.point.y, hitZ), this.bloodDir.setScalar(cos, sin), enemy.def.gore);
       this.emit('flesh', hit.point);
-      if (maxDist < 110)
+      hitFlesh = true;
+      if (maxDist < 110) {
+        closeFlesh = true;
         this.blood.splat(1, 0.55 + 0.25 * Math.min(enemy.def.gore, 2));
+      }
       this.hitEnemyLimb(enemy, hit.point, hitZ, cos, sin, pelletDmg);
       this.damageEnemy(enemy, pelletDmg);
     }
     this.inShot = false;
+    if (this.hitStopEnabled && hitFlesh) {
+      let deadAfter = 0;
+      for (const enemy of this.enemies) {
+        if (enemy.state === 'dead')
+          deadAfter++;
+      }
+      this.hitStop = Math.max(this.hitStop, closeFlesh && deadAfter > deadBefore ? HITSTOP_CLOSE_KILL : HITSTOP_HIT);
+    }
 
     this.resolveGibs();
   }
@@ -2983,11 +3018,17 @@ export class Game {
   }
 
   update(dt, input) {
+    if (this.state !== 'play')
+      this.usePrompt.fade = 0;
+    if (this.state === 'paused')
+      return;
+    if (this.hitStop > 0) {
+      this.hitStop = Math.max(0, this.hitStop - dt);
+      dt *= HITSTOP_SCALE;
+    }
     this.time += dt;
     this.shake = Math.max(0, this.shake - dt * 1.6);
     this.message.age += dt;
-    if (this.state !== 'play')
-      this.usePrompt.fade = 0;
     this.blood.update(dt);
     this.updateMarsWeather(dt);
     const effects = this.effects;

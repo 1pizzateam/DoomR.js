@@ -158,7 +158,10 @@ export const RECIPES = {
     tone(ctx, out, t, { from: 150, to: 38, duration: 0.36, gain: 0.45 });
     tone(ctx, out, t, { type: 'triangle', from: 72, to: 30, duration: 0.42, gain: 0.3 });
     tone(ctx, out, t, { from: 60, to: 28, duration: 0.5, gain: 0.3 });
-    return { duration: 0.8, wet: 0.55 };
+    // chest thump: a short, hard 52 Hz drop under the report, then a long sub tail you feel more than hear
+    tone(ctx, out, t, { from: 52, to: 30, duration: 0.2, gain: 0.55 });
+    tone(ctx, out, t + 0.02, { from: 38, to: 24, duration: 0.65, gain: 0.3 });
+    return { duration: 0.8, wet: 0.65 };
   },
   // the pump: a back stroke, then a forward stroke with a heavier clunk
   pump(ctx, out, t) {
