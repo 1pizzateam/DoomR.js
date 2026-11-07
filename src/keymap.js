@@ -65,7 +65,6 @@ export const ACTIONS = Object.freeze([
   positional('automap', bind('Tab', 9)),
   positional('menu', bind('Escape', 27)),
   positional('diagnostics', bind('F3', 114)),
-  positional('layoutCycle', bind('F2', 113)),
   positional('controls', bind('F1', 112)),
   mnemonic('use', ['e'], bind('KeyE', 69)),
   mnemonic('nightVision', ['n'], bind('KeyN', 78)),
@@ -87,7 +86,7 @@ const NO_OVERRIDES = new Map();
 const hintRow = (keys, label) => Object.freeze({ keys, label });
 const hintGroup = (title, rows) => Object.freeze({ title, rows: Object.freeze(rows) });
 
-const buildHints = (label, layoutText, custom = NO_OVERRIDES) => {
+const buildHints = (label, custom = NO_OVERRIDES) => {
   const weapons = custom.has('weapon1') || custom.has('weapon2') || custom.has('weapon3') || custom.has('weapon4')
     ? `${label('weapon1')} ${label('weapon2')} ${label('weapon3')} ${label('weapon4')}`
     : '1-4';
@@ -122,7 +121,6 @@ const buildHints = (label, layoutText, custom = NO_OVERRIDES) => {
       hintRow('ESC', 'pause'),
       hintRow(label('sound'), 'sound'),
       hintRow(label('music'), 'music'),
-      hintRow(label('layoutCycle'), `layout: ${layoutText}`),
       hintRow(label('controls'), 'controls'),
     ]),
   ]);
@@ -217,7 +215,7 @@ export const CONTROL_GROUPS = Object.freeze([
   group('INTERFACE', [
     ['automap', 'Automap'], ['automapGrid', 'Automap grid'], ['zoomIn', 'Automap zoom in'], ['zoomOut', 'Automap zoom out'],
     ['map', 'Minimap'], ['pause', 'Pause'], ['music', 'Music'], ['sound', 'Sound'], ['levelPrev', 'Previous level'],
-    ['levelNext', 'Next level'], ['layoutCycle', 'Keyboard layout labels'], ['diagnostics', 'Diagnostics'], ['controls', 'Controls page'],
+    ['levelNext', 'Next level'], ['diagnostics', 'Diagnostics'], ['controls', 'Controls page'],
   ]),
 ]);
 
@@ -234,7 +232,7 @@ for (const action of ACTIONS)
     for (const b of action.bindings)
       DEFAULT_POSITIONAL_CODES.add(b.code);
 
-export const DEFAULT_HINT_LINES = buildHints(defaultActionLabel, 'auto (QWERTY)');
+export const DEFAULT_HINT_LINES = buildHints(defaultActionLabel);
 
 const defaultStorage = () => {
   try {
@@ -767,7 +765,7 @@ export class Keymap {
         unbound.push(id);
     }
     this.unbound = Object.freeze(unbound);
-    this.hintLines = buildHints((id) => this.actionLabel(id), this.override === 'auto' ? `auto (${this.layoutName})` : this.layoutName, this.overrides);
+    this.hintLines = buildHints((id) => this.actionLabel(id), this.overrides);
   }
 
   get layoutName() {

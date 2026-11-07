@@ -9026,7 +9026,7 @@ const tests = {
     assert.equal(d.hintLines[1].rows[3].label, 'use');
   },
 
-  'AC-6 keyboard layouts: live learning detects AZERTY once and F2 cycles and persists the override'() {
+  'AC-6 keyboard layouts: live learning detects AZERTY once and cycleOverride persists the override'() {
     const writes = [];
     const storage = { getItem() { return null; }, setItem(k, v) { writes.push([k, v]); } };
     const k = new Keymap({ storage, navigator: null });
@@ -9046,13 +9046,10 @@ const tests = {
     assert.deepEqual(writes.filter(([key]) => key === LAYOUT_STORAGE_KEY).map(([, v]) => v), ['qwerty', 'azerty', 'qwertz', 'dvorak', 'auto']);
     assert.equal(new Keymap({ storage: { getItem: () => 'qwertz' }, navigator: null }).override, 'qwertz');
     assert.equal(new Keymap({ storage: { getItem: () => 'bogus' }, navigator: null }).override, 'auto');
-    withInput((inp, down) => {
-      down({ code: 'F2', key: 'F2' });
-      assert.equal(inp.took('layoutCycle'), true);
-    });
+    assert.ok(!ACTIONS.some((a) => a.id === 'layoutCycle'), 'AC-6 F2 hotkey action is gone');
   },
 
-  'AC-7 keyboard layouts: HUD draws cached AZERTY hints on title and pause and main wires F2'() {
+  'AC-7 keyboard layouts: HUD draws cached AZERTY hints on title and pause and main no longer wires F2'() {
     const texts = [];
     const fakeCanvas = {
       width: 0,
@@ -9078,14 +9075,13 @@ const tests = {
     hud.render(game);
     assert.ok(texts.includes('Z Q S D'));
     assert.ok(texts.includes('MOVE'));
-    assert.ok(texts.includes('F2'));
-    assert.ok(texts.includes('layout: AZERTY'));
+    assert.ok(!texts.includes('F2'));
+    assert.ok(!texts.some((t) => t.startsWith('layout:')));
     texts.length = 0;
     game.state = 'paused';
     hud.render(game);
-    assert.ok(texts.some((t) => t.startsWith('layout:')));
     const src = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
-    for (const s of ["input.took('layoutCycle')", 'keymap.cycleOverride()', 'hud.controlHints = keymap.hintLines'])
+    for (const s of ['hud.controlHints = keymap.hintLines'])
       assert.ok(src.includes(s), `AC-7 main.js contains ${s}`);
     for (const s of ["input.took('Key", "input.took('Semicolon')", "input.took('Bracket", "input.took('Digit", "input.took('Arrow"])
       assert.ok(!src.includes(s), `AC-7 main.js has no ${s}`);
@@ -9100,7 +9096,7 @@ const tests = {
     const lines = section.split('\n');
     assert.ok(lines.some((l) => /^\|\s*M\s*\|[^|]*toggle music/.test(l)));
     assert.ok(lines.some((l) => /^\|\s*V\s*\|[^|]*toggle map/.test(l)));
-    assert.ok(lines.some((l) => /^\|\s*F2\s*\|[^|]*keyboard layout/.test(l)));
+    assert.ok(!lines.some((l) => /^\|\s*F2\s*\|/.test(l)));
     assert.ok(!lines.some((l) => /^\|\s*M\s*\|[^|]*toggle map/.test(l)));
     assert.ok(lines.some((l) => /^\|\s*;\s*\|[^|]*toggle sound/.test(l)));
     assert.ok(lines.some((l) => /^\|\s*N\s*\|\s*toggle night vision\s*\|/.test(l)));
@@ -10274,7 +10270,7 @@ const tests = {
       KeyW: 87, ArrowUp: 38, KeyS: 83, ArrowDown: 40, KeyA: 65, KeyD: 68, ArrowLeft: 37, ArrowRight: 39, Space: 32,
       ShiftLeft: 16, ShiftRight: 160, KeyX: 88, ControlLeft: 17, ControlRight: 162, AltLeft: 18, AltRight: 164, Enter: 13,
       KeyC: 67, KeyF: 70, Digit1: 49, Digit2: 50, Digit3: 51, Digit4: 52, Numpad1: 97, Numpad2: 98, Numpad3: 99, Numpad4: 100,
-      Tab: 9, Escape: 27, F3: 114, F2: 113, KeyE: 69, KeyN: 78, KeyM: 77, KeyV: 86, KeyG: 71, KeyP: 80, Semicolon: 59, KeyB: 66,
+      Tab: 9, Escape: 27, F3: 114, KeyE: 69, KeyN: 78, KeyM: 77, KeyV: 86, KeyG: 71, KeyP: 80, Semicolon: 59, KeyB: 66,
       Equal: 61, NumpadAdd: 107, Minus: 45, NumpadSubtract: 109, BracketLeft: 219, BracketRight: 221, F1: 112, Mouse0: 1000,
     };
     for (const layout of ['qwerty', 'azerty', 'qwertz', 'dvorak']) {
@@ -10292,10 +10288,9 @@ const tests = {
     const k = new Keymap({ storage: null, navigator: null });
     assert.deepEqual(k.hintLines, DEFAULT_HINT_LINES);
     assert.equal(k.hintLines.length, 4);
-    assert.equal(k.hintLines[3].rows[3].keys, 'F2');
-    assert.equal(k.hintLines[3].rows[3].label, 'layout: auto (QWERTY)');
-    assert.equal(k.hintLines[3].rows[4].keys, 'F1');
-    assert.equal(k.hintLines[3].rows[4].label, 'controls');
+    assert.equal(k.hintLines[3].rows.length, 4);
+    assert.equal(k.hintLines[3].rows[3].keys, 'F1');
+    assert.equal(k.hintLines[3].rows[3].label, 'controls');
     const ids = [];
     for (const g of CONTROL_GROUPS)
       for (const a of g.actions)
@@ -10549,7 +10544,7 @@ const tests = {
       for (const [code, key] of [['KeyM', 'm'], ['F2', 'F2'], ['Tab', 'Tab'], ['KeyX', 'x']])
         rig.down({ code, key });
       rig.canvas.mousedown({ button: 0, clientX: 0, clientY: 0 });
-      for (const id of ['music', 'layoutCycle', 'automap', 'fire', 'Click'])
+      for (const id of ['music', 'pause', 'automap', 'fire', 'Click'])
         assert.equal(inp.took(id), false, id);
       assert.equal(inp.keys.size, 0);
       const drained = [];
@@ -10668,7 +10663,7 @@ const tests = {
     const section = end < 0 ? rest : rest.slice(0, end);
     const lines = section.split('\n');
     assert.ok(lines.some((l) => /^\|\s*F1\s*\|[^|]*controls page/.test(l)));
-    assert.ok(lines.some((l) => /^\|\s*F2\s*\|[^|]*keyboard layout/.test(l)));
+    assert.ok(!lines.some((l) => /^\|\s*F2\s*\|/.test(l)));
     assert.ok(section.includes('doomr.controls'));
     const log = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
     assert.ok(log.includes('#26') && log.includes('doomr.controls'));
@@ -10770,13 +10765,16 @@ const tests = {
       assert.equal(v.footerFocus, 1);
       assert.equal(game.events[game.events.length - 1], 'tallyTick');
 
-      // Subsequent ArrowRight in footer clamps at FOOTER_BACK and emits no sound
+      // ArrowRight reaches FOOTER_LABELS (2), then clamps there and emits no sound
+      menu.moveColumn(1, game);
+      assert.equal(v.footerFocus, 2);
       const evLen3 = game.events.length;
       menu.moveColumn(1, game);
-      assert.equal(v.footerFocus, 1);
+      assert.equal(v.footerFocus, 2);
       assert.equal(game.events.length, evLen3);
 
-      // ArrowLeft toggles back to FOOTER_RESET (0) and emits tallyTick
+      // ArrowLeft walks back to FOOTER_RESET (0) and emits tallyTick
+      menu.moveColumn(-1, game);
       menu.moveColumn(-1, game);
       assert.equal(v.footerFocus, 0);
       assert.equal(game.events[game.events.length - 1], 'tallyTick');

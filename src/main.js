@@ -105,8 +105,6 @@ function control(dt) {
     controlsMenu.update(dt, game);
     return;
   }
-  if (input.took('layoutCycle'))
-    game.say(keymap.cycleOverride(), 1.5);
   if (input.took('music'))
     game.say(sound.toggleMusic(game.levelIndex), 1.5);
   if (input.took('map'))

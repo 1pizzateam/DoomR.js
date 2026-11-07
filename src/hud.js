@@ -7,7 +7,7 @@ import { AMMO_FLASH_DURATION, DIFFICULTIES, DIFFICULTY_ORDER } from './game.js';
 import { AMMO_TYPES } from './ammo.js';
 import { DEFAULT_HINT_LINES, DEFAULT_SELECT_HINT, defaultActionLabel } from './keymap.js';
 import { MAIN_MENU_ITEMS } from './menu.js';
-import { HIT_BACK, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP } from './controls.js';
+import { HIT_BACK, HIT_LABELS, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP } from './controls.js';
 import { WEAPON_SLOTS, WEAPONS, weaponCellUv, weaponFrame, weaponPlacement } from './weapon.js';
 
 const scratchBloodViewport = new Vec2();
@@ -48,12 +48,13 @@ export const SCREEN_BLOOD_ALPHA = 0.72;
 const CONTROLS_ROW_H = 20;
 const CONTROLS_TOP = 64;
 const CONTROLS_HEADER_H = 64;
-const CONTROLS_FOOTER_H = 72;
+const CONTROLS_FOOTER_H = 94;
 const CONTROLS_ENTRY_PAUSED_DY = 58;
 const RESUME_FALLBACK_TEXT = 'click or press ENTER to resume';
 const CONTROLS_LEGEND = '↑↓←→ select · ENTER / click rebind · DEL clear · R reset row · ESC back';
 const CONTROLS_CUE_W = 24;
 const CONTROLS_BUTTON_HALF_W = 70;
+const CONTROLS_LABELS_HALF_W = 150;
 const SEG4 = [0, 0, 0, 0];
 const RECT10 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
@@ -146,7 +147,7 @@ const layerDiamond = (layer, cx, cy, r, color, alpha = 1) => {
 /** Written by layoutControls and read by both drawing and hit-testing so they never drift. */
 const CONTROLS_LAYOUT = {
   boxX: 0, boxY: 0, boxW: 0, boxH: 0, rowsTop: 0, footerTop: 0, visibleRows: 4, rowH: CONTROLS_ROW_H,
-  nameX: 0, slot0X: 0, slot1X: 0, slotHalf: 0, resetX: 0, backX: 0, buttonY: 0,
+  nameX: 0, slot0X: 0, slot1X: 0, slotHalf: 0, resetX: 0, backX: 0, buttonY: 0, labelsX: 0, labelsY: 0,
 };
 
 const MENU_BUTTON_H = 34;
@@ -256,6 +257,8 @@ export const layoutControls = (width, height) => {
   L.resetX = L.boxX + L.boxW * 0.3;
   L.backX = L.boxX + L.boxW * 0.7;
   L.buttonY = L.footerTop + 58;
+  L.labelsX = L.boxX + L.boxW / 2;
+  L.labelsY = L.footerTop + 80;
   return L;
 };
 
@@ -1510,6 +1513,8 @@ export class Hud {
     const L = layoutControls(this.width, this.height);
     if (pos.x < L.boxX || pos.x > L.boxX + L.boxW || pos.y < L.boxY || pos.y > L.boxY + L.boxH)
       return HIT_NONE;
+    if (pos.y >= L.labelsY - 16 && pos.y <= L.labelsY + 6)
+      return Math.abs(pos.x - L.labelsX) <= CONTROLS_LABELS_HALF_W ? HIT_LABELS : HIT_NONE;
     if (pos.y >= L.buttonY - 16 && pos.y <= L.buttonY + 6) {
       if (Math.abs(pos.x - L.resetX) <= CONTROLS_BUTTON_HALF_W)
         return HIT_RESET_ALL;
@@ -1644,6 +1649,8 @@ export class Hud {
     this.text(confirming ? '[PRESS AGAIN TO RESET ALL]' : '[RESET ALL]', L.resetX, L.buttonY, RED, { size: 12, align: 'center', weight: 800, alpha: resetFocus || confirming ? 1 : 0.7, glow: resetFocus ? 8 : 2 });
     const backFocus = view.footerFocus === 1;
     this.text('[BACK]', L.backX, L.buttonY, backFocus ? ORANGE : BLUE, { size: 12, align: 'center', weight: 800, alpha: backFocus ? 1 : 0.7, glow: backFocus ? 8 : 2 });
+    const labelsFocus = view.footerFocus === 2;
+    this.text(`[KEY LABELS: ${view.layoutText}]`, L.labelsX, L.labelsY, labelsFocus ? ORANGE : BLUE, { size: 12, align: 'center', weight: 800, alpha: labelsFocus ? 1 : 0.7, glow: labelsFocus ? 8 : 2 });
   }
 
   drawOverlay(game) {

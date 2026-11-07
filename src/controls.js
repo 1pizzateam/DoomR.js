@@ -5,6 +5,7 @@ export const HIT_RESET_ALL = -2;
 export const HIT_BACK = -3;
 export const HIT_SCROLL_UP = -4;
 export const HIT_SCROLL_DOWN = -5;
+export const HIT_LABELS = -6;
 
 const TONE_BLUE = 0;
 const TONE_GREEN = 1;
@@ -20,6 +21,7 @@ const MENU_SOUND = Object.freeze({ visible: true });
 const SCROLL_STEP = 3;
 const FOOTER_RESET = 0;
 const FOOTER_BACK = 1;
+const FOOTER_LABELS = 2;
 
 /** Headless controller for the CONTROLS page: draws nothing, owns the page state the Hud reads from `view`. */
 export class ControlsMenu {
@@ -56,6 +58,7 @@ export class ControlsMenu {
       toastTone: TONE_BLUE,
       toastTime: 0,
       labelVersion: -1,
+      layoutText: 'AUTO',
     };
   }
 
@@ -98,6 +101,7 @@ export class ControlsMenu {
     if (keymap.version === v.labelVersion)
       return;
     v.labelVersion = keymap.version;
+    v.layoutText = keymap.override === 'auto' ? `AUTO (${keymap.layoutName})` : keymap.layoutName.toUpperCase();
     for (let i = 0; i < this.actionLines.length; i++) {
       const line = v.lines[this.actionLines[i]];
       const slots = keymap.slotCodes(line.id);
@@ -242,7 +246,7 @@ export class ControlsMenu {
   moveColumn(delta, game) {
     const v = this.view;
     if (v.footerFocus >= 0) {
-      const next = Math.max(FOOTER_RESET, Math.min(FOOTER_BACK, v.footerFocus + delta));
+      const next = Math.max(FOOTER_RESET, Math.min(FOOTER_LABELS, v.footerFocus + delta));
       if (next === v.footerFocus)
         return;
       v.footerFocus = next;
@@ -288,6 +292,12 @@ export class ControlsMenu {
     this.toast('Press RESET ALL again to restore every default', TONE_ORANGE);
   }
 
+  cycleLabels(game) {
+    this.keymap.cycleOverride();
+    game.emit('keycard', game.zero, MENU_SOUND);
+    this.toast(this.keymap.statusText, TONE_GREEN);
+  }
+
   isResetKey(record) {
     const key = record.key;
     if (key.length === 1)
@@ -329,6 +339,8 @@ export class ControlsMenu {
           this.activateReset(game);
         else if (v.footerFocus === FOOTER_BACK)
           this.close();
+        else if (v.footerFocus === FOOTER_LABELS)
+          this.cycleLabels(game);
         else
           this.startCapture(code);
       } else if (code === 'Escape')
@@ -359,6 +371,9 @@ export class ControlsMenu {
       } else if (hit === HIT_RESET_ALL) {
         v.footerFocus = FOOTER_RESET;
         this.activateReset(game);
+      } else if (hit === HIT_LABELS) {
+        v.footerFocus = FOOTER_LABELS;
+        this.cycleLabels(game);
       } else if (hit === HIT_BACK)
         this.close();
       else if (hit === HIT_SCROLL_UP)
