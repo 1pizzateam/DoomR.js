@@ -16249,7 +16249,7 @@ const tests = {
     }
   },
 
-  'AC-2 moderate damage range (<=50% and >=30%) renders orange health bar ticks and numeric label'() {
+  'AC-2 moderate damage range (<=50% and >30%) renders orange health bar ticks and numeric label'() {
     const texts = [];
     const segments = [];
     const hud = new Hud(
@@ -16261,7 +16261,7 @@ const tests = {
     hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
 
     const ORANGE = 2;
-    for (const hp of [50, 40, 30]) {
+    for (const hp of [50, 40, 31]) {
       texts.length = 0;
       segments.length = 0;
       const game = fresh(0);
@@ -16284,7 +16284,7 @@ const tests = {
     }
   },
 
-  'AC-3 critical danger range (<30%) renders red health bar ticks and numeric label'() {
+  'AC-3 critical danger range (<=30%) renders red health bar ticks and numeric label'() {
     const texts = [];
     const segments = [];
     const hud = new Hud(
@@ -16296,7 +16296,7 @@ const tests = {
     hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
 
     const RED = 3;
-    for (const hp of [29, 15, 1]) {
+    for (const hp of [30, 29, 15, 1]) {
       texts.length = 0;
       segments.length = 0;
       const game = fresh(0);
@@ -16390,7 +16390,7 @@ const tests = {
         assert.equal(c.pts.length, 4);
       }
 
-      const expectedColorIndex = val < 0.3 ? RED : val <= 0.5 ? ORANGE : GREEN;
+      const expectedColorIndex = val <= 0.3 ? RED : val <= 0.5 ? ORANGE : GREEN;
       const expectedRgb = RGB[expectedColorIndex];
       const lit = Math.ceil(val * 20);
       for (let i = 0; i < lit; i++)
