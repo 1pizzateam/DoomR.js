@@ -1847,6 +1847,8 @@ export class World {
       this.sharedTexturedMeshes.push(batch);
     }
     batch.addCustomUniform('time', 'uniform1f', 0);
+    batch.setBlend('SRC_ALPHA', 'ONE_MINUS_SRC_ALPHA');
+    batch.setDepthWrite(false);
     batch.begin();
     for (let ty = 0; ty < level.rowCount; ty++)
       for (let tx = 0; tx < level.width; tx++) {

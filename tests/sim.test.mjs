@@ -4274,6 +4274,8 @@ const tests = {
       assert.ok(mist.fragment.includes('uHasFog') && mist.fragment.includes('uFogColor'));
       assert.ok(mist.fragment.includes('uFogNear') && mist.fragment.includes('uFogFar'));
       assert.ok(mist.fragment.includes('surfaceLight('));
+      assert.equal(mist.mesh.blendMode, true);
+      assert.equal(mist.mesh.depthWrite, false);
       assert.equal(mist.mesh.customUniforms.time.value, 0);
       mist.mesh.setCustomUniform('time', 2);
       assert.equal(mist.mesh.customUniforms.time.value, 2);
