@@ -12302,7 +12302,8 @@ const tests = {
     );
     const GREEN = 1;
     const ORANGE = 2;
-    hud.drawBar(10, 100, 160, 20, 0.5, GREEN, ORANGE);
+    const RED = 3;
+    hud.drawBar(10, 100, 160, 20, 0.5, GREEN, ORANGE, RED, 0.5, 0.3);
     assert.equal(calls.length, 20);
     const firstRef = calls[0].ref;
     for (const c of calls) {
@@ -16132,6 +16133,194 @@ const tests = {
     assert.equal(custom.diagInfo(doorIdx), null, 'door returns null');
     assert.equal(custom.diagInfo(-1), null, 'negative index returns null');
     assert.equal(custom.diagInfo(9999), null, 'out-of-bounds index returns null');
+  },
+
+  'AC-1 healthy range (>50%) renders green health bar ticks and numeric label'() {
+    const texts = [];
+    const segments = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({ setTransform() {}, clearRect() {}, fillRect() {}, stroke() {}, fillText() {} }) },
+      { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } },
+    );
+    hud.resize(1024, 768, 1);
+    hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
+    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+
+    const GREEN = 1;
+    for (const hp of [100, 75, 51]) {
+      texts.length = 0;
+      segments.length = 0;
+      const game = fresh(0);
+      game.state = 'play';
+      game.player.health = hp;
+      hud.drawHud(game);
+
+      const healthText = texts.find((t) => t.str === String(hp));
+      assert.ok(healthText, `health readout for ${hp} rendered`);
+      assert.equal(healthText.col, GREEN, `health readout for ${hp} rendered in GREEN`);
+
+      // Health bar ticks (20 ticks, y = base = 768 - 28 = 740, x < 300)
+      const healthBarTicks = segments.filter((s) => s.y0 === 740 && s.y1 === 724 && s.x0 < 300);
+      assert.equal(healthBarTicks.length, 20, `20 ticks rendered for ${hp}`);
+      const litCount = Math.ceil((hp / 100) * 20);
+      const litTicks = healthBarTicks.slice(0, litCount);
+      for (const t of litTicks) {
+        assert.equal(t.col, GREEN, `lit tick at health ${hp} is GREEN`);
+        assert.equal(t.a, 1, `lit tick at health ${hp} alpha is 1`);
+      }
+    }
+  },
+
+  'AC-2 moderate damage range (<=50% and >=30%) renders orange health bar ticks and numeric label'() {
+    const texts = [];
+    const segments = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({ setTransform() {}, clearRect() {}, fillRect() {}, stroke() {}, fillText() {} }) },
+      { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } },
+    );
+    hud.resize(1024, 768, 1);
+    hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
+    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+
+    const ORANGE = 2;
+    for (const hp of [50, 40, 30]) {
+      texts.length = 0;
+      segments.length = 0;
+      const game = fresh(0);
+      game.state = 'play';
+      game.player.health = hp;
+      hud.drawHud(game);
+
+      const healthText = texts.find((t) => t.str === String(hp));
+      assert.ok(healthText, `health readout for ${hp} rendered`);
+      assert.equal(healthText.col, ORANGE, `health readout for ${hp} rendered in ORANGE`);
+
+      const healthBarTicks = segments.filter((s) => s.y0 === 740 && s.y1 === 724 && s.x0 < 300);
+      assert.equal(healthBarTicks.length, 20, `20 ticks rendered for ${hp}`);
+      const litCount = Math.ceil((hp / 100) * 20);
+      const litTicks = healthBarTicks.slice(0, litCount);
+      for (const t of litTicks) {
+        assert.equal(t.col, ORANGE, `lit tick at health ${hp} is ORANGE`);
+        assert.equal(t.a, 1, `lit tick at health ${hp} alpha is 1`);
+      }
+    }
+  },
+
+  'AC-3 critical danger range (<30%) renders red health bar ticks and numeric label'() {
+    const texts = [];
+    const segments = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({ setTransform() {}, clearRect() {}, fillRect() {}, stroke() {}, fillText() {} }) },
+      { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } },
+    );
+    hud.resize(1024, 768, 1);
+    hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
+    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+
+    const RED = 3;
+    for (const hp of [29, 15, 1]) {
+      texts.length = 0;
+      segments.length = 0;
+      const game = fresh(0);
+      game.state = 'play';
+      game.player.health = hp;
+      hud.drawHud(game);
+
+      const healthText = texts.find((t) => t.str === String(hp));
+      assert.ok(healthText, `health readout for ${hp} rendered`);
+      assert.equal(healthText.col, RED, `health readout for ${hp} rendered in RED`);
+
+      const healthBarTicks = segments.filter((s) => s.y0 === 740 && s.y1 === 724 && s.x0 < 300);
+      assert.equal(healthBarTicks.length, 20, `20 ticks rendered for ${hp}`);
+      const litCount = Math.ceil((hp / 100) * 20);
+      const litTicks = healthBarTicks.slice(0, litCount);
+      for (const t of litTicks) {
+        assert.equal(t.col, RED, `lit tick at health ${hp} is RED`);
+        assert.equal(t.a, 1, `lit tick at health ${hp} alpha is 1`);
+      }
+    }
+  },
+
+  'AC-4 overcharged soul-sphere (>100%) renders blue text and secondary blue bar over green base bar'() {
+    const texts = [];
+    const segments = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({ setTransform() {}, clearRect() {}, fillRect() {}, stroke() {}, fillText() {} }) },
+      { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } },
+    );
+    hud.resize(1024, 768, 1);
+    hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
+    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+
+    const BLUE = 0;
+    const GREEN = 1;
+    for (const hp of [150, 200]) {
+      texts.length = 0;
+      segments.length = 0;
+      const game = fresh(0);
+      game.state = 'play';
+      game.player.health = hp;
+      hud.drawHud(game);
+
+      const healthText = texts.find((t) => t.str === String(hp));
+      assert.ok(healthText, `health readout for ${hp} rendered`);
+      assert.equal(healthText.col, BLUE, `health readout for overcharged ${hp} is BLUE`);
+
+      const soulLabel = texts.find((t) => t.str === 'SOUL');
+      assert.ok(soulLabel, 'SOUL header rendered instead of HEALTH');
+      assert.equal(soulLabel.col, BLUE);
+
+      // Base bar at y0 = 740, y1 = 724 has clamp(hp/100, 0, 1) = 1.0 -> all 20 ticks GREEN
+      const baseTicks = segments.filter((s) => s.y0 === 740 && s.y1 === 724 && s.x0 < 300);
+      assert.equal(baseTicks.length, 20, '20 base bar ticks');
+      for (const t of baseTicks)
+        assert.equal(t.col, GREEN, 'base bar ticks are GREEN for overcharged health');
+
+      // Overflow bar at y0 = 737, y1 = 721
+      const overflowTicks = segments.filter((s) => s.y0 === 737 && s.y1 === 721 && s.x0 < 300);
+      assert.equal(overflowTicks.length, 20, '20 overflow bar ticks rendered');
+      const expectedOverflowLit = Math.ceil(((hp - 100) / 100) * 20);
+      const litOverflow = overflowTicks.slice(0, expectedOverflowLit);
+      for (const t of litOverflow) {
+        assert.equal(t.col, BLUE, 'overflow ticks are BLUE');
+        assert.equal(t.a, 1);
+      }
+    }
+  },
+
+  'AC-5 drawBar tick drawing across all thresholds reuses shared scratch array with zero allocations'() {
+    const calls = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({}) },
+      { glow: { line: (pts, col, alpha) => calls.push({ ref: pts, pts: flatPoints(pts), col, alpha }) } },
+    );
+    const COLORS = ['#5b8cff', '#38c793', '#ff9f43', '#e8102c'];
+    const RGB = COLORS.map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255));
+    const GREEN = 1;
+    const ORANGE = 2;
+    const RED = 3;
+
+    // Test across healthy, caution, and critical value thresholds
+    const testValues = [0.8, 0.5, 0.4, 0.3, 0.2, 0.05];
+    for (const val of testValues) {
+      calls.length = 0;
+      hud.drawBar(10, 100, 160, 20, val, GREEN, ORANGE, RED, 0.5, 0.3);
+      assert.equal(calls.length, 20);
+      const sharedRef = calls[0].ref;
+      for (const c of calls) {
+        assert.equal(c.ref, sharedRef, 'every tick must reuse shared scratch array reference');
+        assert.equal(c.pts.length, 4);
+      }
+
+      const expectedColorIndex = val < 0.3 ? RED : val <= 0.5 ? ORANGE : GREEN;
+      const expectedRgb = RGB[expectedColorIndex];
+      const lit = Math.ceil(val * 20);
+      for (let i = 0; i < lit; i++)
+        assert.deepEqual(calls[i].col, expectedRgb, `tick ${i} has expected threshold color`);
+    }
+
+    const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
+    assert.ok(!src.includes('.line(['));
   },
 };
 
