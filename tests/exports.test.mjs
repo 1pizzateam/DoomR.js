@@ -113,8 +113,14 @@ const checks = [
   ['issue-105 AC-5 floor.js and wall.js load with retained exports', async () => {
     const mod = await import('../src/floor.js');
     await import('../src/wall.js');
-    for (const n of ['floorAtlas', 'crateAtlas', 'slimeAtlas', 'marsDirtAtlas', 'marsBoulderAtlas', 'FLOOR_FRAGMENT', 'CRATE_FRAGMENT', 'SLIME_FRAGMENT', 'MARS_DIRT_FRAGMENT', 'MARS_ROCK_FRAGMENT', 'TILE_PIXELS', 'MARS_BOULDER_BASE_INSET']) assert.ok(n in mod, `missing ${n}`);
+    for (const n of ['floorAtlas', 'crateAtlas', 'slimeAtlas', 'marsDirtAtlas', 'marsBoulderAtlas', 'FLOOR_FRAGMENT', 'CRATE_FRAGMENT', 'SLIME_FRAGMENT', 'ACID_MIST_FRAGMENT', 'MARS_DIRT_FRAGMENT', 'MARS_ROCK_FRAGMENT', 'TILE_PIXELS', 'MARS_BOULDER_BASE_INSET']) assert.ok(n in mod, `missing ${n}`);
     for (const n of ['RUST_GLSL', 'LIGHT_GLSL', 'RUST', 'HAZARD']) assert.ok(!(n in mod), `${n} still exported`);
+  }],
+  ['issue-181 AC-6 floor.js exports ACID_MIST_FRAGMENT as a non-empty string', async () => {
+    const mod = await import('../src/floor.js');
+    assert.equal(typeof mod.ACID_MIST_FRAGMENT, 'string');
+    assert.ok(mod.ACID_MIST_FRAGMENT.length > 0);
+    assert.ok('SLIME_FRAGMENT' in mod);
   }],
   ['issue-105 AC-6 npm test chain still runs sim and exports suites', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));

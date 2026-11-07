@@ -39,7 +39,7 @@ import { diagWallFaceQuads, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtla
 import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
 import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
-import { CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
+import { ACID_MIST_FRAGMENT, CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
 import { LIGHT_GLSL, PARTICLE_FRAGMENT, QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, TEXTURED_VERTEX, texturedMesh } from '../src/quads.js';
 import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads as wallDripQuadsVec, screenSplatQuads as screenSplatQuadsVec, createQuadTarget, bloodAtlas, CELL, cellUv, floorGibQuad as floorGibQuadVec, floorSplatQuad as floorSplatQuadVec, particleQuad, printQuad as printQuadVec, wallSplatQuad as wallSplatQuadVec } from '../src/bloodsprites.js';
 import { CEILING, CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
@@ -194,6 +194,7 @@ function withWallWorld(check) {
     floorBatch: stub,
     marsDirtBatch: stub,
     slimeBatch: stub,
+    acidMistBatch: stub,
     teleporterBatch: stub,
     crateBatch: stub,
     marsBoulderBatch: stub,
@@ -205,6 +206,16 @@ function withWallWorld(check) {
   } finally {
     Mesh.prototype.addProgram = addProgram;
   }
+}
+
+function withMistWorld(game, check) {
+  withWallWorld((world, programs) => {
+    world.floorBatch = World.prototype.floorBatch;
+    world.slimeBatch = World.prototype.slimeBatch;
+    world.acidMistBatch = World.prototype.acidMistBatch;
+    World.prototype.buildStatic.call(world, game.level);
+    check(world, programs);
+  });
 }
 
 function withQuadHarness(check) {
@@ -4239,6 +4250,73 @@ const tests = {
       acid.mesh.setCustomUniform('time', 2);
       assert.equal(acid.mesh.customUniforms.time.value, 2, 'animation time remains updateable');
     });
+  },
+
+  'issue-181 AC-1 acid mist batch layers cover every acid tile'() {
+    const game = acidPitGame();
+    withMistWorld(game, (world, programs) => {
+      const mist = programs.find(({ fragment }) => fragment === ACID_MIST_FRAGMENT);
+      const acid = programs.find(({ fragment }) => fragment === SLIME_FRAGMENT);
+      assert.ok(mist, 'mist batch is built');
+      assert.equal(mist.vertex, FLOOR_VERTEX);
+      assert.ok(mist.mesh.used >= 27, '3 layers x 9 tiles plus rim curtains');
+      assert.equal(acid.mesh.used, 9, 'acid surface batch is unchanged');
+    });
+  },
+
+  'issue-181 AC-2 acid mist stays below the deck and above the acid'() {
+    const game = acidPitGame();
+    withMistWorld(game, (world, programs) => {
+      const mist = programs.find(({ fragment }) => fragment === ACID_MIST_FRAGMENT);
+      for (let i = 1; i < mist.mesh.used * 18; i += 3) {
+        assert.ok(mist.mesh.vertices[i] < -0.2 - 1e-3, 'below the deck plane');
+        assert.ok(mist.mesh.vertices[i] > -ACID_PIT_DEPTH - 0.35, 'above the acid surface');
+      }
+    });
+  },
+
+  'issue-181 AC-3 acid mist shader is animated, fogged and lit with a time uniform'() {
+    const game = acidPitGame();
+    withMistWorld(game, (world, programs) => {
+      const mist = programs.find(({ fragment }) => fragment === ACID_MIST_FRAGMENT);
+      assert.match(mist.fragment, /uniform float uTime;/);
+      assert.match(mist.fragment, /uTime\s*\*/);
+      assert.ok(mist.fragment.includes('uHasFog') && mist.fragment.includes('uFogColor'));
+      assert.ok(mist.fragment.includes('uFogNear') && mist.fragment.includes('uFogFar'));
+      assert.ok(mist.fragment.includes('surfaceLight('));
+      assert.equal(mist.mesh.blendMode, true);
+      assert.equal(mist.mesh.depthWrite, false);
+      assert.equal(mist.mesh.customUniforms.time.value, 0);
+      mist.mesh.setCustomUniform('time', 2);
+      assert.equal(mist.mesh.customUniforms.time.value, 2);
+    });
+  },
+
+  'issue-181 AC-4 acid mist batch is empty without acid'() {
+    const game = acidPitGame();
+    withMistWorld(game, (world) => {
+      const level = { width: game.level.width, rowCount: game.level.rowCount, slime: new Uint8Array(game.level.slime.length), inBounds: (x, y) => game.level.inBounds(x, y) };
+      let batch;
+      assert.doesNotThrow(() => { batch = World.prototype.acidMistBatch.call(world, level); });
+      assert.equal(batch.used, 0);
+      assert.ok(batch.capacity >= 1);
+    });
+  },
+
+  'issue-181 AC-5 acid mist mesh is tracked and reset'() {
+    const game = acidPitGame();
+    withMistWorld(game, (world) => {
+      assert.ok(world.acidMistMesh, 'tracked after buildStatic');
+      assert.ok(world.staticMeshes.includes(world.acidMistMesh));
+    });
+    const worldSrc = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+    assert.equal((worldSrc.match(/this\.acidMistMesh = null;/g) ?? []).length, 2, 'initialised and reset beside slimeMesh');
+  },
+
+  'issue-181 AC-7 render updates the acid mist time uniform'() {
+    const src = World.prototype.render.toString();
+    assert.ok(src.includes("this.acidMistMesh.setCustomUniform('time', time)"));
+    assert.ok(src.includes("this.slimeMesh.setCustomUniform('time', time)"));
   },
 
   'crouching lowers the player eye below low pillars, slows movement, and stands back up when released'() {
@@ -8582,6 +8660,7 @@ const tests = {
       floorBatch: () => 'floor',
       marsDirtBatch: () => 'marsDirt',
       slimeBatch: () => 'slime',
+      acidMistBatch: () => 'acidMist',
       teleporterBatch: () => 'teleporter',
       crateBatch: () => 'crate',
       marsBoulderBatch: () => 'marsBoulder',
@@ -12353,7 +12432,8 @@ const tests = {
     );
     const GREEN = 1;
     const ORANGE = 2;
-    hud.drawBar(10, 100, 160, 20, 0.5, GREEN, ORANGE);
+    const RED = 3;
+    hud.drawBar(10, 100, 160, 20, 0.5, GREEN, ORANGE, RED, 0.5, 0.3);
     assert.equal(calls.length, 20);
     const firstRef = calls[0].ref;
     for (const c of calls) {
@@ -13217,6 +13297,7 @@ const tests = {
       floorBatch: () => ({ name: 'floor' }),
       marsDirtBatch: () => ({ name: 'marsDirt' }),
       slimeBatch: () => ({ name: 'slime' }),
+      acidMistBatch: () => ({ name: 'acidMist' }),
       teleporterBatch: () => ({ name: 'teleporter' }),
       crateBatch: () => ({ name: 'crate' }),
       marsBoulderBatch: (_lvl, sec) => {
@@ -16180,6 +16261,194 @@ const tests = {
     assert.equal(custom.diagInfo(doorIdx), null, 'door returns null');
     assert.equal(custom.diagInfo(-1), null, 'negative index returns null');
     assert.equal(custom.diagInfo(9999), null, 'out-of-bounds index returns null');
+  },
+
+  'AC-1 healthy range (>50%) renders green health bar ticks and numeric label'() {
+    const texts = [];
+    const segments = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({ setTransform() {}, clearRect() {}, fillRect() {}, stroke() {}, fillText() {} }) },
+      { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } },
+    );
+    hud.resize(1024, 768, 1);
+    hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
+    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+
+    const GREEN = 1;
+    for (const hp of [100, 75, 51]) {
+      texts.length = 0;
+      segments.length = 0;
+      const game = fresh(0);
+      game.state = 'play';
+      game.player.health = hp;
+      hud.drawHud(game);
+
+      const healthText = texts.find((t) => t.str === String(hp));
+      assert.ok(healthText, `health readout for ${hp} rendered`);
+      assert.equal(healthText.col, GREEN, `health readout for ${hp} rendered in GREEN`);
+
+      // Health bar ticks (20 ticks, y = base = 768 - 28 = 740, x < 300)
+      const healthBarTicks = segments.filter((s) => s.y0 === 740 && s.y1 === 724 && s.x0 < 300);
+      assert.equal(healthBarTicks.length, 20, `20 ticks rendered for ${hp}`);
+      const litCount = Math.ceil((hp / 100) * 20);
+      const litTicks = healthBarTicks.slice(0, litCount);
+      for (const t of litTicks) {
+        assert.equal(t.col, GREEN, `lit tick at health ${hp} is GREEN`);
+        assert.equal(t.a, 1, `lit tick at health ${hp} alpha is 1`);
+      }
+    }
+  },
+
+  'AC-2 moderate damage range (<=50% and >30%) renders orange health bar ticks and numeric label'() {
+    const texts = [];
+    const segments = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({ setTransform() {}, clearRect() {}, fillRect() {}, stroke() {}, fillText() {} }) },
+      { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } },
+    );
+    hud.resize(1024, 768, 1);
+    hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
+    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+
+    const ORANGE = 2;
+    for (const hp of [50, 40, 31]) {
+      texts.length = 0;
+      segments.length = 0;
+      const game = fresh(0);
+      game.state = 'play';
+      game.player.health = hp;
+      hud.drawHud(game);
+
+      const healthText = texts.find((t) => t.str === String(hp));
+      assert.ok(healthText, `health readout for ${hp} rendered`);
+      assert.equal(healthText.col, ORANGE, `health readout for ${hp} rendered in ORANGE`);
+
+      const healthBarTicks = segments.filter((s) => s.y0 === 740 && s.y1 === 724 && s.x0 < 300);
+      assert.equal(healthBarTicks.length, 20, `20 ticks rendered for ${hp}`);
+      const litCount = Math.ceil((hp / 100) * 20);
+      const litTicks = healthBarTicks.slice(0, litCount);
+      for (const t of litTicks) {
+        assert.equal(t.col, ORANGE, `lit tick at health ${hp} is ORANGE`);
+        assert.equal(t.a, 1, `lit tick at health ${hp} alpha is 1`);
+      }
+    }
+  },
+
+  'AC-3 critical danger range (<=30%) renders red health bar ticks and numeric label'() {
+    const texts = [];
+    const segments = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({ setTransform() {}, clearRect() {}, fillRect() {}, stroke() {}, fillText() {} }) },
+      { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } },
+    );
+    hud.resize(1024, 768, 1);
+    hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
+    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+
+    const RED = 3;
+    for (const hp of [30, 29, 15, 1]) {
+      texts.length = 0;
+      segments.length = 0;
+      const game = fresh(0);
+      game.state = 'play';
+      game.player.health = hp;
+      hud.drawHud(game);
+
+      const healthText = texts.find((t) => t.str === String(hp));
+      assert.ok(healthText, `health readout for ${hp} rendered`);
+      assert.equal(healthText.col, RED, `health readout for ${hp} rendered in RED`);
+
+      const healthBarTicks = segments.filter((s) => s.y0 === 740 && s.y1 === 724 && s.x0 < 300);
+      assert.equal(healthBarTicks.length, 20, `20 ticks rendered for ${hp}`);
+      const litCount = Math.ceil((hp / 100) * 20);
+      const litTicks = healthBarTicks.slice(0, litCount);
+      for (const t of litTicks) {
+        assert.equal(t.col, RED, `lit tick at health ${hp} is RED`);
+        assert.equal(t.a, 1, `lit tick at health ${hp} alpha is 1`);
+      }
+    }
+  },
+
+  'AC-4 overcharged soul-sphere (>100%) renders blue text and secondary blue bar over green base bar'() {
+    const texts = [];
+    const segments = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({ setTransform() {}, clearRect() {}, fillRect() {}, stroke() {}, fillText() {} }) },
+      { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } },
+    );
+    hud.resize(1024, 768, 1);
+    hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
+    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+
+    const BLUE = 0;
+    const GREEN = 1;
+    for (const hp of [150, 200]) {
+      texts.length = 0;
+      segments.length = 0;
+      const game = fresh(0);
+      game.state = 'play';
+      game.player.health = hp;
+      hud.drawHud(game);
+
+      const healthText = texts.find((t) => t.str === String(hp));
+      assert.ok(healthText, `health readout for ${hp} rendered`);
+      assert.equal(healthText.col, BLUE, `health readout for overcharged ${hp} is BLUE`);
+
+      const soulLabel = texts.find((t) => t.str === 'SOUL');
+      assert.ok(soulLabel, 'SOUL header rendered instead of HEALTH');
+      assert.equal(soulLabel.col, BLUE);
+
+      // Base bar at y0 = 740, y1 = 724 has clamp(hp/100, 0, 1) = 1.0 -> all 20 ticks GREEN
+      const baseTicks = segments.filter((s) => s.y0 === 740 && s.y1 === 724 && s.x0 < 300);
+      assert.equal(baseTicks.length, 20, '20 base bar ticks');
+      for (const t of baseTicks)
+        assert.equal(t.col, GREEN, 'base bar ticks are GREEN for overcharged health');
+
+      // Overflow bar at y0 = 737, y1 = 721
+      const overflowTicks = segments.filter((s) => s.y0 === 737 && s.y1 === 721 && s.x0 < 300);
+      assert.equal(overflowTicks.length, 20, '20 overflow bar ticks rendered');
+      const expectedOverflowLit = Math.ceil(((hp - 100) / 100) * 20);
+      const litOverflow = overflowTicks.slice(0, expectedOverflowLit);
+      for (const t of litOverflow) {
+        assert.equal(t.col, BLUE, 'overflow ticks are BLUE');
+        assert.equal(t.a, 1);
+      }
+    }
+  },
+
+  'AC-5 drawBar tick drawing across all thresholds reuses shared scratch array with zero allocations'() {
+    const calls = [];
+    const hud = new Hud(
+      { width: 0, height: 0, getContext: () => ({}) },
+      { glow: { line: (pts, col, alpha) => calls.push({ ref: pts, pts: flatPoints(pts), col, alpha }) } },
+    );
+    const COLORS = ['#5b8cff', '#38c793', '#ff9f43', '#e8102c'];
+    const RGB = COLORS.map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255));
+    const GREEN = 1;
+    const ORANGE = 2;
+    const RED = 3;
+
+    // Test across healthy, caution, and critical value thresholds
+    const testValues = [0.8, 0.5, 0.4, 0.3, 0.2, 0.05];
+    for (const val of testValues) {
+      calls.length = 0;
+      hud.drawBar(10, 100, 160, 20, val, GREEN, ORANGE, RED, 0.5, 0.3);
+      assert.equal(calls.length, 20);
+      const sharedRef = calls[0].ref;
+      for (const c of calls) {
+        assert.equal(c.ref, sharedRef, 'every tick must reuse shared scratch array reference');
+        assert.equal(c.pts.length, 4);
+      }
+
+      const expectedColorIndex = val <= 0.3 ? RED : val <= 0.5 ? ORANGE : GREEN;
+      const expectedRgb = RGB[expectedColorIndex];
+      const lit = Math.ceil(val * 20);
+      for (let i = 0; i < lit; i++)
+        assert.deepEqual(calls[i].col, expectedRgb, `tick ${i} has expected threshold color`);
+    }
+
+    const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
+    assert.ok(!src.includes('.line(['));
   },
 };
 
