@@ -3,6 +3,7 @@ import { SOLID_TEXTURED_FRAGMENT } from './quads.js';
 import { mulberry32 } from './rng.js';
 import floorRustShader from './shaders/floor-rust.shadergun.json' with { type: 'json' };
 import slimeShader from './shaders/slime.shadergun.json' with { type: 'json' };
+import acidMistShader from './shaders/acid-mist.shadergun.json' with { type: 'json' };
 import teleporterShader from './shaders/teleporter.shadergun.json' with { type: 'json' };
 import marsDirtShader from './shaders/mars-dirt.shadergun.json' with { type: 'json' };
 
@@ -448,6 +449,7 @@ export function slimeAtlas() {
 }
 
 export const SLIME_FRAGMENT = slimeShader.fragment;
+export const ACID_MIST_FRAGMENT = acidMistShader.fragment;
 
 
 /**
