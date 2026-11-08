@@ -144,11 +144,11 @@ export function createDefaultEmotions(): Record<string, IEmotionLayer> {
         eyeSquintR: 0.65,
         cheekSquintL: 0.72,
         cheekSquintR: 0.72,
-        mouthSmileL: 0.95,
-        mouthSmileR: 0.95,
-        mouthUpperUpL: 0.35,
-        mouthUpperUpR: 0.35,
-        jawOpen: 0.28
+        mouthSmileL: 0.85,
+        mouthSmileR: 0.85,
+        mouthUpperUpL: 0.14,
+        mouthUpperUpR: 0.14,
+        jawOpen: 0.10
       },
       headEulerOffset: new Vec3(-0.05, 0.04, 0)
     },

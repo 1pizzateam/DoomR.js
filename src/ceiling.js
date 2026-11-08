@@ -1,7 +1,7 @@
 import { AmbientLight, MAX_LIGHTS, PointLight, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { Trigo, Utils } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
-import { GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile } from './floor.js';
+import { GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile, TILE_PIXELS } from './floor.js';
 import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
 import { SOLID_TEXTURED_FRAGMENT } from './quads.js';
 import { WEAPONS } from './weapon.js';
@@ -53,7 +53,7 @@ function compareFixtureDistSq(a, b) {
   return a.distSq - b.distSq;
 }
 
-const SIZE = 64;
+const SIZE = TILE_PIXELS;
 const VOID = [5, 7, 13];
 const COFFER = [11, 15, 25];
 const GIRDER = [24, 32, 48];
@@ -66,39 +66,73 @@ const CYAN_LED = [68, 188, 245];
  * Adjacent tiles meet flange-to-flange to form continuous overhead box beams with recessed bays between them.
  */
 function cofferBase(t, rnd, cavityColor = COFFER) {
-  // Outer structural girder frame (0..63)
-  plate(t, 0, 0, SIZE, SIZE, rnd, GIRDER);
-  for (let i = 0; i < SIZE; i++) {
-    t.set(i, 0, VOID, 0.9);
-    t.set(0, i, VOID, 0.9);
-    t.set(i, SIZE - 1, VOID, 0.9);
-    t.set(SIZE - 1, i, VOID, 0.9);
-    t.set(i, 2, FLANGE, 0.55);
-    t.set(2, i, FLANGE, 0.55);
-    t.set(i, SIZE - 3, SHADOW, 0.75);
-    t.set(SIZE - 3, i, SHADOW, 0.75);
+  const s = t.scale;
+  // Outer structural girder frame (0..63) with machined flange bevels and web groove
+  plate(t, 0, 0, 64, 64, rnd, GIRDER);
+  for (let i = 0; i < t.width; i++) {
+    t.setRaw(i, 0, VOID, 0.94);
+    t.setRaw(0, i, VOID, 0.94);
+    t.setRaw(i, t.height - 1, VOID, 0.94);
+    t.setRaw(t.width - 1, i, VOID, 0.94);
+    for (let k = 0; k < s; k++) {
+      const fAmt = (1 - k / s) * 0.62;
+      t.setRaw(i, 2 * s + k, FLANGE, fAmt);
+      t.setRaw(2 * s + k, i, FLANGE, fAmt);
+      t.setRaw(i, 61 * s + k, SHADOW, 0.45 + (k / s) * 0.45);
+      t.setRaw(61 * s + k, i, SHADOW, 0.45 + (k / s) * 0.45);
+    }
   }
 
-  // Deep stepped coffer recess (6..57)
-  t.rect(6, 6, 52, 52, VOID, 0.95);
+  // Deep stepped coffer recess (6..57) with smooth multi-pixel 45° chamfer lip and corner ambient occlusion
+  t.rect(6, 6, 52, 52, VOID, 0.96);
+  const c0 = 8 * s;
+  const c1 = 56 * s;
   for (let y = 8; y < 56; y++)
     for (let x = 8; x < 56; x++) {
       const grain = (rnd() - 0.5) * 4;
-      t.set(x, y, [cavityColor[0] + grain, cavityColor[1] + grain, cavityColor[2] + grain * 1.2]);
+      for (let dy = 0; dy < s; dy++)
+        for (let dx = 0; dx < s; dx++) {
+          const px = x * s + dx;
+          const py = y * s + dy;
+          const dEdge = Math.min(px - c0, py - c0, c1 - 1 - px, c1 - 1 - py);
+          const ao = dEdge < 10 ? (1 - dEdge / 10) * 0.45 : 0;
+          const micro = (((px * 13 ^ py * 7) & 3) - 1.5) * 0.6;
+          const col = mix(
+            [cavityColor[0] + grain + micro, cavityColor[1] + grain + micro, cavityColor[2] + (grain + micro) * 1.2],
+            VOID,
+            ao
+          );
+          t.setRaw(px, py, col, 1);
+        }
     }
-  // Inner bevel of the sunken coffer lip
-  for (let i = 6; i < 58; i++) {
-    t.set(i, 6, VOID);
-    t.set(i, 7, VOID, 0.85);
-    t.set(6, i, VOID);
-    t.set(7, i, VOID, 0.85);
-    t.set(i, 57, FLANGE, 0.45);
-    t.set(57, i, FLANGE, 0.45);
+  // High-resolution stepped inner bevel of the sunken coffer lip (6*s .. 8*s and 56*s .. 58*s)
+  for (let i = 6 * s; i < 58 * s; i++) {
+    for (let k = 0; k < 2 * s; k++) {
+      const topAmt = 1 - k / (2 * s) * 0.35;
+      t.setRaw(i, 6 * s + k, VOID, topAmt);
+      t.setRaw(6 * s + k, i, VOID, topAmt);
+      const botAmt = 0.22 + (k / (2 * s)) * 0.42;
+      t.setRaw(i, 56 * s + k, k < s ? FLANGE : VOID, k < s ? botAmt : 0.85);
+      t.setRaw(56 * s + k, i, k < s ? FLANGE : VOID, k < s ? botAmt : 0.85);
+    }
   }
 
-  // Corner gusset plates and structural bolts on the perimeter girder
+  // Corner gusset plates with 45° beveled inner edge and structural bolts on the perimeter girder
   for (const [gx, gy] of [[2, 2], [54, 2], [2, 54], [54, 54]]) {
-    t.rect(gx, gy, 8, 8, mix(GIRDER, FLANGE, 0.25), 0.85);
+    const px0 = gx * s;
+    const py0 = gy * s;
+    const gw = 8 * s;
+    for (let dy = 0; dy < gw; dy++)
+      for (let dx = 0; dx < gw; dx++) {
+        const border = dx === 0 || dy === 0 || dx === gw - 1 || dy === gw - 1;
+        const hi = dx === 1 || dy === 1;
+        t.setRaw(
+          px0 + dx,
+          py0 + dy,
+          border ? VOID : hi ? FLANGE : mix(GIRDER, FLANGE, 0.28),
+          border ? 0.85 : hi ? 0.62 : 0.9
+        );
+      }
     rivet(t, gx + 2, gy + 2);
   }
 }
@@ -106,52 +140,100 @@ function cofferBase(t, rnd, cavityColor = COFFER) {
 /** Cell 0: Twin recessed coffered acoustic/cooling bays separated by a central I-beam rib. */
 function drawPanels(t, rnd) {
   cofferBase(t, rnd, COFFER);
-  // Central divider girder across y = 29..34
-  t.rect(6, 28, 52, 8, VOID, 0.9);
-  t.rect(6, 29, 52, 6, GIRDER, 0.95);
-  for (let x = 6; x < 58; x++) {
-    t.set(x, 30, FLANGE, 0.65);
-    t.set(x, 34, VOID, 0.9);
+  const s = t.scale;
+  // Central divider box-girder across y = 28..36 with 3D flange highlights and web recess
+  for (let py = 28 * s; py < 36 * s; py++) {
+    const ly = (py + 0.5) / s;
+    for (let px = 6 * s; px < 58 * s; px++) {
+      if (ly < 29 || ly >= 35)
+        t.setRaw(px, py, VOID, 0.92);
+      else if (ly < 30.2)
+        t.setRaw(px, py, mix(GIRDER, FLANGE, 0.72), 0.95);
+      else if (ly > 33.8)
+        t.setRaw(px, py, mix(VOID, GIRDER, 0.35), 0.95);
+      else
+        t.setRaw(px, py, mix(GIRDER, FLANGE, 0.22), 0.95);
+    }
   }
-  for (const x of [12, 31, 50])
+  for (const x of [12, 22, 31, 40, 50])
     rivet(t, x, 31);
 
-  // Fine recessed acoustic micro-slats inside both upper and lower coffer bays
+  // Fine high-resolution acoustic micro-louver slats inside both upper and lower coffer bays
   for (const [y0, y1] of [[10, 26], [38, 54]]) {
-    t.rect(10, y0, 44, y1 - y0, VOID, 0.7);
-    for (let y = y0 + 1; y < y1 - 1; y += 3)
-      for (let x = 12; x < 52; x++) {
-        t.set(x, y, mix(COFFER, FLANGE, 0.28), 0.85);
-        t.set(x, y + 1, VOID, 0.92);
+    t.rect(10, y0, 44, y1 - y0, VOID, 0.82);
+    const pitch = 2 * s;
+    for (let py = (y0 + 1) * s; py < (y1 - 1) * s; py++) {
+      const phase = (py - (y0 + 1) * s) % pitch;
+      const tSlat = phase / pitch;
+      for (let px = 11 * s; px < 53 * s; px++) {
+        // Subtle vertical rib sub-divisions every 8 logical units
+        if ((px % (8 * s)) < 2) {
+          t.setRaw(px, py, mix(VOID, GIRDER, 0.65), 0.9);
+          continue;
+        }
+        if (tSlat < 0.35)
+          t.setRaw(px, py, VOID, 0.96);
+        else if (tSlat < 0.58)
+          t.setRaw(px, py, mix(COFFER, FLANGE, 0.48), 0.9);
+        else
+          t.setRaw(px, py, mix(COFFER, GIRDER, 0.55), 0.9);
       }
-    // Vertical stiffener strap down the middle of the slats
-    t.rect(30, y0, 4, y1 - y0, GIRDER, 0.9);
-    for (let y = y0; y < y1; y++)
-      t.set(31, y, FLANGE, 0.4);
+    }
+    // Central vertical stiffener strap down the middle of the slats
+    for (let py = y0 * s; py < y1 * s; py++)
+      for (let dx = 0; dx < 4 * s; dx++) {
+        const px = 30 * s + dx;
+        const col = dx < 2 ? VOID : dx < 5 ? mix(GIRDER, FLANGE, 0.55) : dx >= 4 * s - 2 ? VOID : GIRDER;
+        t.setRaw(px, py, col, 0.94);
+      }
   }
 }
 
 /** Cell 1: Heavy open-plenum structural rafters with deep shadow voids and lateral tie-rods. */
 function drawRibs(t, rnd) {
   cofferBase(t, rnd, VOID);
-  // Two horizontal tie-rods deep inside the plenum
-  for (const ty of [18, 45]) {
-    t.rect(8, ty - 1, 48, 4, mix(GIRDER, SHADOW, 0.35), 0.9);
-    for (let x = 8; x < 56; x++)
-      t.set(x, ty, FLANGE, 0.35);
-  }
-  // Four heavy vertical I-beam rafters spanning the bay
-  for (const x of [11, 24, 37, 50]) {
-    t.rect(x - 2, 4, 7, 56, VOID, 0.85);
-    t.rect(x - 1, 4, 5, 56, GIRDER, 0.96);
-    for (let y = 4; y < 60; y++) {
-      t.set(x, y, FLANGE, 0.72);
-      t.set(x + 1, y, mix(GIRDER, FLANGE, 0.4), 0.9);
-      t.set(x + 3, y, VOID, 0.95);
+  const s = t.scale;
+  // Two 3D cylindrical horizontal tie-rods deep inside the plenum
+  for (const ty of [18.5, 45.5]) {
+    const rPx = 2.0 * s;
+    const cy = ty * s;
+    for (let dy = -Math.ceil(rPx); dy <= Math.ceil(rPx); dy++) {
+      const norm = dy / rPx;
+      const cyl = Math.sqrt(Math.max(0, 1 - norm * norm));
+      const col = mix(VOID, mix(GIRDER, FLANGE, 0.55), 0.15 + cyl * 0.78);
+      const py = Math.round(cy + dy);
+      for (let px = 8 * s; px < 56 * s; px++) {
+        const thread = (px & 3) === 0 ? 0.92 : 1.0;
+        t.setRaw(px, py, [col[0] * thread, col[1] * thread, col[2] * thread], 0.95);
+      }
     }
+  }
+  // Four heavy vertical I-beam rafters spanning the bay with 3D flange & web profile
+  for (const x of [11, 24, 37, 50]) {
+    const px0 = (x - 2) * s;
+    const pw = 7 * s;
+    for (let py = 4 * s; py < 60 * s; py++)
+      for (let dx = 0; dx < pw; dx++) {
+        const u = dx / (pw - 1);
+        let col = GIRDER;
+        if (u < 0.14 || u > 0.86)
+          col = VOID;
+        else if (u < 0.32)
+          col = mix(GIRDER, FLANGE, 0.78);
+        else if (u > 0.68)
+          col = mix(VOID, GIRDER, 0.45);
+        else
+          col = mix(VOID, GIRDER, 0.82);
+        t.setRaw(px0 + dx, py, col, 0.96);
+      }
+    // Bolted cross-flange brackets along each rafter
     for (const y of [10, 31, 51]) {
-      t.rect(x - 2, y, 7, 3, mix(GIRDER, FLANGE, 0.55));
-      t.rect(x - 2, y + 3, 7, 1, VOID);
+      for (let dy = 0; dy < 3 * s; dy++)
+        for (let dx = 0; dx < pw; dx++) {
+          const topHi = dy < 2;
+          const botLo = dy >= 3 * s - 2;
+          t.setRaw(px0 + dx, y * s + dy, topHi ? FLANGE : botLo ? VOID : mix(GIRDER, FLANGE, 0.52), 0.96);
+        }
     }
   }
 }
@@ -159,34 +241,54 @@ function drawRibs(t, rnd) {
 /** Cell 2: Overhead cylindrical HVAC ventilation trunk with bolted flange collars and side conduits. */
 function drawDuct(t, rnd) {
   cofferBase(t, rnd, VOID);
-  // Twin thin armored conduit pipes alongside the main trunk
-  for (const py of [10, 51])
-    for (let x = 6; x < 58; x++) {
-      t.set(x, py, VOID);
-      t.set(x, py + 1, FLANGE, 0.65);
-      t.set(x, py + 2, GIRDER, 0.9);
-      t.set(x, py + 3, VOID);
+  const s = t.scale;
+  // Twin 3D cylindrical armored conduit pipes alongside the main trunk
+  for (const yc of [11.5, 52.5]) {
+    const rPx = 2.0 * s;
+    for (let dy = -Math.ceil(rPx); dy <= Math.ceil(rPx); dy++) {
+      const cyl = Math.sqrt(Math.max(0, 1 - (dy / rPx) ** 2));
+      const col = mix(VOID, FLANGE, 0.18 + cyl * 0.72);
+      const py = Math.round(yc * s + dy);
+      for (let px = 6 * s; px < 58 * s; px++)
+        t.setRaw(px, py, col, 0.96);
     }
-  // Main cylindrical overhead HVAC trunk (y = 17..47)
-  for (let y = 17; y < 47; y++) {
-    const norm = (y - 31.5) / 15;
-    const cyl = Math.sqrt(Math.max(0, 1 - norm * norm));
-    const col = mix(VOID, mix(GIRDER, FLANGE, 0.65), 0.18 + cyl * 0.78);
-    for (let x = 4; x < 60; x++)
-      t.set(x, y, col, 0.98);
   }
-  // Longitudinal lock-seam along the crown of the duct
-  for (let x = 4; x < 60; x++) {
-    t.set(x, 31, FLANGE, 0.6);
-    t.set(x, 32, VOID, 0.75);
+  // Main cylindrical overhead HVAC trunk (y = 17..47) with spiral lock-rib seams
+  for (let py = 17 * s; py < 47 * s; py++) {
+    const ly = (py + 0.5) / s - 0.5;
+    const norm = (ly - 31.5) / 15;
+    const cyl = Math.sqrt(Math.max(0, 1 - norm * norm));
+    const spec = Math.pow(Math.max(0, -norm * 0.38 + cyl * 0.92), 2.6);
+    const baseCol = mix(VOID, mix(GIRDER, FLANGE, 0.68), 0.16 + cyl * 0.72 + spec * 0.22);
+    for (let px = 4 * s; px < 60 * s; px++) {
+      const spiral = Math.abs(((px + py * 0.35) % (7 * s)) - 3.5 * s) < 1.3;
+      const col = spiral ? mix(baseCol, FLANGE, 0.24 * cyl) : baseCol;
+      t.setRaw(px, py, col, 0.98);
+    }
+  }
+  // Crisp longitudinal lock-seam along the crown of the duct
+  for (let px = 4 * s; px < 60 * s; px++) {
+    t.setRaw(px, 31 * s - 1, VOID, 0.65);
+    t.setRaw(px, 31 * s, FLANGE, 0.78);
+    t.setRaw(px, 31 * s + 1, FLANGE, 0.55);
+    t.setRaw(px, 31 * s + 2, VOID, 0.85);
   }
   // Heavy bolted flange collars strapping the duct to the ceiling frame
   for (const x of [12, 30, 48]) {
-    t.rect(x - 1, 15, 6, 34, VOID, 0.85);
-    t.rect(x, 15, 4, 34, mix(GIRDER, FLANGE, 0.52));
-    t.rect(x, 15, 1, 34, FLANGE, 0.8);
-    t.rect(x + 3, 15, 1, 34, VOID, 0.9);
-    rivet(t, x + 1, 19);
+    const px0 = x * s;
+    const pw = 4 * s;
+    for (let py = 15 * s; py < 49 * s; py++) {
+      const ly = (py + 0.5) / s - 0.5;
+      const cyl = Math.sqrt(Math.max(0, 1 - ((ly - 31.5) / 17.5) ** 2));
+      t.setRaw(px0 - 2, py, VOID, 0.88);
+      t.setRaw(px0 - 1, py, VOID, 0.94);
+      for (let dx = 0; dx < pw; dx++) {
+        const edge = dx < 2 ? FLANGE : dx >= pw - 2 ? VOID : mix(GIRDER, FLANGE, 0.32 + cyl * 0.42);
+        t.setRaw(px0 + dx, py, edge, 0.96);
+      }
+      t.setRaw(px0 + pw, py, VOID, 0.92);
+    }
+    rivet(t, x + 1, 18);
     rivet(t, x + 1, 43);
   }
 }
@@ -196,94 +298,151 @@ function drawGrille(t, rnd) {
   cofferBase(t, rnd, COFFER);
   const cx = 31.5;
   const cy = 31.5;
-  // Deep circular/octagonal exhaust well with dark fan blades visible inside
-  for (let y = 11; y < 53; y++)
-    for (let x = 11; x < 53; x++) {
+  const s = t.scale;
+  // Deep circular/octagonal exhaust well with 8 curved 3D-shaded aerodynamic impeller blades
+  for (let py = 10 * s; py < 54 * s; py++)
+    for (let px = 10 * s; px < 54 * s; px++) {
+      const x = (px + 0.5) / s - 0.5;
+      const y = (py + 0.5) / s - 0.5;
       const dx = x - cx;
       const dy = y - cy;
       const r = scratchPt.setScalar(dx, dy).getMagnitude();
-      if (r < 20.5) {
-        if (r > 18.2)
-          t.set(x, y, mix(GIRDER, FLANGE, 0.45), 0.95);
-        else if (r < 5.2)
-          t.set(x, y, mix(GIRDER, FLANGE, 0.35), 0.95);
-        else {
-          const angle = Math.atan2(dy, dx) + r * 0.08;
-          const blade = Math.sin(angle * 6) > 0.15;
-          t.set(x, y, blade ? mix(COFFER, GIRDER, 0.55) : VOID, 0.96);
+      if (r < 21.0) {
+        if (r >= 18.2) {
+          // Machined cylindrical turbine shroud ring with 3D radial bevel
+          const ring = 1 - Math.abs(r - 19.6) / 1.4;
+          const dirLight = Math.max(0.15, 0.55 - (dx + dy) / (r * 2.4));
+          t.setRaw(px, py, mix(VOID, FLANGE, ring * 0.55 + dirLight * 0.35), 0.98);
+        } else if (r < 5.4) {
+          // 3D domed central turbine spinner cone
+          const nz = Math.sqrt(Math.max(0, 1 - (r / 5.4) ** 2));
+          const spec = Math.max(0, (-dx - dy) * 0.08 + nz * 0.78);
+          t.setRaw(px, py, mix(VOID, FLANGE, 0.25 + spec * 0.68), 0.98);
+        } else {
+          const angle = Math.atan2(dy, dx) + r * 0.095;
+          const phase = ((angle * 8) / Trigo.twopi + 10) % 1;
+          if (phase < 0.62) {
+            const pitch = 1 - phase / 0.62;
+            const radialFade = Math.sin(((r - 5.4) / 12.8) * Trigo.pi);
+            const col = mix(VOID, mix(COFFER, FLANGE, 0.68), (0.22 + pitch * 0.68) * (0.45 + 0.55 * radialFade));
+            t.setRaw(px, py, col, 0.98);
+          } else {
+            t.setRaw(px, py, VOID, 0.98);
+          }
         }
       }
     }
-  // Heavy protective grating bars across the turbine well
+  // Crisp protective grating bars & central cross-beam across the turbine well
   for (let x = 14; x <= 50; x += 6) {
-    t.rect(x, 12, 2, 40, mix(GIRDER, FLANGE, 0.45), 0.9);
-    t.rect(x + 2, 12, 1, 40, VOID, 0.85);
+    const px0 = x * s;
+    for (let py = 12 * s; py < 52 * s; py++) {
+      const y = (py + 0.5) / s - 0.5;
+      if (Math.hypot(x + 0.5 - cx, y - cy) > 19.8)
+        continue;
+      t.setRaw(px0 - 1, py, VOID, 0.8);
+      for (let dx = 0; dx < s + 2; dx++) {
+        const cyl = 1 - Math.abs(dx - s * 0.5) / (s * 0.75);
+        t.setRaw(px0 + dx, py, mix(GIRDER, FLANGE, 0.28 + cyl * 0.52), 0.94);
+      }
+      t.setRaw(px0 + s + 2, py, VOID, 0.9);
+    }
   }
-  t.rect(12, 30, 40, 3, GIRDER, 0.92);
-  for (let x = 12; x < 52; x++)
-    t.set(x, 30, FLANGE, 0.65);
+  for (let py = 30 * s; py < 33 * s; py++)
+    for (let px = 12 * s; px < 52 * s; px++) {
+      const topHi = py < 30 * s + 2;
+      const botLo = py >= 33 * s - 2;
+      t.setRaw(px, py, topHi ? FLANGE : botLo ? VOID : GIRDER, 0.95);
+    }
   rivet(t, 30, 30);
 }
 
 /** Cell 4: Recessed industrial fluorescent troffer with twin high-output tubes and louver baffles. */
 function drawLight(t, rnd) {
   cofferBase(t, rnd, COFFER);
-  // Outer recessed troffer housing
-  t.rect(6, 16, 52, 32, VOID, 0.96);
-  for (let x = 6; x < 58; x++) {
-    t.set(x, 16, VOID);
-    t.set(x, 17, FLANGE, 0.6);
-    t.set(x, 46, FLANGE, 0.6);
-    t.set(x, 47, VOID);
-  }
-  // Polished parabolic reflector bed and twin bright fluorescent tubes
-  for (let y = 19; y < 45; y++)
-    for (let x = 9; x < 55; x++) {
-      const dTube1 = Math.abs(y - 25.5);
-      const dTube2 = Math.abs(y - 37.5);
-      const dCenter = Math.abs(y - 31.5);
-      const tube = Math.max(0, 1 - Math.min(dTube1, dTube2) / 5.2);
-      const spine = Math.max(0, 1 - dCenter / 3.5) * 0.85;
-      const glow = Math.max(tube, spine);
-      t.set(x, y, mix(GLOW, WARM, 0.45 + 0.52 * glow), 0.72 + 0.28 * glow);
+  const s = t.scale;
+  // Outer recessed troffer housing (6..58, 15..49) with beveled steel frame
+  t.rect(6, 15, 52, 34, VOID, 0.96);
+  for (let px = 6 * s; px < 58 * s; px++) {
+    for (let k = 0; k < s; k++) {
+      t.setRaw(px, 16 * s + k, k < 2 ? VOID : FLANGE, k < 2 ? 0.95 : 0.65);
+      t.setRaw(px, 47 * s + k, k < 2 ? FLANGE : VOID, k < 2 ? 0.65 : 0.95);
     }
-  // Cross louver baffles dividing the troffer into 4 bays
+  }
+  // Polished parabolic reflector bed and twin bright high-output fluorescent tubes
+  for (let py = 18 * s; py < 46 * s; py++) {
+    const y = (py + 0.5) / s - 0.5;
+    const dTube1 = Math.abs(y - 25.0);
+    const dTube2 = Math.abs(y - 38.0);
+    const dCenter = Math.abs(y - 31.5);
+    const tube = Math.max(0, 1 - Math.min(dTube1, dTube2) / 5.4);
+    const spine = Math.max(0, 1 - dCenter / 3.8) * 0.88;
+    const glow = Math.max(tube, spine);
+    const col = mix(GLOW, WARM, 0.45 + 0.53 * glow);
+    const alpha = 0.72 + 0.28 * glow;
+    for (let px = 8 * s; px < 56 * s; px++) {
+      const lx = (px + 0.5) / s;
+      // Dark tombstone lamp sockets at the left and right ends of the tubes
+      if (lx < 10.2 || lx > 53.8) {
+        t.setRaw(px, py, mix(GIRDER, FLANGE, 0.35), 0.94);
+        continue;
+      }
+      t.setRaw(px, py, col, alpha);
+    }
+  }
+  // Crisp thin aluminum parabolic cross-baffles dividing the troffer into bays
   for (const x of [19, 31, 43]) {
-    t.rect(x, 18, 2, 28, GIRDER, 0.75);
-    t.rect(x, 18, 1, 28, FLANGE, 0.55);
+    const px0 = x * s + 1;
+    for (let py = 18 * s; py < 46 * s; py++) {
+      t.setRaw(px0 - 1, py, mix(GIRDER, GLOW, 0.35), 0.72);
+      t.setRaw(px0, py, FLANGE, 0.85);
+      t.setRaw(px0 + 1, py, GIRDER, 0.85);
+      t.setRaw(px0 + 2, py, mix(VOID, GLOW, 0.25), 0.75);
+    }
   }
 }
 
 /** Cell 5: Diagonal X-braced space-frame truss over a deep plenum cavity. */
 function drawTruss(t, rnd) {
   cofferBase(t, rnd, VOID);
-  // Background cable bundle running across the dark plenum
-  for (let x = 8; x < 56; x++) {
-    t.set(x, 30, GIRDER, 0.75);
-    t.set(x, 31, FLANGE, 0.4);
-    t.set(x, 33, GIRDER, 0.75);
+  const s = t.scale;
+  // Background conduit bundle running across the dark plenum
+  for (const yc of [29.5, 33.5]) {
+    for (let dy = -s; dy <= s; dy++) {
+      const cyl = 1 - Math.abs(dy) / (s + 1);
+      const col = mix(VOID, mix(GIRDER, FLANGE, 0.45), cyl * 0.8);
+      for (let px = 8 * s; px < 56 * s; px++)
+        t.setRaw(px, Math.round(yc * s + dy), col, 0.92);
+    }
   }
-  // Diagonal X-brace struts from corner to corner
-  for (let y = 8; y < 56; y++)
-    for (let x = 8; x < 56; x++) {
+  // Smooth anti-aliased 45° I-beam diagonal X-brace struts with raised flanges and recessed web channel
+  for (let py = 8 * s; py < 56 * s; py++)
+    for (let px = 8 * s; px < 56 * s; px++) {
+      const x = (px + 0.5) / s - 0.5;
+      const y = (py + 0.5) / s - 0.5;
       const d1 = Math.abs(x - y);
       const d2 = Math.abs(x - (63 - y));
       const d = Math.min(d1, d2);
-      if (d <= 3.2) {
-        const edge = d < 1.2 ? 0.75 : d < 2.2 ? 0.45 : 0.1;
-        t.set(x, y, mix(GIRDER, FLANGE, edge), 0.95);
-      } else if (d <= 4.5)
-        t.set(x, y, VOID, 0.9);
+      if (d <= 3.5) {
+        // I-beam profile: bright raised outer flanges (d in 1.7..3.0) and recessed web center (d < 1.7)
+        const flange = d >= 1.65 && d <= 2.95 ? 0.78 : d < 0.75 ? 0.55 : 0.26;
+        t.setRaw(px, py, mix(GIRDER, FLANGE, flange), 0.96);
+      } else if (d <= 4.8) {
+        t.setRaw(px, py, VOID, (1 - (d - 3.5) / 1.3) * 0.92);
+      }
     }
-  // Central bolted gusset plate where the X-struts cross
-  t.rect(25, 25, 14, 14, VOID, 0.9);
-  t.rect(26, 26, 12, 12, mix(GIRDER, FLANGE, 0.35), 0.95);
-  for (let i = 26; i < 38; i++) {
-    t.set(i, 26, FLANGE, 0.8);
-    t.set(26, i, FLANGE, 0.8);
-    t.set(i, 37, VOID, 0.9);
-    t.set(37, i, VOID, 0.9);
-  }
+  // Octagonal bolted central gusset plate where the X-struts cross (25..39, 25..39)
+  const gx0 = 25 * s;
+  const gx1 = 39 * s;
+  for (let py = gx0; py < gx1; py++)
+    for (let px = gx0; px < gx1; px++) {
+      const dx = Math.abs(px - 32 * s + 0.5) / s;
+      const dy = Math.abs(py - 32 * s + 0.5) / s;
+      if (dx + dy > 9.8)
+        continue;
+      const edge = Math.max(dx, dy) > 6.2 || dx + dy > 9.0;
+      const hi = (px < 27 * s || py < 27 * s) && !edge;
+      t.setRaw(px, py, edge ? VOID : hi ? FLANGE : mix(GIRDER, FLANGE, 0.36), 0.96);
+    }
   for (const [rx, ry] of [[28, 28], [34, 28], [28, 34], [34, 34]])
     rivet(t, rx, ry);
 }
@@ -291,51 +450,122 @@ function drawTruss(t, rnd) {
 /** Cell 6: Overhead coolant pipe manifold with clamp brackets and cyan telemetry gauge. */
 function drawPipes(t, rnd) {
   cofferBase(t, rnd, COFFER);
-  t.rect(10, 10, 44, 44, VOID, 0.82);
-  // Three parallel overhead pipes running along X
+  const s = t.scale;
+  t.rect(10, 10, 44, 44, VOID, 0.85);
+  // Three parallel 3D cylindrical overhead pipes running along X with specular highlights and ring seams
   for (const [yc, rad] of [[17, 4], [31, 6], [46, 4]])
-    for (let dy = -rad; dy <= rad; dy++) {
-      const cyl = Math.sqrt(Math.max(0, 1 - (dy / (rad + 0.5)) ** 2));
-      const col = mix(VOID, FLANGE, 0.2 + cyl * 0.72);
-      for (let x = 6; x < 58; x++)
-        t.set(x, yc + dy, col, 0.96);
+    for (let pdy = -rad * s - 2; pdy <= rad * s + 2; pdy++) {
+      const dy = pdy / s;
+      if (Math.abs(dy) > rad) {
+        t.setRaw(0, 0, VOID, 0);
+        for (let px = 6 * s; px < 58 * s; px++)
+          t.setRaw(px, yc * s + pdy, VOID, 0.78);
+        continue;
+      }
+      const norm = dy / rad;
+      const cyl = Math.sqrt(Math.max(0, 1 - norm * norm));
+      const spec = Math.pow(Math.max(0, -norm * 0.42 + cyl * 0.9), 2.8);
+      const col = mix(VOID, FLANGE, Utils.clamp(0.18 + cyl * 0.65 + spec * 0.25, 0, 1));
+      const py = yc * s + pdy;
+      for (let px = 6 * s; px < 58 * s; px++) {
+        const ring = (px % (6 * s)) === 0 ? 0.85 : 1.0;
+        t.setRaw(px, py, [col[0] * ring, col[1] * ring, col[2] * ring], 0.97);
+      }
     }
-  // Vertical cross-over manifold box & pipe clamps
+  // Vertical cross-over clamp rails at x = 16 and x = 46
   for (const x of [16, 46]) {
-    t.rect(x, 11, 4, 42, mix(GIRDER, FLANGE, 0.48), 0.95);
-    t.rect(x, 11, 1, 42, FLANGE, 0.75);
-    t.rect(x + 3, 11, 1, 42, VOID, 0.9);
+    const px0 = x * s;
+    const pw = 4 * s;
+    for (let py = 11 * s; py < 53 * s; py++)
+      for (let dx = 0; dx < pw; dx++) {
+        const col = dx < 2 ? FLANGE : dx >= pw - 2 ? VOID : mix(GIRDER, FLANGE, 0.48);
+        t.setRaw(px0 + dx, py, col, 0.96);
+      }
+    rivet(t, x + 1, 12);
+    rivet(t, x + 1, 49);
   }
-  t.rect(27, 22, 10, 18, GIRDER, 0.95);
-  for (let i = 0; i < 10; i++) {
-    t.set(27 + i, 22, FLANGE, 0.75);
-    t.set(27 + i, 39, VOID, 0.9);
-  }
-  // Small cold-cyan pressure indicator on the manifold
-  t.rect(30, 29, 4, 4, CYAN_LED, 0.9);
+  // Central manifold box (26..38, 22..40) with a circular high-resolution cyan telemetry gauge
+  for (let py = 22 * s; py < 40 * s; py++)
+    for (let px = 26 * s; px < 38 * s; px++) {
+      const border = px < 26 * s + 2 || px >= 38 * s - 2 || py < 22 * s + 2 || py >= 40 * s - 2;
+      const hi = px < 26 * s + 4 || py < 22 * s + 4;
+      t.setRaw(px, py, border ? VOID : hi ? FLANGE : GIRDER, 0.96);
+    }
+  const gcx = 32 * s;
+  const gcy = 31 * s;
+  const gRad = 3.4 * s;
+  for (let py = Math.floor(gcy - gRad - 2); py <= Math.ceil(gcy + gRad + 2); py++)
+    for (let px = Math.floor(gcx - gRad - 2); px <= Math.ceil(gcx + gRad + 2); px++) {
+      const dx = (px - gcx) / gRad;
+      const dy = (py - gcy) / gRad;
+      const r = Math.hypot(dx, dy);
+      if (r <= 1.0) {
+        const core = 1 - r * r;
+        t.setRaw(px, py, mix(CYAN_LED, WARM, core * 0.55), 0.96);
+      } else if (r <= 1.35) {
+        t.setRaw(px, py, mix(VOID, CYAN_LED, (1 - (r - 1.0) / 0.35) * 0.45), 0.9);
+      }
+    }
 }
 
 /** Cell 7: Recessed octagonal overhead service hatch with dog-clamps and status beacon. */
 function drawHatch(t, rnd) {
   cofferBase(t, rnd, COFFER);
-  t.rect(11, 11, 42, 42, VOID, 0.9);
-  t.rect(13, 13, 38, 38, mix(COFFER, GIRDER, 0.65), 0.96);
-  for (let i = 13; i < 51; i++) {
-    t.set(i, 13, FLANGE, 0.7);
-    t.set(13, i, FLANGE, 0.7);
-    t.set(i, 50, VOID, 0.9);
-    t.set(50, i, VOID, 0.9);
-  }
+  const s = t.scale;
+  // Recessed octagonal service hatch well (11..53, 11..53) with 45° corner chamfers
+  const h0 = 11 * s;
+  const h1 = 53 * s;
+  for (let py = h0; py < h1; py++)
+    for (let px = h0; px < h1; px++) {
+      const dx = Math.abs(px - 32 * s + 0.5) / s;
+      const dy = Math.abs(py - 32 * s + 0.5) / s;
+      const oct = Math.max(dx, dy, (dx + dy) * 0.76);
+      if (oct > 21.0)
+        continue;
+      if (oct >= 19.0)
+        t.setRaw(px, py, VOID, 0.94);
+      else if (oct >= 18.0) {
+        const isTopLeft = px + py < 64 * s;
+        t.setRaw(px, py, isTopLeft ? FLANGE : VOID, isTopLeft ? 0.75 : 0.92);
+      } else {
+        t.setRaw(px, py, mix(COFFER, GIRDER, 0.68), 0.96);
+      }
+    }
   // Reinforcement cross-ribs and central lock boss
-  t.rect(16, 30, 32, 4, GIRDER, 0.9);
-  t.rect(30, 16, 4, 32, GIRDER, 0.9);
-  t.rect(26, 26, 12, 12, mix(GIRDER, FLANGE, 0.4), 0.95);
-  // Four heavy dog-clamps on the hatch edges
-  for (const [cx, cy] of [[29, 12], [29, 48], [12, 29], [48, 29]])
-    t.rect(cx, cy, 6, 4, FLANGE, 0.8);
-  // Twin cyan status LEDs on the hatch lock
-  t.rect(29, 31, 2, 2, CYAN_LED, 0.92);
-  t.rect(33, 31, 2, 2, CYAN_LED, 0.92);
+  for (let py = 30 * s; py < 34 * s; py++)
+    for (let px = 15 * s; px < 49 * s; px++)
+      t.setRaw(px, py, py < 30 * s + 2 ? FLANGE : py >= 34 * s - 2 ? VOID : GIRDER, 0.92);
+  for (let py = 15 * s; py < 49 * s; py++)
+    for (let px = 30 * s; px < 34 * s; px++)
+      t.setRaw(px, py, px < 30 * s + 2 ? FLANGE : px >= 34 * s - 2 ? VOID : GIRDER, 0.92);
+  for (let py = 26 * s; py < 38 * s; py++)
+    for (let px = 26 * s; px < 38 * s; px++) {
+      const edge = px === 26 * s || py === 26 * s ? FLANGE : px === 38 * s - 1 || py === 38 * s - 1 ? VOID : mix(GIRDER, FLANGE, 0.42);
+      t.setRaw(px, py, edge, 0.96);
+    }
+  // Four heavy 3D dog-clamps on the hatch edges
+  for (const [cx, cy, w, h] of [[29, 11, 6, 4], [29, 49, 6, 4], [11, 29, 4, 6], [49, 29, 4, 6]]) {
+    for (let dy = 0; dy < h * s; dy++)
+      for (let dx = 0; dx < w * s; dx++) {
+        const hi = dx < 2 || dy < 2;
+        const lo = dx >= w * s - 2 || dy >= h * s - 2;
+        t.setRaw(cx * s + dx, cy * s + dy, hi ? WARM : lo ? VOID : FLANGE, hi ? 0.55 : 0.9);
+      }
+  }
+  // Twin glowing cyan status LEDs with radial halos on the hatch lock
+  for (const lx of [30, 34]) {
+    const lcx = lx * s;
+    const lcy = 32 * s;
+    const lRad = 1.4 * s;
+    for (let dy = -Math.ceil(lRad) - 2; dy <= Math.ceil(lRad) + 2; dy++)
+      for (let dx = -Math.ceil(lRad) - 2; dx <= Math.ceil(lRad) + 2; dx++) {
+        const r = Math.hypot(dx, dy) / lRad;
+        if (r <= 1.0)
+          t.setRaw(lcx + dx, lcy + dy, mix(CYAN_LED, WARM, (1 - r) * 0.5), 0.96);
+        else if (r <= 1.7)
+          t.setRaw(lcx + dx, lcy + dy, CYAN_LED, (1 - (r - 1.0) / 0.7) * 0.35);
+      }
+  }
 }
 
 const DRAW = [drawPanels, drawRibs, drawDuct, drawGrille, drawLight, drawTruss, drawPipes, drawHatch];
@@ -345,7 +575,7 @@ export function ceilingAtlas() {
   const width = SIZE * 8;
   const data = new Uint8Array(width * SIZE * 4);
   DRAW.forEach((draw, cell) => {
-    const t = new Tile(SIZE, SIZE);
+    const t = new Tile(SIZE, SIZE, SIZE / 64);
     draw(t, mulberry32(4400 + cell * 7919));
     for (let y = 0; y < SIZE; y++)
       for (let x = 0; x < SIZE; x++) {
@@ -701,8 +931,8 @@ export function ceilingLightCones(fixtures) {
 
 // ---- Martian sky panorama & camera-centered dome (E1M5 Red Planet) -------------------------------------------------
 
-export const MARS_SKY_WIDTH = 1024;
-export const MARS_SKY_HEIGHT = 256;
+export const MARS_SKY_WIDTH = 2048;
+export const MARS_SKY_HEIGHT = 512;
 
 const SKY_ZENITH = [36, 11, 10];
 const SKY_UPPER = [76, 24, 14];
@@ -734,8 +964,8 @@ function skyDeltaX(x, cx) {
 
 const skySmooth = Utils.smoothstep;
 
-export const PHOBOS_CENTER = new Vec2(632, 92);
-export const DEIMOS_CENTER = new Vec2(836, 104);
+export const PHOBOS_CENTER = new Vec2(1264, 184);
+export const DEIMOS_CENTER = new Vec2(1672, 208);
 export const PHOBOS_ANGULAR_RADIUS = 0.096;
 export const DEIMOS_ANGULAR_RADIUS = 0.044;
 
@@ -772,7 +1002,7 @@ skyTangentBasis(DEIMOS_CENTER, deimosBasisRight, deimosBasisDown, deimosBasisCen
 const sunLightDir = new Vec3(-0.68, -0.34, 0.65).normalize();
 
 /**
- * 1024x256 horizontally seamless 360-degree Martian sky panorama atlas (`planet: 'mars'`).
+ * 2048x512 horizontally seamless 360-degree Martian sky panorama atlas (`planet: 'mars'`).
  * Includes a deep rust-violet zenith grading down into warm iron-oxide dust haze, a pale hazy sun with an amber
  * forward-scattering aureole, twin cratered moons Phobos & Deimos, wind-sheared dust-storm cloud bands, and
  * multi-layered distant Martian mountain ranges, flat-topped mesas, and crater rims fading into `MARS_SKY_VEC`.
@@ -780,6 +1010,7 @@ const sunLightDir = new Vec3(-0.68, -0.34, 0.65).normalize();
 export function marsSkyAtlas({ includeMoons = true } = {}) {
   const width = MARS_SKY_WIDTH;
   const height = MARS_SKY_HEIGHT;
+  const S = height / 256;
   const tile = new Tile(width, height);
   const rnd = mulberry32(77319);
   const warp = periodicField(rnd, 6, width);
@@ -789,9 +1020,10 @@ export function marsSkyAtlas({ includeMoons = true } = {}) {
   const ridgeFieldA = periodicField(rnd, 6, width);
   const ridgeFieldB = periodicField(rnd, 14, width);
   const strataField = periodicField(rnd, 28, width);
+  const strataMicro = periodicField(rnd, 56, width);
 
-  const sunX = 224;
-  const sunY = 60;
+  const sunX = 224 * S;
+  const sunY = 60 * S;
 
   // 1. Smooth atmospheric gradient, wind-sheared dust cloud strata, and solar dust-scattering corona
   for (let y = 0; y < height; y++) {
@@ -806,17 +1038,17 @@ export function marsSkyAtlas({ includeMoons = true } = {}) {
     else
       baseCol = mix(SKY_LOWER, SKY_FOG, skySmooth(0.82, 1.0, t));
 
-    const cloudBand = Math.sin(Utils.clamp((y - 28) / 164, 0, 1) * Trigo.pi);
+    const cloudBand = Math.sin(Utils.clamp((y / S - 28) / 164, 0, 1) * Trigo.pi);
 
     for (let x = 0; x < width; x++) {
       let col = [baseCol[0], baseCol[1], baseCol[2]];
 
       // Wind-swept horizontal dust cloud strata in the upper and mid sky
       if (cloudBand > 0.02) {
-        const wx = x + (warp(x, y * 3) - 0.5) * 76;
-        const wy = y * 4.2 + (warp(x + 194, y * 2) - 0.5) * 36;
-        const c = cloudCoarse(wx, wy) * 0.54 + cloudMed(wx + 82, wy) * 0.32 + cloudFine(x, y * 2) * 0.14;
-        const cAbove = cloudCoarse(wx, wy - 14) * 0.6 + cloudMed(wx + 82, wy - 14) * 0.4;
+        const wx = x + (warp(x, y * 3) - 0.5) * 76 * S;
+        const wy = y * 4.2 + (warp(x + 194 * S, y * 2) - 0.5) * 36 * S;
+        const c = cloudCoarse(wx, wy) * 0.54 + cloudMed(wx + 82 * S, wy) * 0.32 + cloudFine(x, y * 2) * 0.14;
+        const cAbove = cloudCoarse(wx, wy - 14 * S) * 0.6 + cloudMed(wx + 82 * S, wy - 14 * S) * 0.4;
         const density = skySmooth(0.41, 0.82, c) * cloudBand;
         if (density > 0.005) {
           const sunlitBillow = Utils.clamp((c - cAbove + 0.08) * 3.6, 0, 1);
@@ -826,8 +1058,8 @@ export function marsSkyAtlas({ includeMoons = true } = {}) {
       }
 
       // Pale hazy Martian sun and butterscotch atmospheric Mie-scattering corona (aspect-corrected to 3D angular space)
-      const sdx = skyDeltaX(x, sunX);
-      const sdy = y - sunY;
+      const sdx = skyDeltaX(x, sunX) / S;
+      const sdy = (y - sunY) / S;
       const haloDist = scratchPt.setScalar(sdx, sdy * 0.55).getMagnitude();
       if (haloDist < 110) {
         const aureole = (1 - haloDist / 110) ** 2.2;
@@ -852,8 +1084,8 @@ export function marsSkyAtlas({ includeMoons = true } = {}) {
   if (includeMoons) {
     const phobosX = PHOBOS_CENTER.x;
     const phobosY = PHOBOS_CENTER.y;
-    for (let dy = -48; dy <= 48; dy++)
-      for (let dx = -22; dx <= 22; dx++) {
+    for (let dy = -48 * S; dy <= 48 * S; dy++)
+      for (let dx = -22 * S; dx <= 22 * S; dx++) {
         const y = phobosY + dy;
         if (y < 0 || y >= height)
           continue;
@@ -904,8 +1136,8 @@ export function marsSkyAtlas({ includeMoons = true } = {}) {
 
     const deimosX = DEIMOS_CENTER.x;
     const deimosY = DEIMOS_CENTER.y;
-    for (let dy = -26; dy <= 26; dy++)
-      for (let dx = -12; dx <= 12; dx++) {
+    for (let dy = -26 * S; dy <= 26 * S; dy++)
+      for (let dx = -12 * S; dx <= 12 * S; dx++) {
         const y = deimosY + dy;
         if (y < 0 || y >= height)
           continue;
@@ -951,40 +1183,42 @@ export function marsSkyAtlas({ includeMoons = true } = {}) {
 
   for (let x = 0; x < width; x++) {
     const a = x * tau;
-    // Far range: high shield-volcano slopes, flat-topped tableland mesas, and distant crater rims (y = 128..194)
+    // Far range: high shield-volcano slopes, flat-topped tableland mesas, and distant crater rims
     const rawFar = 156
       - 22 * Math.sin(a * 2 + 0.4)
       - 14 * Math.cos(a * 5 - 1.1)
       - 10 * Math.sin(a * 9 + 2.3)
-      + (ridgeFieldA(x, 40) - 0.5) * 28
-      + (ridgeFieldB(x, 104) - 0.5) * 12;
-    farHeight[x] = rawFar < 136 ? 136 + (rawFar - 136) * 0.25 : Utils.clamp(rawFar, 128, 196);
+      + (ridgeFieldA(x, 40 * S) - 0.5) * 28
+      + (ridgeFieldB(x, 104 * S) - 0.5) * 12;
+    farHeight[x] = (rawFar < 136 ? 136 + (rawFar - 136) * 0.25 : Utils.clamp(rawFar, 128, 196)) * S;
 
-    // Near range: sharper eroded Valles Marineris canyon crags, buttes, and foreground ridges (y = 160..220)
+    // Near range: sharper eroded Valles Marineris canyon crags, buttes, and foreground ridges
     const rawNear = 188
       - 18 * Math.sin(a * 3 - 0.8)
       - 12 * Math.cos(a * 7 + 0.6)
       - 9 * Math.sin(a * 13 - 1.7)
-      + (ridgeFieldA(x + 346, 176) - 0.5) * 30
-      + (ridgeFieldB(x + 122, 208) - 0.5) * 16;
-    nearHeight[x] = rawNear < 168 ? 168 + (rawNear - 168) * 0.3 : Utils.clamp(rawNear, 160, 220);
+      + (ridgeFieldA(x + 346 * S, 176 * S) - 0.5) * 30
+      + (ridgeFieldB(x + 122 * S, 208 * S) - 0.5) * 16;
+    nearHeight[x] = (rawNear < 168 ? 168 + (rawNear - 168) * 0.3 : Utils.clamp(rawNear, 160, 220)) * S;
   }
 
+  const slopeStep = 3 * S;
+  const fogStart = 208 * S;
   for (let x = 0; x < width; x++) {
-    const xm = (x - 3 + width) % width;
-    const xp = (x + 3) % width;
+    const xm = (x - slopeStep + width) % width;
+    const xp = (x + slopeStep) % width;
     const farTop = farHeight[x];
-    const farSlope = (farHeight[xp] - farHeight[xm]) * 0.5;
+    const farSlope = (farHeight[xp] - farHeight[xm]) / (2 * S);
     const nearTop = nearHeight[x];
-    const nearSlope = (nearHeight[xp] - nearHeight[xm]) * 0.5;
+    const nearSlope = (nearHeight[xp] - nearHeight[xm]) / (2 * S);
 
     // Paint far mountain range
-    for (let y = Math.max(0, Math.floor(farTop - 1)); y < height; y++) {
-      const depthFromRim = y - farTop;
+    for (let y = Math.max(0, Math.floor(farTop - S)); y < height; y++) {
+      const depthFromRim = (y - farTop) / S;
       if (depthFromRim < -1)
         continue;
       const sunFacing = Utils.clamp(0.5 + farSlope * 0.14, 0, 1);
-      const strata = strataField(x, y * 3.2);
+      const strata = strataField(x, y * 3.2) * 0.78 + strataMicro(x, y * 3.2) * 0.22;
       const rimGlow = Math.exp(-Math.max(0, depthFromRim) * 0.12) * (0.45 + 0.55 * sunFacing);
       let col = mix(RIDGE_FAR_DARK, RIDGE_FAR_LIT, sunFacing * 0.72 + strata * 0.28);
       col = mix(col, CLOUD_LIT, rimGlow * 0.35);
@@ -995,12 +1229,12 @@ export function marsSkyAtlas({ includeMoons = true } = {}) {
     }
 
     // Paint near craggy canyon & mesa range in front of the far range
-    for (let y = Math.max(0, Math.floor(nearTop - 1)); y < height; y++) {
-      const depthFromRim = y - nearTop;
+    for (let y = Math.max(0, Math.floor(nearTop - S)); y < height; y++) {
+      const depthFromRim = (y - nearTop) / S;
       if (depthFromRim < -1)
         continue;
       const sunFacing = Utils.clamp(0.48 + nearSlope * 0.16, 0, 1);
-      const strata = strataField(x + 66, y * 3.8);
+      const strata = strataField(x + 66 * S, y * 3.8) * 0.75 + strataMicro(x + 66 * S, y * 3.8) * 0.25;
       const gully = ridgeFieldB(x * 2, y * 2);
       let col = mix(RIDGE_NEAR_DARK, RIDGE_NEAR_BASE, sunFacing * 0.65 + strata * 0.35);
       if (sunFacing > 0.52 && strata > 0.45)
@@ -1015,9 +1249,9 @@ export function marsSkyAtlas({ includeMoons = true } = {}) {
       tile.set(x, y, col, edgeAlpha);
     }
 
-    // 4. Seamless foothill fog blend into MARS_SKY_VEC at the bottom horizon (y = 208..255)
-    for (let y = 208; y < height; y++) {
-      const ft = Utils.clamp((y - 208) / (height - 1 - 208), 0, 1);
+    // 4. Seamless foothill fog blend into MARS_SKY_VEC at the bottom horizon
+    for (let y = fogStart; y < height; y++) {
+      const ft = Utils.clamp((y - fogStart) / (height - 1 - fogStart), 0, 1);
       const smoothFog = ft * ft * (3 - 2 * ft);
       tile.set(x, y, SKY_FOG, smoothFog);
     }

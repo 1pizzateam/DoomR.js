@@ -43,11 +43,11 @@ const scratchNorm = new Vec3();
 
 /**
  * 21-column anatomical hairline azimuth & elevation tables (`iu = 0..20`) around `C = (0, 3.0, -0.8)`:
- * - `iu = 0..3`: Horizontal frontal hairline wrapping to the fronto-temporal recess (`z ≈ +5.40..+3.30, y ≈ +5.92..+6.07`)
+ * - `iu = 0..3`: Horizontal frontal hairline wrapping to the fronto-temporal recess (`z ≈ +5.40..+3.29, y ≈ +5.92..+6.06`)
  * - `iu = 4`: Vertical fronto-temporal drop to the temporal peak (`z ≈ +3.19, y ≈ +4.54`)
- * - `iu = 5..6`: Concave temple arch sweeping back to the upper sideburn root (`z ≈ +1.94..+1.07, y ≈ +3.62..+2.70`)
- * - `iu = 7..8`: Vertical pre-auricular sideburn tab right in front of the ear tragus (`z ≈ +0.97..+0.30, y ≈ +0.95..+1.00`)
- * - `iu = 9..13`: Tight supra-auricular ear root cutout arch (`z ≈ +0.03..-1.92, y ≈ 2.02..2.36`)
+ * - `iu = 5..6`: Concave temple arch sweeping back to the upper sideburn root (`z ≈ +1.96..+1.06, y ≈ +3.63..+2.70`)
+ * - `iu = 7..8`: Vertical pre-auricular sideburn tab right in front of the ear tragus (`z ≈ +0.96..+0.30, y ≈ +0.95..+1.00`)
+ * - `iu = 9..13`: Tight supra-auricular ear root cutout arch (`z ≈ +0.03..-1.92, y ≈ +2.02..+2.36`)
  * - `iu = 14..16`: Post-auricular mastoid drop immediately behind the ear helix (`z ≈ -2.26..-2.90, y ≈ +1.18..-0.77`)
  * - `iu = 17..20`: Occipital nape hairline (`y ≈ -0.92..-0.65`)
  */
@@ -60,6 +60,15 @@ const HAIRLINE_AZ0: readonly number[] = [
   2.34, 2.59, 2.86, Trigo.pi,
 ];
 
+const HAIRLINE_AZ_SMOOTH: readonly number[] = [
+  0.00, 0.22, 0.46, 0.73, 0.90,
+  1.08, 1.25,
+  1.33, 1.39, 1.46,
+  1.54, 1.63, 1.72, 1.81,
+  1.91, 2.02, 2.16,
+  2.36, 2.60, 2.86, Trigo.pi,
+];
+
 const HAIRLINE_PHI0: readonly number[] = [
   0.44, 0.46, 0.49, 0.49, 0.27,
   0.12, -0.06,
@@ -70,9 +79,9 @@ const HAIRLINE_PHI0: readonly number[] = [
 ];
 
 const HAIRLINE_PHI_SMOOTH: readonly number[] = [
-  0.44, 0.46, 0.50, 0.51, 0.36,
-  0.22, 0.08,
-  -0.04, -0.08, -0.12,
+  0.44, 0.46, 0.50, 0.50, 0.36,
+  0.22, 0.10,
+  -0.02, -0.08, -0.11,
   -0.12, -0.11, -0.12, -0.15,
   -0.28, -0.44, -0.58,
   -0.68, -0.72, -0.71, -0.70,
@@ -169,7 +178,7 @@ function raycastSkullDistance(
     const hitX = CRANIAL_CENTER_X + dx * bestT;
     const hitY = CRANIAL_CENTER_Y + dy * bestT;
     const hitZ = CRANIAL_CENTER_Z + dz * bestT;
-    if (Math.abs(hitX) > earWallLimitX && hitY < 2.65 && hitZ > -2.40 && hitZ < 0.25) {
+    if (Math.abs(hitX) > earWallLimitX && hitY < 2.65 && hitZ > -2.40 && hitZ < 1.15) {
       const innerT = minEarT < bestT ? minEarT : bestT;
       bestT = Math.min(innerT, earWallLimitX / Math.max(0.2, Math.abs(dx)));
     }
@@ -190,10 +199,10 @@ function computeScalpRayDirection(
   outDir: Vec3
 ): Vec3 {
   const u = iu / HAIR_CAP_SEG_U;
-  const azBlend = Utils.smoothstep(0.20, 0.85, v);
-  const az = Utils.lerp(HAIRLINE_AZ0[iu], u * Trigo.pi, azBlend);
+  const azMid = Utils.lerp(HAIRLINE_AZ0[iu], HAIRLINE_AZ_SMOOTH[iu], Utils.smoothstep(0.0, 0.10, v));
+  const az = Utils.lerp(azMid, u * Trigo.pi, Utils.smoothstep(0.15, 0.80, v));
 
-  const contourFade = Utils.smoothstep(0.0, 0.35, v);
+  const contourFade = Utils.smoothstep(0.0, 0.14, v);
   const phi0 = Utils.lerp(HAIRLINE_PHI0[iu], HAIRLINE_PHI_SMOOTH[iu], contourFade);
 
   const dx0 = side * Math.cos(phi0) * Math.sin(az);
@@ -269,7 +278,7 @@ function appendHairCapVertices(
     // Enforce a strict outer-envelope clearance over all cranial skin vertices, edge midpoints,
     // and triangle centroids so flat hair-cap triangles never dip beneath curved skull triangles.
     const isOuterEarPinna = (x: number, y: number, z: number): boolean =>
-      x * side > earWallLimitX && y < 2.65 && z > -2.40 && z < 0.25;
+      x * side > earWallLimitX && y < 2.65 && z > -2.40 && z < 1.15;
 
     const sampleDirsAndR: number[] = [];
     const pushSkinSample = (x: number, y: number, z: number): void => {

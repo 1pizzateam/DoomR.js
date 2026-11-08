@@ -79,11 +79,6 @@ export const DIFFICULTIES = {
 const LEAP_SPEED = 470;
 
 const PLAYER_RADIUS = 14;
-// Hit-stop: a brief world slowdown when a shotgun blast lands. Off unless a front end opts in (hitStopEnabled),
-// so the deterministic sim keeps its timing. Seconds of real time, and the fraction of speed during it.
-const HITSTOP_SCALE = 0.12;
-const HITSTOP_HIT = 0.04;
-const HITSTOP_CLOSE_KILL = 0.085;
 const KICK_EPSILON = 1e-5;
 const KICK_FALLBACK_HALF_LIFE = 0.05;
 const GRID_CELL = TILE * 2;
@@ -91,9 +86,10 @@ const PLAYER_CROUCH = 95;
 const PLAYER_WALK = 160;
 const PLAYER_RUN = 235;
 const CROUCH_SPEED = 10;
-const JUMP_VELOCITY = 135;
+const JUMP_VELOCITY = 180;
 const JUMP_GRAVITY = 460;
-export const ACID_PIT_DEPTH = 12;
+export const ACID_SURFACE_DEPTH = 12;
+export const ACID_PIT_DEPTH = 24;
 // the head bob advances 9 rad/s at walking pace and the camera dips twice per 2π of it, so one stride is π of bob
 const PLAYER_STRIDE = (PLAYER_WALK * Trigo.pi) / 9;
 const FOOTFALL = (3 * Trigo.pi) / 4; // bob phase where sin(2 * bob), the camera height, is at its lowest
@@ -161,8 +157,6 @@ export class Game {
     this.pitStepStart = new Vec2();
     this.pitStepTarget = new Vec2();
     this.shake = 0;
-    this.hitStopEnabled = false;
-    this.hitStop = 0;
     // set by the title screen's film: a camera that is not the player's, and a fade to black between shots
     this.cam = null;
     this.fade = 0;
@@ -706,6 +700,10 @@ export class Game {
       strafeTimer: 0,
       bleed: 0,
       deadTime: 0,
+      z: 0,
+      vz: 0,
+      inSlime: false,
+      pitStart: new Vec2(),
       feet: makeFeet(),
       phase: this.rand.float(0, Trigo.twopi),
       mode: '',
@@ -1903,13 +1901,6 @@ export class Game {
         enemy.limbs.severedThisShot = false;
     }
     this.inShot = true;
-    let hitFlesh = false;
-    let closeFlesh = false;
-    let deadBefore = 0;
-    for (const enemy of this.enemies) {
-      if (enemy.state === 'dead')
-        deadBefore++;
-    }
     const end = this.scratch;
     for (let i = 0; i < PELLETS; i++) {
       const angle = player.angle + this.rand.float(-PELLET_SPREAD, PELLET_SPREAD);
@@ -1943,23 +1934,12 @@ export class Game {
       const hitZ = this.rand.float(14, 50) - (player.crouch ?? 0) * 12;
       this.blood.hit(this.bloodPos.setScalar(hit.point.x, hit.point.y, hitZ), this.bloodDir.setScalar(cos, sin), enemy.def.gore);
       this.emit('flesh', hit.point);
-      hitFlesh = true;
-      if (maxDist < 110) {
-        closeFlesh = true;
+      if (maxDist < 110)
         this.blood.splat(1, 0.55 + 0.25 * Math.min(enemy.def.gore, 2));
-      }
       this.hitEnemyLimb(enemy, hit.point, hitZ, cos, sin, pelletDmg);
       this.damageEnemy(enemy, pelletDmg);
     }
     this.inShot = false;
-    if (this.hitStopEnabled && hitFlesh) {
-      let deadAfter = 0;
-      for (const enemy of this.enemies) {
-        if (enemy.state === 'dead')
-          deadAfter++;
-      }
-      this.hitStop = Math.max(this.hitStop, closeFlesh && deadAfter > deadBefore ? HITSTOP_CLOSE_KILL : HITSTOP_HIT);
-    }
 
     this.resolveGibs();
   }
@@ -2262,13 +2242,25 @@ export class Game {
   }
 
   updateEnemy(enemy, dt) {
+    const floor = this.enemyFloorHeight(enemy);
+    if (enemy.z < floor) {
+      enemy.z = floor;
+      enemy.vz = 0;
+    } else if (enemy.z > floor || (enemy.vz ?? 0) > 0) {
+      enemy.z = (enemy.z ?? 0) + (enemy.vz ?? 0) * dt;
+      enemy.vz = (enemy.vz ?? 0) - JUMP_GRAVITY * dt;
+      if (enemy.z <= floor) {
+        enemy.z = floor;
+        enemy.vz = 0;
+      }
+    }
+    enemy.inSlime = (enemy.state === 'dead' || enemy.z <= -ACID_PIT_DEPTH) && Boolean(this.level.slimeAt(enemy.pos));
     enemy.hurt = Math.max(0, enemy.hurt - dt);
     enemy.bleed -= dt;
     const gore = enemy.def.gore;
     if (enemy.state === 'dead') {
       enemy.pain = 0;
       enemy.deadTime += dt;
-      enemy.inSlime = Boolean(this.level.slimeAt(enemy.pos));
       if (enemy.type !== 'wraith' && enemy.deadTime <= 0.72) {
         enemy.deathFountain = (enemy.deathFountain ?? 0.08) - dt;
         if (enemy.deathFountain <= 0) {
@@ -2584,38 +2576,62 @@ export class Game {
       enemy.windup = 0.3;
   }
 
-  playerFloorHeight() {
-    const { player, level, pitMin, pitMax } = this;
-    const x0 = Math.floor((player.pos.x - PLAYER_RADIUS) / TILE);
-    const x1 = Math.floor((player.pos.x + PLAYER_RADIUS) / TILE);
-    const y0 = Math.floor((player.pos.y - PLAYER_RADIUS) / TILE);
-    const y1 = Math.floor((player.pos.y + PLAYER_RADIUS) / TILE);
+  actorFloorHeight(body, radius) {
+    const { level, pitMin, pitMax } = this;
+    const pos = body.position;
+    const x0 = Math.floor((pos.x - radius) / TILE);
+    const x1 = Math.floor((pos.x + radius) / TILE);
+    const y0 = Math.floor((pos.y - radius) / TILE);
+    const y1 = Math.floor((pos.y + radius) / TILE);
     for (let ty = y0; ty <= y1; ty++)
       for (let tx = x0; tx <= x1; tx++) {
         if (level.inBounds(tx, ty) && level.slime[ty * level.width + tx])
           continue;
         pitMin.setScalar(tx * TILE, ty * TILE);
         pitMax.setScalar((tx + 1) * TILE, (ty + 1) * TILE);
-        if (player.body.overlapsAabb(pitMin, pitMax))
+        if (body.overlapsAabb(pitMin, pitMax))
           return 0;
       }
     return -ACID_PIT_DEPTH;
   }
 
+  playerFloorHeight() {
+    return this.actorFloorHeight(this.player.body, PLAYER_RADIUS);
+  }
+
+  enemyFloorHeight(enemy) {
+    return this.actorFloorHeight(enemy.body, enemy.def.radius);
+  }
+
   constrainPitMovement() {
     const { player, pitStepStart, pitStepTarget } = this;
-    if (player.z >= 0)
-      return;
-    pitStepTarget.copy(player.pos);
-    this.scratch.setScalar(pitStepTarget.x, pitStepStart.y);
-    player.body.setPosition(this.scratch);
-    if (this.playerFloorHeight() === 0)
-      player.body.setPosition(pitStepStart);
-    this.scratch.setScalar(player.pos.x, pitStepTarget.y);
-    pitStepTarget.copy(player.pos);
-    player.body.setPosition(this.scratch);
-    if (this.playerFloorHeight() === 0)
-      player.body.setPosition(pitStepTarget);
+    if (player.z < 0) {
+      pitStepTarget.copy(player.pos);
+      this.scratch.setScalar(pitStepTarget.x, pitStepStart.y);
+      player.body.setPosition(this.scratch);
+      if (this.playerFloorHeight() === 0)
+        player.body.setPosition(pitStepStart);
+      this.scratch.setScalar(player.pos.x, pitStepTarget.y);
+      pitStepTarget.copy(player.pos);
+      player.body.setPosition(this.scratch);
+      if (this.playerFloorHeight() === 0)
+        player.body.setPosition(pitStepTarget);
+    }
+    for (const enemy of this.enemies) {
+      if (enemy.state === 'dead' || !(enemy.z < 0))
+        continue;
+      const start = enemy.pitStart;
+      pitStepTarget.copy(enemy.pos);
+      this.scratch.setScalar(pitStepTarget.x, start.y);
+      enemy.body.setPosition(this.scratch);
+      if (this.enemyFloorHeight(enemy) === 0)
+        enemy.body.setPosition(start);
+      this.scratch.setScalar(enemy.pos.x, pitStepTarget.y);
+      pitStepTarget.copy(enemy.pos);
+      enemy.body.setPosition(this.scratch);
+      if (this.enemyFloorHeight(enemy) === 0)
+        enemy.body.setPosition(pitStepTarget);
+    }
   }
 
   updatePlayer(dt, input) {
@@ -3022,10 +3038,6 @@ export class Game {
       this.usePrompt.fade = 0;
     if (this.state === 'paused')
       return;
-    if (this.hitStop > 0) {
-      this.hitStop = Math.max(0, this.hitStop - dt);
-      dt *= HITSTOP_SCALE;
-    }
     this.time += dt;
     this.shake = Math.max(0, this.shake - dt * 1.6);
     this.message.age += dt;
@@ -3077,6 +3089,8 @@ export class Game {
     }
 
     this.pitStepStart.copy(this.player.pos);
+    for (const enemy of this.enemies)
+      enemy.pitStart.copy(enemy.pos);
     this.scene.step(dt);
     this.constrainPitMovement();
     this.updateTeleporters(dt);

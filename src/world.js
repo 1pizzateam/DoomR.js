@@ -1,6 +1,6 @@
 import { CustomMesh, Cylinder, FullscreenQuad, Grid, Material, Mesh, PerspectiveCamera, Quat, Rand, Renderer, RenderTarget, Scene, Sprite, Texture, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { BLOOD } from './blood.js';
-import { ACID_PIT_DEPTH } from './game.js';
+import { ACID_SURFACE_DEPTH } from './game.js';
 import { barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
 import { bloodAtlas, createQuadTarget, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
 import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
@@ -1366,8 +1366,8 @@ export class World {
           const plane = (d < 2 ? tx + (d === 1 ? 1 : 0) : ty + (d === 3 ? 1 : 0)) * TILE;
           const along = (d < 2 ? ty : tx) * TILE;
           hide.push(...quadTriangles(axis === 'x'
-            ? faceCorners(axis, new Vec3(plane, -ACID_PIT_DEPTH - 0.35, along), new Vec3(plane, -0.2, along + TILE))
-            : faceCorners(axis, new Vec3(along, -ACID_PIT_DEPTH - 0.35, plane), new Vec3(along + TILE, -0.2, plane))));
+            ? faceCorners(axis, new Vec3(plane, -ACID_SURFACE_DEPTH - 0.35, along), new Vec3(plane, -0.2, along + TILE))
+            : faceCorners(axis, new Vec3(along, -ACID_SURFACE_DEPTH - 0.35, plane), new Vec3(along + TILE, -0.2, plane))));
         }
       }
 
@@ -1654,9 +1654,7 @@ export class World {
     else
       this.wallPixels ??= wallAtlas();
     const atlas = marsRock ? this.marsRockPixels : this.wallPixels;
-    const texOpts = marsRock
-      ? { minFilter: gl.NEAREST, magFilter: gl.NEAREST }
-      : { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
+    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
     const sharedTexture = this.sharedTexture(atlas, texOpts);
     const batch = new QuadBatch(gl, {
       capacity: Math.max(1, faces.length),
@@ -1734,7 +1732,7 @@ export class World {
     const y0Bound = bounds ? bounds.y0 : 0;
     const x1Bound = bounds ? bounds.x1 : level.width;
     const y1Bound = bounds ? bounds.y1 : level.rowCount;
-    const texOpts = { minFilter: gl.NEAREST, magFilter: gl.NEAREST };
+    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
     const sharedTexture = this.sharedTexture(this.marsDirtPixels, texOpts);
     const batch = new QuadBatch(gl, {
       capacity: Math.max(1, (x1Bound - x0Bound) * (y1Bound - y0Bound)),
@@ -1789,7 +1787,7 @@ export class World {
       this.sharedTexturedMeshes.push(batch);
     }
     batch.addCustomUniform('time', 'uniform1f', 0);
-    const y = -ACID_PIT_DEPTH - 0.35;
+    const y = -ACID_SURFACE_DEPTH - 0.35;
     batch.begin();
     for (let ty = 0; ty < level.rowCount; ty++)
       for (let tx = 0; tx < level.width; tx++) {
@@ -1805,18 +1803,27 @@ export class World {
     return batch.end();
   }
 
-  /** Toxic mist: stacked translucent layers and rim curtains hovering inside recessed acid pits, below the deck plane. */
+  /** Toxic mist: stacked translucent layers, crossed rising fume plumes, and rim curtains hovering in and slightly above recessed acid pits. */
   acidMistBatch(level) {
     const { gl } = this;
     this.slimePixels ??= slimeAtlas();
     const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST, wrapS: gl.REPEAT, wrapT: gl.REPEAT };
     const sharedTexture = this.sharedTexture(this.slimePixels, texOpts);
     const layerFractions = [0.25, 0.55, 0.9];
-    const surface = -ACID_PIT_DEPTH - 0.35;
+    const plumesPerTile = 2;
+    const surface = -ACID_SURFACE_DEPTH - 0.35;
     const maxY = -0.2 - 0.3;
-    const layerY = (layer, tx, ty) => Math.min(maxY, surface + layerFractions[layer] * ACID_PIT_DEPTH + (((tx * 7 + ty * 13 + layer * 5) % 5) - 2) * 0.1);
-    const lowY = surface + layerFractions[0] * ACID_PIT_DEPTH - 0.2;
-    const highY = maxY - 0.2;
+    const mixHash = (tx, ty, salt) => {
+      let h = Math.imul(tx * 374761393 + ty * 668265263 + salt * 1442695041, 1274126177);
+      h ^= h >>> 16;
+      return (Math.imul(h, 2246822519) ^ (h >>> 13)) >>> 0;
+    };
+    const layerY = (layer, tx, ty) => {
+      const jitter = (((mixHash(tx, ty, layer + 1) & 31) / 31) - 0.5) * 0.65;
+      return Math.min(maxY, surface + layerFractions[layer] * ACID_SURFACE_DEPTH + jitter);
+    };
+    const lowY = surface + 0.6;
+    const highY = 4.2;
     const edgeOpen = (tx, ty, d) => {
       const nx = tx + (d === 0 ? -1 : d === 1 ? 1 : 0);
       const ny = ty + (d === 2 ? -1 : d === 3 ? 1 : 0);
@@ -1834,7 +1841,7 @@ export class World {
             rimCount++;
       }
     const batch = new QuadBatch(gl, {
-      capacity: Math.max(1, layerFractions.length * tileCount + rimCount),
+      capacity: Math.max(1, (layerFractions.length + plumesPerTile) * tileCount + rimCount),
       atlas: this.slimePixels,
       sharedTexture,
       vertex: FLOOR_VERTEX,
@@ -1849,6 +1856,16 @@ export class World {
     batch.addCustomUniform('time', 'uniform1f', 0);
     batch.setBlend('SRC_ALPHA', 'ONE_MINUS_SRC_ALPHA');
     batch.setDepthWrite(false);
+    const quadVerts = new Array(12).fill(0);
+    const quadUv = [0, 0, 1, 1];
+    const fillUv = (h) => {
+      const sx = h & 31;
+      const sy = (h >>> 5) & 31;
+      quadUv[0] = sx + 0.02;
+      quadUv[1] = sy + 0.02;
+      quadUv[2] = sx + 0.98;
+      quadUv[3] = sy + 0.98;
+    };
     batch.begin();
     for (let ty = 0; ty < level.rowCount; ty++)
       for (let tx = 0; tx < level.width; tx++) {
@@ -1860,7 +1877,34 @@ export class World {
         const z1 = z0 + TILE;
         for (let layer = 0; layer < layerFractions.length; layer++) {
           const y = layerY(layer, tx, ty);
-          batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], [0, 0, 1, 1]);
+          fillUv(mixHash(tx, ty, 10 + layer));
+          quadVerts[0] = x0; quadVerts[1] = y; quadVerts[2] = z1;
+          quadVerts[3] = x1; quadVerts[4] = y; quadVerts[5] = z1;
+          quadVerts[6] = x1; quadVerts[7] = y; quadVerts[8] = z0;
+          quadVerts[9] = x0; quadVerts[10] = y; quadVerts[11] = z0;
+          batch.quad(quadVerts, quadUv);
+        }
+        const baseHash = mixHash(tx, ty, 100);
+        const baseAngle = ((baseHash & 1023) / 1024) * Trigo.pi;
+        for (let p = 0; p < plumesPerTile; p++) {
+          const ph = mixHash(tx, ty, 200 + p);
+          const ox = (((ph & 63) / 63) - 0.5) * (TILE * 0.34);
+          const oz = ((((ph >>> 6) & 63) / 63) - 0.5) * (TILE * 0.34);
+          const cx = x0 + TILE * 0.5 + ox;
+          const cz = z0 + TILE * 0.5 + oz;
+          const angleJitter = ((((ph >>> 12) & 31) / 31) - 0.5) * 0.45;
+          const angle = baseAngle + p * Trigo.halfpi + angleJitter;
+          const span = TILE * (0.36 + (((ph >>> 17) & 31) / 31) * 0.12);
+          const dx = Math.cos(angle) * span;
+          const dz = Math.sin(angle) * span;
+          const pLowY = lowY + (((ph >>> 22) & 15) / 15) * 0.9;
+          const topY = 3.2 + (((ph >>> 26) & 31) / 31) * 2.55;
+          fillUv(ph);
+          quadVerts[0] = cx - dx; quadVerts[1] = pLowY; quadVerts[2] = cz - dz;
+          quadVerts[3] = cx + dx; quadVerts[4] = pLowY; quadVerts[5] = cz + dz;
+          quadVerts[6] = cx + dx; quadVerts[7] = topY; quadVerts[8] = cz + dz;
+          quadVerts[9] = cx - dx; quadVerts[10] = topY; quadVerts[11] = cz - dz;
+          batch.quad(quadVerts, quadUv);
         }
         for (let d = 0; d < 4; d++) {
           if (!edgeOpen(tx, ty, d))
@@ -1871,7 +1915,12 @@ export class World {
           const corners = axis === 'x'
             ? faceCorners(axis, new Vec3(plane, lowY, along), new Vec3(plane, highY, along + TILE))
             : faceCorners(axis, new Vec3(along, lowY, plane), new Vec3(along + TILE, highY, plane));
-          batch.quad([corners[0].x, corners[0].y, corners[0].z, corners[1].x, corners[1].y, corners[1].z, corners[2].x, corners[2].y, corners[2].z, corners[3].x, corners[3].y, corners[3].z], [0, 0, 1, 1]);
+          fillUv(mixHash(tx, ty, 300 + d));
+          quadVerts[0] = corners[0].x; quadVerts[1] = corners[0].y; quadVerts[2] = corners[0].z;
+          quadVerts[3] = corners[1].x; quadVerts[4] = corners[1].y; quadVerts[5] = corners[1].z;
+          quadVerts[6] = corners[2].x; quadVerts[7] = corners[2].y; quadVerts[8] = corners[2].z;
+          quadVerts[9] = corners[3].x; quadVerts[10] = corners[3].y; quadVerts[11] = corners[3].z;
+          batch.quad(quadVerts, quadUv);
         }
       }
     return batch.end();
@@ -2111,7 +2160,7 @@ export class World {
       animCtx.dt = dt;
       animCtx.player = player;
       MONSTERS[enemy.type].animate(view, enemy, animCtx);
-      root.setPosition(scratchPos.setScalar(enemy.pos.x, view.lift * view.scale, enemy.pos.y));
+      root.setPosition(scratchPos.setScalar(enemy.pos.x, (enemy.z ?? 0) + view.lift * view.scale, enemy.pos.y));
       root.setRotation(scratchRot.setScalar(view.pitch ?? 0, view.yaw ?? 0, view.roll ?? 0));
       root.setScale(scratchScale.setScalar(view.scale * view.sx, view.scale * view.sy, view.scale * (view.sz ?? view.sx)));
       return;
@@ -3115,7 +3164,8 @@ export class World {
       camera.setProjectionMatrix(this.viewportSize);
     }
     const baseEye = player.eye ?? EYE;
-    const eyeY = Math.max(8, baseEye - drop) + bob;
+    const minEye = Math.max(-ACID_SURFACE_DEPTH + 4, 8 + (player.z ?? 0));
+    const eyeY = Math.max(minEye, baseEye - drop) + bob;
     // the shot shoves the eye straight back along the aim; render-only, relaxes in game.relaxKick
     const push = kick.push ?? 0;
     camera.position.setScalar(

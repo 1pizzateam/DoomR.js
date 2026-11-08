@@ -1,11 +1,12 @@
 import { Utils } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
-import { FLOOR_FRAGMENT, FLOOR_VERTEX, GLOW, LIGHT, METAL, mix, plate, rivet, SHADOW, Tile } from './floor.js';
+import { TILE } from './level.js';
+import { FLOOR_FRAGMENT, FLOOR_VERTEX, GLOW, LIGHT, METAL, mix, plate, rivet, SHADOW, Tile, TILE_PIXELS } from './floor.js';
 
 /**
  * The doors of an old space base: heavy sliding blast doors in two leaves, with a hazard-striped frame, recessed
  * panels, a viewing slit in each leaf and green status lights, rusted like the floor. A pixel-art atlas drawn here in
- * code: the face of the door (64 x 64, one texel per world unit) and its top, side by side in a 128 x 64 image.
+ * code: the face of the door (256 x 256, 4 texels per world unit) and its top, side by side in a 512 x 256 image.
  */
 
 const DOOR_FACE = 0;
@@ -13,7 +14,7 @@ const DOOR_TOP = 1;
 export const DOOR_CELLS = 2;
 export const DOOR_THICKNESS = 8;
 export const DOOR_INSET = 6;
-const SIZE = 64;
+const SIZE = TILE_PIXELS;
 
 const SIGNAL = [70, 230, 150];
 const HAZARD = [150, 86, 30];
@@ -39,9 +40,10 @@ function bevel(t, x0, y0, w, h, rise = true) {
 }
 
 function hazardStrip(t, x0, y0, w, h, color = HAZARD) {
-  for (let y = y0; y < y0 + h; y++)
-    for (let x = x0; x < x0 + w; x++)
-      t.set(x, y, Math.floor((x + y) / 4) % 2 ? color : HAZARD_DARK);
+  const s = t.scale;
+  for (let py = y0 * s; py < (y0 + h) * s; py++)
+    for (let px = x0 * s; px < (x0 + w) * s; px++)
+      t.setRaw(px, py, Math.floor((px + py) / (4 * s)) % 2 ? color : HAZARD_DARK);
   for (let x = x0; x < x0 + w; x++) {
     t.set(x, y0, SHADOW, 0.7);
     t.set(x, y0 + h - 1, SHADOW, 0.7);
@@ -53,8 +55,8 @@ function drawFace(rnd, lockColor = null) {
   const sig = theme ? theme.signal : SIGNAL;
   const slitGlow = theme ? theme.glow : GLOW;
   const stripeColor = theme ? theme.stripe : HAZARD;
-  const t = new Tile(SIZE, SIZE);
-  plate(t, 0, 0, SIZE, SIZE, rnd, mix(METAL, FRAME, 0.4));
+  const t = new Tile(SIZE, SIZE, SIZE / 64);
+  plate(t, 0, 0, 64, 64, rnd, mix(METAL, FRAME, 0.4));
 
   // the frame: dark, with hazard striping across the top and the bottom
   hazardStrip(t, 4, 3, 56, 7, stripeColor);
@@ -118,8 +120,8 @@ function drawFace(rnd, lockColor = null) {
 }
 
 function drawTop(rnd) {
-  const t = new Tile(SIZE, SIZE);
-  plate(t, 0, 0, SIZE, SIZE, rnd, mix(METAL, SHADOW, 0.3));
+  const t = new Tile(SIZE, SIZE, SIZE / 64);
+  plate(t, 0, 0, 64, 64, rnd, mix(METAL, SHADOW, 0.3));
   for (let i = 8; i < 56; i += 8)
     for (let x = 4; x < 60; x++)
       t.set(x, i, SHADOW, 0.6);
@@ -198,7 +200,7 @@ export function doubleDoorBox(dimensions, alongY = false, inset = DOOR_INSET) {
   const h = dimensions.x / 2;
   const height = dimensions.y;
   const thickness = dimensions.z;
-  const outer = SIZE / 2 - inset;
+  const outer = TILE / 2 - inset;
   const slabs = [
     [-outer, -outer + thickness],
     [outer - thickness, outer],
@@ -221,7 +223,7 @@ export function doubleDoorBox(dimensions, alongY = false, inset = DOOR_INSET) {
       uvs.push(...uv[k]);
     }
   };
-  const edgeSpan = Math.min(1, thickness / SIZE);
+  const edgeSpan = Math.min(1, thickness / TILE);
   for (const [d0, d1] of slabs) {
     if (alongY) {
       push([[-h, 0, d1], [h, 0, d1], [h, height, d1], [-h, height, d1]], DOOR_FACE);

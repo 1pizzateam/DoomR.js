@@ -6,6 +6,7 @@ import {
   Vec2,
   Vec3,
   createDefaultCartridge,
+  hydrateCartridge,
   loadBaseHead,
   loadHairStyle,
   registerAtlasPainter,
@@ -34,6 +35,19 @@ const MARINE_HEAD_URL = new URL('./heads/african_sculpt.facerhead.json', import.
 
 const MARINE_PROFILE_URL = new URL('./face/doomr.facerprofile.json', import.meta.url).href;
 const MARINE_HAIR_URL = new URL('./hair/buzz_fade.facerhair.json', import.meta.url).href;
+// the marine as last saved from FaceGun (proportions, sculpt, colours, personality)
+const MARINE_CARTRIDGE_URL = new URL('./models/doom_marine.facer.json', import.meta.url).href;
+
+let savedMarine = null;
+
+async function loadSavedMarine() {
+  try {
+    const res = await fetch(MARINE_CARTRIDGE_URL, { cache: 'no-store' });
+    savedMarine = res.ok ? await res.json() : null;
+  } catch {
+    savedMarine = null;
+  }
+}
 
 /** Load the marine's face profile, head and hair and register the skin painter (all DoomR assets, FaceR bundles none) before the first HeadView. */
 export function loadHeadAssets() {
@@ -43,11 +57,18 @@ export function loadHeadAssets() {
     loadFaceProfile(MARINE_PROFILE_URL),
     loadBaseHead('african_sculpt', MARINE_HEAD_URL),
     loadHairStyle('buzz_fade', MARINE_HAIR_URL),
+    loadSavedMarine(),
   ]);
 }
 
 /** The FaceGun "Doom Marine" cartridge: broad square jaw, strong brow ridge, battle-hardened gaze. */
 export function marineCartridge() {
+  if (savedMarine) {
+    const saved = hydrateCartridge(savedMarine);
+    // emotions come from the face profile, not from the saved copy, so profile edits are not frozen out
+    saved.emotions = createDefaultCartridge('Doom Marine', 'doom_marine').emotions;
+    return rebuildCartridgeRig(saved, true);
+  }
   const cart = createDefaultCartridge('Doom Marine', 'doom_marine');
   const p = cart.proportions;
   p.craniumScale.setScalar(1.01, 1.0, 1.01);
@@ -56,8 +77,8 @@ export function marineCartridge() {
   p.cheekboneOffset.setScalar(0.14, 0.06, 0.12);
   p.browOffset.setScalar(0.05, -0.08, 0.22);
   p.eyeSocketOffset.setScalar(0.0, 0.0, 0.0);
-  p.noseScale.setScalar(1.04, 1.0, 1.04);
-  p.mouthScale.setScalar(1.03, 1.0, 1.02);
+  p.noseScale.setScalar(0.95, 1.0, 1.04);
+  p.mouthScale.setScalar(1.03, 1.0, 0.9);
   p.earScale.setScalar(1.0, 1.0, 1.0);
 
   const a = cart.appearance;

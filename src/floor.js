@@ -19,7 +19,7 @@ const scratchPt = new Vec2();
  * floor is the hazard striping on a doorstep, which is meant to.
  */
 
-export const TILE_PIXELS = 64;
+export const TILE_PIXELS = 256;
 export const FLOOR_CELLS = { plain: 0, grating: 1, hatch: 2, patched: 3, cracked: 4, conduit: 5, hazard: 6, lights: 7 };
 export const FLOOR_CELL_COUNT = 8;
 
@@ -34,33 +34,66 @@ export const GLOW = [76, 128, 232];
 
 export const mix = (a, b, t) => [Utils.lerp(a[0], b[0], t), Utils.lerp(a[1], b[1], t), Utils.lerp(a[2], b[2], t)];
 
+function texelMicroGrain(px, py) {
+  let h = Math.imul(px * 374761393 ^ py * 668265263, 1274126177);
+  h ^= h >>> 13;
+  return (((Math.imul(h, 1911520717) >>> 0) % 1000) / 1000) - 0.5;
+}
+
 /** A small RGB picture to draw on; the barrel shares it. */
 export class Tile {
-  constructor(width = TILE_PIXELS, height = TILE_PIXELS) {
+  constructor(width = TILE_PIXELS, height = TILE_PIXELS, scale = 1) {
     this.width = width;
     this.height = height;
+    this.scale = scale;
     this.pixels = new Float32Array(width * height * 3);
   }
 
-  set(x, y, color, amount = 1) {
-    x = Math.round(x);
-    y = Math.round(y);
-    if (x < 0 || y < 0 || x >= this.width || y >= this.height)
+  setRaw(px, py, color, amount = 1) {
+    px = Math.round(px);
+    py = Math.round(py);
+    if (px < 0 || py < 0 || px >= this.width || py >= this.height)
       return;
-    const i = (y * this.width + x) * 3;
+    const i = (py * this.width + px) * 3;
     for (let k = 0; k < 3; k++)
       this.pixels[i + k] = Utils.lerp(this.pixels[i + k], color[k], amount);
   }
 
+  set(x, y, color, amount = 1) {
+    const s = this.scale;
+    if (s === 1) {
+      this.setRaw(x, y, color, amount);
+      return;
+    }
+    const px0 = Math.round(x * s);
+    const py0 = Math.round(y * s);
+    for (let dy = 0; dy < s; dy++)
+      for (let dx = 0; dx < s; dx++)
+        this.setRaw(px0 + dx, py0 + dy, color, amount);
+  }
+
   get(x, y) {
-    const i = (y * this.width + x) * 3;
+    const px = Math.round(x * this.scale);
+    const py = Math.round(y * this.scale);
+    const i = (py * this.width + px) * 3;
     return [this.pixels[i], this.pixels[i + 1], this.pixels[i + 2]];
   }
 
   rect(x0, y0, w, h, color, amount = 1) {
-    for (let y = y0; y < y0 + h; y++)
-      for (let x = x0; x < x0 + w; x++)
-        this.set(x, y, color, amount);
+    const s = this.scale;
+    if (s === 1) {
+      for (let y = y0; y < y0 + h; y++)
+        for (let x = x0; x < x0 + w; x++)
+          this.setRaw(x, y, color, amount);
+      return;
+    }
+    const px0 = Math.round(x0 * s);
+    const py0 = Math.round(y0 * s);
+    const px1 = Math.round((x0 + w) * s);
+    const py1 = Math.round((y0 + h) * s);
+    for (let py = py0; py < py1; py++)
+      for (let px = px0; px < px1; px++)
+        this.setRaw(px, py, color, amount);
   }
 }
 
@@ -94,34 +127,117 @@ export function field(rnd, scale) {
 
 /** A beveled steel plate: grain, a light edge top and left, a dark one bottom and right, and rivets in the corners. */
 export function plate(t, x0, y0, w, h, rnd, base = METAL) {
+  const s = t.scale;
+  if (s > 1 && x0 === 0 && y0 === 0 && w === t.width && h === t.height) {
+    w /= s;
+    h /= s;
+  }
   for (let y = y0; y < y0 + h; y++)
     for (let x = x0; x < x0 + w; x++) {
       const grain = (rnd() - 0.5) * 7 + (((x >> 2) + (y >> 2)) % 2 ? 1.5 : 0);
-      t.set(x, y, [base[0] + grain, base[1] + grain, base[2] + grain * 1.2]);
+      if (s === 1) {
+        t.setRaw(x, y, [base[0] + grain, base[1] + grain, base[2] + grain * 1.2]);
+      } else {
+        const px0 = Math.round(x * s);
+        const py0 = Math.round(y * s);
+        for (let dy = 0; dy < s; dy++)
+          for (let dx = 0; dx < s; dx++) {
+            const px = px0 + dx;
+            const py = py0 + dy;
+            const micro = (((px + (py >> 1)) & 3) === 0 ? 0.85 : -0.28) + texelMicroGrain(px, py) * 2.2;
+            const g = grain * 0.78 + micro;
+            t.setRaw(px, py, [base[0] + g, base[1] + g, base[2] + g * 1.2]);
+          }
+      }
     }
-  for (let i = 0; i < w; i++) {
-    t.set(x0 + i, y0, LIGHT, 0.85);
-    t.set(x0 + i, y0 + 1, LIGHT, 0.3);
-    t.set(x0 + i, y0 + h - 1, SHADOW);
-    t.set(x0 + i, y0 + h - 2, SHADOW, 0.5);
+  if (s === 1) {
+    for (let i = 0; i < w; i++) {
+      t.set(x0 + i, y0, LIGHT, 0.85);
+      t.set(x0 + i, y0 + 1, LIGHT, 0.3);
+      t.set(x0 + i, y0 + h - 1, SHADOW);
+      t.set(x0 + i, y0 + h - 2, SHADOW, 0.5);
+    }
+    for (let i = 0; i < h; i++) {
+      t.set(x0, y0 + i, LIGHT, 0.7);
+      t.set(x0 + w - 1, y0 + i, SHADOW);
+      t.set(x0 + w - 2, y0 + i, SHADOW, 0.5);
+    }
+    return;
   }
-  for (let i = 0; i < h; i++) {
-    t.set(x0, y0 + i, LIGHT, 0.7);
-    t.set(x0 + w - 1, y0 + i, SHADOW);
-    t.set(x0 + w - 2, y0 + i, SHADOW, 0.5);
+  const px0 = Math.round(x0 * s);
+  const py0 = Math.round(y0 * s);
+  const pw = Math.round(w * s);
+  const ph = Math.round(h * s);
+  // Soft inner ambient occlusion gradient near machined seams
+  const aoSpan = Math.min(8, Math.floor(Math.min(pw, ph) * 0.15));
+  for (let py = py0; py < py0 + ph; py++)
+    for (let px = px0; px < px0 + pw; px++) {
+      const dEdge = Math.min(px - px0, py - py0, px0 + pw - 1 - px, py0 + ph - 1 - py);
+      if (dEdge >= 2 && dEdge < aoSpan)
+        t.setRaw(px, py, SHADOW, (1 - (dEdge - 2) / (aoSpan - 2)) * 0.22);
+    }
+  // Crisp native-resolution 2px expansion seam + 3px machined 45° chamfer highlight/shadow
+  for (let dx = 0; dx < pw; dx++) {
+    const px = px0 + dx;
+    t.setRaw(px, py0, SHADOW, 0.78);
+    t.setRaw(px, py0 + 1, LIGHT, 0.88);
+    t.setRaw(px, py0 + 2, LIGHT, 0.52);
+    t.setRaw(px, py0 + 3, LIGHT, 0.22);
+    t.setRaw(px, py0 + ph - 4, SHADOW, 0.28);
+    t.setRaw(px, py0 + ph - 3, SHADOW, 0.58);
+    t.setRaw(px, py0 + ph - 2, SHADOW, 0.88);
+    t.setRaw(px, py0 + ph - 1, SHADOW, 0.98);
+  }
+  for (let dy = 0; dy < ph; dy++) {
+    const py = py0 + dy;
+    t.setRaw(px0, py, SHADOW, 0.78);
+    t.setRaw(px0 + 1, py, LIGHT, 0.75);
+    t.setRaw(px0 + 2, py, LIGHT, 0.42);
+    t.setRaw(px0 + 3, py, LIGHT, 0.18);
+    t.setRaw(px0 + pw - 4, py, SHADOW, 0.28);
+    t.setRaw(px0 + pw - 3, py, SHADOW, 0.58);
+    t.setRaw(px0 + pw - 2, py, SHADOW, 0.88);
+    t.setRaw(px0 + pw - 1, py, SHADOW, 0.98);
   }
 }
 
 export function rivet(t, x, y) {
-  t.rect(x, y, 3, 3, mix(METAL, LIGHT, 0.55));
-  t.set(x, y, LIGHT);
-  t.set(x + 2, y + 2, SHADOW);
-  t.set(x + 1, y + 3, SHADOW, 0.7);
-  t.set(x + 3, y + 1, SHADOW, 0.7);
+  const s = t.scale;
+  if (s === 1) {
+    t.rect(x, y, 3, 3, mix(METAL, LIGHT, 0.55));
+    t.set(x, y, LIGHT);
+    t.set(x + 2, y + 2, SHADOW);
+    t.set(x + 1, y + 3, SHADOW, 0.7);
+    t.set(x + 3, y + 1, SHADOW, 0.7);
+    return;
+  }
+  const cx = (x + 1.5) * s - 0.5;
+  const cy = (y + 1.5) * s - 0.5;
+  const r = 1.65 * s;
+  const px0 = Math.floor(cx - r - 2);
+  const py0 = Math.floor(cy - r - 2);
+  const px1 = Math.ceil(cx + r + 2);
+  const py1 = Math.ceil(cy + r + 2);
+  for (let py = py0; py <= py1; py++)
+    for (let px = px0; px <= px1; px++) {
+      const dx = (px - cx) / r;
+      const dy = (py - cy) / r;
+      const d = Math.hypot(dx, dy);
+      if (d <= 1.0) {
+        const nz = Math.sqrt(Math.max(0, 1 - d * d));
+        const spec = Math.max(0, -dx * 0.65 - dy * 0.65 + nz * 0.38);
+        const col = spec > 0.55
+          ? mix(METAL, LIGHT, Math.min(1, 0.45 + (spec - 0.55) * 1.4))
+          : mix(SHADOW, METAL, Math.max(0.15, nz * 0.85));
+        t.setRaw(px, py, col, 0.95);
+      } else if (d <= 1.28 && (dx > -0.2 || dy > -0.2)) {
+        t.setRaw(px, py, SHADOW, (1 - (d - 1.0) / 0.28) * 0.75);
+      }
+    }
 }
 
 function rivets(t, inset) {
-  const far = TILE_PIXELS - inset - 3;
+  const far = 64 - inset - 3;
   for (const [x, y] of [[inset, inset], [far, inset], [inset, far], [far, far]])
     rivet(t, x, y);
 }
@@ -131,11 +247,16 @@ function rivets(t, inset) {
  * of the tile is touched, `holes` how much of that has rotted through to the dark below.
  */
 export function rust(t, rnd, amount, holes = 0) {
+  const s = t.scale;
   const patch = field(rnd, 22);
   const fine = field(rnd, 5);
-  for (let y = 2; y < t.height - 2; y++)
-    for (let x = 2; x < t.width - 2; x++) {
-      const n = patch(x, y) + (fine(x, y) - 0.5) * 0.25;
+  const margin = 2 * s;
+  for (let py = margin; py < t.height - margin; py++)
+    for (let px = margin; px < t.width - margin; px++) {
+      const x = px / s;
+      const y = py / s;
+      const micro = s > 1 ? texelMicroGrain(px, py) * 0.08 : 0;
+      const n = patch(x, y) + (fine(x, y) - 0.5) * 0.25 + micro;
       const edge = n - (1 - amount);
       if (edge <= 0)
         continue;
@@ -145,12 +266,14 @@ export function rust(t, rnd, amount, holes = 0) {
         color = mix(RUST, RUST_BRIGHT, (fine(x * 2, y * 2) - 0.3) * 1.2);
       if (holes && n > 1 - holes)
         color = mix(SHADOW, RUST_DARK, fine(x, y) * 0.3);
-      t.set(x, y, color, 0.35 + depth * 0.6);
+      t.setRaw(px, py, color, 0.35 + depth * 0.6);
     }
   // streaks run down from the thick places
+  const lw = t.width / s;
+  const lh = t.height / s;
   for (let k = 0; k < 7; k++) {
-    const x = 4 + Math.floor(rnd() * (t.width - 8));
-    const y0 = 3 + Math.floor(rnd() * Math.max(1, t.height - 20));
+    const x = 4 + Math.floor(rnd() * (lw - 8));
+    const y0 = 3 + Math.floor(rnd() * Math.max(1, lh - 20));
     if (patch(x, y0) < 1 - amount * 0.9)
       continue;
     const length = 4 + Math.floor(rnd() * 14);
@@ -160,141 +283,355 @@ export function rust(t, rnd, amount, holes = 0) {
 }
 
 function scuffs(t, rnd, count) {
+  const s = t.scale;
+  const lw = t.width / s;
+  const lh = t.height / s;
   for (let k = 0; k < count; k++) {
-    const x = 3 + Math.floor(rnd() * (t.width - 6));
-    const y = 3 + Math.floor(rnd() * (t.height - 6));
+    const x = 3 + Math.floor(rnd() * (lw - 6));
+    const y = 3 + Math.floor(rnd() * (lh - 6));
     const length = 2 + Math.floor(rnd() * 5);
-    for (let d = 0; d < length; d++)
-      t.set(x + d, y + (d >> 1), LIGHT, 0.35);
+    if (s === 1) {
+      for (let d = 0; d < length; d++)
+        t.set(x + d, y + (d >> 1), LIGHT, 0.35);
+    } else {
+      const px0 = Math.round(x * s);
+      const py0 = Math.round(y * s);
+      const steps = length * s;
+      for (let i = 0; i < steps; i++) {
+        const fade = Math.sin((i / steps) * Trigo.pi);
+        const px = px0 + i;
+        const py = py0 + Math.round(i * 0.45);
+        t.setRaw(px, py, SHADOW, 0.48 * fade);
+        t.setRaw(px, py + 1, LIGHT, 0.52 * fade);
+      }
+    }
   }
 }
 
+/** Embosses a subtle anti-slip diamond tread pattern and recessed panel pocket inside a deck plate. */
+function deckPlateDetail(t, x0, y0, w, h) {
+  const s = t.scale;
+  const px0 = (x0 + 4) * s;
+  const py0 = (y0 + 4) * s;
+  const px1 = (x0 + w - 4) * s;
+  const py1 = (y0 + h - 4) * s;
+  // Recessed inner border groove
+  for (let px = px0; px < px1; px++) {
+    t.setRaw(px, py0, SHADOW, 0.62);
+    t.setRaw(px, py0 + 1, LIGHT, 0.35);
+    t.setRaw(px, py1 - 2, SHADOW, 0.45);
+    t.setRaw(px, py1 - 1, LIGHT, 0.42);
+  }
+  for (let py = py0; py < py1; py++) {
+    t.setRaw(px0, py, SHADOW, 0.62);
+    t.setRaw(px0 + 1, py, LIGHT, 0.35);
+    t.setRaw(px1 - 2, py, SHADOW, 0.45);
+    t.setRaw(px1 - 1, py, LIGHT, 0.42);
+  }
+  // Subtle raised anti-slip lozenge lugs inside the panel field
+  for (let py = py0 + 6; py < py1 - 6; py++)
+    for (let px = px0 + 6; px < px1 - 6; px++) {
+      const cellX = px % 16;
+      const cellY = py % 16;
+      const alt = (((px >> 4) + (py >> 4)) & 1) === 0;
+      const u = alt ? cellX - cellY : cellX + cellY - 15;
+      const v = alt ? cellX + cellY - 15 : cellX - cellY;
+      if (Math.abs(u) <= 1 && Math.abs(v) <= 4) {
+        t.setRaw(px, py, u <= 0 ? LIGHT : SHADOW, u <= 0 ? 0.22 : 0.28);
+      }
+    }
+}
+
 function drawPlain(t, rnd) {
-  // four plates in a tile: the seams are what makes it read as a deck
-  for (const [x, y] of [[0, 0], [32, 0], [0, 32], [32, 32]])
+  // four interlocking machined deck plates with anti-slip tread, corner gussets, and domed rivets
+  for (const [x, y] of [[0, 0], [32, 0], [0, 32], [32, 32]]) {
     plate(t, x, y, 32, 32, rnd);
-  rivets(t, 3);
+    deckPlateDetail(t, x, y, 32, 32);
+    for (const [rx, ry] of [[x + 2, y + 2], [x + 27, y + 2], [x + 2, y + 27], [x + 27, y + 27]])
+      rivet(t, rx, ry);
+  }
   scuffs(t, rnd, 9);
 }
 
 function drawGrating(t, rnd) {
   plate(t, 0, 0, 64, 64, rnd);
-  // a mesh of bars over a dark drop
-  for (let y = 7; y < 57; y++)
-    for (let x = 7; x < 57; x++) {
-      const bar = (x + y) % 8 < 2 || (x - y + 64) % 8 < 2;
-      t.set(x, y, bar ? mix(METAL, LIGHT, 0.55 + (rnd() - 0.5) * 0.2) : SHADOW);
-      if (bar && (x + y) % 8 === 0)
-        t.set(x, y, LIGHT, 0.5);
+  const s = t.scale;
+  const g0 = 6 * s;
+  const g1 = 58 * s;
+  // Machined outer grating frame bezel (5..59)
+  for (let i = 5 * s; i < 59 * s; i++) {
+    for (let k = 0; k < s; k++) {
+      t.setRaw(i, 5 * s + k, k < 2 ? SHADOW : LIGHT, k < 2 ? 0.9 : 0.45);
+      t.setRaw(5 * s + k, i, k < 2 ? SHADOW : LIGHT, k < 2 ? 0.9 : 0.45);
+      t.setRaw(i, 58 * s + k, k < 2 ? SHADOW : LIGHT, k < 2 ? 0.65 : 0.72);
+      t.setRaw(58 * s + k, i, k < 2 ? SHADOW : LIGHT, k < 2 ? 0.65 : 0.72);
     }
-  // the frame round it
-  for (let i = 5; i < 59; i++) {
-    t.set(i, 5, SHADOW);
-    t.set(i, 58, LIGHT, 0.7);
-    t.set(5, i, SHADOW);
-    t.set(58, i, LIGHT, 0.7);
   }
-  rivets(t, 1);
+  // High-definition diamond-mesh industrial grating over a dark sub-floor pit with deep I-beam joists
+  for (let py = g0; py < g1; py++)
+    for (let px = g0; px < g1; px++) {
+      const lx = px / s;
+      const ly = py / s;
+      const dA = Math.abs(((px + py) % 24) - 12);
+      const dB = Math.abs(((px - py + 512) % 24) - 12);
+      const dBar = Math.min(dA, dB);
+      const crossPin = (px % 32) < 3;
+      if (dBar <= 3.2 || crossPin) {
+        const profile = crossPin && dBar > 3.2
+          ? 1 - Math.abs((px % 32) - 1) / 2.2
+          : Math.max(0, 1 - dBar / 3.4);
+        const topSpec = dA < dB ? ((px + py) % 24 < 12) : ((px - py + 512) % 24 < 12);
+        const shade = 0.25 + profile * 0.55 + (topSpec ? 0.16 : -0.12);
+        const jitter = (((px * 13 ^ py * 29) & 7) - 3.5) * 0.015;
+        const col = mix(SHADOW, mix(METAL, LIGHT, 0.72), Utils.clamp(shade + jitter, 0.08, 0.96));
+        t.setRaw(px, py, col, 0.98);
+      } else {
+        // Deep pit void with two dimly lit sub-floor support girders at y = 21 and y = 43
+        const joistDist = Math.min(Math.abs(ly - 21), Math.abs(ly - 43));
+        const joist = joistDist < 2.2 ? (1 - joistDist / 2.2) * 0.28 : 0;
+        t.setRaw(px, py, mix(SHADOW, METAL, joist), 0.98);
+      }
+    }
+  for (const pos of [2, 18, 43, 59]) {
+    rivet(t, pos, 1);
+    rivet(t, pos, 60);
+  }
+  for (const pos of [18, 43]) {
+    rivet(t, 1, pos);
+    rivet(t, 60, pos);
+  }
 }
 
 function drawHatch(t, rnd) {
   plate(t, 0, 0, 64, 64, rnd);
+  deckPlateDetail(t, 0, 0, 64, 64);
   const cx = 31.5;
   const cy = 31.5;
-  for (let y = 0; y < 64; y++)
-    for (let x = 0; x < 64; x++) {
-      const d = scratchPt.setScalar(x - cx, y - cy).getMagnitude();
-      if (d < 22 && d >= 19)
-        t.set(x, y, SHADOW);
-      else if (d < 19 && d >= 17)
-        t.set(x, y, LIGHT, 0.6);
-      else if (d < 17) {
-        // the cover: a few ribs across it
-        const rib = Math.abs(((x + 4) % 9) - 4) < 1;
-        t.set(x, y, rib ? mix(METAL, LIGHT, 0.45) : mix(METAL, SHADOW, 0.25));
+  const s = t.scale;
+  for (let py = 0; py < t.height; py++)
+    for (let px = 0; px < t.width; px++) {
+      const x = (px + 0.5) / s - 0.5;
+      const y = (py + 0.5) / s - 0.5;
+      const dx = x - cx;
+      const dy = y - cy;
+      const d = scratchPt.setScalar(dx, dy).getMagnitude();
+      if (d < 24.2 && d >= 22.0) {
+        // Outer machined collar bevel
+        const bevelAmt = (dx + dy) / (d + 0.01) < 0 ? 0.55 : 0.15;
+        t.setRaw(px, py, mix(SHADOW, LIGHT, bevelAmt), 0.88);
+      } else if (d < 22.0 && d >= 19.2) {
+        // Deep recessed gasket channel
+        t.setRaw(px, py, SHADOW, 0.96);
+      } else if (d < 19.2 && d >= 17.2) {
+        // Raised hatch cover rim with directional 3D specular highlight
+        const spec = Math.max(0.15, 0.55 - (dx + dy) / (d * 2.2));
+        t.setRaw(px, py, mix(SHADOW, LIGHT, spec), 0.92);
+      } else if (d < 17.2) {
+        // Ribbed anti-slip circular hatch cover with radial cross-stiffeners
+        const ribY = Math.abs(((y + 4) % 6) - 3);
+        const crossStiff = Math.min(Math.abs(dx), Math.abs(dy)) < 1.35;
+        let col = crossStiff
+          ? mix(METAL, LIGHT, 0.38)
+          : ribY < 1.1
+            ? mix(METAL, LIGHT, 0.46 - ribY * 0.2)
+            : mix(METAL, SHADOW, 0.32);
+        // Subtle radial brushed shading
+        const dome = Math.max(0, 1 - (d / 17.2) ** 2) * 0.12;
+        col = mix(col, LIGHT, dome);
+        t.setRaw(px, py, col, 0.96);
+      }
+      // 3D-shaded circular handwheel ring (r = 8.2..10.2), 6 spokes, and central locking cap (r < 3.6)
+      if (d <= 10.6) {
+        const ang = Math.atan2(dy, dx);
+        const spokeDist = Math.abs(Math.sin(ang * 3)) * d;
+        const onRing = d >= 7.8 && d <= 10.2;
+        const onSpoke = d >= 3.2 && d <= 8.4 && spokeDist < 1.05;
+        const onHub = d < 3.6;
+        if (onHub) {
+          const nz = Math.sqrt(Math.max(0, 1 - (d / 3.6) ** 2));
+          const spec = Math.max(0, (-dx - dy) * 0.18 + nz * 0.75);
+          t.setRaw(px, py, mix(SHADOW, LIGHT, Utils.clamp(spec, 0.25, 0.95)), 0.98);
+        } else if (onRing) {
+          const tube = 1 - Math.abs(d - 9.0) / 1.25;
+          t.setRaw(px, py, mix(SHADOW, LIGHT, 0.25 + tube * 0.65), 0.96);
+        } else if (onSpoke) {
+          const ridge = 1 - spokeDist / 1.05;
+          t.setRaw(px, py, mix(SHADOW, LIGHT, 0.22 + ridge * 0.58), 0.94);
+        } else if (d >= 7.2 && d <= 10.6) {
+          t.setRaw(px, py, SHADOW, 0.55);
+        }
       }
     }
-  // the wheel handle
-  for (let a = 0; a < 6; a++) {
-    const angle = (a / 6) * Trigo.pi;
-    for (let d = -8; d <= 8; d += 0.5)
-      t.set(cx + Math.cos(angle) * d, cy + Math.sin(angle) * d, mix(METAL, LIGHT, 0.7));
-  }
-  t.rect(29, 29, 5, 5, LIGHT, 0.8);
   for (let k = 0; k < 8; k++) {
     const angle = (k / 8) * Trigo.twopi + 0.4;
-    rivet(t, Math.round(cx + Math.cos(angle) * 25) - 1, Math.round(cy + Math.sin(angle) * 25) - 1);
+    rivet(t, Math.round(cx + Math.cos(angle) * 25.5) - 1, Math.round(cy + Math.sin(angle) * 25.5) - 1);
   }
 }
 
 /** A square of fresh plate bolted over a damaged place, with a bead of weld round it. */
 function drawPatched(t, rnd) {
   drawPlain(t, rnd);
+  const s = t.scale;
   const w = 30 + Math.floor(rnd() * 8);
   const h = 22 + Math.floor(rnd() * 8);
-  const x0 = 8 + Math.floor(rnd() * (TILE_PIXELS - w - 16));
-  const y0 = 8 + Math.floor(rnd() * (TILE_PIXELS - h - 16));
-  plate(t, x0, y0, w, h, rnd, mix(METAL, LIGHT, 0.28));
-  for (let i = 0; i < w; i++) {
-    t.set(x0 + i, y0 - 1, SHADOW, 0.8);
-    t.set(x0 + i, y0 + h, SHADOW, 0.8);
+  const x0 = 8 + Math.floor(rnd() * (64 - w - 16));
+  const y0 = 8 + Math.floor(rnd() * (64 - h - 16));
+  // Drop shadow cast by the overlapping repair plate onto the deck below
+  const px0 = x0 * s;
+  const py0 = y0 * s;
+  const pw = w * s;
+  const ph = h * s;
+  for (let py = py0 - 4; py < py0 + ph + 6; py++)
+    for (let px = px0 - 4; px < px0 + pw + 6; px++)
+      if (px < px0 || px >= px0 + pw || py < py0 || py >= py0 + ph)
+        t.setRaw(px, py, SHADOW, 0.68);
+  plate(t, x0, y0, w, h, rnd, mix(METAL, LIGHT, 0.24));
+  // Native-resolution rippled TIG-weld bead around the entire patch perimeter
+  for (let dx = -2; dx <= pw + 1; dx++) {
+    const ripple = Math.sin(dx * 0.85) * 0.5 + 0.5;
+    for (const [by, sign] of [[py0 - 1, -1], [py0 + ph, 1]]) {
+      t.setRaw(px0 + dx, by + sign * 2, SHADOW, 0.82);
+      t.setRaw(px0 + dx, by + sign, mix(SHADOW, METAL, 0.45 + ripple * 0.35), 0.9);
+      t.setRaw(px0 + dx, by, mix(METAL, LIGHT, 0.35 + ripple * 0.55), 0.92);
+    }
   }
-  for (let i = 0; i < h; i++) {
-    t.set(x0 - 1, y0 + i, SHADOW, 0.8);
-    t.set(x0 + w, y0 + i, SHADOW, 0.8);
+  for (let dy = -2; dy <= ph + 1; dy++) {
+    const ripple = Math.sin(dy * 0.85) * 0.5 + 0.5;
+    for (const [bx, sign] of [[px0 - 1, -1], [px0 + pw, 1]]) {
+      t.setRaw(bx + sign * 2, py0 + dy, SHADOW, 0.82);
+      t.setRaw(bx + sign, py0 + dy, mix(SHADOW, METAL, 0.45 + ripple * 0.35), 0.9);
+      t.setRaw(bx, py0 + dy, mix(METAL, LIGHT, 0.35 + ripple * 0.55), 0.92);
+    }
   }
-  for (const [x, y] of [[x0 + 2, y0 + 2], [x0 + w - 5, y0 + 2], [x0 + 2, y0 + h - 5], [x0 + w - 5, y0 + h - 5]])
+  const midX = x0 + (w >> 1) - 1;
+  for (const [x, y] of [
+    [x0 + 2, y0 + 2], [midX, y0 + 2], [x0 + w - 5, y0 + 2],
+    [x0 + 2, y0 + h - 5], [midX, y0 + h - 5], [x0 + w - 5, y0 + h - 5],
+  ])
     rivet(t, x, y);
 }
 
 /** A plate that has split: a crack with branches, and chips knocked out along it. */
 function drawCracked(t, rnd) {
   drawPlain(t, rnd);
+  const s = t.scale;
   let x = 8 + Math.floor(rnd() * 20);
   let y = 4;
   const branches = [];
-  while (y < TILE_PIXELS - 5) {
+  let prevX = x;
+  while (y < 64 - 5) {
+    prevX = x;
     x += Math.round((rnd() - 0.45) * 2.4);
     y += 1;
-    t.set(x, y, SHADOW);
-    t.set(x + 1, y, SHADOW, 0.55);
-    t.set(x - 1, y, LIGHT, 0.3);
+    // Carve a high-resolution jagged fracture line across all `s` sub-rows
+    for (let sub = 0; sub < s; sub++) {
+      const f = sub / s;
+      const jitter = Math.sin((y * s + sub) * 0.9) * 0.65;
+      const cx = Math.round((prevX + (x - prevX) * f) * s + jitter);
+      const cy = y * s + sub;
+      for (let dx = -4; dx <= 5; dx++) {
+        if (dx >= -1 && dx <= 1)
+          t.setRaw(cx + dx, cy, SHADOW, 0.98);
+        else if (dx === 2 || dx === 3)
+          t.setRaw(cx + dx, cy, SHADOW, dx === 2 ? 0.72 : 0.38);
+        else if (dx === -2 || dx === -3)
+          t.setRaw(cx + dx, cy, LIGHT, dx === -2 ? 0.52 : 0.24);
+      }
+    }
     if (rnd() < 0.07)
       branches.push([x, y, rnd() < 0.5 ? -1 : 1]);
   }
   for (const [bx, by, dir] of branches) {
     let px = bx;
     let py = by;
-    for (let i = 0; i < 6 + Math.floor(rnd() * 12); i++) {
+    const len = 6 + Math.floor(rnd() * 12);
+    for (let i = 0; i < len; i++) {
+      const ox = px;
+      const oy = py;
       px += dir;
       py += Math.round(rnd() * 1.5);
-      t.set(px, py, SHADOW, 0.9);
-      t.set(px, py + 1, LIGHT, 0.25);
+      const fade = 1 - i / len;
+      for (let sub = 0; sub < s; sub++) {
+        const f = sub / s;
+        const rx = Math.round((ox + (px - ox) * f) * s);
+        const ry = Math.round((oy + (py - oy) * f) * s);
+        t.setRaw(rx, ry, SHADOW, 0.92 * fade);
+        t.setRaw(rx + 1, ry, SHADOW, 0.58 * fade);
+        t.setRaw(rx, ry + 1, LIGHT, 0.38 * fade);
+      }
     }
   }
   for (let k = 0; k < 7; k++) {
-    const cx = 10 + Math.floor(rnd() * 40);
-    const cy = 6 + Math.floor(rnd() * 50);
-    t.rect(cx, cy, 2 + Math.floor(rnd() * 3), 2, SHADOW, 0.8);
+    const cx = (10 + Math.floor(rnd() * 40)) * s;
+    const cy = (6 + Math.floor(rnd() * 50)) * s;
+    const rx = (2 + Math.floor(rnd() * 3)) * s * 0.55;
+    const ry = s * 0.9;
+    for (let dy = -Math.ceil(ry) - 1; dy <= Math.ceil(ry) + 1; dy++)
+      for (let dx = -Math.ceil(rx) - 1; dx <= Math.ceil(rx) + 1; dx++) {
+        const d = Math.hypot(dx / rx, dy / ry);
+        if (d <= 0.85)
+          t.setRaw(cx + dx, cy + dy, SHADOW, 0.9);
+        else if (d <= 1.2)
+          t.setRaw(cx + dx, cy + dy, dx + dy > 0 ? LIGHT : SHADOW, 0.45);
+      }
   }
 }
 
 function drawConduit(t, rnd) {
   drawPlain(t, rnd);
-  // cables run across the tile under clamps
-  for (const y of [19, 27, 41])
-    for (let x = 0; x < 64; x++) {
-      const sag = Math.round(Math.sin(x * 0.12 + y) * 0.9);
-      t.set(x, y + sag, LIGHT, 0.7);
-      t.set(x, y + sag + 1, mix(METAL, LIGHT, 0.25));
-      t.set(x, y + sag + 2, mix(METAL, SHADOW, 0.3));
-      t.set(x, y + sag + 3, SHADOW);
+  const s = t.scale;
+  // Recessed dark cable trench across y = 16..46
+  for (let py = 16 * s; py < 46 * s; py++)
+    for (let px = 0; px < t.width; px++) {
+      const border = py < 16 * s + 2 || py >= 46 * s - 2;
+      t.setRaw(px, py, border ? LIGHT : SHADOW, border ? 0.32 : 0.45);
     }
+  // Three 3D cylindrical armored power cables with helical BX ribbing running across the tile
+  for (const [yBase, rad] of [[19.5, 1.85], [28.0, 2.25], [40.5, 1.85]])
+    for (let px = 0; px < t.width; px++) {
+      const lx = (px + 0.5) / s;
+      const sag = Math.sin(lx * 0.12 + yBase) * 0.85;
+      const cy = (yBase + sag) * s;
+      const rPx = rad * s;
+      const rib = Math.sin(px * 0.95 + yBase * 3) * 0.12;
+      for (let dy = -Math.ceil(rPx) - 2; dy <= Math.ceil(rPx) + 3; dy++) {
+        const py = Math.round(cy + dy);
+        const norm = dy / rPx;
+        if (Math.abs(norm) <= 1.0) {
+          const nz = Math.sqrt(Math.max(0, 1 - norm * norm));
+          const spec = Math.max(0, -norm * 0.55 + nz * 0.65) + rib;
+          const col = spec > 0.62
+            ? mix(METAL, LIGHT, Math.min(1, 0.38 + (spec - 0.62) * 1.45))
+            : mix(SHADOW, METAL, Math.max(0.12, nz * 0.85 + rib));
+          t.setRaw(px, py, col, 0.96);
+        } else if (norm > 1.0 && norm <= 1.45) {
+          t.setRaw(px, py, SHADOW, (1 - (norm - 1.0) / 0.45) * 0.78);
+        }
+      }
+    }
+  // Machined steel bridge clamps strapping the cables down
   for (const x of [14, 46]) {
-    t.rect(x, 15, 5, 33, mix(METAL, LIGHT, 0.35));
-    t.rect(x, 15, 5, 1, LIGHT);
-    t.rect(x, 47, 5, 1, SHADOW);
+    const px0 = x * s;
+    const py0 = 15 * s;
+    const pw = 5 * s;
+    const ph = 33 * s;
+    for (let py = py0; py < py0 + ph; py++)
+      for (let px = px0 - 2; px < px0 + pw + 2; px++) {
+        if (px < px0 || px >= px0 + pw) {
+          t.setRaw(px, py, SHADOW, 0.75);
+          continue;
+        }
+        const edgeX = Math.min(px - px0, px0 + pw - 1 - px);
+        const edgeY = Math.min(py - py0, py0 + ph - 1 - py);
+        if (edgeY < 2)
+          t.setRaw(px, py, py < py0 + 2 ? LIGHT : SHADOW, 0.88);
+        else if (edgeX < 2)
+          t.setRaw(px, py, px < px0 + 2 ? LIGHT : SHADOW, 0.75);
+        else
+          t.setRaw(px, py, mix(METAL, LIGHT, 0.36), 0.96);
+      }
     rivet(t, x + 1, 17);
+    rivet(t, x + 1, 30);
     rivet(t, x + 1, 42);
   }
 }
@@ -302,36 +639,77 @@ function drawConduit(t, rnd) {
 /** The doorstep: dull orange and dark stripes, worn through in places. */
 function drawHazard(t, rnd) {
   plate(t, 0, 0, 64, 64, rnd, [18, 21, 29]);
+  const s = t.scale;
   const wear = field(rnd, 8);
-  for (let y = 5; y < 59; y++)
-    for (let x = 3; x < 61; x++) {
-      const stripe = Math.floor((x + y) / 9) % 2 === 0;
-      if (!stripe)
+  const fineWear = field(rnd, 20);
+  // Crisp 45° native-resolution hazard stripes with paint chipping & diamond-tread texture
+  for (let py = 5 * s; py < 59 * s; py++)
+    for (let px = 3 * s; px < 61 * s; px++) {
+      const lx = px / s;
+      const ly = py / s;
+      const band = ((px + py) / (9 * s)) % 2;
+      const stripeDist = Math.min(band, Math.abs(band - 1), 2 - band) * 9 * s;
+      const stripe = band < 1.0;
+      const tread = (((px % 12) === (py % 12)) || ((px + py) % 12 === 0)) && (px % 12 > 2) && (px % 12 < 9);
+      if (!stripe) {
+        if (stripeDist < 1.5)
+          t.setRaw(px, py, SHADOW, 0.75);
+        else if (tread)
+          t.setRaw(px, py, LIGHT, 0.14);
         continue;
-      const worn = wear(x, y) > 0.62;
-      t.set(x, y, worn ? mix(HAZARD, RUST_DARK, 0.75) : mix(HAZARD, RUST, 0.25 + (rnd() - 0.5) * 0.2), 0.9);
+      }
+      const wVal = wear(lx, ly) * 0.75 + fineWear(lx, ly) * 0.25 + texelMicroGrain(px, py) * 0.08;
+      const worn = wVal > 0.62;
+      let col = worn
+        ? mix(HAZARD, RUST_DARK, 0.78)
+        : mix(HAZARD, RUST, 0.22 + (fineWear(lx + 13, ly + 7) - 0.5) * 0.24);
+      if (tread && !worn)
+        col = mix(col, LIGHT, 0.12);
+      const edgeAlpha = Math.min(1, stripeDist * 0.75) * 0.92;
+      t.setRaw(px, py, col, edgeAlpha);
     }
-  for (let i = 3; i < 61; i++) {
-    t.set(i, 5, SHADOW);
-    t.set(i, 58, SHADOW);
-  }
+  // Recessed steel threshold rails top & bottom
+  for (let px = 3 * s; px < 61 * s; px++)
+    for (let k = 0; k < s; k++) {
+      t.setRaw(px, 5 * s + k, k < 2 ? SHADOW : LIGHT, k < 2 ? 0.92 : 0.45);
+      t.setRaw(px, 58 * s + k, k < 2 ? LIGHT : SHADOW, k < 2 ? 0.45 : 0.92);
+    }
   rivets(t, 1);
 }
 
 /** Inlaid strips of light, the futuristic part: the one thing on the floor that is not dim. */
 function drawLights(t, rnd) {
   drawPlain(t, rnd);
+  const s = t.scale;
   for (const y of [14, 49]) {
-    for (let x = 6; x < 58; x++) {
-      const flicker = x > 24 && x < 31 ? 0.35 : 1;
-      t.set(x, y - 2, GLOW, 0.1 * flicker);
-      t.set(x, y + 2, GLOW, 0.1 * flicker);
-      t.set(x, y - 1, GLOW, 0.3 * flicker);
-      t.set(x, y + 1, GLOW, 0.3 * flicker);
-      t.set(x, y, mix(GLOW, [210, 230, 255], 0.25), 0.95 * flicker);
-    }
-    t.rect(4, y - 2, 2, 5, SHADOW);
-    t.rect(58, y - 2, 2, 5, SHADOW);
+    // Dark recessed steel bezel housing around each floor light strip
+    const py0 = (y - 3) * s;
+    const py1 = (y + 4) * s;
+    const px0 = 4 * s;
+    const px1 = 60 * s;
+    for (let py = py0; py < py1; py++)
+      for (let px = px0; px < px1; px++) {
+        const border = px < 6 * s || px >= 58 * s || py < py0 + 2 || py >= py1 - 2;
+        if (border) {
+          const hi = py >= py1 - 2 || px >= 58 * s;
+          t.setRaw(px, py, hi ? LIGHT : SHADOW, hi ? 0.42 : 0.92);
+          continue;
+        }
+        const lx = (px + 0.5) / s;
+        const ly = (py + 0.5) / s - 0.5;
+        const flicker = lx > 24 && lx < 31 ? 0.35 + 0.12 * Math.sin(px * 0.5) : 1;
+        const dy = Math.abs(ly - y);
+        const baffle = (px % (4 * s)) < 2;
+        if (baffle && dy < 2.2) {
+          t.setRaw(px, py, mix(SHADOW, GLOW, 0.28 * flicker), 0.88);
+          continue;
+        }
+        const core = Math.max(0, 1 - dy / 2.6);
+        const corePow = core * core;
+        const col = mix(GLOW, [220, 238, 255], corePow * 0.42);
+        const alpha = (0.12 + 0.86 * corePow) * flicker;
+        t.setRaw(px, py, col, alpha);
+      }
   }
 }
 
@@ -343,7 +721,7 @@ export function floorAtlas() {
   const height = TILE_PIXELS;
   const data = new Uint8Array(width * height * 4);
   DRAW.forEach((draw, cell) => {
-    const tile = new Tile();
+    const tile = new Tile(TILE_PIXELS, TILE_PIXELS, TILE_PIXELS / 64);
     draw(tile, mulberry32(7000 + cell * 104729));
     for (let y = 0; y < height; y++)
       for (let x = 0; x < TILE_PIXELS; x++) {
@@ -433,9 +811,10 @@ export function slimeAtlas() {
   const rnd = mulberry32(99173);
   const swirl = periodicField(rnd, 4, TILE_PIXELS);
   const fine = periodicField(rnd, 8, TILE_PIXELS);
+  const micro = periodicField(rnd, 16, TILE_PIXELS);
   for (let y = 0; y < height; y++)
     for (let x = 0; x < width; x++) {
-      const s = swirl(x, y) * 0.65 + fine(x, y) * 0.35;
+      const s = swirl(x, y) * 0.55 + fine(x, y) * 0.30 + micro(x, y) * 0.15;
       const r = Math.round(14 + s * 46);
       const g = Math.round(68 + s * 155);
       const b = Math.round(16 + s * 38);
@@ -453,7 +832,7 @@ export const ACID_MIST_FRAGMENT = acidMistShader.fragment;
 
 
 /**
- * A 64x64 futuristic quantum teleporter machine atlas: brushed titanium octagonal housing,
+ * A 256x256 futuristic quantum teleporter machine atlas: brushed titanium octagonal housing,
  * corner status beacons, radial power bus conduits, segmented magnetic stator rings, and a
  * high-energy cyan-emerald quantum phase core.
  */
@@ -463,19 +842,22 @@ export function teleporterAtlas() {
   const data = new Uint8Array(width * height * 4);
   const rnd = mulberry32(44119);
   const grain = field(rnd, 6);
+  const invScale = 64 / TILE_PIXELS;
   const cx = 31.5;
   const cy = 31.5;
 
-  for (let y = 0; y < height; y++)
-    for (let x = 0; x < width; x++) {
-      const g = grain(x, y);
+  for (let py = 0; py < height; py++)
+    for (let px = 0; px < width; px++) {
+      const x = (px + 0.5) * invScale - 0.5;
+      const y = (py + 0.5) * invScale - 0.5;
+      const g = Utils.clamp(grain(x, y) + texelMicroGrain(px, py) * 0.08, 0, 1);
       const dx = x - cx;
       const dy = y - cy;
       const ax = Math.abs(dx);
       const ay = Math.abs(dy);
       const d = scratchPt.setScalar(dx, dy).getMagnitude();
       const oct = Math.max(ax, ay, (ax + ay) * 0.7071);
-      const border = Math.min(x, y, width - 1 - x, height - 1 - y);
+      const border = Math.min(x, y, 63 - x, 63 - y);
 
       // Brushed titanium deck chassis
       let r = Math.round(24 + g * 16);
@@ -483,7 +865,7 @@ export function teleporterAtlas() {
       let b = Math.round(46 + g * 24);
 
       if (border < 3) {
-        const edge = border === 1 ? 1.38 : 0.62;
+        const edge = border >= 0.75 && border < 1.75 ? 1.38 : 0.62;
         r = Math.round(r * edge);
         gr = Math.round(gr * edge);
         b = Math.round(b * edge);
@@ -578,7 +960,7 @@ export function teleporterAtlas() {
         }
       }
 
-      const o = (y * width + x) * 4;
+      const o = (py * width + px) * 4;
       data[o] = Utils.clamp(r, 0, 255);
       data[o + 1] = Utils.clamp(gr, 0, 255);
       data[o + 2] = Utils.clamp(b, 0, 255);
@@ -738,7 +1120,7 @@ function crateCellUv(cell = 0, v0 = 0, v1 = 1) {
 }
 
 function drawCrateSideCell(t, rnd) {
-  const S = CRATE_CELL;
+  const S = 64;
   plate(t, 0, 0, S, S, rnd, mix(METAL, [24, 34, 52], 0.28));
 
   // Outer structural seam and bevel
@@ -763,13 +1145,16 @@ function drawCrateSideCell(t, rnd) {
 
   // Recessed armored cargo bay with diagonal X-bracing ribs
   t.rect(7, 10, S - 14, S - 20, mix(SHADOW, METAL, 0.28), 0.72);
-  for (let y = 11; y < S - 11; y++)
-    for (let x = 8; x < S - 8; x++) {
+  const s = t.scale;
+  for (let py = 11 * s; py < (S - 11) * s; py++)
+    for (let px = 8 * s; px < (S - 8) * s; px++) {
+      const x = (px + 0.5) / s - 0.5;
+      const y = (py + 0.5) / s - 0.5;
       const d1 = Math.abs((x - 8) - (y - 11) * ((S - 16) / (S - 22)));
       const d2 = Math.abs((S - 9 - x) - (y - 11) * ((S - 16) / (S - 22)));
       const dMin = Math.min(d1, d2);
       if (dMin < 2.2)
-        t.set(x, y, dMin < 1.1 ? mix(METAL, LIGHT, 0.38) : SHADOW, 0.85);
+        t.setRaw(px, py, dMin < 1.1 ? mix(METAL, LIGHT, 0.38) : SHADOW, 0.85);
     }
 
   // Central futuristic UAC digital manifest & cryo-containment status console
@@ -794,7 +1179,7 @@ function drawCrateSideCell(t, rnd) {
 }
 
 function drawCrateTopCell(t, rnd) {
-  const S = CRATE_CELL;
+  const S = 64;
   plate(t, 0, 0, S, S, rnd, mix(METAL, [28, 38, 56], 0.22));
   const cx = 31.5;
   const cy = 31.5;
@@ -813,18 +1198,21 @@ function drawCrateTopCell(t, rnd) {
     }
 
   // Central octagonal UAC containment seal & glowing cyan harmonic ring
-  for (let y = 16; y < S - 16; y++)
-    for (let x = 16; x < S - 16; x++) {
+  const s = t.scale;
+  for (let py = 16 * s; py < (S - 16) * s; py++)
+    for (let px = 16 * s; px < (S - 16) * s; px++) {
+      const x = (px + 0.5) / s - 0.5;
+      const y = (py + 0.5) / s - 0.5;
       const dx = x - cx;
       const dy = y - cy;
       const d = scratchPt.setScalar(dx, dy).getMagnitude();
       if (d < 13.5 && d >= 11.2)
-        t.set(x, y, SHADOW, 0.9);
+        t.setRaw(px, py, SHADOW, 0.9);
       else if (d < 11.2 && d >= 9.0)
-        t.set(x, y, [56, 232, 252], 0.88);
+        t.setRaw(px, py, [56, 232, 252], 0.88);
       else if (d < 9.0) {
         const cross = Math.min(Math.abs(dx), Math.abs(dy)) < 1.3;
-        t.set(x, y, cross ? [142, 248, 255] : [18, 28, 42], 0.92);
+        t.setRaw(px, py, cross ? [142, 248, 255] : [18, 28, 42], 0.92);
       }
     }
 
@@ -832,7 +1220,7 @@ function drawCrateTopCell(t, rnd) {
 }
 
 function drawCrateFrameCell(t, rnd) {
-  const S = CRATE_CELL;
+  const S = 64;
   plate(t, 0, 0, S, S, rnd, mix(SHADOW, METAL, 0.35));
 
   // Heavy vertical shock-absorber bumper ribs & recessed grav-lifter slots
@@ -856,7 +1244,7 @@ function drawCrateFrameCell(t, rnd) {
 }
 
 function drawCrateTrimCell(t, rnd) {
-  const S = CRATE_CELL;
+  const S = 64;
   plate(t, 0, 0, S, S, rnd, mix(METAL, LIGHT, 0.18));
 
   for (let y = 0; y < S; y++)
@@ -875,14 +1263,14 @@ function drawCrateTrimCell(t, rnd) {
 const CRATE_DRAW = [drawCrateSideCell, drawCrateTopCell, drawCrateFrameCell, drawCrateTrimCell];
 
 /**
- * Returns the 256x64 power-of-two RGBA pixel-art atlas for the 3D UAC futuristic cover crate (`o` / `PILLAR`).
+ * Returns the 1024x256 power-of-two RGBA pixel-art atlas for the 3D UAC futuristic cover crate (`o` / `PILLAR`).
  */
 export function crateAtlas() {
   const width = CRATE_CELL * CRATE_FRAMES;
   const height = CRATE_CELL;
   const data = new Uint8Array(width * height * 4);
   CRATE_DRAW.forEach((draw, cell) => {
-    const tile = new Tile(CRATE_CELL, CRATE_CELL);
+    const tile = new Tile(CRATE_CELL, CRATE_CELL, CRATE_CELL / 64);
     draw(tile, mulberry32(51000 + cell * 8831));
     for (let y = 0; y < height; y++)
       for (let x = 0; x < CRATE_CELL; x++) {
@@ -1021,9 +1409,10 @@ function periodicDirtGrain(x, y) {
 }
 
 function dirtEdgeMask(x, y, margin = 4) {
+  const S = TILE_PIXELS / 64;
   const mx = Math.min(x, TILE_PIXELS - 1 - x);
   const my = Math.min(y, TILE_PIXELS - 1 - y);
-  return Utils.smoothstep(0, margin, mx) * Utils.smoothstep(0, margin, my);
+  return Utils.smoothstep(0, margin * S, mx) * Utils.smoothstep(0, margin * S, my);
 }
 
 function wrapDirtCoord(v) {
@@ -1031,23 +1420,25 @@ function wrapDirtCoord(v) {
 }
 
 function createSharedDirtTile() {
+  const S = TILE_PIXELS / 64;
   const baseRnd = mulberry32(41000);
   const warpX = periodicField(baseRnd, 3, TILE_PIXELS);
   const warpY = periodicField(baseRnd, 3, TILE_PIXELS);
   const coarse = periodicField(baseRnd, 3, TILE_PIXELS);
   const medium = periodicField(baseRnd, 6, TILE_PIXELS);
   const fine = periodicField(baseRnd, 12, TILE_PIXELS);
+  const micro = periodicField(baseRnd, 24, TILE_PIXELS);
   const tile = new Tile();
 
   for (let y = 0; y < TILE_PIXELS; y++)
     for (let x = 0; x < TILE_PIXELS; x++) {
       // Domain-warped periodic coordinates so the base regolith has organic patches with zero linear stripes
-      const wx = x + (warpX(x, y) - 0.5) * 20;
-      const wy = y + (warpY(x, y) - 0.5) * 20;
+      const wx = x + (warpX(x, y) - 0.5) * 20 * S;
+      const wy = y + (warpY(x, y) - 0.5) * 20 * S;
       const c = coarse(wx, wy);
-      const m = medium(wx + 11, wy + 7);
-      const f = fine(x, y);
-      const ridge = 1 - Math.abs((coarse(wx + 23, wy + 37) - 0.5) * 2);
+      const m = medium(wx + 11 * S, wy + 7 * S);
+      const f = fine(x, y) * 0.72 + micro(x, y) * 0.28;
+      const ridge = 1 - Math.abs((coarse(wx + 23 * S, wy + 37 * S) - 0.5) * 2);
       const shade = c * 0.45 + m * 0.35 + f * 0.2;
       let col = mix(MARS_DIRT_SHADOW, MARS_DIRT_BASE, Utils.clamp(shade * 1.15, 0, 1));
       col = mix(col, MARS_DIRT_LIGHT, ridge * 0.4 + (f - 0.5) * 0.24);
@@ -1057,12 +1448,12 @@ function createSharedDirtTile() {
       tile.set(x, y, [col[0] + grain, col[1] + grain * 0.7, col[2] + grain * 0.45]);
     }
 
-  // Modulo-wrapped pebbles across the entire 64x64 tile (no empty border corridor)
-  for (let k = 0; k < 20; k++) {
+  // Modulo-wrapped pebbles across the entire 256x256 tile (no empty border corridor)
+  for (let k = 0; k < 20 * S; k++) {
     const px = baseRnd() * TILE_PIXELS;
     const py = baseRnd() * TILE_PIXELS;
-    const rx = 1.1 + baseRnd() * 2.3;
-    const ry = 0.9 + baseRnd() * 1.9;
+    const rx = (1.1 + baseRnd() * 2.3) * S;
+    const ry = (0.9 + baseRnd() * 1.9) * S;
     const basalt = baseRnd() < 0.45;
     const rockCol = basalt ? mix(MARS_BASALT, MARS_DIRT_BASE, 0.25) : mix(MARS_DIRT_BASE, MARS_DIRT_LIGHT, 0.5);
     const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
@@ -1094,11 +1485,12 @@ function drawMarsRegolithBase(t) {
 }
 
 function scatterMarsPebbles(t, rnd, count, maxRadius = 3.0) {
+  const S = TILE_PIXELS / 64;
   for (let k = 0; k < count; k++) {
-    const px = 6 + rnd() * (TILE_PIXELS - 12);
-    const py = 6 + rnd() * (TILE_PIXELS - 12);
-    const rx = 1.1 + rnd() * maxRadius;
-    const ry = 0.9 + rnd() * (maxRadius * 0.85);
+    const px = 6 * S + rnd() * (TILE_PIXELS - 12 * S);
+    const py = 6 * S + rnd() * (TILE_PIXELS - 12 * S);
+    const rx = (1.1 + rnd() * maxRadius) * S;
+    const ry = (0.9 + rnd() * (maxRadius * 0.85)) * S;
     const basalt = rnd() < 0.45;
     const rockCol = basalt ? mix(MARS_BASALT, MARS_DIRT_BASE, 0.25) : mix(MARS_DIRT_BASE, MARS_DIRT_LIGHT, 0.5);
     const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
@@ -1141,6 +1533,7 @@ function drawMarsPlain(t, rnd) {
 }
 
 function drawMarsDunes(t, rnd) {
+  const S = TILE_PIXELS / 64;
   drawMarsRegolithBase(t);
   const warpX = periodicField(rnd, 3, TILE_PIXELS);
   const warpY = periodicField(rnd, 3, TILE_PIXELS);
@@ -1150,8 +1543,8 @@ function drawMarsDunes(t, rnd) {
       const mask = dirtEdgeMask(x, y, 5);
       if (mask <= 0.01)
         continue;
-      const wx = x + (warpX(x, y) - 0.5) * 22;
-      const wy = y + (warpY(x, y) - 0.5) * 22;
+      const wx = x + (warpX(x, y) - 0.5) * 22 * S;
+      const wy = y + (warpY(x, y) - 0.5) * 22 * S;
       const ridge = 1 - Math.abs((crest(wx, wy) - 0.5) * 2);
       if (ridge > 0.62)
         t.set(x, y, MARS_DIRT_OCHRE, (ridge - 0.62) * 1.45 * mask);
@@ -1162,10 +1555,12 @@ function drawMarsDunes(t, rnd) {
 }
 
 function drawMarsCrater(t, rnd) {
+  const S = TILE_PIXELS / 64;
   drawMarsRegolithBase(t);
-  const cx = 31.5 + (rnd() - 0.5) * 8;
-  const cy = 31.5 + (rnd() - 0.5) * 8;
-  const rOuter = 20;
+  const cx = (31.5 + (rnd() - 0.5) * 8) * S;
+  const cy = (31.5 + (rnd() - 0.5) * 8) * S;
+  const rOuter = 20 * S;
+  const rimWidth = 4.5 * S;
   const wobble = periodicField(rnd, 4, TILE_PIXELS);
   for (let y = 0; y < TILE_PIXELS; y++)
     for (let x = 0; x < TILE_PIXELS; x++) {
@@ -1174,12 +1569,12 @@ function drawMarsCrater(t, rnd) {
         continue;
       const dx = x - cx;
       const dy = y - cy;
-      const d = scratchPt.setScalar(dx, dy).getMagnitude() + (wobble(x, y) - 0.5) * 3.8;
-      if (d < rOuter && d >= rOuter - 4.5) {
+      const d = scratchPt.setScalar(dx, dy).getMagnitude() + (wobble(x, y) - 0.5) * 3.8 * S;
+      if (d < rOuter && d >= rOuter - rimWidth) {
         const lit = (dx + dy) < 0 ? MARS_DIRT_OCHRE : MARS_DIRT_SHADOW;
         t.set(x, y, lit, 0.52 * mask);
-      } else if (d < rOuter - 4.5) {
-        const depth = 1 - d / (rOuter - 4.5);
+      } else if (d < rOuter - rimWidth) {
+        const depth = 1 - d / (rOuter - rimWidth);
         const bowl = (dx + dy) > 0 ? MARS_DIRT_LIGHT : MARS_DIRT_SHADOW;
         t.set(x, y, mix(MARS_DIRT_SHADOW, bowl, 0.35), (0.38 + depth * 0.45) * mask);
       }
@@ -1188,6 +1583,7 @@ function drawMarsCrater(t, rnd) {
 }
 
 function drawMarsBasaltPatch(t, rnd) {
+  const S = TILE_PIXELS / 64;
   drawMarsRegolithBase(t);
   const patch = periodicField(rnd, 3, TILE_PIXELS);
   const detail = periodicField(rnd, 8, TILE_PIXELS);
@@ -1199,7 +1595,7 @@ function drawMarsBasaltPatch(t, rnd) {
       const m = patch(x, y) * 0.75 + detail(x, y) * 0.25;
       if (m > 0.52) {
         const edge = Math.min(1, (m - 0.52) * 4.8) * mask;
-        const strata = detail(x + 13, y + 7) > 0.55 ? MARS_DIRT_SHADOW : MARS_BASALT;
+        const strata = detail(x + 13 * S, y + 7 * S) > 0.55 ? MARS_DIRT_SHADOW : MARS_BASALT;
         t.set(x, y, mix(MARS_DIRT_BASE, strata, 0.75), edge * 0.86);
       }
     }
@@ -1207,6 +1603,7 @@ function drawMarsBasaltPatch(t, rnd) {
 }
 
 function drawMarsCrackedClay(t, rnd) {
+  const S = TILE_PIXELS / 64;
   drawMarsRegolithBase(t);
   const basin = periodicField(rnd, 3, TILE_PIXELS);
   for (let y = 0; y < TILE_PIXELS; y++)
@@ -1216,32 +1613,41 @@ function drawMarsCrackedClay(t, rnd) {
         t.set(x, y, mix(MARS_DIRT_BASE, MARS_DIRT_OCHRE, 0.38), (basin(x, y) - 0.48) * 1.1 * mask);
     }
   for (let c = 0; c < 5; c++) {
-    let x = 10 + Math.floor(rnd() * 44);
-    let y = 6;
-    while (y < TILE_PIXELS - 6) {
-      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.8), 7, TILE_PIXELS - 8);
+    let x = (10 + Math.floor(rnd() * 44)) * S;
+    let y = 6 * S;
+    while (y < TILE_PIXELS - 6 * S) {
+      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.8), 7 * S, TILE_PIXELS - 8 * S);
       y += 1;
       const mask = dirtEdgeMask(x, y, 5);
       t.set(x, y, MARS_DIRT_SHADOW, 0.88 * mask);
+      t.set(x - 1, y, MARS_DIRT_SHADOW, 0.55 * mask);
       t.set(x + 1, y, MARS_DIRT_OCHRE, 0.36 * mask);
+      t.set(x + 2, y, MARS_DIRT_OCHRE, 0.22 * mask);
     }
   }
   scatterMarsPebbles(t, rnd, 11, 2.3);
 }
 
 function drawMarsRuts(t, rnd) {
+  const S = TILE_PIXELS / 64;
   drawMarsRegolithBase(t);
   const bendField = periodicField(rnd, 3, TILE_PIXELS);
-  for (const y0 of [20, 44])
-    for (let x = 5; x < TILE_PIXELS - 5; x++) {
+  for (const y0 of [20 * S, 44 * S])
+    for (let x = 5 * S; x < TILE_PIXELS - 5 * S; x++) {
       const mask = dirtEdgeMask(x, y0, 5);
-      const bend = Math.round((bendField(x, y0) - 0.5) * 10);
-      const yc = Utils.clamp(y0 + bend, 7, TILE_PIXELS - 8);
-      t.set(x, yc - 2, MARS_DIRT_OCHRE, 0.42 * mask);
-      t.set(x, yc - 1, MARS_DIRT_SHADOW, 0.68 * mask);
-      t.set(x, yc, MARS_DIRT_SHADOW, 0.82 * mask);
-      t.set(x, yc + 1, MARS_DIRT_BASE, 0.52 * mask);
-      t.set(x, yc + 2, MARS_DIRT_OCHRE, 0.38 * mask);
+      const bend = Math.round((bendField(x, y0) - 0.5) * 10 * S);
+      const yc = Utils.clamp(y0 + bend, 7 * S, TILE_PIXELS - 8 * S);
+      for (let dy = -2 * S; dy <= 2 * S; dy++) {
+        const u = dy / S;
+        if (u < -1.2)
+          t.set(x, yc + dy, MARS_DIRT_OCHRE, 0.42 * mask);
+        else if (u < 0.4)
+          t.set(x, yc + dy, MARS_DIRT_SHADOW, (u < -0.3 ? 0.68 : 0.82) * mask);
+        else if (u < 1.3)
+          t.set(x, yc + dy, MARS_DIRT_BASE, 0.52 * mask);
+        else
+          t.set(x, yc + dy, MARS_DIRT_OCHRE, 0.38 * mask);
+      }
     }
   scatterMarsPebbles(t, rnd, 14, 2.5);
 }
@@ -1264,16 +1670,21 @@ function drawMarsThreshold(t, rnd) {
 }
 
 function drawMarsFissure(t, rnd) {
+  const S = TILE_PIXELS / 64;
   drawMarsRegolithBase(t);
-  let y = 24 + Math.floor(rnd() * 16);
-  for (let x = 6; x < TILE_PIXELS - 6; x++) {
-    y = Utils.clamp(y + Math.round((rnd() - 0.5) * 2.2), 10, TILE_PIXELS - 10);
+  let y = (24 + Math.floor(rnd() * 16)) * S;
+  for (let x = 6 * S; x < TILE_PIXELS - 6 * S; x++) {
+    y = Utils.clamp(y + Math.round((rnd() - 0.5) * 2.2), 10 * S, TILE_PIXELS - 10 * S);
     const mask = dirtEdgeMask(x, y, 5);
-    t.set(x, y - 2, MARS_DIRT_SHADOW, 0.68 * mask);
-    t.set(x, y - 1, [220, 88, 24], 0.55 * mask);
-    t.set(x, y, [255, 142, 42], 0.82 * mask);
-    t.set(x, y + 1, [220, 88, 24], 0.55 * mask);
-    t.set(x, y + 2, MARS_DIRT_SHADOW, 0.68 * mask);
+    for (let dy = -2 * S; dy <= 2 * S; dy++) {
+      const ad = Math.abs(dy) / S;
+      if (ad < 0.55)
+        t.set(x, y + dy, [255, 142, 42], 0.82 * mask);
+      else if (ad < 1.35)
+        t.set(x, y + dy, [220, 88, 24], 0.55 * mask);
+      else
+        t.set(x, y + dy, MARS_DIRT_SHADOW, 0.68 * mask);
+    }
   }
   scatterMarsPebbles(t, rnd, 12, 2.4);
 }
@@ -1290,7 +1701,7 @@ const MARS_DIRT_DRAW = [
 ];
 
 /**
- * 8-cell 512x64 procedural Martian surface dirt atlas for outdoor planet tiles (`planet: 'mars'`).
+ * 8-cell 2048x256 procedural Martian surface dirt atlas for outdoor planet tiles (`planet: 'mars'`).
  * Replaces steel deck plates with wind-rippled iron-oxide regolith, sand dunes, basalt scree, craters, and parched cracks.
  */
 export function marsDirtAtlas() {
@@ -1327,11 +1738,13 @@ const BOULDER_HIGHLIGHT = [228, 134, 64];
 
 function drawBoulderCell(t, rnd, variant) {
   const S = TILE_PIXELS;
+  const Scale = S / 64;
   const warpX = periodicField(rnd, 3, S);
   const warpY = periodicField(rnd, 3, S);
   const coarse = periodicField(rnd, 3, S);
   const medium = periodicField(rnd, 6, S);
   const fine = periodicField(rnd, 12, S);
+  const micro = periodicField(rnd, 24, S);
   // Subtle directional brightness per cell so 3D boulder faces have natural volume while matching the floor palette
   const shadeScale = variant === MARS_BOULDER_CELLS.crag
     ? 1.06
@@ -1342,12 +1755,12 @@ function drawBoulderCell(t, rnd, variant) {
         : 1.10;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const wx = x + (warpX(x, y) - 0.5) * 20;
-      const wy = y + (warpY(x, y) - 0.5) * 20;
+      const wx = x + (warpX(x, y) - 0.5) * 20 * Scale;
+      const wy = y + (warpY(x, y) - 0.5) * 20 * Scale;
       const c = coarse(wx, wy);
-      const m = medium(wx + 11, wy + 7);
-      const f = fine(x, y);
-      const ridge = 1 - Math.abs((coarse(wx + 23, wy + 37) - 0.5) * 2);
+      const m = medium(wx + 11 * Scale, wy + 7 * Scale);
+      const f = fine(x, y) * 0.72 + micro(x, y) * 0.28;
+      const ridge = 1 - Math.abs((coarse(wx + 23 * Scale, wy + 37 * Scale) - 0.5) * 2);
       const shade = c * 0.45 + m * 0.35 + f * 0.2;
       let col = mix(MARS_DIRT_SHADOW, MARS_DIRT_BASE, Utils.clamp(shade * 1.15, 0, 1));
       col = mix(col, MARS_DIRT_LIGHT, ridge * 0.4 + (f - 0.5) * 0.24);
@@ -1363,14 +1776,14 @@ function drawBoulderCell(t, rnd, variant) {
     }
   scatterMarsPebbles(t, rnd, 16, 2.5);
   // Ensure full dynamic range for boulder crevices and sunlit lips
-  t.set(16, 16, BOULDER_ABYSS, 0.9);
-  t.set(17, 16, BOULDER_HIGHLIGHT, 0.9);
+  t.set(16 * Scale, 16 * Scale, BOULDER_ABYSS, 0.9);
+  t.set(17 * Scale, 16 * Scale, BOULDER_HIGHLIGHT, 0.9);
 }
 
 export const MARS_ROCK_FRAGMENT = MARS_DIRT_FRAGMENT;
 
 /**
- * 256x64 4-cell procedural Martian rock boulder atlas (`crag`, `strata`, `scoured`, `cap`)
+ * 1024x256 4-cell procedural Martian rock boulder atlas (`crag`, `strata`, `scoured`, `cap`)
  * for outdoor rock cover outcrops (`o` / `PILLAR`) on `planet: 'mars'`.
  */
 export function marsBoulderAtlas() {

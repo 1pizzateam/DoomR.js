@@ -43,11 +43,11 @@
     "eyeSquintR": 0.65,
     "cheekSquintL": 0.72,
     "cheekSquintR": 0.72,
-    "mouthSmileL": 0.95,
-    "mouthSmileR": 0.95,
-    "mouthUpperUpL": 0.35,
-    "mouthUpperUpR": 0.35,
-    "jawOpen": 0.28
+    "mouthSmileL": 0.85,
+    "mouthSmileR": 0.85,
+    "mouthUpperUpL": 0.14,
+    "mouthUpperUpR": 0.14,
+    "jawOpen": 0.1
    },
    "headEulerOffset": [
     -0.05,
@@ -561,11 +561,11 @@
     "eyeSquintR": 0.68,
     "cheekSquintL": 0.78,
     "cheekSquintR": 0.78,
-    "mouthSmileL": 0.96,
-    "mouthSmileR": 0.96,
-    "mouthUpperUpL": 0.42,
-    "mouthUpperUpR": 0.42,
-    "jawOpen": 0.25
+    "mouthSmileL": 0.86,
+    "mouthSmileR": 0.86,
+    "mouthUpperUpL": 0.16,
+    "mouthUpperUpR": 0.16,
+    "jawOpen": 0.08
    },
    "headEuler": [
     -0.06,

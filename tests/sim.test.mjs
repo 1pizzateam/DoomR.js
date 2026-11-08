@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Circ, Mat4, Rect } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
-import { ACID_PIT_DEPTH, CACHE_LID_TIME, CACHE_OUTDOOR_LINK, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
+import { ACID_PIT_DEPTH, ACID_SURFACE_DEPTH, CACHE_LID_TIME, CACHE_OUTDOOR_LINK, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
 import { BLOOD, Blood, makeFeet } from '../src/blood.js';
 import { DUCK_FLOOR, RECIPES, Sound, spatial } from '../src/audio.js';
@@ -3252,9 +3252,9 @@ const tests = {
       let r = 0;
       let b = 0;
       let hash = 0;
-      for (let y = 0; y < 64; y++) {
-        for (let x = 0; x < 64; x++) {
-          const o = (y * atlas.width + cell * 64 + x) * 4;
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const o = (y * atlas.width + cell * TILE_PIXELS + x) * 4;
           assert.equal(atlas.data[o + 3], 255);
           r += atlas.data[o];
           b += atlas.data[o + 2];
@@ -3265,8 +3265,9 @@ const tests = {
       signatures.add(hash);
     }
     assert.equal(signatures.size, CEILING_CELL_COUNT, 'every ceiling cell has a unique pixel-art pattern');
-    const light = (y, x) => atlas.data[(y * atlas.width + CEILING_CELLS.light * 64 + x) * 4 + 2];
-    assert.ok(light(32, 30) > 150, 'a light fixture is bright');
+    const light = (y, x) => atlas.data[(y * atlas.width + CEILING_CELLS.light * TILE_PIXELS + x) * 4 + 2];
+    const s = TILE_PIXELS / 64;
+    assert.ok(light(32 * s, 30 * s) > 150, 'a light fixture is bright');
     assert.equal(ceilingCellFor(2, 3), CEILING_CELLS.light);
     assert.equal(ceilingCellFor(7, 3), CEILING_CELLS.light, 'fixtures repeat every five by four tiles');
     assert.notEqual(ceilingCellFor(2, 2), CEILING_CELLS.light, 'adjacent rows are not crowded with light fixtures');
@@ -3287,13 +3288,13 @@ const tests = {
     const atlas = wallAtlas();
     const pow2 = (n) => (n & (n - 1)) === 0;
     assert.ok(pow2(atlas.width) && pow2(atlas.height), 'a power-of-two atlas can have mipmaps');
-    assert.equal(atlas.width, 64 * WALL_CELL_COUNT);
+    assert.equal(atlas.width, TILE_PIXELS * WALL_CELL_COUNT);
     for (let cell = 0; cell < WALL_CELL_COUNT; cell++) {
       let r = 0;
       let b = 0;
-      for (let y = 0; y < 64; y++) {
-        for (let x = 0; x < 64; x++) {
-          const o = (y * atlas.width + cell * 64 + x) * 4;
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const o = (y * atlas.width + cell * TILE_PIXELS + x) * 4;
           assert.equal(atlas.data[o + 3], 255);
           r += atlas.data[o];
           b += atlas.data[o + 2];
@@ -3414,11 +3415,11 @@ const tests = {
     const atlas = doorAtlas();
     const pow2 = (n) => (n & (n - 1)) === 0;
     assert.ok(pow2(atlas.width) && pow2(atlas.height), 'a power-of-two atlas can have mipmaps');
-    assert.equal(atlas.width, 64 * DOOR_CELLS);
+    assert.equal(atlas.width, TILE_PIXELS * DOOR_CELLS);
     let green = 0;
     let rusty = 0;
-    for (let y = 0; y < 64; y++) {
-      for (let x = 0; x < 64; x++) {
+    for (let y = 0; y < TILE_PIXELS; y++) {
+      for (let x = 0; x < TILE_PIXELS; x++) {
         const o = (y * atlas.width + x) * 4;
         assert.equal(atlas.data[o + 3], 255, 'a door has no holes in it');
         if (atlas.data[o + 1] > atlas.data[o] * 1.6 && atlas.data[o + 1] > atlas.data[o + 2] * 1.2)
@@ -3468,7 +3469,7 @@ const tests = {
   'AC-4 doorBox preserves legacy vertex positions and UVs'() {
     const { vertices, uvs } = doorBox(new Vec2(64, 64));
     assert.deepEqual(vertices.slice(0, 3), [-32, 0, 32]);
-    const inset = 0.25 / (64 * DOOR_CELLS);
+    const inset = 0.25 / (TILE_PIXELS * DOOR_CELLS);
     assert.ok(Math.abs(uvs[0] - inset) < 1e-9);
     assert.equal(uvs[1], 0);
     assert.ok(Math.abs(uvs[2] - (1 / DOOR_CELLS - inset)) < 1e-9);
@@ -4139,6 +4140,7 @@ const tests = {
       run(game, 0.7, input({ forward: 1 }));
       assert.equal(game.player.z, -ACID_PIT_DEPTH, 'walking off the deck falls onto the pit floor');
       assert.equal(game.player.eye, EYE - ACID_PIT_DEPTH, 'camera follows the descent');
+      assert.ok(ACID_PIT_DEPTH >= 24 && game.player.eye <= 8, 'acid pit is deep enough to drop eye near deck level');
       const entered = game.player.pos.clone();
       run(game, 1, input({ forward: 1, run: true }));
       assert.ok(game.player.pos.getDistance(entered) > 20, 'movement continues between adjacent acid tiles');
@@ -4238,18 +4240,67 @@ const tests = {
       assert.equal(acid.mesh.used, 9, 'one recessed surface per acid tile, with no gaps inside the pool');
       assert.equal(acid.vertex, FLOOR_VERTEX);
       for (let i = 1; i < acid.mesh.used * 18; i += 3)
-        assert.ok(Math.abs(acid.mesh.vertices[i] + ACID_PIT_DEPTH + 0.35) < 1e-5, 'surface matches the gameplay pit depth');
+        assert.ok(Math.abs(acid.mesh.vertices[i] + ACID_SURFACE_DEPTH + 0.35) < 1e-5, 'surface stays at acid surface depth');
       for (const { mesh } of floors)
         for (let i = 1; i < mesh.used * 18; i += 3)
           assert.ok(Math.abs(mesh.vertices[i] + 0.2) < 1e-5, 'ordinary floor stays at deck height');
       const sides = programs.filter(({ fragment }) => fragment === LINE_FRAGMENT);
-      assert.ok(sides.some(({ mesh }) => Array.from(mesh.vertices).some((value, i) => i % 3 === 1 && value < -ACID_PIT_DEPTH)), 'pit edges are closed below the deck');
+      assert.ok(sides.some(({ mesh }) => Array.from(mesh.vertices).some((value, i) => i % 3 === 1 && value < -ACID_SURFACE_DEPTH)), 'pit edges are closed below the deck');
       assert.match(acid.fragment, /uniform float uTime;/);
       assert.match(acid.fragment, /sin\([^;]*uTime/);
       assert.equal(acid.mesh.customUniforms.time.value, 0, 'animation time is registered');
       acid.mesh.setCustomUniform('time', 2);
       assert.equal(acid.mesh.customUniforms.time.value, 2, 'animation time remains updateable');
     });
+  },
+
+  'enemies fall into acid pits instead of walking above them and render at pit depth'() {
+    const game = acidPitGame();
+    game.player.body.setPosition(new Vec2(416, 224));
+    const enemy = game.addEnemy('brute', new Vec2(160, 224));
+    enemy.state = 'chase';
+    enemy.los = true;
+    assert.equal(enemy.z, 0);
+
+    // Enemy walks east off the deck (x=160) into the 3x3 acid pit (x in [192, 384])
+    run(game, 0.5);
+    assert.ok(enemy.pos.x > 192 + enemy.def.radius, 'enemy crosses the pit edge into the acid pool');
+    assert.ok(enemy.z < 0, 'enemy begins falling into the acid pit');
+    run(game, 0.5);
+    assert.equal(enemy.z, -ACID_PIT_DEPTH, 'enemy lands on the recessed acid pit floor');
+    assert.equal(enemy.inSlime, true, 'enemy in the acid pit is marked inSlime');
+
+    // Once down in the pit, the enemy cannot climb back out across the east pit ledge (x = 384)
+    run(game, 1.5);
+    assert.ok(enemy.pos.x <= 384 - enemy.def.radius, 'enemy in acid pit cannot walk up the vertical pit wall onto the deck');
+    assert.equal(enemy.z, -ACID_PIT_DEPTH);
+
+    // 3D view root follows enemy.z both while alive and while dying/dissolving in acid
+    const mockWorld = {
+      gl: null,
+      scene: { addMesh() {} },
+      material() { return new Material({ red: 1, green: 0.5, blue: 0 }); },
+      monsterPartMesh(geo, _atlas, material) {
+        const m = new Mesh(null, geo, material);
+        m.setCustomUniform = () => {};
+        return m;
+      },
+      sharedTexture() { return null; },
+    };
+    const view = MONSTERS.brute.build(mockWorld, enemy);
+    World.prototype.updateEnemy.call(mockWorld, enemy, view, game.player, 1.0, game);
+    assert.ok(
+      Math.abs(view.root.position.y - (enemy.z + view.lift * view.scale)) < 1e-5,
+      'living enemy 3D root position includes enemy.z in the acid pit'
+    );
+
+    enemy.state = 'dead';
+    enemy.deadTime = 0.25;
+    World.prototype.updateEnemy.call(mockWorld, enemy, view, game.player, 1.25, game);
+    assert.ok(
+      Math.abs(view.root.position.y - enemy.z) < 1e-5,
+      'dying enemy 3D root position stays at enemy.z in the acid pit'
+    );
   },
 
   'issue-181 AC-1 acid mist batch layers cover every acid tile'() {
@@ -4259,19 +4310,35 @@ const tests = {
       const acid = programs.find(({ fragment }) => fragment === SLIME_FRAGMENT);
       assert.ok(mist, 'mist batch is built');
       assert.equal(mist.vertex, FLOOR_VERTEX);
-      assert.ok(mist.mesh.used >= 27, '3 layers x 9 tiles plus rim curtains');
+      assert.ok(mist.mesh.used >= 45, '3 horizontal layers + 2 crossed fume plumes x 9 tiles plus rim curtains');
       assert.equal(acid.mesh.used, 9, 'acid surface batch is unchanged');
+      const quadSeeds = new Set();
+      for (let q = 0; q < mist.mesh.used; q++) {
+        const u0 = Math.floor(mist.mesh.uvs[q * 12]);
+        const v0 = Math.floor(mist.mesh.uvs[q * 12 + 1]);
+        quadSeeds.add(`${u0}:${v0}`);
+      }
+      assert.ok(quadSeeds.size > 30, 'acid mist quads carry distinct randomized UV seeds across tiles and plumes');
     });
   },
 
-  'issue-181 AC-2 acid mist stays below the deck and above the acid'() {
+  'issue-181 AC-2 acid mist stays above the acid and rises slightly above the deck'() {
     const game = acidPitGame();
     withMistWorld(game, (world, programs) => {
       const mist = programs.find(({ fragment }) => fragment === ACID_MIST_FRAGMENT);
+      let hasBelowDeck = false;
+      let hasAboveDeck = false;
       for (let i = 1; i < mist.mesh.used * 18; i += 3) {
-        assert.ok(mist.mesh.vertices[i] < -0.2 - 1e-3, 'below the deck plane');
-        assert.ok(mist.mesh.vertices[i] > -ACID_PIT_DEPTH - 0.35, 'above the acid surface');
+        const y = mist.mesh.vertices[i];
+        assert.ok(y <= 6.0, 'fumes stay slightly above the deck plane');
+        assert.ok(y > -ACID_SURFACE_DEPTH - 0.35, 'above the acid surface');
+        if (y < -0.2 - 1e-3)
+          hasBelowDeck = true;
+        if (y > 0)
+          hasAboveDeck = true;
       }
+      assert.ok(hasBelowDeck, 'recessed horizontal mist layers sit below the deck');
+      assert.ok(hasAboveDeck, 'upward fume plumes and rim curtains rise slightly above the deck');
     });
   },
 
@@ -4281,6 +4348,7 @@ const tests = {
       const mist = programs.find(({ fragment }) => fragment === ACID_MIST_FRAGMENT);
       assert.match(mist.fragment, /uniform float uTime;/);
       assert.match(mist.fragment, /uTime\s*\*/);
+      assert.ok(mist.fragment.includes('floor(vTextureCoord)') && mist.fragment.includes('fract(vTextureCoord)'));
       assert.ok(mist.fragment.includes('uHasFog') && mist.fragment.includes('uFogColor'));
       assert.ok(mist.fragment.includes('uFogNear') && mist.fragment.includes('uFogFar'));
       assert.ok(mist.fragment.includes('surfaceLight('));
@@ -4797,12 +4865,13 @@ const tests = {
       assert.ok(pow2(ka.width) && pow2(ka.height), `${color} keycard atlas is power-of-two`);
 
       const da = lockedDoorAtlas(color);
-      assert.equal(da.width, 64 * DOOR_CELLS);
-      assert.equal(da.height, 64);
+      assert.equal(da.width, TILE_PIXELS * DOOR_CELLS);
+      assert.equal(da.height, TILE_PIXELS);
       assert.ok(pow2(da.width) && pow2(da.height), `${color} locked door atlas is power-of-two`);
+      const s = TILE_PIXELS / 64;
       let coloredRail = 0;
       for (let y = 14; y < 50; y++) {
-        const o = (y * da.width + 28) * 4;
+        const o = (y * s * da.width + 28 * s) * 4;
         const r = da.data[o];
         const g = da.data[o + 1];
         const b = da.data[o + 2];
@@ -7776,7 +7845,7 @@ const tests = {
     assert.ok(composition.includes('color = mix(color * uMaterialDiffuse, fogCol, skyFog);'), 'fog remains composited into the final sky color');
     assert.ok(composition.includes(`gl_FragColor = vec4(color, ${SOLID_ALPHA});`), 'the composed sky reaches the fragment output');
     const panorama = marsSkyAtlas({ includeMoons: false });
-    const sunIdx = (60 * panorama.width + 224) * 4;
+    const sunIdx = (120 * panorama.width + 448) * 4;
     assert.ok(panorama.data[sunIdx] > 235 && panorama.data[sunIdx + 1] > 190, 'the moon-free panorama retains its bright hazy sun');
   },
 
@@ -7818,8 +7887,8 @@ const tests = {
     assert.ok(MARS_DIRT_FRAGMENT.includes('uSampler'), 'MARS_DIRT_FRAGMENT samples the Martian dirt atlas');
 
     const rock = marsRockAtlas();
-    assert.equal(rock.width, 64 * WALL_CELL_COUNT, 'marsRockAtlas is 512 px wide (8 cells)');
-    assert.equal(rock.height, 64, 'marsRockAtlas is 64 px tall');
+    assert.equal(rock.width, TILE_PIXELS * WALL_CELL_COUNT, 'marsRockAtlas is 2048 px wide (8 cells)');
+    assert.equal(rock.height, TILE_PIXELS, 'marsRockAtlas is 256 px tall');
     // Verify warm iron-oxide orange/red dominance in both dirt and rock atlases (avg R > avg G > avg B)
     let dirtR = 0;
     let dirtG = 0;
@@ -7939,11 +8008,11 @@ const tests = {
     assert.equal(sky.data[horizonIdx], 117, 'bottom horizon row matches MARS_SKY_VEC red channel');
     assert.equal(sky.data[horizonIdx + 1], 46, 'bottom horizon row matches MARS_SKY_VEC green channel');
     assert.equal(sky.data[horizonIdx + 2], 15, 'bottom horizon row matches MARS_SKY_VEC blue channel');
-    // Pale hazy sun at (224, 60) and twin moons Phobos (632, 92) & Deimos (836, 104) stand out brightly against the upper sky
-    const sunIdx = (60 * sky.width + 224) * 4;
-    const phobosIdx = ((PHOBOS_CENTER.y - 6) * sky.width + (PHOBOS_CENTER.x - 10)) * 4;
-    const deimosIdx = ((DEIMOS_CENTER.y - 2) * sky.width + (DEIMOS_CENTER.x - 4)) * 4;
-    const ambientUpperIdx = (PHOBOS_CENTER.y * sky.width + 440) * 4;
+    // Pale hazy sun at (448, 120) and twin moons Phobos (1264, 184) & Deimos (1672, 208) stand out brightly against the upper sky
+    const sunIdx = (120 * sky.width + 448) * 4;
+    const phobosIdx = ((PHOBOS_CENTER.y - 12) * sky.width + (PHOBOS_CENTER.x - 20)) * 4;
+    const deimosIdx = ((DEIMOS_CENTER.y - 4) * sky.width + (DEIMOS_CENTER.x - 8)) * 4;
+    const ambientUpperIdx = (PHOBOS_CENTER.y * sky.width + 880) * 4;
     assert.ok(sky.data[sunIdx] > 235 && sky.data[sunIdx + 1] > 190, 'pale hazy Martian sun core is bright butterscotch-white');
     assert.ok(sky.data[phobosIdx] > sky.data[ambientUpperIdx] + 35, 'Phobos moon disc stands out against the rust sky');
     assert.ok(sky.data[deimosIdx] > sky.data[ambientUpperIdx] + 25, 'Deimos moon disc stands out against the rust sky');
@@ -7956,15 +8025,15 @@ const tests = {
     assert.equal(phobosDirTargeted, dirTarget, 'skyPixelDir writes into the provided target Vec3');
     assert.ok(Math.abs(phobosDirDefault.getMagnitude() - 1) < 1e-6, 'skyPixelDir returns a normalized 3D unit vector');
     assert.ok(phobosDirDefault.equals(phobosDirTargeted), 'skyPixelDir default and target-allocated calls match');
-    const phobosWestDir = skyPixelDir(new Vec2(PHOBOS_CENTER.x - 13, PHOBOS_CENTER.y));
-    const phobosNorthDir = skyPixelDir(new Vec2(PHOBOS_CENTER.x, PHOBOS_CENTER.y - 34));
+    const phobosWestDir = skyPixelDir(new Vec2(PHOBOS_CENTER.x - 26, PHOBOS_CENTER.y));
+    const phobosNorthDir = skyPixelDir(new Vec2(PHOBOS_CENTER.x, PHOBOS_CENTER.y - 68));
     assert.ok(phobosWestDir.getAngle(phobosDirDefault) < PHOBOS_ANGULAR_RADIUS, 'Phobos western limb lies within spherical PHOBOS_ANGULAR_RADIUS');
-    assert.ok(phobosNorthDir.getAngle(phobosDirDefault) < PHOBOS_ANGULAR_RADIUS, 'Phobos northern limb (aspect-corrected dy = -34) lies within spherical PHOBOS_ANGULAR_RADIUS');
-    const phobosNorthIdx = ((PHOBOS_CENTER.y - 30) * sky.width + PHOBOS_CENTER.x) * 4;
-    const ambientNorthIdx = ((PHOBOS_CENTER.y - 30) * sky.width + 440) * 4;
+    assert.ok(phobosNorthDir.getAngle(phobosDirDefault) < PHOBOS_ANGULAR_RADIUS, 'Phobos northern limb (aspect-corrected dy = -68) lies within spherical PHOBOS_ANGULAR_RADIUS');
+    const phobosNorthIdx = ((PHOBOS_CENTER.y - 60) * sky.width + PHOBOS_CENTER.x) * 4;
+    const ambientNorthIdx = ((PHOBOS_CENTER.y - 60) * sky.width + 880) * 4;
     assert.ok(sky.data[phobosNorthIdx] > sky.data[ambientNorthIdx] + 25, 'Phobos is aspect-corrected vertically in the atlas so it projects as a 3D sphere rather than a flat ellipse');
     const deimosDir = skyPixelDir(DEIMOS_CENTER);
-    const deimosNorthDir = skyPixelDir(new Vec2(DEIMOS_CENTER.x, DEIMOS_CENTER.y - 15));
+    const deimosNorthDir = skyPixelDir(new Vec2(DEIMOS_CENTER.x, DEIMOS_CENTER.y - 30));
     assert.ok(deimosNorthDir.getAngle(deimosDir) < DEIMOS_ANGULAR_RADIUS, 'Deimos northern limb lies within spherical DEIMOS_ANGULAR_RADIUS');
     assert.ok(MARS_SKY_FRAGMENT.includes('vec4 deimos = evalMoonSphere('), 'MARS_SKY_FRAGMENT evaluates per-fragment 3D ray-sphere shading for Deimos');
     assert.ok(
@@ -10037,31 +10106,6 @@ const tests = {
       game.update(1 / 60, input({ fire: true }));
     assert.equal(game.events.filter((e) => e.type === 'chaingunSpin').length, 1, 'AC-4 one spin-down when ammo runs out');
     assert.ok(game.events.some((e) => e.type === 'dry'));
-  },
-
-  'AC-6 shotgun hit-stop slows the world only when enabled and a pellet connects'() {
-    const make = (enabled, enemyDist) => {
-      const game = fresh(0);
-      clearEnemies(game);
-      game.rand = Rand.create(7);
-      game.hitStopEnabled = enabled;
-      Object.assign(game.player, { weapon: 'shotgun', shells: 5, cooldown: 0, angle: 0 });
-      const { x, y } = game.player.pos;
-      if (enemyDist)
-        game.addEnemy('imp', new Vec2(x + enemyDist, y));
-      game.fire();
-      return game;
-    };
-    assert.equal(make(false, 40).hitStop, 0, 'AC-6 disabled by default');
-    assert.equal(make(true, 0).hitStop, 0, 'AC-6 a miss never stalls');
-    const hit = make(true, 40);
-    assert.ok(hit.hitStop > 0, 'AC-6 a connecting blast stalls');
-    const before = hit.time;
-    hit.update(0.01, input({}));
-    assert.ok(hit.time - before < 0.01 * 0.2, 'AC-6 world time crawls during the stall');
-    for (let i = 0; i < 20; i++)
-      hit.update(0.01, input({}));
-    assert.equal(hit.hitStop, 0, 'AC-6 the stall ends');
   },
 
   'AC-5 ranged fire no longer raises Game.shake but explosions still do'() {

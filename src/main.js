@@ -22,7 +22,6 @@ const input = new Input(hudCanvas);
 const keymap = input.keymap;
 let hintVersion = -1;
 const game = new Game();
-game.hitStopEnabled = true;
 const urlLevel = new URLSearchParams(window.location.search).get('level');
 if (urlLevel) {
   const m = urlLevel.match(/(\d+)/);

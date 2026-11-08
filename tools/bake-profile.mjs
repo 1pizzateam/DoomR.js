@@ -86,7 +86,7 @@ const impulses = {
   },
   evilGrin: {
     duration: 1.40, attack: 0.18,
-    muscles: { browDownL: 0.80, browDownR: 0.80, browOuterUpL: 0.48, browOuterUpR: 0.48, eyeSquintL: 0.68, eyeSquintR: 0.68, cheekSquintL: 0.78, cheekSquintR: 0.78, mouthSmileL: 0.96, mouthSmileR: 0.96, mouthUpperUpL: 0.42, mouthUpperUpR: 0.42, jawOpen: 0.25 },
+    muscles: { browDownL: 0.80, browDownR: 0.80, browOuterUpL: 0.48, browOuterUpR: 0.48, eyeSquintL: 0.68, eyeSquintR: 0.68, cheekSquintL: 0.78, cheekSquintR: 0.78, mouthSmileL: 0.86, mouthSmileR: 0.86, mouthUpperUpL: 0.16, mouthUpperUpR: 0.16, jawOpen: 0.08 },
     headEuler: [-0.06, 0, 0],
   },
 };

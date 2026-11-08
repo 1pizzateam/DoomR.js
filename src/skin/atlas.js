@@ -147,29 +147,29 @@ export function paintFaceAtlas(appearance, damageTier = 0, size = 256) {
                         col.z = Utils.lerp(col.z, 0.05, stLineW);
                     }
                 }
-                // Orbital socket shading, eyelids, upper eyelash line & supra-tarsal crease (eye center: absU = 0.100, yHead = 1.86)
-                const dSocket = Math.hypot((absU - 0.100) / 0.068, (yHead - 1.88) / 0.85);
-                if (dSocket < 1.5) {
-                    const socketAO = Math.exp(-dSocket * dSocket * 1.65);
+                // Orbital socket shading, eyelids, upper eyelash line & supra-tarsal crease (eye center: absU = 0.114, yHead = 1.88)
+                const dSocket = Math.hypot((absU - 0.114) / 0.056, (yHead - 1.88) / 0.52);
+                if (dSocket < 1.35) {
+                    const socketAO = Math.exp(-dSocket * dSocket * 1.85);
                     col.scale(1.0 - socketAO * 0.18);
                 }
-                const eyeArchX = Math.max(0, 1.0 - Math.pow((absU - 0.100) / 0.056, 2));
+                const eyeArchX = Math.max(0, 1.0 - Math.pow((absU - 0.114) / 0.046, 2));
                 if (eyeArchX > 0.0) {
-                    // Dark upper eyelash margin
-                    const upperLashY = 1.86 + 0.28 * eyeArchX;
-                    const lashW = Math.exp(-Math.pow((yHead - upperLashY) / 0.08, 2)) * Utils.smoothstep(0.0, 0.2, eyeArchX);
+                    // Dark upper eyelash margin aligned directly over the 3D upper eyelid rim (yHead = 2.09..2.18)
+                    const upperLashY = 2.09 + 0.09 * eyeArchX;
+                    const lashW = Math.exp(-Math.pow((yHead - upperLashY) / 0.062, 2)) * Utils.smoothstep(0.0, 0.18, eyeArchX);
                     if (lashW > 0.01) {
                         col.x = Utils.lerp(col.x, brow.x * 0.35, lashW * 0.85);
                         col.y = Utils.lerp(col.y, brow.y * 0.35, lashW * 0.85);
                         col.z = Utils.lerp(col.z, brow.z * 0.35, lashW * 0.85);
                     }
-                    // Supra-tarsal upper eyelid fold crease
-                    const foldY = 1.86 + 0.56 * eyeArchX;
-                    const foldW = Math.exp(-Math.pow((yHead - foldY) / 0.075, 2)) * Utils.smoothstep(0.0, 0.25, eyeArchX);
+                    // Supra-tarsal upper eyelid fold crease inside the moving tarsal zone (yHead = 2.16..2.27)
+                    const foldY = 2.16 + 0.11 * eyeArchX;
+                    const foldW = Math.exp(-Math.pow((yHead - foldY) / 0.052, 2)) * Utils.smoothstep(0.0, 0.22, eyeArchX);
                     col.scale(1.0 - foldW * 0.26);
                     // Lower eyelid rim shadow
-                    const lowerRimY = 1.86 - 0.28 * eyeArchX;
-                    const lowerW = Math.exp(-Math.pow((yHead - lowerRimY) / 0.08, 2)) * Utils.smoothstep(0.0, 0.2, eyeArchX);
+                    const lowerRimY = 1.72 - 0.16 * eyeArchX;
+                    const lowerW = Math.exp(-Math.pow((yHead - lowerRimY) / 0.065, 2)) * Utils.smoothstep(0.0, 0.20, eyeArchX);
                     col.scale(1.0 - lowerW * 0.22);
                 }
                 // Painted eyebrow hair bed (absU in 0.030..0.175, yHead ~ 2.85).

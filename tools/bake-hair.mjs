@@ -34,6 +34,43 @@ function macroPositions() {
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const smoothstep = (a, b, x) => (a < b ? sstep(a, b, x) : 1 - sstep(b, a, x));
 
+const SEG_U = 20;
+const ROWS_V = 10;
+const STRIDE = SEG_U + 1;
+
+// Evaluate 3D (y, z) on the canonical hair cap using piecewise-linear triangle interpolation
+// matching the mesh triangulation ((a, b, c) for tu + tv <= 1, (b, d, c) for tu + tv > 1)
+function sampleCapYAndZ(hu, hv) {
+  const fu = Math.max(0, Math.min(SEG_U - 1e-5, hu * SEG_U));
+  const fv = Math.max(0, Math.min(ROWS_V - 1e-5, hv * ROWS_V));
+  const iu0 = fu | 0;
+  const row0 = fv | 0;
+  const tu = fu - iu0;
+  const tv = fv - row0;
+  const idx = (r, c) => (capStart + r * STRIDE + c) * 3;
+  const ia = idx(row0, iu0);
+  const ib = idx(row0, iu0 + 1);
+  const ic = idx(row0 + 1, iu0);
+  const id = idx(row0 + 1, iu0 + 1);
+  const pos = base.positions;
+  if (tu + tv <= 1.0) {
+    const wa = 1.0 - tu - tv;
+    const wb = tu;
+    const wc = tv;
+    return [
+      pos[ia + 1] * wa + pos[ib + 1] * wb + pos[ic + 1] * wc,
+      pos[ia + 2] * wa + pos[ib + 2] * wb + pos[ic + 2] * wc,
+    ];
+  }
+  const wb = 1.0 - tv;
+  const wd = tu + tv - 1.0;
+  const wc = 1.0 - tu;
+  return [
+    pos[ib + 1] * wb + pos[id + 1] * wd + pos[ic + 1] * wc,
+    pos[ib + 2] * wb + pos[id + 2] * wd + pos[ic + 2] * wc,
+  ];
+}
+
 // the atlas formulas of the old generateFaceAtlasPixels, as (shade, skinMix) over the hair region (hu, hv in 0..1)
 function atlasAt(style, hu, hv) {
   if (style === 'combat_helmet') {
@@ -41,9 +78,16 @@ function atlasAt(style, hu, hv) {
     return [0.78 + 0.28 * hv - 0.35 * Math.min(1, seam) - smoothstep(0.18, 0.0, hv) * 0.28, 0];
   }
   if (style === 'buzz_fade') {
-    const sideMask = smoothstep(0.16, 0.34, hu);
-    const fadeW = smoothstep(0.0, 0.28, hv);
-    return [0.84 + 0.18 * Math.sin(hu * 140.0) * Math.cos(hv * 120.0), (1 - fadeW) * (0.18 + 0.54 * sideMask)];
+    const [yWorld, zWorld] = sampleCapYAndZ(hu, hv);
+    const yFadeTop = 4.25 + 0.14 * zWorld;
+    const yFadeBot = yFadeTop - 2.45;
+    const worldFade = 1.0 - smoothstep(yFadeBot, yFadeTop, yWorld);
+    const sideWeight = smoothstep(0.16, 0.26, hu);
+    const frontSoft = (1.0 - smoothstep(0.0, 0.08, hv)) * 0.16;
+    return [
+      0.84 + 0.18 * Math.sin(hu * 140.0) * Math.cos(hv * 120.0),
+      Math.max(frontSoft, worldFade * sideWeight * 0.88),
+    ];
   }
   if (style === 'afro_short') return [(0.72 + 0.32 * Math.sin(hu * 95.0) * Math.sin(hv * 95.0)) * (0.82 + 0.22 * hv), 0];
   if (style === 'dreadlocks') {

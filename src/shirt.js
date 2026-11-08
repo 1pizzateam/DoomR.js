@@ -10,6 +10,8 @@ import { Vec2, Vec3, computeSmoothNormals, syncRoostrMeshBuffers } from '@1pizza
 const SUBDIVISIONS = 2; // cloth columns between two neighbouring seam vertices = 2 ** SUBDIVISIONS
 const CENTERLINE = 1e-4;
 const MIN_DROP = 0.2;
+const SEAM_TOP_Y = -7.1; // trapezius crest height on the neck seam
+const SEAM_CZ = -2.65; // depth centre of the trapezius crest on the neck seam
 const WEAVE_SIZE = 128;
 const THREAD = 4; // texels per thread
 const WEAVE_TILE = 4.8; // world units covered by one repeat of the weave
@@ -21,13 +23,13 @@ export const SHIRT_COLOR = new Vec3(0.17, 0.32, 0.21);
 // The sides of the seam sit high (the trapezius), so the cloth slopes down and out from there to the shoulder tips, about as
 // wide as two heads; every column of cloth always runs downward, so the chest in front, whose seam is lower, never rises.
 const ROWS = [
-  { y: -8.6, a: 9.4, b: 5.4, cz: -2.0, n: 2.4, w: 0.4 },
-  { y: -9.2, a: 9.8, b: 5.6, cz: -2.0, n: 2.4, w: 0.8 },
-  { y: -9.9, a: 11.6, b: 5.9, cz: -2.0, n: 2.5, w: 1 },
-  { y: -10.6, a: 13.6, b: 6.2, cz: -2.0, n: 2.6, w: 1 },
-  { y: -11.4, a: 15.2, b: 6.4, cz: -2.0, n: 2.7, w: 1 }, // shoulder tips
-  { y: -12.8, a: 15.6, b: 6.6, cz: -2.0, n: 2.8, w: 1 },
-  { y: -14.6, a: 15.0, b: 6.8, cz: -2.0, n: 2.8, w: 1 },
+  { y: -8.0, a: 9.7, b: 5.2, cz: -2.0, n: 2.4, w: 0.42 },
+  { y: -8.5, a: 10.9, b: 5.45, cz: -2.0, n: 2.45, w: 0.82 },
+  { y: -9.1, a: 12.7, b: 5.75, cz: -2.0, n: 2.55, w: 1 },
+  { y: -9.75, a: 14.3, b: 6.1, cz: -2.0, n: 2.65, w: 1 },
+  { y: -10.5, a: 15.35, b: 6.35, cz: -2.0, n: 2.7, w: 1 }, // shoulder tips
+  { y: -11.9, a: 15.6, b: 6.6, cz: -2.0, n: 2.8, w: 1 },
+  { y: -14.05, a: 15.0, b: 6.8, cz: -2.0, n: 2.8, w: 1 },
   { y: -16.2, a: 14.4, b: 6.6, cz: -2.0, n: 2.7, w: 1 } // short hem: just enough chest to read as a shirt
 ];
 // How much of the seam's movement each row follows, from the seam down: the neck's motion is passed on to the cloth just
@@ -224,16 +226,19 @@ export function createShirtMesh(ctx, cartridge) {
 
   const rows = [seam.map((p) => [p.x, p.y, p.z])];
   let prevY = seam.map((p) => p.y);
+  const hemY = ROWS[ROWS.length - 1].y;
   for (const row of ROWS) {
     const ring = [];
     const ys = [];
+    const drop = (row.y - SEAM_TOP_Y) / (hemY - SEAM_TOP_Y);
     for (let s = 0; s < count; s++) {
       const p = seam[s];
       // the seam point's direction round the shoulders, so each cloth column runs straight down from its own seam vertex
-      const t = Math.atan2((p.z - row.cz) / row.b, p.x / row.a);
+      const t = Math.atan2((p.z - SEAM_CZ) / row.b, p.x / row.a);
       const x = row.a * sgnPow(Math.cos(t), 2 / row.n);
       const z = row.cz + row.b * sgnPow(Math.sin(t), 2 / row.n);
-      const y = Math.min(p.y + (row.y - p.y) * row.w, prevY[s] - MIN_DROP);
+      const targetY = p.y <= SEAM_TOP_Y ? p.y + (hemY - p.y) * drop : p.y + (row.y - p.y) * row.w;
+      const y = Math.min(targetY, prevY[s] - MIN_DROP);
       ys.push(y);
       ring.push([p.x + (x - p.x) * row.w, y, p.z + (z - p.z) * row.w]);
     }

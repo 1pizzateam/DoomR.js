@@ -1,60 +1,108 @@
 import { Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
-import { field, GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile } from './floor.js';
+import { TILE } from './level.js';
+import { field, GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile, TILE_PIXELS } from './floor.js';
 
 const scratchPt = new Vec2();
 const scratchTile = new Vec2();
 
 /**
  * The walls of an old space base: riveted steel bulkhead panels, vents, pipe runs, light strips, a console and the
- * green-lit exit hatch, in a pixel-art atlas drawn here in code. One cell is one 64 x 64 piece of wall (one tile wide
- * and as high as a low wall), so a texel is one world unit. The rust is not in the pictures: the shader of the doors
+ * green-lit exit hatch, in a pixel-art atlas drawn here in code. One cell is one 64 x 64 world-unit piece of wall
+ * rendered at 256 x 256 texels (4 texels per world unit). The rust is not in the pictures: the shader of the doors
  * rusts the walls too, in the same many small patches, thicker low down.
  */
 
 export const WALL_CELLS = { plain: 0, vent: 1, pipes: 2, lights: 3, console: 4, exit: 5, top: 6, seam: 7 };
 export const WALL_CELL_COUNT = 8;
-const SIZE = 64;
+const SIZE = TILE_PIXELS;
 
 const SIGNAL = [70, 230, 150];
 const FRAME = [20, 26, 40];
 
-/** A bevelled recess or boss: light on one pair of edges, dark on the other. */
+/** A bevelled recess or boss: light on one pair of edges, dark on the other, drawn at native 256x256 precision. */
 function bevel(t, x0, y0, w, h, rise = true) {
+  const s = t.scale;
   const [a, b] = rise ? [LIGHT, SHADOW] : [SHADOW, LIGHT];
-  for (let i = 0; i < w; i++) {
-    t.set(x0 + i, y0, a, 0.8);
-    t.set(x0 + i, y0 + h - 1, b);
+  const px0 = Math.round(x0 * s);
+  const py0 = Math.round(y0 * s);
+  const pw = Math.round(w * s);
+  const ph = Math.round(h * s);
+  for (let dx = 0; dx < pw; dx++) {
+    const px = px0 + dx;
+    t.setRaw(px, py0, SHADOW, 0.88);
+    t.setRaw(px, py0 + 1, a, 0.85);
+    t.setRaw(px, py0 + 2, a, 0.48);
+    t.setRaw(px, py0 + 3, a, 0.2);
+    t.setRaw(px, py0 + ph - 4, b, 0.22);
+    t.setRaw(px, py0 + ph - 3, b, 0.52);
+    t.setRaw(px, py0 + ph - 2, b, 0.88);
+    t.setRaw(px, py0 + ph - 1, SHADOW, 0.96);
   }
-  for (let i = 0; i < h; i++) {
-    t.set(x0, y0 + i, a, 0.65);
-    t.set(x0 + w - 1, y0 + i, b);
+  for (let dy = 0; dy < ph; dy++) {
+    const py = py0 + dy;
+    t.setRaw(px0, py, SHADOW, 0.85);
+    t.setRaw(px0 + 1, py, a, 0.72);
+    t.setRaw(px0 + 2, py, a, 0.4);
+    t.setRaw(px0 + 3, py, a, 0.16);
+    t.setRaw(px0 + pw - 4, py, b, 0.22);
+    t.setRaw(px0 + pw - 3, py, b, 0.52);
+    t.setRaw(px0 + pw - 2, py, b, 0.88);
+    t.setRaw(px0 + pw - 1, py, SHADOW, 0.96);
   }
 }
 
-/** The bulkhead: two stacked plates, a kick plate at the foot and a trim at the top, riveted. */
+/**Draws a horizontal machined seam groove with top shadow, bottom specular lip, and soft ambient occlusion. */
+function horizontalSeam(t, yLog, strength = 1) {
+  const s = t.scale;
+  const py = Math.round(yLog * s);
+  for (let px = 0; px < t.width; px++) {
+    t.setRaw(px, py - 2, SHADOW, 0.25 * strength);
+    t.setRaw(px, py - 1, SHADOW, 0.62 * strength);
+    t.setRaw(px, py, SHADOW, 0.95 * strength);
+    t.setRaw(px, py + 1, SHADOW, 0.88 * strength);
+    t.setRaw(px, py + 2, LIGHT, 0.68 * strength);
+    t.setRaw(px, py + 3, LIGHT, 0.34 * strength);
+    t.setRaw(px, py + 4, LIGHT, 0.14 * strength);
+  }
+}
+
+/** The bulkhead: two stacked plates, a crown molding at the top, and an embossed diamond-tread kick plate at the foot, riveted. */
 function bulkhead(t, rnd) {
-  plate(t, 0, 0, SIZE, SIZE, rnd, mix(METAL, FRAME, 0.25));
-  // a joint between the plates, part way up
-  for (let x = 0; x < SIZE; x++) {
-    t.set(x, 31, SHADOW, 0.9);
-    t.set(x, 32, LIGHT, 0.35);
-  }
-  // the trim along the top, and the kick plate along the foot
-  for (let x = 0; x < SIZE; x++) {
-    t.set(x, 3, SHADOW, 0.6);
-    t.set(x, 4, LIGHT, 0.3);
-    t.set(x, 56, LIGHT, 0.35);
-    t.set(x, 57, SHADOW, 0.7);
-  }
-  for (let y = 58; y < SIZE; y++)
-    for (let x = 0; x < SIZE; x++)
-      t.set(x, y, mix(METAL, SHADOW, 0.45 + ((x >> 3) + (y >> 2)) % 2 * 0.08));
-  // vertical joints at the sides, so neighbouring cells read as separate panels
-  for (let y = 0; y < SIZE; y++) {
-    t.set(0, y, SHADOW, 0.85);
-    t.set(1, y, LIGHT, 0.2);
-    t.set(SIZE - 1, y, SHADOW, 0.85);
+  const s = t.scale;
+  plate(t, 0, 0, 64, 64, rnd, mix(METAL, FRAME, 0.25));
+  // Upper crown molding & recessed cable raceway trim (y = 0..4.5)
+  for (let py = 0; py < Math.round(4.5 * s); py++)
+    for (let px = 0; px < t.width; px++)
+      t.setRaw(px, py, mix(METAL, SHADOW, 0.28), 0.55);
+  horizontalSeam(t, 4, 0.85);
+  // Central interlocking horizontal bulkhead joint (y = 31.5)
+  horizontalSeam(t, 31.5, 1.0);
+  // Heavy armored kick-plate at the foot (y = 56..64) with diamond-tread embossing & vertical stiffener ribs
+  horizontalSeam(t, 56.5, 0.95);
+  for (let py = 57 * s; py < t.height; py++)
+    for (let px = 0; px < t.width; px++) {
+      const rib = (px % (8 * s)) < 3;
+      const cellX = px % 12;
+      const cellY = py % 12;
+      const tread = (Math.abs(cellX - cellY) <= 1 || Math.abs(cellX + cellY - 11) <= 1) && cellX > 2 && cellX < 9;
+      let col = mix(METAL, SHADOW, 0.46);
+      if (rib)
+        col = (px % (8 * s)) === 0 ? mix(METAL, LIGHT, 0.25) : mix(METAL, SHADOW, 0.72);
+      else if (tread)
+        col = mix(METAL, LIGHT, 0.14);
+      t.setRaw(px, py, col, 0.92);
+    }
+  // Crisp vertical expansion joints at the left and right edges so neighbouring cells read as separate panels
+  for (let py = 0; py < t.height; py++) {
+    t.setRaw(0, py, SHADOW, 0.96);
+    t.setRaw(1, py, SHADOW, 0.78);
+    t.setRaw(2, py, LIGHT, 0.52);
+    t.setRaw(3, py, LIGHT, 0.24);
+    t.setRaw(t.width - 4, py, SHADOW, 0.24);
+    t.setRaw(t.width - 3, py, SHADOW, 0.55);
+    t.setRaw(t.width - 2, py, SHADOW, 0.85);
+    t.setRaw(t.width - 1, py, SHADOW, 0.96);
   }
   for (const [x, y] of [[4, 6], [57, 6], [4, 24], [57, 24], [4, 35], [57, 35], [4, 50], [57, 50]])
     rivet(t, x, y);
@@ -62,122 +110,348 @@ function bulkhead(t, rnd) {
 
 function drawPlain(t, rnd) {
   bulkhead(t, rnd);
-  // a few scuffs and a small stamped plate
+  const s = t.scale;
+  // Fine hairline wear scratches across the steel plates
   for (let k = 0; k < 8; k++) {
     const x = 6 + Math.floor(rnd() * 50);
     const y = 8 + Math.floor(rnd() * 44);
-    for (let d = 0; d < 2 + Math.floor(rnd() * 5); d++)
-      t.set(x + d, y + (d >> 1), LIGHT, 0.3);
+    const len = (2 + Math.floor(rnd() * 5)) * s;
+    const px0 = x * s;
+    const py0 = y * s;
+    for (let i = 0; i < len; i++) {
+      const fade = Math.sin((i / len) * Math.PI);
+      t.setRaw(px0 + i, py0 + (i >> 1), SHADOW, 0.42 * fade);
+      t.setRaw(px0 + i, py0 + (i >> 1) + 1, LIGHT, 0.45 * fade);
+    }
   }
-  bevel(t, 22, 14, 20, 12, false);
+  // Vertical stiffener flutes flanking the upper inspection bay
+  for (const fx of [13, 49])
+    bevel(t, fx, 9, 3, 19, false);
+  // Recessed upper inspection hatch & engraved UAC data plaque
+  bevel(t, 20, 11, 24, 15, false);
+  for (let py = 12 * s; py < 25 * s; py++)
+    for (let px = 21 * s; px < 43 * s; px++)
+      t.setRaw(px, py, SHADOW, 0.18);
+  // Riveted metallic data badge inside the lower panel (x = 24..40, y = 38..46)
+  bevel(t, 24, 38, 16, 8, true);
+  for (let row = 0; row < 3; row++) {
+    const py = (40 + row * 2) * s;
+    for (let px = 26 * s; px < 38 * s; px++)
+      if (((px * 7 + row * 13) % 5) !== 0)
+        t.setRaw(px, py, LIGHT, 0.35);
+  }
 }
 
 function drawVent(t, rnd) {
   bulkhead(t, rnd);
-  bevel(t, 12, 9, 40, 40, true);
-  for (let y = 13; y < 46; y += 4)
-    for (let x = 15; x < 49; x++) {
-      t.set(x, y, SHADOW);
-      t.set(x, y + 1, SHADOW, 0.8);
-      t.set(x, y + 2, LIGHT, 0.45);
+  const s = t.scale;
+  // Outer raised vent collar (11..53, 8..50) and dark recessed intake well
+  bevel(t, 11, 8, 42, 42, true);
+  for (let py = 11 * s; py < 47 * s; py++)
+    for (let px = 14 * s; px < 50 * s; px++)
+      t.setRaw(px, py, SHADOW, 0.94);
+  // Angled 3D aerodynamic louver blades with top specular lip, curved face, and deep underside slot shadow
+  const slatPitch = 4 * s;
+  for (let py = 12 * s; py < 46 * s; py++) {
+    const phase = (py - 12 * s) % slatPitch;
+    const tSlat = phase / slatPitch;
+    for (let px = 15 * s; px < 49 * s; px++) {
+      if (tSlat < 0.28) {
+        // Dark air intake gap with subtle wire screen mesh inside
+        const mesh = ((px + py) & 3) === 0 ? 0.16 : 0.04;
+        t.setRaw(px, py, mix(SHADOW, METAL, mesh), 0.98);
+      } else if (tSlat < 0.42) {
+        // Bright top leading edge of angled louver slat
+        t.setRaw(px, py, mix(METAL, LIGHT, 0.68), 0.95);
+      } else {
+        // Sloped louver face darkening toward the bottom trailing edge
+        const slope = (tSlat - 0.42) / 0.58;
+        t.setRaw(px, py, mix(mix(METAL, LIGHT, 0.38), SHADOW, slope * 0.78), 0.95);
+      }
     }
-  for (const [x, y] of [[14, 11], [47, 11], [14, 44], [47, 44]])
+  }
+  // Central vertical structural mullion bar dividing the louver grille into twin bays
+  for (let py = 11 * s; py < 47 * s; py++) {
+    t.setRaw(31 * s - 1, py, SHADOW, 0.85);
+    t.setRaw(31 * s, py, LIGHT, 0.58);
+    for (let dx = 1; dx < 2 * s - 1; dx++)
+      t.setRaw(31 * s + dx, py, mix(METAL, LIGHT, 0.22), 0.95);
+    t.setRaw(33 * s - 1, py, SHADOW, 0.9);
+  }
+  bevel(t, 14, 11, 36, 36, false);
+  for (const [x, y] of [[13, 10], [48, 10], [13, 45], [48, 45]])
     rivet(t, x, y);
 }
 
 function drawPipes(t, rnd) {
   bulkhead(t, rnd);
-  for (const x of [13, 27, 48]) {
+  const s = t.scale;
+  // Recessed dark pipe chase channel behind the vertical pipes (x = 10..55, y = 6..54)
+  bevel(t, 10, 6, 45, 48, false);
+  for (let py = 7 * s; py < 53 * s; py++)
+    for (let px = 11 * s; px < 54 * s; px++)
+      t.setRaw(px, py, SHADOW, 0.42);
+
+  for (const x of [13, 27, 46]) {
     const w = x === 27 ? 9 : 6;
-    for (let px = x; px < x + w; px++) {
-      const shade = Math.abs(px - (x + w / 2)) / (w / 2);
-      for (let y = 0; y < 58; y++)
-        t.set(px, y, mix(LIGHT, SHADOW, 0.25 + shade * 0.7), 0.95);
+    const cx = (x + w * 0.5) * s;
+    const rad = w * 0.5 * s;
+    // Drop shadow cast to the right of each vertical pipe
+    for (let py = 0; py < 56 * s; py++)
+      for (let dx = 1; dx <= s + 2; dx++)
+        t.setRaw(Math.round(cx + rad) + dx, py, SHADOW, (1 - dx / (s + 3)) * 0.68);
+    // 3D cylindrical pipe body with off-center specular highlight and rim bounce light
+    for (let px = Math.round(x * s); px < Math.round((x + w) * s); px++) {
+      const nx = (px + 0.5 - cx) / rad;
+      const nz = Math.sqrt(Math.max(0, 1 - nx * nx));
+      const spec = Math.pow(Math.max(0, -nx * 0.48 + nz * 0.87), 3.2);
+      const col = mix(
+        mix(SHADOW, METAL, 0.18 + nz * 0.78),
+        LIGHT,
+        Utils.clamp(spec * 0.82 + (nx > 0.7 ? (nx - 0.7) * 0.35 : 0), 0, 0.95)
+      );
+      for (let py = 0; py < 56 * s; py++) {
+        // Subtle horizontal brushed-metal ring grain along the pipe
+        const ring = (((py * 17) & 7) - 3.5) * 1.1;
+        t.setRaw(px, py, [col[0] + ring, col[1] + ring, col[2] + ring * 1.1], 0.98);
+      }
     }
-    // clamps
+    // Machined U-bolt pipe clamps & flanged couplings at y = 8, 28, 46
     for (const y of [8, 28, 46]) {
-      t.rect(x - 1, y, w + 2, 3, mix(METAL, LIGHT, 0.5));
-      t.rect(x - 1, y + 3, w + 2, 1, SHADOW);
+      const py0 = y * s;
+      const ph = 3 * s;
+      const px0 = Math.round((x - 1.25) * s);
+      const pw = Math.round((w + 2.5) * s);
+      for (let py = py0; py < py0 + ph; py++)
+        for (let px = px0; px < px0 + pw; px++) {
+          const nx = (px - cx) / (pw * 0.5);
+          const cyl = Math.sqrt(Math.max(0, 1 - nx * nx));
+          const topBottom = py < py0 + 2 ? LIGHT : py >= py0 + ph - 2 ? SHADOW : mix(METAL, LIGHT, 0.25 + cyl * 0.55);
+          t.setRaw(px, py, topBottom, 0.96);
+        }
+      for (let px = px0; px < px0 + pw; px++) {
+        t.setRaw(px, py0 + ph, SHADOW, 0.88);
+        t.setRaw(px, py0 + ph + 1, SHADOW, 0.45);
+      }
     }
   }
+  // Circular shutoff handwheel on the central main pipe at (31.5, 20.5)
+  const vcx = 31.5 * s;
+  const vcy = 20.5 * s;
+  const vRad = 5.2 * s;
+  for (let py = Math.floor(vcy - vRad - 2); py <= Math.ceil(vcy + vRad + 2); py++)
+    for (let px = Math.floor(vcx - vRad - 2); px <= Math.ceil(vcx + vRad + 2); px++) {
+      const dx = px - vcx;
+      const dy = py - vcy;
+      const r = Math.hypot(dx, dy) / s;
+      if (r > 5.4)
+        continue;
+      const ang = Math.atan2(dy, dx);
+      const spoke = Math.abs(Math.sin(ang * 2)) * r < 0.65 && r < 4.5;
+      const rim = r >= 3.8 && r <= 5.0;
+      const hub = r < 1.6;
+      if (hub || rim || spoke) {
+        const shade = hub ? 0.82 : rim ? 1 - Math.abs(r - 4.4) / 0.7 : 0.65;
+        t.setRaw(px, py, mix(SHADOW, LIGHT, Utils.clamp(0.35 + shade * 0.58, 0.2, 0.95)), 0.96);
+      } else if (r <= 5.3) {
+        t.setRaw(px, py, SHADOW, 0.55);
+      }
+    }
 }
 
 function drawLights(t, rnd) {
   bulkhead(t, rnd);
+  const s = t.scale;
   for (const x of [18, 44]) {
-    t.rect(x - 2, 8, 8, 46, SHADOW, 0.9);
-    for (let y = 10; y < 52; y++) {
-      t.set(x - 1, y, GLOW, 0.14);
-      t.set(x + 4, y, GLOW, 0.14);
-      t.set(x, y, GLOW, 0.4);
-      t.set(x + 3, y, GLOW, 0.4);
-      t.set(x + 1, y, mix(GLOW, [210, 230, 255], 0.25), 0.95);
-      t.set(x + 2, y, mix(GLOW, [210, 230, 255], 0.25), 0.95);
-    }
+    // Recessed armored sconce housing (x - 2.5 .. x + 6.5, y = 7..54)
+    bevel(t, x - 3, 7, 10, 47, false);
+    const px0 = (x - 2) * s;
+    const px1 = (x + 6) * s;
+    const py0 = 8 * s;
+    const py1 = 53 * s;
+    for (let py = py0; py < py1; py++)
+      for (let px = px0; px < px1; px++) {
+        const lx = (px + 0.5) / s;
+        const ly = (py + 0.5) / s;
+        // Top and bottom socket end-caps
+        if (ly < 10.2 || ly >= 50.8) {
+          const capEdge = Math.abs(ly - 10.2) < 0.5 || Math.abs(ly - 50.8) < 0.5;
+          t.setRaw(px, py, capEdge ? LIGHT : mix(SHADOW, METAL, 0.35), 0.95);
+          continue;
+        }
+        // Horizontal protective cage ribs every 8 logical units
+        const cageDist = Math.abs(((ly - 10) % 8) - 4);
+        if (cageDist < 0.38) {
+          t.setRaw(px, py, mix(SHADOW, GLOW, 0.32), 0.92);
+          continue;
+        }
+        // Smooth cylindrical neon/fluorescent tube core centered at x + 2
+        const dx = Math.abs(lx - (x + 2));
+        const tube = Math.max(0, 1 - dx / 3.8);
+        const core = Math.pow(tube, 1.5);
+        const col = mix(GLOW, [224, 240, 255], core * 0.45);
+        const alpha = 0.14 + 0.84 * core;
+        t.setRaw(px, py, col, alpha);
+      }
   }
 }
 
 function drawConsole(t, rnd) {
   bulkhead(t, rnd);
-  bevel(t, 9, 10, 46, 38, false);
-  // a dark screen with a trace on it
-  t.rect(12, 13, 40, 18, SHADOW, 0.95);
-  for (let x = 13; x < 51; x++) {
-    const y = 22 + Math.round(Math.sin(x * 0.45) * 4 + Math.sin(x * 1.3) * 2);
-    t.set(x, y, SIGNAL, 0.85);
-    t.set(x, y + 1, SIGNAL, 0.25);
+  const s = t.scale;
+  // Sunken terminal bay (9..55, 9..49)
+  bevel(t, 9, 9, 46, 40, false);
+  for (let py = 10 * s; py < 48 * s; py++)
+    for (let px = 10 * s; px < 54 * s; px++)
+      t.setRaw(px, py, mix(SHADOW, METAL, 0.22), 0.85);
+
+  // Dark CRT/phosphor monitor screen with subtle scanlines and coordinate grid (12..52, 12..31)
+  const sx0 = 12 * s;
+  const sx1 = 52 * s;
+  const sy0 = 12 * s;
+  const sy1 = 31 * s;
+  for (let py = sy0; py < sy1; py++)
+    for (let px = sx0; px < sx1; px++) {
+      const scanline = (py & 1) === 0 ? 0.96 : 0.88;
+      const grid = ((px - sx0) % (5 * s) === 0 || (py - sy0) % (4 * s) === 0) && ((px + py) & 1) === 0;
+      const col = grid ? mix(SHADOW, SIGNAL, 0.16) : SHADOW;
+      t.setRaw(px, py, col, scanline);
+    }
+
+  // Crisp anti-aliased dual telemetry waveform traces across the CRT screen
+  for (let px = sx0 + 4; px < sx1 - 4; px++) {
+    const lx = (px + 0.5) / s;
+    const wave1 = (21.5 + Math.sin(lx * 0.45) * 3.8 + Math.sin(lx * 1.3) * 1.9) * s;
+    const wave2 = (22.5 + Math.cos(lx * 0.32 + 1.2) * 2.4) * s;
+    for (let py = sy0 + 3; py < sy1 - 3; py++) {
+      const d1 = Math.abs(py - wave1);
+      const d2 = Math.abs(py - wave2);
+      if (d1 < 2.6) {
+        const intensity = Math.pow(1 - d1 / 2.6, 1.4);
+        t.setRaw(px, py, mix(SIGNAL, [200, 255, 225], intensity * 0.45), 0.25 + 0.72 * intensity);
+      } else if (d2 < 1.8) {
+        t.setRaw(px, py, GLOW, (1 - d2 / 1.8) * 0.55);
+      }
+    }
   }
-  bevel(t, 12, 13, 40, 18, false);
-  // rows of indicator lights and a few buttons
+  bevel(t, 12, 12, 40, 19, false);
+
+  // Row of 8 beveled status indicator LEDs with soft glow halos at y = 34..37
   for (let i = 0; i < 8; i++) {
     const lit = (i * 5 + 3) % 7 < 4;
-    t.rect(13 + i * 5, 36, 3, 3, lit ? SIGNAL : mix(SHADOW, METAL, 0.5), lit ? 0.9 : 1);
+    const ledCol = i === 6 ? GLOW : SIGNAL;
+    const lx0 = (13 + i * 5) * s;
+    const ly0 = 34 * s;
+    const lw = 3 * s;
+    for (let py = ly0 - 2; py < ly0 + lw + 2; py++)
+      for (let px = lx0 - 2; px < lx0 + lw + 2; px++) {
+        const inBox = px >= lx0 && px < lx0 + lw && py >= ly0 && py < ly0 + lw;
+        if (!inBox) {
+          t.setRaw(px, py, lit ? ledCol : SHADOW, lit ? 0.22 : 0.75);
+          continue;
+        }
+        const cx = (px - (lx0 + lw * 0.5)) / (lw * 0.5);
+        const cy = (py - (ly0 + lw * 0.5)) / (lw * 0.5);
+        const dome = Math.max(0, 1 - (cx * cx + cy * cy) * 0.65);
+        const col = lit ? mix(ledCol, [220, 255, 240], dome * 0.45) : mix(SHADOW, METAL, 0.35 + dome * 0.25);
+        t.setRaw(px, py, col, 0.95);
+      }
   }
-  for (let i = 0; i < 4; i++)
-    t.rect(14 + i * 10, 42, 6, 3, mix(METAL, LIGHT, 0.5));
+
+  // Tactile beveled control switches & keycaps along the lower console deck (y = 40..45)
+  for (let i = 0; i < 4; i++) {
+    const bx = 13 + i * 10;
+    t.rect(bx, 40, 7, 5, mix(METAL, LIGHT, 0.38));
+    bevel(t, bx, 40, 7, 5, true);
+  }
 }
 
 /** The exit: a hatch outlined in green, with chevrons pointing in, lit. */
 function drawExit(t, rnd) {
   bulkhead(t, rnd);
-  t.rect(10, 8, 44, 44, SHADOW, 0.85);
+  const s = t.scale;
+  // Recessed dark blast-hatch well (10..54, 8..52) with vertical armor ribs
+  for (let py = 8 * s; py < 52 * s; py++)
+    for (let px = 10 * s; px < 54 * s; px++) {
+      const rib = ((px - 10 * s) % (6 * s)) < 2;
+      t.setRaw(px, py, rib ? mix(SHADOW, METAL, 0.25) : SHADOW, 0.92);
+    }
   bevel(t, 10, 8, 44, 44, false);
-  for (let i = 0; i < 44; i++) {
-    t.set(10 + i, 8, SIGNAL, 0.95);
-    t.set(10 + i, 51, SIGNAL, 0.95);
-    t.set(10, 8 + i, SIGNAL, 0.95);
-    t.set(53, 8 + i, SIGNAL, 0.95);
-  }
-  for (const y0 of [16, 28, 40])
-    for (let k = 0; k < 14; k++) {
-      const x = 32 - 14 + k;
-      const dy = k < 7 ? k : 13 - k;
-      for (let w = 0; w < 3; w++) {
-        t.set(x, y0 + dy / 1.4 + w, SIGNAL, 0.95);
-        t.set(x + 14, y0 + dy / 1.4 + w, SIGNAL, 0.4);
+
+  // Glowing emerald-green perimeter channel with soft inner/outer halo (10..53, 8..51)
+  const bx0 = 10 * s;
+  const bx1 = 54 * s - 1;
+  const by0 = 8 * s;
+  const by1 = 52 * s - 1;
+  for (let py = by0 - 3; py <= by1 + 3; py++)
+    for (let px = bx0 - 3; px <= bx1 + 3; px++) {
+      const dX = px < bx0 ? bx0 - px : px > bx1 ? px - bx1 : 0;
+      const dY = py < by0 ? by0 - py : py > by1 ? py - by1 : 0;
+      const onVert = px >= bx0 && px <= bx1 && Math.min( Math.abs(py - by0), Math.abs(py - by1) ) <= 3;
+      const onHoriz = py >= by0 && py <= by1 && Math.min( Math.abs(px - bx0), Math.abs(px - bx1) ) <= 3;
+      if (!onVert && !onHoriz && dX + dY > 0)
+        continue;
+      const dist = Math.min(
+        Math.hypot(dX, Math.abs(py - by0)),
+        Math.hypot(dX, Math.abs(py - by1)),
+        Math.hypot(Math.abs(px - bx0), dY),
+        Math.hypot(Math.abs(px - bx1), dY)
+      );
+      if (dist <= 3.2) {
+        const core = 1 - dist / 3.2;
+        t.setRaw(px, py, mix(SIGNAL, [210, 255, 230], core * 0.45), 0.35 + 0.63 * core);
       }
     }
+
+  // Three razor-sharp 45° illuminated chevron arrows pointing inward
+  for (const y0 of [15.5, 27.5, 39.5])
+    for (let py = Math.floor((y0 - 2) * s); py < Math.ceil((y0 + 10) * s); py++)
+      for (let px = 16 * s; px < 48 * s; px++) {
+        const lx = (px + 0.5) / s;
+        const ly = (py + 0.5) / s;
+        for (const [xStart, strength] of [[18, 0.96], [32, 0.48]]) {
+          const k = lx - xStart;
+          if (k < 0 || k > 14)
+            continue;
+          const apexDist = k < 7 ? k : 14 - k;
+          const targetY = y0 + apexDist / 1.4;
+          const dy = ly - targetY;
+          if (dy >= -0.35 && dy <= 3.15) {
+            const centerDist = Math.abs(dy - 1.4) / 1.75;
+            const core = Math.max(0, 1 - centerDist);
+            const col = mix(SIGNAL, [215, 255, 235], core * 0.38);
+            t.setRaw(px, py, col, strength * (0.45 + 0.55 * core));
+          }
+        }
+      }
 }
 
-/** The top of a low wall or a pillar: plain plate with a bevelled edge. */
+/** The top of a low wall or a pillar: machined cap plate with expansion grooves and bevelled edge. */
 function drawTop(t, rnd) {
-  plate(t, 0, 0, SIZE, SIZE, rnd, mix(METAL, SHADOW, 0.2));
-  for (let i = 8; i < 56; i += 8)
-    for (let x = 4; x < 60; x++)
-      t.set(x, i, SHADOW, 0.5);
-  rivet(t, 3, 3);
-  rivet(t, 58, 3);
-  rivet(t, 3, 58);
-  rivet(t, 58, 58);
+  plate(t, 0, 0, 64, 64, rnd, mix(METAL, SHADOW, 0.2));
+  const s = t.scale;
+  bevel(t, 3, 3, 58, 58, false);
+  for (let i = 8; i < 56; i += 8) {
+    const py = i * s;
+    for (let px = 4 * s; px < 60 * s; px++) {
+      t.setRaw(px, py - 1, SHADOW, 0.45);
+      t.setRaw(px, py, SHADOW, 0.85);
+      t.setRaw(px, py + 1, LIGHT, 0.42);
+    }
+  }
+  rivet(t, 4, 4);
+  rivet(t, 57, 4);
+  rivet(t, 4, 57);
+  rivet(t, 57, 57);
 }
 
 /** Two bulkhead plates meeting: for the upper part of a tall wall, so it is not a repeat of the lower one. */
 function drawSeam(t, rnd) {
   bulkhead(t, rnd);
-  for (let x = 0; x < SIZE; x++) {
-    t.set(x, 12, SHADOW, 0.8);
-    t.set(x, 13, LIGHT, 0.3);
-  }
+  horizontalSeam(t, 12.5, 0.95);
+  bevel(t, 10, 16, 44, 12, false);
+  for (const x of [12, 31, 49])
+    rivet(t, x, 9);
 }
 
 const DRAW = [drawPlain, drawVent, drawPipes, drawLights, drawConsole, drawExit, drawTop, drawSeam];
@@ -187,7 +461,7 @@ export function wallAtlas() {
   const width = SIZE * WALL_CELL_COUNT;
   const data = new Uint8Array(width * SIZE * 4);
   DRAW.forEach((draw, cell) => {
-    const t = new Tile(SIZE, SIZE);
+    const t = new Tile(SIZE, SIZE, SIZE / 64);
     draw(t, mulberry32(9000 + cell * 7919));
     for (let y = 0; y < SIZE; y++)
       for (let x = 0; x < SIZE; x++) {
@@ -219,11 +493,12 @@ function periodicGrain(x, y) {
   return (((Math.imul(h, 1911520717) >>> 0) % 1000) / 1000) - 0.5;
 }
 
-/** Smooth 0..1 mask that is 0 at all four tile borders (`x = 0, 63`, `y = 0, 63`) and 1 in the tile interior. */
+/** Smooth 0..1 mask that is 0 at all four tile borders (`x = 0, SIZE-1`, `y = 0, SIZE-1`) and 1 in the tile interior. */
 function edgeMask(x, y, margin = 4) {
+  const S = SIZE / 64;
   const mx = Math.min(x, SIZE - 1 - x);
   const my = Math.min(y, SIZE - 1 - y);
-  return Utils.smoothstep(0, margin, mx) * Utils.smoothstep(0, margin, my);
+  return Utils.smoothstep(0, margin * S, mx) * Utils.smoothstep(0, margin * S, my);
 }
 
 function wrapCoord(v) {
@@ -231,23 +506,25 @@ function wrapCoord(v) {
 }
 
 function createSharedRockTile() {
+  const S = SIZE / 64;
   const baseRnd = mulberry32(51000);
   const warpX = periodicField(baseRnd, 3, SIZE);
   const warpY = periodicField(baseRnd, 3, SIZE);
   const coarse = periodicField(baseRnd, 3, SIZE);
   const medium = periodicField(baseRnd, 6, SIZE);
   const fine = periodicField(baseRnd, 12, SIZE);
+  const micro = periodicField(baseRnd, 24, SIZE);
   const tile = new Tile(SIZE, SIZE);
 
   for (let y = 0; y < SIZE; y++)
     for (let x = 0; x < SIZE; x++) {
       // Domain-warped periodic coordinates matching the floor regolith (no linear sine stripes)
-      const wx = x + (warpX(x, y) - 0.5) * 20;
-      const wy = y + (warpY(x, y) - 0.5) * 20;
+      const wx = x + (warpX(x, y) - 0.5) * 20 * S;
+      const wy = y + (warpY(x, y) - 0.5) * 20 * S;
       const c = coarse(wx, wy);
-      const m = medium(wx + 11, wy + 7);
-      const f = fine(x, y);
-      const ridge = 1 - Math.abs((coarse(wx + 23, wy + 37) - 0.5) * 2);
+      const m = medium(wx + 11 * S, wy + 7 * S);
+      const f = fine(x, y) * 0.72 + micro(x, y) * 0.28;
+      const ridge = 1 - Math.abs((coarse(wx + 23 * S, wy + 37 * S) - 0.5) * 2);
       const shade = c * 0.45 + m * 0.35 + f * 0.2;
       let col = mix(ROCK_DARK, ROCK_BASE, Utils.clamp(shade * 1.15, 0, 1));
       col = mix(col, ROCK_LIGHT, ridge * 0.4 + (f - 0.5) * 0.24);
@@ -259,11 +536,11 @@ function createSharedRockTile() {
     }
 
   // Modulo-wrapped regolith pebbles & stones matching the floor density and shading
-  for (let k = 0; k < 22; k++) {
+  for (let k = 0; k < 22 * S; k++) {
     const px = baseRnd() * SIZE;
     const py = baseRnd() * SIZE;
-    const rx = 1.1 + baseRnd() * 2.4;
-    const ry = 0.9 + baseRnd() * 2.0;
+    const rx = (1.1 + baseRnd() * 2.4) * S;
+    const ry = (0.9 + baseRnd() * 2.0) * S;
     const basalt = baseRnd() < 0.45;
     const rockCol = basalt ? mix(ROCK_BASALT, ROCK_BASE, 0.25) : mix(ROCK_BASE, ROCK_LIGHT, 0.5);
     const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
@@ -295,11 +572,12 @@ function rockCliffBase(t) {
 }
 
 function scatterRockNodules(t, rnd, count, maxRadius = 3.4) {
+  const S = SIZE / 64;
   for (let k = 0; k < count; k++) {
-    const px = 6 + rnd() * (SIZE - 12);
-    const py = 6 + rnd() * (SIZE - 12);
-    const rx = 1.3 + rnd() * maxRadius;
-    const ry = 1.0 + rnd() * (maxRadius * 0.8);
+    const px = 6 * S + rnd() * (SIZE - 12 * S);
+    const py = 6 * S + rnd() * (SIZE - 12 * S);
+    const rx = (1.3 + rnd() * maxRadius) * S;
+    const ry = (1.0 + rnd() * (maxRadius * 0.8)) * S;
     const basalt = rnd() < 0.48;
     const rockCol = basalt ? mix(ROCK_BASALT, ROCK_BASE, 0.3) : mix(ROCK_BASE, ROCK_LIGHT, 0.55);
     const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
@@ -325,12 +603,13 @@ function scatterRockNodules(t, rnd, count, maxRadius = 3.4) {
 }
 
 function carveRockCracks(t, rnd, count) {
+  const S = SIZE / 64;
   for (let k = 0; k < count; k++) {
-    let x = 8 + Math.floor(rnd() * (SIZE - 16));
-    let y = 6 + Math.floor(rnd() * 6);
-    const maxY = SIZE - 6 - Math.floor(rnd() * 6);
+    let x = (8 + Math.floor(rnd() * (64 - 16))) * S;
+    let y = (6 + Math.floor(rnd() * 6)) * S;
+    const maxY = (64 - 6 - Math.floor(rnd() * 6)) * S;
     while (y < maxY) {
-      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.6), 7, SIZE - 8);
+      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.6), 7 * S, SIZE - 8 * S);
       y += 1;
       const mask = edgeMask(x, y, 5);
       if (mask <= 0.02)
@@ -360,6 +639,7 @@ function drawRockPlain(t, rnd) {
 }
 
 function drawRockFissures(t, rnd) {
+  const S = SIZE / 64;
   rockCliffBase(t);
   const warpX = periodicField(rnd, 3, SIZE);
   const warpY = periodicField(rnd, 3, SIZE);
@@ -369,8 +649,8 @@ function drawRockFissures(t, rnd) {
       const mask = edgeMask(x, y, 5);
       if (mask <= 0.01)
         continue;
-      const wx = x + (warpX(x, y) - 0.5) * 22;
-      const wy = y + (warpY(x, y) - 0.5) * 22;
+      const wx = x + (warpX(x, y) - 0.5) * 22 * S;
+      const wy = y + (warpY(x, y) - 0.5) * 22 * S;
       const ridge = 1 - Math.abs((strata(wx, wy) - 0.5) * 2);
       if (ridge > 0.64)
         t.set(x, y, ROCK_OCHRE, (ridge - 0.64) * 1.45 * mask);
@@ -381,6 +661,7 @@ function drawRockFissures(t, rnd) {
 }
 
 function drawRockColumns(t, rnd) {
+  const S = SIZE / 64;
   rockCliffBase(t);
   const patch = periodicField(rnd, 3, SIZE);
   const detail = periodicField(rnd, 8, SIZE);
@@ -392,7 +673,7 @@ function drawRockColumns(t, rnd) {
       const p = patch(x, y) * 0.75 + detail(x, y) * 0.25;
       if (p > 0.52) {
         const edge = Math.min(1, (p - 0.52) * 4.6) * mask;
-        const vein = detail(x + 13, y + 7) > 0.62 ? ROCK_OCHRE : detail(x + 5, y + 19) < 0.38 ? ROCK_DARK : ROCK_BASALT;
+        const vein = detail(x + 13 * S, y + 7 * S) > 0.62 ? ROCK_OCHRE : detail(x + 5 * S, y + 19 * S) < 0.38 ? ROCK_DARK : ROCK_BASALT;
         t.set(x, y, mix(ROCK_BASE, vein, 0.74), edge * 0.82);
       }
     }
@@ -400,24 +681,30 @@ function drawRockColumns(t, rnd) {
 }
 
 function drawRockMagmaVeins(t, rnd) {
+  const S = SIZE / 64;
   rockCliffBase(t);
   carveRockCracks(t, rnd, 3);
-  for (const xStart of [20, 44]) {
+  for (const xStart of [20 * S, 44 * S]) {
     let x = xStart;
-    for (let y = 6; y < 58; y++) {
-      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.0), 8, SIZE - 8);
+    for (let y = 6 * S; y < 58 * S; y++) {
+      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.0), 8 * S, SIZE - 8 * S);
       const mask = edgeMask(x, y, 5);
-      t.set(x - 2, y, ROCK_DARK, 0.7 * mask);
-      t.set(x + 2, y, ROCK_DARK, 0.7 * mask);
-      t.set(x - 1, y, [210, 72, 20], 0.6 * mask);
-      t.set(x + 1, y, [210, 72, 20], 0.6 * mask);
-      t.set(x, y, [255, 148, 48], 0.88 * mask);
+      for (let dx = -2 * S; dx <= 2 * S; dx++) {
+        const ad = Math.abs(dx) / S;
+        if (ad < 0.55)
+          t.set(x + dx, y, [255, 148, 48], 0.88 * mask);
+        else if (ad < 1.35)
+          t.set(x + dx, y, [210, 72, 20], 0.6 * mask);
+        else
+          t.set(x + dx, y, ROCK_DARK, 0.7 * mask);
+      }
     }
   }
   scatterRockNodules(t, rnd, 10, 2.5);
 }
 
 function drawRockAlcove(t, rnd) {
+  const S = SIZE / 64;
   rockCliffBase(t);
   const hollow = periodicField(rnd, 3, SIZE);
   const rim = periodicField(rnd, 6, SIZE);
@@ -429,7 +716,7 @@ function drawRockAlcove(t, rnd) {
       const h = hollow(x, y);
       if (h > 0.52) {
         const depth = Math.min(1, (h - 0.52) * 4.2) * mask;
-        const ledge = rim(x + 9, y + 15) > 0.56 ? ROCK_OCHRE : ROCK_DARK;
+        const ledge = rim(x + 9 * S, y + 15 * S) > 0.56 ? ROCK_OCHRE : ROCK_DARK;
         t.set(x, y, mix(ROCK_BASALT, ledge, 0.58), depth * 0.78);
       }
     }
@@ -437,22 +724,23 @@ function drawRockAlcove(t, rnd) {
 }
 
 function drawRockExit(t) {
+  const S = SIZE / 64;
   rockCliffBase(t);
   // Ancient rock-hewn monolith portal with glowing exit chevrons so the exit remains unmistakable outdoors
-  t.rect(10, 8, 44, 46, ROCK_ABYSS, 0.9);
-  for (let i = 0; i < 44; i++) {
-    t.set(10 + i, 8, SIGNAL, 0.95);
-    t.set(10 + i, 53, SIGNAL, 0.95);
-    t.set(10, 8 + i, SIGNAL, 0.95);
-    t.set(53, 8 + i, SIGNAL, 0.95);
+  t.rect(10 * S, 8 * S, 44 * S, 46 * S, ROCK_ABYSS, 0.9);
+  for (let i = 0; i < 44 * S; i++) {
+    t.rect(10 * S + i, 8 * S, 1, S, SIGNAL, 0.95);
+    t.rect(10 * S + i, 53 * S, 1, S, SIGNAL, 0.95);
+    t.rect(10 * S, 8 * S + i, S, 1, SIGNAL, 0.95);
+    t.rect(53 * S, 8 * S + i, S, 1, SIGNAL, 0.95);
   }
   for (const y0 of [16, 28, 40])
-    for (let k = 0; k < 14; k++) {
-      const x = 32 - 14 + k;
+    for (let k = 0; k < 14; k += 0.25) {
+      const x = (32 - 14 + k) * S;
       const dy = k < 7 ? k : 13 - k;
-      for (let w = 0; w < 3; w++) {
-        t.set(x, y0 + dy / 1.4 + w, SIGNAL, 0.95);
-        t.set(x + 14, y0 + dy / 1.4 + w, SIGNAL, 0.4);
+      for (let w = 0; w < 3 * S; w++) {
+        t.set(x, (y0 + dy / 1.4) * S + w, SIGNAL, 0.95);
+        t.set(x + 14 * S, (y0 + dy / 1.4) * S + w, SIGNAL, 0.4);
       }
     }
 }
@@ -500,7 +788,7 @@ const MARS_ROCK_DRAW = [
 ];
 
 /**
- * 8-cell 512x64 procedural Martian canyon rock & cliff wall atlas for `planet: 'mars'`.
+ * 8-cell 2048x256 procedural Martian canyon rock & cliff wall atlas for `planet: 'mars'`.
  * Replaces riveted steel bulkheads, vents, pipes, and consoles with craggy red-orange rock strata and fissures.
  */
 export function marsRockAtlas() {
@@ -558,13 +846,13 @@ export function wallFaceQuads({ axis, plane, from, to, base, top, tile, d, exit 
     else
       scratchTile.setScalar(a, tile.y);
     const cell = wallCellFor(scratchTile, d, exit);
-    for (let y0 = base, step = 0; y0 < top - 1e-6; y0 += SIZE, step++) {
-      const y1 = Math.min(top, y0 + SIZE);
-      const part = (y1 - y0) / SIZE;
+    for (let y0 = base, step = 0; y0 < top - 1e-6; y0 += TILE, step++) {
+      const y1 = Math.min(top, y0 + TILE);
+      const part = (y1 - y0) / TILE;
       // the first piece is the picture from the bottom; a shorter one above shows its top, so the trim stays at the top
       const uv = step === 0 ? wallCellUv(cell, 0, part) : wallCellUv(WALL_CELLS.seam, 1 - part, 1);
-      const a0 = a * SIZE;
-      const a1 = a0 + SIZE;
+      const a0 = a * TILE;
+      const a1 = a0 + TILE;
       const corners = axis === 'x'
         ? [[plane, y0, a0], [plane, y0, a1], [plane, y1, a1], [plane, y1, a0]]
         : [[a0, y0, plane], [a1, y0, plane], [a1, y1, plane], [a0, y1, plane]];
@@ -581,9 +869,9 @@ export function wallFaceQuads({ axis, plane, from, to, base, top, tile, d, exit 
 export function diagWallFaceQuads({ a, b, heights, tile, diag, exit }) {
   const out = [];
   const cell = wallCellFor(tile, 4 + diag, exit);
-  for (let y0 = heights.x, step = 0; y0 < heights.y - 1e-6; y0 += SIZE, step++) {
-    const y1 = Math.min(heights.y, y0 + SIZE);
-    const part = (y1 - y0) / SIZE;
+  for (let y0 = heights.x, step = 0; y0 < heights.y - 1e-6; y0 += TILE, step++) {
+    const y1 = Math.min(heights.y, y0 + TILE);
+    const part = (y1 - y0) / TILE;
     const uv = step === 0 ? wallCellUv(cell, 0, part) : wallCellUv(WALL_CELLS.seam, 1 - part, 1);
     const corners = [[a.x, y0, a.y], [b.x, y0, b.y], [b.x, y1, b.y], [a.x, y1, a.y]];
     out.push({ corners: corners.flat(), uv });

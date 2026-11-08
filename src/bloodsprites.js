@@ -433,45 +433,115 @@ export function cellUv(cell) {
 // and its texture rectangle as [u0, v0, u1, v1]; null when nothing is left of it.
 
 /** A splat on the floor, turned any way round. `size` is the splat's, and the quad is 3.2 times as wide. */
-export function floorSplatQuad({ pos, size, seed, height = 0.3 }) {
+export function floorSplatQuad({ pos, size, seed, height = 0.3 }, out = null) {
   const rnd = mulberry32(seed);
   const variant = Math.floor(rnd() * FLOOR_VARIANTS);
   const angle = rnd() * Trigo.twopi;
   const half = size * 1.6;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  const at = (lx, ly) => [pos.x + cos * lx - sin * ly, height, pos.y + sin * lx + cos * ly];
-  return { corners: [...at(-half, -half), ...at(half, -half), ...at(half, half), ...at(-half, half)], uv: cellUv(CELLS.floor + variant) };
+  const px = pos.x;
+  const py = pos.y;
+  const ch = cos * half;
+  const sh = sin * half;
+  const cell = CELLS.floor + variant;
+  const u0 = cell / CELL_COUNT;
+  const u1 = (cell + 1) / CELL_COUNT;
+  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
+  const c = dest.corners;
+  c[0] = px - ch + sh;
+  c[1] = height;
+  c[2] = py - sh - ch;
+  c[3] = px + ch + sh;
+  c[4] = height;
+  c[5] = py + sh - ch;
+  c[6] = px + ch - sh;
+  c[7] = height;
+  c[8] = py + sh + ch;
+  c[9] = px - ch - sh;
+  c[10] = height;
+  c[11] = py - sh + ch;
+  const uv = dest.uv;
+  uv[0] = u0;
+  uv[1] = 0;
+  uv[2] = u1;
+  uv[3] = 1;
+  return dest;
 }
 
 /** A persistent chunk of meat, bone, skull, or organ resting on the floor after an XDeath gibbing. */
-export function floorGibQuad({ pos, size, variant = 0, angle = 0, height = 0.36 }) {
+export function floorGibQuad({ pos, size, variant = 0, angle = 0, height = 0.36 }, out = null) {
   const half = size;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  const at = (lx, ly) => [pos.x + cos * lx - sin * ly, height, pos.y + sin * lx + cos * ly];
-  return {
-    corners: [...at(-half, -half), ...at(half, -half), ...at(half, half), ...at(-half, half)],
-    uv: cellUv(CELLS.gib + ((variant >>> 0) % GIB_VARIANTS)),
-  };
+  const px = pos.x;
+  const py = pos.y;
+  const ch = cos * half;
+  const sh = sin * half;
+  const cell = CELLS.gib + ((variant >>> 0) % GIB_VARIANTS);
+  const u0 = cell / CELL_COUNT;
+  const u1 = (cell + 1) / CELL_COUNT;
+  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
+  const c = dest.corners;
+  c[0] = px - ch + sh;
+  c[1] = height;
+  c[2] = py - sh - ch;
+  c[3] = px + ch + sh;
+  c[4] = height;
+  c[5] = py + sh - ch;
+  c[6] = px + ch - sh;
+  c[7] = height;
+  c[8] = py + sh + ch;
+  c[9] = px - ch - sh;
+  c[10] = height;
+  c[11] = py - sh + ch;
+  const uv = dest.uv;
+  uv[0] = u0;
+  uv[1] = 0;
+  uv[2] = u1;
+  uv[3] = 1;
+  return dest;
 }
 
 /**
  * A shoe print. `strength` picks a filled, hatched print or just an outline, and a left foot is a mirrored right one.
  * Like the line version it is about 10.6 * 1.8 * scale long.
  */
-export function printQuad({ pos, angle, side, strength, scale }) {
+export function printQuad({ pos, angle, side, strength, scale }, out = null) {
   const size = scale * 1.8 * (0.75 + 0.25 * Math.min(1, strength));
   const half = (CELL / 2) * (size / PRINT_PIXELS);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const offset = side * 0.3 * side * size;
-  const at = (fx, fy) => [pos.x + cos * fx - sin * (fy + offset), 0.32, pos.y + sin * fx + cos * (fy + offset)];
-  const [u0, v0, u1, v1] = cellUv(strength > 0.55 ? CELLS.printFilled : CELLS.printOutline);
-  return {
-    corners: [...at(-half, -half), ...at(half, -half), ...at(half, half), ...at(-half, half)],
-    uv: side < 0 ? [u0, v1, u1, v0] : [u0, v0, u1, v1],
-  };
+  const px = pos.x;
+  const py = pos.y;
+  const ch = cos * half;
+  const sh = sin * half;
+  const fy0 = -half + offset;
+  const fy1 = half + offset;
+  const cell = strength > 0.55 ? CELLS.printFilled : CELLS.printOutline;
+  const u0 = cell / CELL_COUNT;
+  const u1 = (cell + 1) / CELL_COUNT;
+  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
+  const c = dest.corners;
+  c[0] = px - ch - sin * fy0;
+  c[1] = 0.32;
+  c[2] = py - sh + cos * fy0;
+  c[3] = px + ch - sin * fy0;
+  c[4] = 0.32;
+  c[5] = py + sh + cos * fy0;
+  c[6] = px + ch - sin * fy1;
+  c[7] = 0.32;
+  c[8] = py + sh + cos * fy1;
+  c[9] = px - ch - sin * fy1;
+  c[10] = 0.32;
+  c[11] = py - sh + cos * fy1;
+  const uv = dest.uv;
+  uv[0] = u0;
+  uv[1] = side < 0 ? 1 : 0;
+  uv[2] = u1;
+  uv[3] = side < 0 ? 0 : 1;
+  return dest;
 }
 
 /**
@@ -479,7 +549,7 @@ export function printQuad({ pos, angle, side, strength, scale }) {
  * `hi` along its tangent, from the splat's height `z` and up to `top`), so none hangs in the air past a corner,
  * an opening or the top of the wall.
  */
-export function wallSplatQuad({ pos, normal, size, top, seed, lo = -Infinity, hi = Infinity, slope = 0 }) {
+export function wallSplatQuad({ pos, normal, size, top, seed, lo = -Infinity, hi = Infinity, slope = 0 }, out = null) {
   const rnd = mulberry32(seed);
   const variant = Math.floor(rnd() * WALL_VARIANTS);
   const pixel = size / 10;
@@ -494,21 +564,42 @@ export function wallSplatQuad({ pos, normal, size, top, seed, lo = -Infinity, hi
   const cv1 = Math.min(v1, top - 0.6 - pos.z);
   if (cu0 >= cu1 || cv0 >= cv1)
     return null;
+  const px = pos.x;
+  const py = pos.y;
+  const pz = pos.z;
   const nx = normal.x;
   const ny = normal.y;
   const tx = -ny;
   const ty = nx;
-  const at = (u, v) => {
-    const n = 0.4 - slope * v;
-    return [pos.x + tx * u + nx * n, pos.z + v, pos.y + ty * u + ny * n];
-  };
-  const [a0, b0, a1, b1] = cellUv(CELLS.wall + variant);
+  const n0 = 0.4 - slope * cv0;
+  const n1 = 0.4 - slope * cv1;
+  const cell = CELLS.wall + variant;
+  const a0 = cell / CELL_COUNT;
+  const a1 = (cell + 1) / CELL_COUNT;
   const du = a1 - a0;
-  return {
-    corners: [...at(cu0, cv0), ...at(cu1, cv0), ...at(cu1, cv1), ...at(cu0, cv1)],
-    // the cut takes the same share off the picture
-    uv: [a0 + ((cu0 - u0) / (u1 - u0)) * du, b0 + ((cv0 - v0) / (v1 - v0)) * (b1 - b0), a0 + ((cu1 - u0) / (u1 - u0)) * du, b0 + ((cv1 - v0) / (v1 - v0)) * (b1 - b0)],
-  };
+  const spanU = u1 - u0;
+  const spanV = v1 - v0;
+  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
+  const c = dest.corners;
+  c[0] = px + tx * cu0 + nx * n0;
+  c[1] = pz + cv0;
+  c[2] = py + ty * cu0 + ny * n0;
+  c[3] = px + tx * cu1 + nx * n0;
+  c[4] = pz + cv0;
+  c[5] = py + ty * cu1 + ny * n0;
+  c[6] = px + tx * cu1 + nx * n1;
+  c[7] = pz + cv1;
+  c[8] = py + ty * cu1 + ny * n1;
+  c[9] = px + tx * cu0 + nx * n1;
+  c[10] = pz + cv1;
+  c[11] = py + ty * cu0 + ny * n1;
+  // the cut takes the same share off the picture
+  const uv = dest.uv;
+  uv[0] = a0 + ((cu0 - u0) / spanU) * du;
+  uv[1] = (cv0 - v0) / spanV;
+  uv[2] = a0 + ((cu1 - u0) / spanU) * du;
+  uv[3] = (cv1 - v0) / spanV;
+  return dest;
 }
 
 // ---- drips ---------------------------------------------------------------------------------------------------------
@@ -565,16 +656,15 @@ export function dripTime(seed, size) {
 
 /** How far a drip has run, 0..1, `t` of the way through its time: some slow steadily, some stutter, some creep. */
 function progress(t, profile) {
-  const ease = (x) => Bezier.quadratic(0, 1, 1, x);
   if (profile === 0)
-    return ease(t);
+    return Bezier.quadratic(0, 1, 1, t);
   if (profile === 1) {
     // it runs, stops, then runs again
     if (t < 0.3)
-      return 0.5 * ease(t / 0.3);
+      return 0.5 * Bezier.quadratic(0, 1, 1, t / 0.3);
     if (t < 0.55)
       return 0.5;
-    return 0.5 + 0.5 * ease((t - 0.55) / 0.45);
+    return 0.5 + 0.5 * Bezier.quadratic(0, 1, 1, (t - 0.55) / 0.45);
   }
   if (profile === 2)
     return Bezier.cubic(0, 0, 1, 1, t);
