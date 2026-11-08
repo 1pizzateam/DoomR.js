@@ -125,7 +125,7 @@ const CACHE_WEAPONS = new Set(['chainsaw', 'shotgun', 'chaingun', 'rocket']);
 const USE_RANGE = 96;
 const USE_DOT = 0.35;
 const CACHE_TOUCH_RANGE = TILE * 0.5;
-const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', take: 'TAKE', locked: 'LOCKED' });
+const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', take: 'TAKE', locked: 'LOCKED', jump: 'JUMP' });
 // seconds for a full 0 to 1 (in) or 1 to 0 (out) ramp of the use prompt
 const USE_PROMPT_FADE_IN = 0.12;
 const USE_PROMPT_FADE_OUT = 0.2;
@@ -202,7 +202,7 @@ export class Game {
       this.eventPool.push({ type: '', pos: new Vec2(), x: 0, y: 0, visible: true });
     this.eventCursor = 0;
     this.useTarget = { kind: null, door: null, cache: null, verb: '', lock: null, promptable: false };
-    this.usePrompt = { fade: 0, verb: '', lock: null };
+    this.usePrompt = { fade: 0, verb: '', lock: null, key: 'use' };
     this.load(0);
   }
 
@@ -314,6 +314,7 @@ export class Game {
     this.usePrompt.fade = 0;
     this.usePrompt.verb = '';
     this.usePrompt.lock = null;
+    this.usePrompt.key = 'use';
     this.clearUseTarget();
     const seedIndex = this.levelIndex;
     this.level = def instanceof Level ? def : new Level(def);
@@ -2112,6 +2113,12 @@ export class Game {
     const player = this.player;
     const target = this.useTarget;
     this.clearUseTarget();
+    if (player.z < 0 && this.level.slimeAt(player.pos)) {
+      target.kind = 'pit';
+      target.verb = USE_VERBS.jump;
+      target.promptable = true;
+      return true;
+    }
     const facing = this.scratch.setScalar(1, 0).setRadian(player.angle);
     let best = null;
     let bestCache = null;
@@ -2160,9 +2167,11 @@ export class Game {
     const prompt = this.usePrompt;
     if (this.state !== 'play') {
       prompt.fade = 0;
+      prompt.key = 'use';
       return;
     }
     if (this.findUseTarget()) {
+      prompt.key = this.useTarget.kind === 'pit' ? 'jump' : 'use';
       prompt.verb = this.useTarget.verb;
       prompt.lock = this.useTarget.lock;
       prompt.fade = Utils.clamp(prompt.fade + dt / USE_PROMPT_FADE_IN, 0, 1);

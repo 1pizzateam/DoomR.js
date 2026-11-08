@@ -93,6 +93,7 @@ function control(dt) {
     hud.selectHint = keymap.selectHint;
     hud.setControlsStatus(keymap.actionLabel('controls'), keymap.unboundActions().length);
     hud.useKeyLabel = keymap.actionLabel('use');
+    hud.jumpKeyLabel = keymap.actionLabel('jump');
     hud.setPauseKeyLabel(keymap.actionLabel('pause'));
     hintVersion = keymap.version;
   }

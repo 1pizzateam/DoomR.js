@@ -80,6 +80,37 @@ function run(game, seconds, controls = idle) {
     game.update(1 / 60, controls);
 }
 
+function pitGame() {
+  const game = new Game();
+  game.load({ name: 'Pit prompt', rows: ['###########', '#.........#', '#P.D.~~~a.#', '#...~~~...#', '#.........#', '###########'] });
+  game.state = 'play';
+  const door = [...game.level.doors.values()][0];
+  let slime = null;
+  for (let y = 0; y < 6 && !slime; y++)
+    for (let x = 0; x < game.level.width; x++)
+      if (game.level.isSlime(x, y)) {
+        slime = game.level.center(x, y);
+        break;
+      }
+  game.player.body.setPosition(new Vec2(slime.x, slime.y));
+  return { game, door };
+}
+
+function pitHud() {
+  const drawn = [];
+  const ctx = { globalAlpha: 1, font: '', fillStyle: '', setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText(str) { drawn.push({ str }); } };
+  const overlay = { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } };
+  const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
+  hud.resize(1024, 768, 1);
+  const { game } = pitGame();
+  game.message.age = 99;
+  game.player.z = -12;
+  game.usePrompt.fade = 1;
+  game.usePrompt.verb = 'JUMP';
+  game.usePrompt.key = 'jump';
+  return { hud, drawn, game };
+}
+
 function fresh(levelIndex = 0) {
   const game = new Game();
   game.load(levelIndex, {
@@ -11655,6 +11686,97 @@ const tests = {
     game.load(0);
     assert.equal(game.usePrompt.fade, 0);
     assert.equal(game.useTarget.kind, null);
+  },
+
+  'AC-1 pit prompt: falling in shows the JUMP target and rising fade'() {
+    const { game } = pitGame();
+    for (const z of [-12, -3]) {
+      game.player.z = z;
+      game.usePrompt.fade = 0;
+      game.updateUsePrompt(0.05);
+      assert.equal(game.useTarget.kind, 'pit');
+      assert.equal(game.useTarget.verb, 'JUMP');
+      assert.equal(game.usePrompt.key, 'jump');
+      assert.ok(game.usePrompt.fade > 0);
+    }
+  },
+
+  'AC-2 pit prompt: pit beats doors and chests and use() does nothing'() {
+    const { game, door } = pitGame();
+    game.player.z = -12;
+    const cache = game.caches[0];
+    const state = cache.state;
+    game.player.angle = 0;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'pit');
+    const before = door.target;
+    game.use();
+    assert.equal(door.target, before);
+    assert.equal(cache.state, state);
+  },
+
+  'AC-3 pit prompt: leaving the pit restores use prompts and fades out'() {
+    const { game, door } = pitGame();
+    game.player.z = -12;
+    run(game, 0.1);
+    game.updateUsePrompt(0.05);
+    assert.equal(game.usePrompt.key, 'jump');
+    game.player.z = 0;
+    game.updateUsePrompt(0.05);
+    assert.notEqual(game.useTarget.kind, 'pit');
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 64));
+    game.player.angle = -Math.PI / 2;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'door');
+    assert.equal(game.usePrompt.key, 'use');
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 400));
+    for (let i = 0; i < 15; i++)
+      game.updateUsePrompt(1 / 60);
+    assert.equal(game.usePrompt.fade, 0);
+  },
+
+  'AC-4 pit prompt: HUD draws jumpKeyLabel and the signature tracks it'() {
+    const { hud, drawn, game } = pitHud();
+    hud.jumpKeyLabel = 'J';
+    hud.render(game);
+    assert.equal(drawn.filter((d) => d.str === 'J').length, 1);
+    assert.equal(drawn.filter((d) => d.str === 'JUMP').length, 1);
+    assert.equal(drawn.filter((d) => d.str === hud.useKeyLabel).length, 0);
+    const a = hud.computeHudTextKey(game, false);
+    hud.jumpKeyLabel = 'K';
+    const b = hud.computeHudTextKey(game, false);
+    assert.notEqual(a, b);
+  },
+
+  'AC-5 pit prompt: cleared outside play and on load'() {
+    const { game } = pitGame();
+    game.player.z = -12;
+    run(game, 0.2);
+    assert.equal(game.usePrompt.key, 'jump');
+    for (const state of ['paused', 'dead']) {
+      game.state = 'play';
+      game.updateUsePrompt(0.2);
+      assert.ok(game.usePrompt.fade > 0);
+      game.state = state;
+      game.updateUsePrompt(0.05);
+      assert.equal(game.usePrompt.fade, 0);
+      assert.equal(game.usePrompt.key, 'use');
+    }
+    game.state = 'play';
+    game.updateUsePrompt(0.2);
+    game.load(0);
+    assert.equal(game.usePrompt.fade, 0);
+    assert.equal(game.usePrompt.key, 'use');
+  },
+
+  'AC-6 pit prompt: door prompts keep useKeyLabel and verbs'() {
+    const { hud, drawn, game } = pitHud();
+    game.usePrompt.key = 'use';
+    game.usePrompt.verb = 'OPEN';
+    hud.render(game);
+    assert.equal(drawn.filter((d) => d.str === hud.useKeyLabel).length, 1);
+    assert.equal(drawn.filter((d) => d.str === 'OPEN').length, 1);
+    assert.equal(drawn.filter((d) => d.str === hud.jumpKeyLabel).length, 0);
   },
 
   'AC-6 use prompt: the HUD draws a discreet keycap with the bound key'() {
