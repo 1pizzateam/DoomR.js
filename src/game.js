@@ -86,7 +86,7 @@ const PLAYER_CROUCH = 95;
 const PLAYER_WALK = 160;
 const PLAYER_RUN = 235;
 const CROUCH_SPEED = 10;
-const JUMP_VELOCITY = 180;
+const JUMP_VELOCITY = 135;
 const JUMP_GRAVITY = 460;
 export const ACID_SURFACE_DEPTH = 12;
 export const ACID_PIT_DEPTH = 24;
@@ -2656,7 +2656,7 @@ export class Game {
     }
     const wasAirborne = player.z > floor;
     if (input.jump && !wasAirborne) {
-      player.vz = JUMP_VELOCITY;
+      player.vz = floor < 0 ? 180 : JUMP_VELOCITY;
       player.crouch = 0;
     }
     if (wasAirborne || (player.vz ?? 0) > 0) {

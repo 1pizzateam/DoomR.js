@@ -1,4 +1,4 @@
-import { DirectionalLight, PerspectiveCamera, Scene } from '@1pizzateam/roostr';
+import { DirectionalLight, PerspectiveCamera, Scene, Texture } from '@1pizzateam/roostr';
 import { createShirtMesh, updateShirt } from './shirt.js';
 import { paintFaceAtlas } from './skin/atlas.js';
 import {
@@ -114,7 +114,25 @@ const VIEWPORT_SIZE = new Vec2();
 export class HeadView {
   constructor(gl) {
     this.gl = gl;
+    this.tierPixels = new Array(5);
+    this.tierTextures = new Array(5);
     this.facer = new FaceR(marineCartridge(), { seed: SEED, gl, atlasSize: 256 });
+    const sizeVec = new Vec2(this.facer.atlasSize, this.facer.atlasSize);
+    for (let tier = 0; tier < 5; tier++) {
+      const pixels = paintFaceAtlas(this.facer.cartridge.appearance, tier, this.facer.atlasSize);
+      this.tierPixels[tier] = pixels;
+      this.tierTextures[tier] = gl
+        ? Texture.create(pixels, gl, { size: sizeVec, flipY: false, generateMipmaps: true })
+        : null;
+    }
+    this.facer.refreshAtlasTexture = () => {
+      const tier = Math.max(0, Math.min(4, this.facer.pose.damageTier | 0));
+      const tex = this.tierTextures[tier];
+      if (tex && this.facer.mesh)
+        this.facer.mesh.setSharedTexture(tex);
+      return this.tierPixels[tier];
+    };
+    this.facer.refreshAtlasTexture();
     this.facer.setHealth(100);
 
     this.scene = new Scene({
@@ -240,5 +258,16 @@ export class HeadView {
 
   restore() {
     this.scene.restore();
+    if (this.gl) {
+      const sizeVec = new Vec2(this.facer.atlasSize, this.facer.atlasSize);
+      for (let tier = 0; tier < 5; tier++) {
+        this.tierTextures[tier] = Texture.create(this.tierPixels[tier], this.gl, {
+          size: sizeVec,
+          flipY: false,
+          generateMipmaps: true,
+        });
+      }
+      this.facer.refreshAtlasTexture();
+    }
   }
 }

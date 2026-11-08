@@ -29,6 +29,20 @@ function fbm2(x, y, seed) {
         valueNoise(x * 2.1 + 17.3, y * 2.1 - 9.1, seed + 1) * 0.3 +
         valueNoise(x * 4.3 - 5.7, y * 4.3 + 23.9, seed + 2) * 0.15);
 }
+const faceAtlasCache = new Map();
+
+function faceAtlasKey(appearance, clampedTier, size, hasHairAsset) {
+    const s = appearance.skinColor;
+    const sh = appearance.skinShadowColor;
+    const l = appearance.lipColor;
+    const ir = appearance.irisColor;
+    const sc = appearance.scleraColor;
+    const br = appearance.browColor;
+    const h = appearance.hairColor ?? appearance.browColor;
+    const t = appearance.teethColor;
+    return `${size}|${clampedTier}|${appearance.damageSeed}|${appearance.hairStyle ?? 'bald'}|${hasHairAsset ? 1 : 0}|${s.x},${s.y},${s.z}|${sh.x},${sh.y},${sh.z}|${l.x},${l.y},${l.z}|${ir.x},${ir.y},${ir.z}|${sc.x},${sc.y},${sc.z}|${br.x},${br.y},${br.z}|${h.x},${h.y},${h.z}|${t.x},${t.y},${t.z}`;
+}
+
 /**
  * Generate a procedural RGBA texture atlas (`Uint8Array` of length `size * size * 4`)
  * for the UV layout of `buildAnatomicalBaseHead` (Skin in `v: 0..0.75`, Left/Right Eyes
@@ -36,6 +50,16 @@ function fbm2(x, y, seed) {
  * progressive damage/gore splatters for `damageTier` (`0 = 100%..95% HP` .. `4 = <40% HP`).
  */
 export function paintFaceAtlas(appearance, damageTier = 0, size = 256) {
+    const clampedTier = Utils.clamp(damageTier | 0, 0, 4);
+    const customOverrides = appearance.customTierOverrides?.[clampedTier];
+    const hasCustomOverrides = Array.isArray(customOverrides) && customOverrides.length > 0;
+    const hairAsset = getHairStyle(appearance.hairStyle ?? 'bald');
+    const cacheKey = hasCustomOverrides ? null : faceAtlasKey(appearance, clampedTier, size, Boolean(hairAsset));
+    if (cacheKey) {
+        const cached = faceAtlasCache.get(cacheKey);
+        if (cached)
+            return cached;
+    }
     const pixels = new Uint8Array(size * size * 4);
     const rng = Rand.create(appearance.damageSeed + damageTier * 97);
     const skin = appearance.skinColor;
@@ -45,9 +69,7 @@ export function paintFaceAtlas(appearance, damageTier = 0, size = 256) {
     const sclera = appearance.scleraColor;
     const brow = appearance.browColor;
     const hair = appearance.hairColor ?? appearance.browColor;
-    const hairAsset = getHairStyle(appearance.hairStyle ?? 'bald');
     const teeth = appearance.teethColor;
-    const clampedTier = Utils.clamp(damageTier | 0, 0, 4);
     const seedPhase = ((appearance.damageSeed % 97) / 97) * Math.PI * 2;
     const col = new Vec3();
     for (let y = 0; y < size; y++) {
@@ -576,8 +598,7 @@ export function paintFaceAtlas(appearance, damageTier = 0, size = 256) {
         }
     }
     // Apply custom painted overrides if present for this tier
-    const customOverrides = appearance.customTierOverrides?.[clampedTier];
-    if (Array.isArray(customOverrides)) {
+    if (hasCustomOverrides) {
         for (let i = 0; i + 4 < customOverrides.length; i += 5) {
             const pIdx = customOverrides[i] * 4;
             if (pIdx >= 0 && pIdx + 3 < pixels.length) {
@@ -587,6 +608,8 @@ export function paintFaceAtlas(appearance, damageTier = 0, size = 256) {
                 pixels[pIdx + 3] = customOverrides[i + 4];
             }
         }
+    } else if (cacheKey) {
+        faceAtlasCache.set(cacheKey, pixels);
     }
     return pixels;
 }

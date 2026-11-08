@@ -995,6 +995,61 @@ export class World {
     this.buildChaingun();
     this.buildShotgun();
     this.buildRocketLauncher();
+    this.prewarmCombatAssets();
+  }
+
+  /**
+   * Pre-warms procedural textures, 3D geometries, and transient WebGL shader programs during level load so the first
+   * gunshot, spark, fireball, grenade, explosion, or monster gibbing in combat never stalls the main thread.
+   */
+  prewarmCombatAssets() {
+    const { gl } = this;
+    this.explosion3dPixels ??= explosion3dAtlas();
+    this.explosion3dGeo ??= explosion3dMesh(new Vec3(1, 1, 1));
+    this.sharedTexture(this.explosion3dPixels, { magFilter: gl.LINEAR, minFilter: gl.LINEAR });
+    this.explosionPixels ??= explosionAtlas();
+    this.sharedTexture(this.explosionPixels);
+    this.teleportPixels ??= teleportAtlas();
+    this.sharedTexture(this.teleportPixels);
+    this.fireballPixels ??= fireballAtlas();
+    this.sharedTexture(this.fireballPixels);
+    this.grenadePixels ??= grenadeAtlas();
+    this.sharedTexture(this.grenadePixels, { flipY: false });
+    this.grenadeGeo ??= grenadeParts();
+    for (const type of Object.keys(MONSTERS)) {
+      this.sharedTexture(monsterSkinAtlas(type));
+      if (type !== 'wraith')
+        this.sharedTexture(monsterGoreSkinAtlas(type));
+      monsterParts(type);
+    }
+
+    // Pin transient shader programs on inactive scene meshes so Program.release never deletes them when effects expire
+    const warmSprite = this.sprite(this.impactPixels, new Material({ diffuse: new Vec3(1, 1, 1) }), 1, 1, {
+      fragment: TEXTURED_FRAGMENT,
+    });
+    warmSprite.setInactive();
+    this.track(warmSprite, this.staticMeshes);
+
+    const boomGeometry = new CustomMesh();
+    boomGeometry.vertices = this.explosion3dGeo.vertices;
+    boomGeometry.normals = this.explosion3dGeo.normals;
+    boomGeometry.uvs = this.explosion3dGeo.uvs;
+    boomGeometry.setPrimitive('TRIANGLES');
+    const warmBoom = new Mesh(gl, boomGeometry);
+    warmBoom.addProgram(EXPLOSION_3D_VERTEX, EXPLOSION_3D_FRAGMENT, new Material({ diffuse: new Vec3(1, 1, 1) }));
+    this.bindAtlasTexture(warmBoom, this.explosion3dPixels, { magFilter: gl.LINEAR, minFilter: gl.LINEAR });
+    warmBoom.setInactive();
+    this.track(warmBoom, this.staticMeshes);
+
+    const impParts = monsterParts('imp');
+    const monsterGeometry = new CustomMesh();
+    monsterGeometry.vertices = impParts.head.vertices;
+    monsterGeometry.normals = impParts.head.normals;
+    monsterGeometry.uvs = impParts.head.uvs;
+    monsterGeometry.setPrimitive('TRIANGLES');
+    const warmMonster = this.monsterPartMesh(monsterGeometry, monsterSkinAtlas('imp'), this.material('orange'));
+    warmMonster.setInactive();
+    this.track(warmMonster, this.staticMeshes);
   }
 
   /** Bullet holes on walls go in one buffer; the ones on doors are handled by syncDoorMarks. */
@@ -1029,9 +1084,11 @@ export class World {
       marks = {
         holes: this.doorBatch(BLOOD.doorHoles, this.impactPixels),
         splats: this.doorSplatBatch(),
-        open: -1,
+        holesOpen: -1,
         holesVersion: -1,
+        splatsOpen: -1,
         version: -1,
+        dripping: false,
       };
       this.doorMarks.set(door, marks);
     }
@@ -1042,38 +1099,53 @@ export class World {
       marks.splats.show(false);
       return;
     }
-    if (marks.open === door.open && marks.holesVersion === blood.holesVersion && marks.version === blood.version && !blood.dripping) {
-      marks.holes.show(true);
-      marks.splats.show(true);
-      return;
-    }
-    marks.open = door.open;
-    marks.holesVersion = blood.holesVersion;
-    marks.version = blood.version;
+    marks.holes.show(true);
+    marks.splats.show(true);
 
     const inset = door.secret ? 0 : DOOR_INSET;
-    // stored at the height it has on a closed door; the door has dropped by `drop`
-    const holes = marks.holes.begin();
-    for (const mark of blood.holes) {
-      if (mark.door !== door)
-        continue;
-      const hm = scratchHoleMark;
-      hm.pos.x = mark.x - mark.nx * inset;
-      hm.pos.y = mark.y - mark.ny * inset;
-      hm.pos.z = mark.z - drop;
-      hm.top = mark.top * height;
-      hm.normal.x = mark.nx;
-      hm.normal.y = mark.ny;
-      hm.seed = mark.seed;
-      hm.kind = mark.kind;
-      hm.lo = mark.lo;
-      hm.hi = mark.hi;
-      hm.slope = mark.slope;
-      const quad = holeQuad(hm, scratchHoleQuad);
-      if (quad)
-        holes.quad(quad.corners, quad.uv);
+    if (marks.holesOpen !== door.open || marks.holesVersion !== blood.holesVersion) {
+      marks.holesOpen = door.open;
+      marks.holesVersion = blood.holesVersion;
+      // stored at the height it has on a closed door; the door has dropped by `drop`
+      const holes = marks.holes.begin();
+      for (const mark of blood.holes) {
+        if (mark.door !== door)
+          continue;
+        const hm = scratchHoleMark;
+        hm.pos.x = mark.x - mark.nx * inset;
+        hm.pos.y = mark.y - mark.ny * inset;
+        hm.pos.z = mark.z - drop;
+        hm.top = mark.top * height;
+        hm.normal.x = mark.nx;
+        hm.normal.y = mark.ny;
+        hm.seed = mark.seed;
+        hm.kind = mark.kind;
+        hm.lo = mark.lo;
+        hm.hi = mark.hi;
+        hm.slope = mark.slope;
+        const quad = holeQuad(hm, scratchHoleQuad);
+        if (quad)
+          holes.quad(quad.corners, quad.uv);
+      }
+      holes.end();
     }
-    holes.end();
+
+    let doorDripping = false;
+    if (blood.dripping) {
+      for (let i = 0; i < blood.walls.length; i++) {
+        const mark = blood.walls[i];
+        if (mark.door === door && mark.age < mark.dripTime) {
+          doorDripping = true;
+          break;
+        }
+      }
+    }
+    if (marks.splatsOpen === door.open && marks.version === blood.version && !doorDripping && !marks.dripping)
+      return;
+    marks.splatsOpen = door.open;
+    marks.version = blood.version;
+    marks.dripping = doorDripping;
+
     const batch = marks.splats.begin();
     for (const mark of blood.walls) {
       if (mark.door !== door)
@@ -1082,7 +1154,7 @@ export class World {
       const sunk = scratchSplatMark;
       sunk.pos.setScalar(mark.x - mark.nx * inset, mark.y - mark.ny * inset, mark.z - drop);
       sunk.top = mark.top * height;
-      const quad = wallSplatQuad(sunk);
+      const quad = wallSplatQuad(sunk, scratchSplatQuad);
       if (quad)
         batch.quad(quad.corners, quad.uv);
       const drips = wallDripQuads(sunk, this.dripTarget);
@@ -1095,7 +1167,7 @@ export class World {
   /** A sprite's four corners are worked out once per mark and kept; dissolving marks on acid update dynamically. */
   cachedQuad(item, build) {
     if (item.dissolving)
-      return build(item) ?? false;
+      return build(item, scratchSplatQuad) ?? false;
     let quad = this.splatCache.get(item);
     if (quad === undefined) {
       quad = build(item) ?? false;
@@ -1181,18 +1253,32 @@ export class World {
 
   syncSplatSprites(blood) {
     const batch = this.splatters.begin();
-    const add = (quad) => quad && batch.quad(quad.corners, quad.uv);
-    for (const splat of blood.floor)
-      add(this.cachedQuad(splat, floorSplatOf));
-    for (const gib of blood.gibs)
-      add(this.cachedQuad(gib, floorGibOf));
+    for (const splat of blood.floor) {
+      const quad = this.cachedQuad(splat, floorSplatOf);
+      if (quad)
+        batch.quad(quad.corners, quad.uv);
+    }
+    for (const gib of blood.gibs) {
+      const quad = this.cachedQuad(gib, floorGibOf);
+      if (quad)
+        batch.quad(quad.corners, quad.uv);
+    }
     for (const splat of blood.walls)
-      if (!splat.door)
-        add(this.cachedQuad(splat, wallSplatOf));
-    for (const splat of blood.ceiling)
-      add(this.cachedQuad(splat, floorSplatOf));
-    for (const print of blood.prints)
-      add(this.cachedQuad(print, printOf));
+      if (!splat.door) {
+        const quad = this.cachedQuad(splat, wallSplatOf);
+        if (quad)
+          batch.quad(quad.corners, quad.uv);
+      }
+    for (const splat of blood.ceiling) {
+      const quad = this.cachedQuad(splat, floorSplatOf);
+      if (quad)
+        batch.quad(quad.corners, quad.uv);
+    }
+    for (const print of blood.prints) {
+      const quad = this.cachedQuad(print, printOf);
+      if (quad)
+        batch.quad(quad.corners, quad.uv);
+    }
     batch.end();
   }
 
