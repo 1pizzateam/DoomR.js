@@ -49,6 +49,7 @@ export class Blood {
     this.spanAt = new Vec2();
     this.wallPos = new Vec3();
     this.wallNormal = new Vec2();
+    this.face = { x: 0, y: 0, nx: 0, ny: 0, idx: 0, top: 0, height: 0, door: null, span: null, lo: 0, hi: 0, slope: 0 };
     this.reset(null, null);
   }
 
@@ -279,6 +280,47 @@ export class Blood {
    */
   impact(pos, normal, kind = 'hole') {
     const { level } = this;
+    const face = this.face;
+    if (!this.wallFace(pos, normal, face, true))
+      return false;
+    const { nx, ny } = face;
+    const idx = face.idx;
+    const { door, top, height, span } = face;
+    const px = face.x;
+    const py = face.y;
+    // a door slides: its holes are kept in the door's own height, so they travel with it
+    const hole = {
+      x: px,
+      y: py,
+      z: door ? height / (1 - door.open) : height,
+      nx,
+      ny,
+      top: door ? level.baseHeight[idx] : top,
+      ...span,
+      door,
+      kind,
+      seed: this.rand.integer(1, 2147483647),
+    };
+    this.holes.push(hole);
+    if (door) {
+      const own = this.holes.filter((h) => h.door === door);
+      if (own.length > BLOOD.doorHoles)
+        this.holes.splice(this.holes.indexOf(own[0]), 1);
+    }
+    if (this.holes.length > BLOOD.holes)
+      this.holes.shift();
+    this.holesVersion++;
+    return height;
+  }
+
+  /**
+   * Where a wall mark at `pos` (z the height) on the face with `normal` sits: snapped onto the face, with the clipped span of
+   * the face and the door it belongs to, written into `out`. With `jitter` a height at or above the wall top is replaced by a
+   * random one on the face (as bullet holes do); without it the middle of the wall is used and no random numbers are drawn.
+   * False when the face is out of bounds or has sunk away.
+   */
+  wallFace(pos, normal, out, jitter = false) {
+    const { level } = this;
     const { x, y, z } = pos;
     const nx = normal.x;
     const ny = normal.y;
@@ -293,7 +335,7 @@ export class Blood {
     // a door that has sunk into the floor has no face left to mark
     if (z <= 1 || top <= 1)
       return false;
-    const height = z < top - 0.5 ? z : this.float(top * 0.3, top - 1.5);
+    const height = z < top - 0.5 ? z : jitter ? this.float(top * 0.3, top - 1.5) : top * 0.5;
     let px = x;
     let py = y;
     let span;
@@ -319,29 +361,19 @@ export class Blood {
       py = ny ? Math.round(y / TILE) * TILE : y;
       span = this.faceSpan(this.spanAt.setScalar(px, py), normal, door);
     }
-    // a door slides: its holes are kept in the door's own height, so they travel with it
-    const hole = {
-      x: px,
-      y: py,
-      z: door ? height / (1 - door.open) : height,
-      nx,
-      ny,
-      top: door ? level.baseHeight[idx] : top,
-      ...span,
-      door,
-      kind,
-      seed: this.rand.integer(1, 2147483647),
-    };
-    this.holes.push(hole);
-    if (door) {
-      const own = this.holes.filter((h) => h.door === door);
-      if (own.length > BLOOD.doorHoles)
-        this.holes.splice(this.holes.indexOf(own[0]), 1);
-    }
-    if (this.holes.length > BLOOD.holes)
-      this.holes.shift();
-    this.holesVersion++;
-    return height;
+    out.x = px;
+    out.y = py;
+    out.nx = nx;
+    out.ny = ny;
+    out.idx = idx;
+    out.top = top;
+    out.height = height;
+    out.door = door;
+    out.span = span;
+    out.lo = span.lo;
+    out.hi = span.hi;
+    out.slope = span.slope ?? 0;
+    return true;
   }
 
   /**

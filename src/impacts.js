@@ -16,10 +16,16 @@ export const HOLE_VARIANTS = 12;
 export const SLASH_VARIANTS = 6;
 export const SPARK_FRAMES = 5;
 export const SPARK_VARIANTS = 4;
+const BLAST_TIERS = 3;
+const SLASH_CELL = HOLE_VARIANTS + SPARK_FRAMES * SPARK_VARIANTS;
+// three damage tiers per surface, in this order, so an editor can mirror the layout
 export const IMPACT_CELLS = {
   hole: 0,
   spark: HOLE_VARIANTS,
-  slash: HOLE_VARIANTS + SPARK_FRAMES * SPARK_VARIANTS,
+  slash: SLASH_CELL,
+  brokenWall: SLASH_CELL + SLASH_VARIANTS,
+  brokenFloor: SLASH_CELL + SLASH_VARIANTS + BLAST_TIERS,
+  brokenCeiling: SLASH_CELL + SLASH_VARIANTS + BLAST_TIERS * 2,
 };
 
 // marks stop this far short of the edge of a face, so none sits right on a corner
@@ -27,12 +33,24 @@ const EDGE = 0.3;
 // a hole is a square this many world units across: the crater is a quarter of it, so about 3 units, and its cracks reach
 // a little further
 const HOLE_SIZE = 16;
+// blast marks sit a little closer to the face than bullet holes do, so a hole shot into a blast still shows
+const BLAST_OFFSET = 0.15;
+// a flat blast mark hovers this far off the floor or ceiling so it does not fight the surface for depth
+const FLAT_LIFT = 0.15;
+const CEILING_HEIGHT = 64;
+const MIN_SPAN = 1e-3;
 
 const CHAR = [5, 7, 11];
 const SCORCH = [12, 15, 23];
 const CRACK = [8, 10, 16];
 const RIM = [112, 130, 160];
 const CHIP = [150, 168, 196];
+const PLASTER = [172, 164, 148];
+const PLASTER_DARK = [96, 90, 80];
+const CONCRETE = [118, 120, 124];
+const CONCRETE_DARK = [68, 70, 76];
+const REBAR = [150, 74, 40];
+const RUBBLE_LIGHT = [136, 130, 120];
 const FLASH = [255, 252, 226];
 const YELLOW = [255, 220, 110];
 const ORANGE = [255, 150, 46];
@@ -376,6 +394,89 @@ function drawSlash(c, variant, rnd) {
   flecks(c, rnd, mid + (y1 - mid) * tilt, y1 - 1, 3, 1.5, 4.5);
 }
 
+
+/** Rubble flecks of plaster and concrete scattered round a blast. */
+function debris(c, rnd, cx, cy, count, near, far) {
+  for (let i = 0; i < count; i++) {
+    const angle = rnd() * Trigo.twopi;
+    const distance = near + rnd() * (far - near);
+    const x = cx + Math.cos(angle) * distance;
+    const y = cy + Math.sin(angle) * distance;
+    c.put(x, y, rnd() < 0.5 ? RUBBLE_LIGHT : CONCRETE, false);
+    if (rnd() < 0.5)
+      c.put(x + 1, y + 1, CONCRETE_DARK, false);
+  }
+}
+
+/** Bars of steel showing through a broken surface. */
+function rebar(c, rnd, cx, cy, count, reach) {
+  for (let i = 0; i < count; i++) {
+    const a = rnd() * Trigo.twopi;
+    c.line(cx + Math.cos(a) * 2, cy + Math.sin(a) * 2, cx + Math.cos(a) * reach, cy + Math.sin(a) * reach, REBAR);
+  }
+}
+
+/** A blast crater: dark inside, a ragged lip of the given colours, an uneven outline. */
+function blastCrater(c, rnd, radius, inner, lip, edge) {
+  const wobble = rnd() * 6.28;
+  ellipse(mid, mid, radius, radius * 0.92, 0, (x, y, d, side) => {
+    const e = 1 + 0.14 * Math.sin(Math.atan2(y - mid, x - mid) * 4 + wobble);
+    if (d <= 0.72 * e)
+      c.put(x, y, mix3(CHAR, inner, d / e));
+    else if (d <= 1.05 * e)
+      c.put(x, y, side < 0 ? lip : edge);
+    else if (d <= 1.4 * e)
+      c.put(x, y, side < 0 ? edge : SHADE, false);
+  });
+}
+
+/**
+ * Blast damage to a wall, floor or ceiling in three tiers: 0 scuffed and cracked, 1 chipped with the substructure showing,
+ * 2 blown out with exposed bars and rubble.
+ */
+function drawBroken(c, surface, tier, rnd) {
+  const reach = 6 + tier * 3.5;
+  scorch(c, rnd, mid, mid, 9 + tier * 2, 0.6 + tier * 0.2);
+  const cracks = 4 + tier * 2;
+  for (let i = 0; i < cracks; i++)
+    crack(c, rnd, mid, mid, (i / cracks) * 6.28 + rnd() * 0.5, reach + Math.floor(rnd() * 5), true, 1);
+  if (tier === 0) {
+    // surface paint and plate lifted in a few places
+    const skin = surface === 0 ? PLASTER : surface === 1 ? RIM : CHIP;
+    for (let i = 0; i < 3; i++) {
+      const a = rnd() * 6.28;
+      crater(c, mid + Math.cos(a) * 5, mid + Math.sin(a) * 5, 2 + rnd() * 1.5, 1.6 + rnd(), a, { depth: 0.3, bare: false, rnd });
+      c.put(mid + Math.cos(a) * 7, mid + Math.sin(a) * 7, skin, false);
+    }
+    return;
+  }
+  const base = surface === 0 ? PLASTER : surface === 1 ? CONCRETE : CHIP;
+  const shade = surface === 0 ? PLASTER_DARK : CONCRETE_DARK;
+  if (tier === 1) {
+    blastCrater(c, rnd, 8, shade, base, CONCRETE);
+    if (surface === 2) {
+      // the panel sags: a lit bent edge on one side of the hole
+      for (let x = mid - 7; x <= mid + 7; x++)
+        c.put(x, mid + 7 - Math.abs(x - mid) * 0.4, BARE, false);
+    }
+    rebar(c, rnd, mid, mid, 2, 7);
+    debris(c, rnd, mid, mid, surface === 1 ? 10 : 6, 8, 13);
+    return;
+  }
+  blastCrater(c, rnd, 12, CONCRETE_DARK, surface === 0 ? CONCRETE : base, shade);
+  if (surface === 2) {
+    // the panel has fallen away: beams cross the opening
+    for (let k = -1; k <= 1; k++)
+      c.line(mid - 11, mid + k * 5, mid + 11, mid + k * 5 + 1, REBAR);
+  } else
+    rebar(c, rnd, mid, mid, 4, 11);
+  debris(c, rnd, mid, mid, surface === 1 ? 20 : 12, 9, 15);
+  if (surface === 1)
+    // a pile of rubble on the rim of the crater
+    for (let i = 0; i < 10; i++)
+      c.put(mid - 10 + rnd() * 20, mid + 9 + rnd() * 4, i % 2 ? RUBBLE_LIGHT : CONCRETE, false);
+}
+
 /** The atlas as RGBA pixels, ready to be a texture. */
 export function impactAtlas() {
   const width = IMPACT_CELL * IMPACT_CELL_COUNT;
@@ -389,6 +490,9 @@ export function impactAtlas() {
     else if (cell < IMPACT_CELLS.slash + SLASH_VARIANTS) {
       const slashIdx = cell - IMPACT_CELLS.slash;
       drawSlash(c, slashIdx, mulberry32(4096 + slashIdx * 6151));
+    } else if (cell >= IMPACT_CELLS.brokenWall && cell < IMPACT_CELLS.brokenCeiling + BLAST_TIERS) {
+      const broken = cell - IMPACT_CELLS.brokenWall;
+      drawBroken(c, Math.floor(broken / BLAST_TIERS), broken % BLAST_TIERS, mulberry32(8192 + broken * 7919));
     }
     for (let y = 0; y < IMPACT_CELL; y++)
       for (let x = 0; x < IMPACT_CELL; x++)
@@ -452,5 +556,76 @@ export function holeQuad({ pos, normal, top, seed, kind = 'hole', lo = -Infinity
   uv[1] = 0 + ((cv0 - -half) / (half - -half)) * (1 - 0);
   uv[2] = a0 + ((cu1 - -half) / (half - -half)) * (a1 - a0);
   uv[3] = 0 + ((cv1 - -half) / (half - -half)) * (1 - 0);
+  return dest;
+}
+
+/**
+ * Blast damage on a wall face, a flat quad just in front of it and cut where the face ends, like `holeQuad` but
+ * larger (`size` world units across) and in the cell of the damage `tier` (0 to 2). Null when nothing of it is left.
+ * `pos` is a Vec3 (the height of the blast in z), `normal` a Vec2. With `out` the values are written in place.
+ */
+export function blastWallQuad({ pos, normal, top, seed, tier, lo = -Infinity, hi = Infinity, slope = 0, size }, out = null) {
+  const half = size / 2;
+  const cu0 = Math.max(-half, lo + EDGE);
+  const cu1 = Math.min(half, hi - EDGE);
+  const cv0 = Math.max(-half, 0.6 - pos.z);
+  const cv1 = Math.min(half, top - 0.6 - pos.z);
+  if (cu1 - cu0 < MIN_SPAN || cv1 - cv0 < MIN_SPAN)
+    return null;
+  const nx = normal.x;
+  const ny = normal.y;
+  const tx = -ny;
+  const ty = nx;
+  const n0 = BLAST_OFFSET - slope * cv0;
+  const n1 = BLAST_OFFSET - slope * cv1;
+  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
+  const c = dest.corners;
+  c[0] = pos.x + tx * cu0 + nx * n0;
+  c[1] = pos.z + cv0;
+  c[2] = pos.y + ty * cu0 + ny * n0;
+  c[3] = pos.x + tx * cu1 + nx * n0;
+  c[4] = pos.z + cv0;
+  c[5] = pos.y + ty * cu1 + ny * n0;
+  c[6] = pos.x + tx * cu1 + nx * n1;
+  c[7] = pos.z + cv1;
+  c[8] = pos.y + ty * cu1 + ny * n1;
+  c[9] = pos.x + tx * cu0 + nx * n1;
+  c[10] = pos.z + cv1;
+  c[11] = pos.y + ty * cu0 + ny * n1;
+  const cell = IMPACT_CELLS.brokenWall + Utils.clamp(tier, 0, BLAST_TIERS - 1);
+  const a0 = cell / IMPACT_CELL_COUNT;
+  const a1 = (cell + 1) / IMPACT_CELL_COUNT;
+  const uv = dest.uv;
+  uv[0] = a0 + ((cu0 + half) / size) * (a1 - a0);
+  uv[1] = (cv0 + half) / size;
+  uv[2] = a0 + ((cu1 + half) / size) * (a1 - a0);
+  uv[3] = (cv1 + half) / size;
+  return dest;
+}
+
+/**
+ * Blast damage on the floor or, with `ceiling`, the ceiling: a horizontal square of `size` world units centred on `pos` (a
+ * Vec3 whose x and y are the game plane), turned a quarter turn per `variant`, hovering a little off the surface.
+ */
+export function blastFlatQuad({ pos, seed, tier, size, ceiling = false, variant = seed % 4 }, out = null) {
+  const half = size / 2;
+  const height = ceiling ? CEILING_HEIGHT - FLAT_LIFT : FLAT_LIFT;
+  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
+  const c = dest.corners;
+  // the corners go round the square, started a quarter turn further on for each variant
+  for (let k = 0; k < 4; k++) {
+    const q = (k + variant) % 4;
+    const sx = q === 0 || q === 3 ? -half : half;
+    const sy = q < 2 ? -half : half;
+    c[k * 3] = pos.x + sx;
+    c[k * 3 + 1] = height;
+    c[k * 3 + 2] = pos.y + sy;
+  }
+  const cell = (ceiling ? IMPACT_CELLS.brokenCeiling : IMPACT_CELLS.brokenFloor) + Utils.clamp(tier, 0, BLAST_TIERS - 1);
+  const uv = dest.uv;
+  uv[0] = cell / IMPACT_CELL_COUNT;
+  uv[1] = 0;
+  uv[2] = (cell + 1) / IMPACT_CELL_COUNT;
+  uv[3] = 1;
   return dest;
 }

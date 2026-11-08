@@ -39,6 +39,8 @@ Every action can be rebound. The home screen shows PLAY and OPTIONS buttons, ope
 
 Acid pools emit a glowing, drifting toxic mist that hovers inside the recess.
 
+Every explosion (rocket, grenade, barrel or fireball) leaves permanent blast damage on the walls, floor and ceiling it reaches in the open: three damage tiers by distance, kept until the level reloads. It is purely visual and never changes damage.
+
 ## Tests
 
 The game rules in `src/game.js` have no DOM dependency, so they run headless in Node:

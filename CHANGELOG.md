@@ -4,6 +4,7 @@
 
 ### Added
 
+- Breakable textures (#191): explosions now leave blast-damaged walls, floor and ceiling in three damage tiers by distance and power (scuffed and cracked, chipped and exposed, blown out with rubble), line-of-sight gated, skipped on slime, acid, pits, sky and sunken doors, permanent until the level reloads, kept in a dedicated capped ledger that never evicts bullet holes; purely visual with no change to damage.
 - Grenade limit (#190): every level starts with 6 grenades (reset on each load, never carried over); each throw spends one, a HUD counter shows the remaining count, and an empty throw is refused with a `No grenades` message and dry click.
 - Toxic acid mist (#181): layered, animated, softly lit green haze and rim curtains hovering in and above recessed acid pools; purely visual, with no change to acid damage.
 - Home page main menu (#133): PLAY and OPTIONS buttons operated by keyboard, remapped movement keys, or mouse; OPTIONS opens the key configuration page and Esc returns to the menu; clicks on empty space no longer start the game; the title CONTROLS text link is replaced by the OPTIONS button (the pause screen link is unchanged).

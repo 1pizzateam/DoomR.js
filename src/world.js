@@ -1,5 +1,6 @@
 import { CustomMesh, Cylinder, FullscreenQuad, Grid, Material, Mesh, PerspectiveCamera, Quat, Rand, Renderer, RenderTarget, Scene, Sprite, Texture, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { BLOOD } from './blood.js';
+import { RUBBLE, SURFACE } from './rubble.js';
 import { ACID_PIT_DEPTH } from './game.js';
 import { barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
 import { bloodAtlas, createQuadTarget, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
@@ -16,7 +17,7 @@ import { faceCorners, quadTriangles } from './lines.js';
 import { MONSTERS } from './monsters.js';
 import { Overlay } from './overlay.js';
 import { PARTICLE_FRAGMENT, PARTICLE_VERTEX, QuadBatch, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, texturedMesh } from './quads.js';
-import { holeQuad, IMPACT_CELLS, impactAtlas, SPARK_FRAMES, SPARK_VARIANTS } from './impacts.js';
+import { blastFlatQuad, blastWallQuad, holeQuad, IMPACT_CELLS, impactAtlas, SPARK_FRAMES, SPARK_VARIANTS } from './impacts.js';
 import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
 import { keycardAtlas, keycardMesh } from './keycard.js';
@@ -111,6 +112,28 @@ function wallHoleQuad(mark, out = null) {
   hm.hi = mark.hi;
   hm.slope = mark.slope;
   return holeQuad(hm, out);
+}
+const DOOR_BLASTS = 12;
+const scratchBlastMark = { pos: scratchHolePos, normal: scratchHoleNormal, top: 0, seed: 0, tier: 0, lo: 0, hi: 0, slope: 0, size: 0, ceiling: false, variant: 0 };
+
+/** Builds the quad of a stored blast mark into `out`; null when nothing of it is left. */
+function blastQuadOf(mark, out) {
+  const bm = scratchBlastMark;
+  bm.pos.x = mark.x;
+  bm.pos.y = mark.y;
+  bm.pos.z = mark.z;
+  bm.normal.x = mark.nx;
+  bm.normal.y = mark.ny;
+  bm.top = mark.top;
+  bm.seed = mark.seed;
+  bm.tier = mark.tier;
+  bm.lo = mark.lo;
+  bm.hi = mark.hi;
+  bm.slope = mark.slope;
+  bm.size = mark.size;
+  bm.variant = mark.variant;
+  bm.ceiling = mark.kind === SURFACE.CEILING;
+  return mark.kind === SURFACE.WALL ? blastWallQuad(bm, out) : blastFlatQuad(bm, out);
 }
 const scratchMarkPos2 = new Vec2();
 const scratchFloorOpts = { pos: scratchMarkPos2, size: 0, seed: 0, height: undefined };
@@ -962,6 +985,14 @@ export class World {
     this.sharedTexturedMeshes.push(this.holes);
     this.scene.addMesh(this.holes);
     this.holesVersion = -1;
+    // blast damage is drawn over the bullet holes, in the same impact texture
+    this.blasts = new QuadBatch(this.gl, { capacity: RUBBLE.wall + RUBBLE.floor + RUBBLE.ceiling, atlas: this.impactPixels, sharedTexture: sharedImpactTex });
+    this.blasts.sharedAtlas = this.impactPixels;
+    this.sharedTexturedMeshes.push(this.blasts);
+    this.scene.addMesh(this.blasts);
+    this.rubbleVersion = -1;
+    // each ledger slot's quad is built once and kept until the slot holds another mark
+    this.blastQuads = [RUBBLE.wall, RUBBLE.floor, RUBBLE.ceiling].map((count) => Array.from({ length: count }, () => ({ gen: -1, ok: false, quad: { corners: new Array(12).fill(0), uv: new Array(4).fill(0) } })));
     this.scene.addMesh(this.droplets);
     this.scene.addMesh(this.dust);
     this.scene.addMesh(this.boomParticles);
@@ -989,18 +1020,41 @@ export class World {
     batch.end();
   }
 
+  /** Blast damage on walls, floor and ceiling goes in one buffer; the marks on doors are handled by syncDoorMarks. */
+  syncBlasts(rubble) {
+    const batch = this.blasts.begin();
+    for (let kind = 0; kind < 3; kind++) {
+      const slots = rubble.slots[kind];
+      const cached = this.blastQuads[kind];
+      for (let i = 0; i < rubble.lengths[kind]; i++) {
+        const mark = slots[i];
+        if (mark.door)
+          continue;
+        const entry = cached[i];
+        if (entry.gen !== mark.gen) {
+          entry.gen = mark.gen;
+          entry.ok = blastQuadOf(mark, entry.quad) !== null;
+        }
+        if (entry.ok)
+          batch.quad(entry.quad.corners, entry.quad.uv);
+      }
+    }
+    batch.end();
+  }
+
   /**
    * Holes and blood on a door sink and rise with it. The door slides down into the floor whole (see render), so the
    * marks do exactly that: they keep their size and their spacing, drop by as much as the door has dropped, and are
    * cut off where they meet the floor. They are rebuilt in world space whenever the door
    * moves or a mark is added.
    */
-  syncDoorMarks(door, blood, visible = true) {
+  syncDoorMarks(door, blood, visible = true, rubble = null) {
     let marks = this.doorMarks.get(door);
     if (!visible) {
       if (marks) {
         marks.holes.show(false);
         marks.splats.show(false);
+        marks.blasts?.show(false);
       }
       return;
     }
@@ -1008,7 +1062,9 @@ export class World {
       marks = {
         holes: this.doorBatch(BLOOD.doorHoles, this.impactPixels),
         splats: this.doorSplatBatch(),
+        blasts: this.doorBatch(DOOR_BLASTS, this.impactPixels),
         open: -1,
+        rubbleVersion: -1,
         holesVersion: -1,
         version: -1,
       };
@@ -1019,14 +1075,18 @@ export class World {
     if (height <= 0.02) {
       marks.holes.show(false);
       marks.splats.show(false);
+      marks.blasts.show(false);
       return;
     }
-    if (marks.open === door.open && marks.holesVersion === blood.holesVersion && marks.version === blood.version && !blood.dripping) {
+    const rubbleVersion = rubble ? rubble.version : 0;
+    if (marks.open === door.open && marks.holesVersion === blood.holesVersion && marks.version === blood.version && marks.rubbleVersion === rubbleVersion && !blood.dripping) {
       marks.holes.show(true);
       marks.splats.show(true);
+      marks.blasts.show(true);
       return;
     }
     marks.open = door.open;
+    marks.rubbleVersion = rubbleVersion;
     marks.holesVersion = blood.holesVersion;
     marks.version = blood.version;
 
@@ -1053,6 +1113,35 @@ export class World {
         holes.quad(quad.corners, quad.uv);
     }
     holes.end();
+    const blasts = marks.blasts.begin();
+    if (rubble) {
+      const walls = rubble.slots[SURFACE.WALL];
+      let placed = 0;
+      for (let i = 0; i < rubble.lengths[SURFACE.WALL] && placed < DOOR_BLASTS; i++) {
+        const mark = walls[i];
+        if (mark.door !== door)
+          continue;
+        const bm = scratchBlastMark;
+        bm.pos.x = mark.x - mark.nx * inset;
+        bm.pos.y = mark.y - mark.ny * inset;
+        bm.pos.z = mark.z - drop;
+        bm.normal.x = mark.nx;
+        bm.normal.y = mark.ny;
+        bm.top = mark.top * height;
+        bm.seed = mark.seed;
+        bm.tier = mark.tier;
+        bm.lo = mark.lo;
+        bm.hi = mark.hi;
+        bm.slope = mark.slope;
+        bm.size = mark.size;
+        const quad = blastWallQuad(bm, scratchHoleQuad);
+        if (quad) {
+          blasts.quad(quad.corners, quad.uv);
+          placed++;
+        }
+      }
+    }
+    blasts.end();
     const batch = marks.splats.begin();
     for (const mark of blood.walls) {
       if (mark.door !== door)
@@ -1198,12 +1287,17 @@ export class World {
     batch.end();
   }
 
-  syncBlood(blood, dust = null, fog = null, effects = null) {
+  syncBlood(blood, dust = null, fog = null, effects = null, rubble = null) {
     this.syncParticleSprites(blood, dust, fog, effects);
 
     if (blood.holesVersion !== this.holesVersion) {
       this.holesVersion = blood.holesVersion;
       this.syncHoles(blood);
+    }
+
+    if (rubble && rubble.version !== this.rubbleVersion) {
+      this.rubbleVersion = rubble.version;
+      this.syncBlasts(rubble);
     }
 
     if (blood.dripping || this.dripsLive || blood.version !== this.dripVersion) {
@@ -2749,10 +2843,10 @@ export class World {
         // the door slides down into the floor whole; the part below the floor is not drawn
         view.setPosition(scratchPos.setScalar(door.center.x, -door.open * game.level.baseHeight[door.idx], door.center.y));
         view.setActive();
-        this.syncDoorMarks(door, game.blood, true);
+        this.syncDoorMarks(door, game.blood, true, game.rubble);
       } else {
         view.setInactive();
-        this.syncDoorMarks(door, game.blood, false);
+        this.syncDoorMarks(door, game.blood, false, game.rubble);
       }
     }
 
@@ -2811,7 +2905,7 @@ export class World {
     this.updateShotgun(game);
     this.updateRocketLauncher(game);
     updateCeilingLights(this.ceilingLights, this.lightFixtures, this.camera.position, time, game, cullDist, occludeFog);
-    this.syncBlood(game.blood, game.dust, occludeFog, game.effects);
+    this.syncBlood(game.blood, game.dust, occludeFog, game.effects, game.rubble);
 
     const { gl } = this;
     this.target.bind();
