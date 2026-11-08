@@ -1071,7 +1071,7 @@ export class Game {
     const body = makeBody(from, 6, {
       category: CAT.SHOT,
       mask: CAT.WALL | CAT.ENEMY | CAT.BARREL,
-      velocity: new Vec2().scaleVector(direction, 340),
+      velocity: new Vec2().scaleVector(direction, 500),
     });
     body.setRestitution(0.45);
     body.setDamping(0.2);
@@ -1087,7 +1087,7 @@ export class Game {
       life: 1.5,
       age: 0,
       z: this.player.eye - 6,
-      vz: 90,
+      vz: 135,
       dead: false,
     };
     body.ref = shot;

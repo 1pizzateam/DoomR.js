@@ -648,6 +648,84 @@ const tests = {
     assert.equal(shot.dead, true, 'unchanged fuse detonates by the next frame after 1.5 seconds');
   },
 
+  'AC-1 grenade launches at 500 horizontal speed with 135 vertical velocity'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    assert.ok(Math.abs(shot.body.velocity.getMagnitude() - 500) < 25, `horizontal speed ${shot.body.velocity.getMagnitude()}`);
+    assert.ok(Math.abs(shot.vz - 135) <= 10, `vertical velocity ${shot.vz}`);
+  },
+
+  'AC-2 grenade travels 270 to 320 units in an open corridor and clears its own splash radius'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    const start = shot.pos.clone();
+    for (let frame = 1; frame < 90; frame++)
+      game.update(1 / 60, idle);
+    const travel = shot.pos.x - start.x;
+    assert.ok(travel > 270 && travel < 320, `travel ${travel}`);
+    assert.ok(travel > 165 + 20, 'travel clears splash radius plus player radius');
+  },
+
+  'AC-3 grenade fuse stays 1.5 seconds'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    assert.equal(shot.life, 1.5);
+    for (let frame = 1; frame < 89; frame++)
+      game.update(1 / 60, idle);
+    assert.equal(shot.dead, false, 'live one frame before the fuse expires');
+    game.update(1 / 30, idle);
+    assert.equal(shot.dead, true, 'dead on the first frame after the fuse expires');
+  },
+
+  'AC-4 grenade arc stays between floor and ceiling and stays airborne longer than 0.55 seconds'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    let minZ = shot.z;
+    let maxZ = shot.z;
+    let landed = -1;
+    for (let frame = 1; frame < 80; frame++) {
+      game.update(1 / 60, idle);
+      minZ = Math.min(minZ, shot.z);
+      maxZ = Math.max(maxZ, shot.z);
+      if (landed < 0 && shot.z <= 6)
+        landed = frame / 60;
+    }
+    assert.ok(minZ >= 6, `min z ${minZ}`);
+    assert.ok(maxZ < 64, `max z ${maxZ}`);
+    assert.ok(landed > 0.6, `airtime ${landed}`);
+  },
+
+  'AC-5 grenade throw leaves ammo untouched and keeps rocket splash parameters'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.player.shells = 9;
+    game.player.bullets = 12;
+    game.player.rockets = 3;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    assert.deepEqual([game.player.shells, game.player.bullets, game.player.rockets], [9, 12, 3]);
+    assert.equal(shot.splash, WEAPONS.rocket.splashDamage);
+    assert.equal(shot.radius, WEAPONS.rocket.splashRadius);
+  },
+
+  'AC-6 grenade thrown at a nearby wall bounces without early detonation'() {
+    const game = rocketSelfDamageGame('#P.#.....#');
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    run(game, 0.8);
+    assert.equal(shot.dead, false);
+    assert.ok(shot.pos.x < 192 - 5, 'grenade stays on the near side of the wall');
+  },
+
   'AC-4 grenade splash damages reachable enemies and barrels but not targets behind walls'() {
     const game = rocketSelfDamageGame('#P..#....#');
     const nearby = game.addEnemy('boss', new Vec2(200, 210));
