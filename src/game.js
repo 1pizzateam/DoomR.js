@@ -10,6 +10,7 @@ import { ARMOR_TYPES } from './armor.js';
 import { KNIFE_ATTACKS } from './arsenal.js';
 import { POWERUP_TYPES } from './powerups.js';
 import { defaultActionLabel } from './keymap.js';
+import { GRENADE_SCALE } from './grenade.js';
 
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
@@ -1068,7 +1069,7 @@ export class Game {
 
   addGrenade(from, direction) {
     const def = WEAPONS.rocket;
-    const body = makeBody(from, 6, {
+    const body = makeBody(from, Math.round(6 * GRENADE_SCALE), {
       category: CAT.SHOT,
       mask: CAT.WALL | CAT.ENEMY | CAT.BARREL,
       velocity: new Vec2().scaleVector(direction, 500),
