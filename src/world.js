@@ -13,7 +13,7 @@ import { ACID_MIST_FRAGMENT, CRATE_FRAGMENT, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_
 import { CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
 import { FOG_FAR, FOG_NEAR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar } from './fog.js';
 import { faceCorners, quadTriangles } from './lines.js';
-import { MONSTERS } from './monsters.js';
+import { MONSTERS, monsterGoreSkinAtlas, monsterParts, monsterSkinAtlas } from './monsters.js';
 import { Overlay } from './overlay.js';
 import { PARTICLE_FRAGMENT, PARTICLE_VERTEX, QuadBatch, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, texturedMesh } from './quads.js';
 import { holeQuad, IMPACT_CELLS, impactAtlas, SPARK_FRAMES, SPARK_VARIANTS } from './impacts.js';
@@ -117,32 +117,33 @@ const scratchFloorOpts = { pos: scratchMarkPos2, size: 0, seed: 0, height: undef
 const scratchGibOpts = { pos: scratchMarkPos2, size: 0, variant: undefined, angle: undefined, height: undefined };
 const scratchPrintOpts = { pos: scratchMarkPos2, angle: 0, side: 0, strength: 0, scale: 0 };
 const scratchSplatMark = { pos: new Vec3(), normal: new Vec2(), size: 0, top: 0, seed: 0, age: undefined, lo: undefined, hi: undefined, slope: undefined };
+const scratchSplatQuad = { corners: new Array(12).fill(0), uv: new Array(4).fill(0) };
 const scratchParticleOpts = { pos: new Vec3(), gib: false, variant: undefined, scale: undefined, visualScale: undefined };
 
-function floorSplatOf(mark) {
+function floorSplatOf(mark, out = null) {
   scratchMarkPos2.setScalar(mark.x, mark.y);
   scratchFloorOpts.size = mark.size;
   scratchFloorOpts.seed = mark.seed;
   scratchFloorOpts.height = mark.height;
-  return floorSplatQuad(scratchFloorOpts);
+  return floorSplatQuad(scratchFloorOpts, out);
 }
 
-function floorGibOf(mark) {
+function floorGibOf(mark, out = null) {
   scratchMarkPos2.setScalar(mark.x, mark.y);
   scratchGibOpts.size = mark.size;
   scratchGibOpts.variant = mark.variant;
   scratchGibOpts.angle = mark.angle;
   scratchGibOpts.height = mark.height;
-  return floorGibQuad(scratchGibOpts);
+  return floorGibQuad(scratchGibOpts, out);
 }
 
-function printOf(mark) {
+function printOf(mark, out = null) {
   scratchMarkPos2.setScalar(mark.x, mark.y);
   scratchPrintOpts.angle = mark.angle;
   scratchPrintOpts.side = mark.side;
   scratchPrintOpts.strength = mark.strength;
   scratchPrintOpts.scale = mark.scale;
-  return printQuad(scratchPrintOpts);
+  return printQuad(scratchPrintOpts, out);
 }
 
 function fillWallOpts(mark) {
@@ -159,8 +160,8 @@ function fillWallOpts(mark) {
   return o;
 }
 
-function wallSplatOf(mark) {
-  return wallSplatQuad(fillWallOpts(mark));
+function wallSplatOf(mark, out = null) {
+  return wallSplatQuad(fillWallOpts(mark), out);
 }
 
 function fillParticleOpts(p) {
@@ -485,12 +486,13 @@ export class World {
   bindAtlasTexture(mesh, atlas, options = {}) {
     if (!mesh || !atlas)
       return mesh;
-    const shared = this.sharedTexture(atlas, options);
+    const shared = typeof this.sharedTexture === 'function' ? this.sharedTexture(atlas, options) : null;
     if (shared && typeof mesh.setSharedTexture === 'function') {
       mesh.setSharedTexture(shared);
       mesh.sharedAtlas = atlas;
       mesh.sharedTexOptions = options;
-      this.sharedTexturedMeshes.push(mesh);
+      if (this.sharedTexturedMeshes)
+        this.sharedTexturedMeshes.push(mesh);
     } else if (typeof mesh.setTexture === 'function')
       mesh.setTexture(atlas.data, {
         size: new Vec2(atlas.width, atlas.height),
@@ -672,14 +674,16 @@ export class World {
     const { gl } = this;
     const sprite = new Sprite(gl, {
       size: new Vec2(width, height),
-      texture: atlas.data,
-      textureOptions: { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST },
       frames: atlas.frames,
       anchor,
       billboard,
       depthBias,
       material,
       fragment,
+    });
+    this.bindAtlasTexture(sprite, atlas, {
+      magFilter: gl.NEAREST,
+      minFilter: gl.NEAREST,
     });
     sprite.addCustomUniform('glare', 'uniform1f', 0.3);
     return sprite;
@@ -869,6 +873,23 @@ export class World {
 
   discard(mesh) {
     this.scene.removeMesh(mesh);
+    if (this.sharedTexturedMeshes) {
+      const list = this.sharedTexturedMeshes;
+      const idx = list.indexOf(mesh);
+      if (idx !== -1) {
+        list[idx] = list[list.length - 1];
+        list.pop();
+      }
+      if (mesh.children?.length) {
+        for (let i = 0; i < mesh.children.length; i++) {
+          const cIdx = list.indexOf(mesh.children[i]);
+          if (cIdx !== -1) {
+            list[cIdx] = list[list.length - 1];
+            list.pop();
+          }
+        }
+      }
+    }
     mesh.destroy();
   }
 
