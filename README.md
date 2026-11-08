@@ -22,7 +22,7 @@ Every action can be rebound. The home screen shows PLAY and OPTIONS buttons, ope
 | mouse / ← → | turn | position |
 | click / X / Enter | fire | position |
 | F | grenade (every level starts with 6; each throw uses one, the HUD shows the count, an empty throw is refused) | position |
-| Space | jump | position |
+| Space | jump (a JUMP keycap in your bound jump key shows under the crosshair when you are in an acid pool and must jump out) | position |
 | C | crouch | position |
 | Shift | run | position |
 | 1-4 | weapons | position |

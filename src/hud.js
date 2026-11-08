@@ -279,6 +279,7 @@ export class Hud {
     this.showMap = true;
     this.automap = false;
     this.useKeyLabel = defaultActionLabel('use');
+    this.jumpKeyLabel = defaultActionLabel('jump');
     this.automapZoom = 1;
     this.automapFollow = true;
     this.automapGrid = true;
@@ -413,7 +414,7 @@ export class Hud {
       : '0';
     const w = p.weapons;
     const wMask = (w?.chainsaw || w?.knife ? 1 : 0) | (w?.shotgun ? 2 : 0) | (w?.chaingun ? 4 : 0) | (w?.rocket ? 8 : 0);
-    return `${this.width}|${this.height}|${this.ratio}|${Math.round(this.fps)}|${this.diagnostics}|${Math.ceil(p.health)}|${Math.max(0, Math.ceil(p.armor ?? 0))}|${p.armorType ?? ''}|${p.weapon ?? 'shotgun'}|${wMask}|${p.berserk ? 1 : 0}|${radKey}|${nvgKey}|${p.bullets ?? 0}|${p.shells ?? 0}|${p.rockets ?? 0}|${game.kills}|${game.totalEnemies}|${this.useKeyLabel}|${game.usePrompt?.verb ?? ''}|${Math.round((game.usePrompt?.fade ?? 0) * 20)}`;
+    return `${this.width}|${this.height}|${this.ratio}|${Math.round(this.fps)}|${this.diagnostics}|${Math.ceil(p.health)}|${Math.max(0, Math.ceil(p.armor ?? 0))}|${p.armorType ?? ''}|${p.weapon ?? 'shotgun'}|${wMask}|${p.berserk ? 1 : 0}|${radKey}|${nvgKey}|${p.bullets ?? 0}|${p.shells ?? 0}|${p.rockets ?? 0}|${game.kills}|${game.totalEnemies}|${this.useKeyLabel}|${this.jumpKeyLabel}|${game.usePrompt?.key ?? 'use'}|${game.usePrompt?.verb ?? ''}|${Math.round((game.usePrompt?.fade ?? 0) * 20)}`;
   }
 
   render(game) {
@@ -584,7 +585,7 @@ export class Hud {
     const prompt = game.usePrompt;
     if (!prompt || game.state !== 'play' || game.automap || this.controlsView?.open || prompt.fade <= USE_PROMPT_EPSILON)
       return;
-    const label = this.useKeyLabel;
+    const label = prompt.key === 'jump' ? this.jumpKeyLabel : this.useKeyLabel;
     const w = Math.max(USE_PROMPT_H, label.length * USE_PROMPT_CHAR_W + USE_PROMPT_PAD * 2);
     const x0 = cx - w / 2;
     const y0 = cy + USE_PROMPT_TOP;

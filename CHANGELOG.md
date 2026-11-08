@@ -4,6 +4,7 @@
 
 ### Added
 
+- Jump prompt (#193): a JUMP keycap under the crosshair, in the player's own bound jump key, whenever the player is inside an acid pit; shares the use-prompt fade, GREEN tint and rebinding-aware label; purely informational, with no change to acid damage or physics.
 - Breakable textures (#191): explosions now leave blast-damaged walls, floor and ceiling in three damage tiers by distance and power (scuffed and cracked, chipped and exposed, blown out with rubble), line-of-sight gated, skipped on slime, acid, pits, sky and sunken doors, permanent until the level reloads, kept in a dedicated capped ledger that never evicts bullet holes; purely visual with no change to damage.
 - Grenade limit (#190): every level starts with 6 grenades (reset on each load, never carried over); each throw spends one, a HUD counter shows the remaining count, and an empty throw is refused with a `No grenades` message and dry click.
 - Toxic acid mist (#181): layered, animated, softly lit green haze and rim curtains hovering in and above recessed acid pools; purely visual, with no change to acid damage.
