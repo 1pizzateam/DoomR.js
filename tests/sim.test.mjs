@@ -53,7 +53,7 @@ import { KEYCARD_CELL, KEYCARD_CELLS, KEYCARD_FRAMES, keycardAtlas, keycardMesh 
 import { ARMOR_CELL, ARMOR_CELLS, ARMOR_COLORS, ARMOR_FRAMES, ARMOR_TYPES, armorAtlas, armorMesh } from '../src/armor.js';
 import { POWERUP_CELL, POWERUP_CELLS, POWERUP_FRAMES, POWERUP_TYPES, berserkAtlas, berserkMesh, nightvisionAtlas, nightvisionMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from '../src/powerups.js';
 import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.js';
-import { GRENADE_CELL, GRENADE_FRAMES, grenadeAtlas, grenadeParts, skinGrenadeCylinder } from '../src/grenade.js';
+import { GRENADE_CELL, GRENADE_FRAMES, GRENADE_SCALE, grenadeAtlas, grenadeParts, skinGrenadeCylinder } from '../src/grenade.js';
 import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
 import { Overlay } from '../src/overlay.js';
@@ -593,6 +593,7 @@ const tests = {
     assert.ok(shot.pos.x > game.player.pos.x);
     assert.equal(shot.dead, false);
     assert.equal(shot.body.getSensor(), false, 'BumpR resolves grenade contacts');
+    assert.equal(shot.body.radius, Math.round(6 * GRENADE_SCALE));
     assert.equal(game.player.triggerHeld, false);
     run(game, 0.8);
     assert.equal(game.shots.length, 1, 'idle frames do not spawn more grenades');
@@ -793,6 +794,8 @@ const tests = {
       assert.deepEqual(new Uint8Array(Buffer.from(pixelgun.rgbaBase64, 'base64')), atlas.data);
       const polygun = JSON.parse(readFileSync(new URL('../src/models/projectile-grenade.polygun.json', import.meta.url), 'utf8'));
       assert.equal(polygun.id, 'projectile-grenade');
+      assert.equal(GRENADE_SCALE, 0.45);
+      assert.deepEqual(polygun.scale, { x: 0.45, y: 0.45, z: 0.45 });
       assert.deepEqual(new Uint8Array(Buffer.from(polygun.atlas.dataBase64, 'base64')), atlas.data);
 
       const { root } = world.buildShot({ kind: 'grenade' });
@@ -915,6 +918,9 @@ const tests = {
       const projectile = world.shotViews.get(shot);
       assert.ok(projectile?.root.active, 'grenade has an active projectile view');
       assert.ok(projectile.root.vertices.length > 0, 'grenade has real mesh geometry');
+      assert.equal(projectile.root.scale.x, GRENADE_SCALE);
+      assert.equal(projectile.root.scale.y, GRENADE_SCALE);
+      assert.equal(projectile.root.scale.z, GRENADE_SCALE);
       assert.deepEqual(
         [projectile.root.position.x, projectile.root.position.y, projectile.root.position.z],
         [shot.pos.x, shot.z, shot.pos.y],
@@ -16479,6 +16485,44 @@ const tests = {
 
     const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
     assert.ok(!src.includes('.line(['));
+  },
+
+  'AC-1 through AC-5 grenade visual model and physics body scale proportionally to 0.45'() {
+    // AC-1: GRENADE_SCALE exported from src/grenade.js
+    assert.equal(GRENADE_SCALE, 0.45);
+
+    // AC-2: projectile-grenade.polygun.json declares scale vector of 0.45
+    const polygun = JSON.parse(readFileSync(new URL('../src/models/projectile-grenade.polygun.json', import.meta.url), 'utf8'));
+    assert.equal(polygun.id, 'projectile-grenade');
+    assert.deepEqual(polygun.scale, { x: 0.45, y: 0.45, z: 0.45 });
+
+    // AC-3: Game.addGrenade creates collision circle with scaled radius 3
+    const game = fresh(0);
+    const shot = game.addGrenade(game.player.pos, game.scratch.setScalar(1, 0));
+    assert.equal(shot.body.radius, Math.round(6 * GRENADE_SCALE));
+    assert.equal(shot.body.radius, 3);
+    assert.equal(shot.body.restitution, 0.45);
+    assert.equal(shot.body.damping, 0.2);
+    assert.equal(shot.life, 1.5);
+    assert.equal(shot.radius, WEAPONS.rocket.splashRadius);
+
+    // AC-4 & AC-5: World.buildShot sets uniform GRENADE_SCALE on root mesh without per-frame scale allocations
+    const addProgram = Mesh.prototype.addProgram;
+    Mesh.prototype.addProgram = () => true;
+    try {
+      const world = Object.assign(Object.create(World.prototype), {
+        gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, UNSIGNED_SHORT: 5123 },
+        scene: { addMesh() {} },
+        sharedTexture: () => ({}),
+        sharedTexturedMeshes: [],
+      });
+      const { root } = world.buildShot({ kind: 'grenade' });
+      assert.equal(root.scale.x, GRENADE_SCALE);
+      assert.equal(root.scale.y, GRENADE_SCALE);
+      assert.equal(root.scale.z, GRENADE_SCALE);
+    } finally {
+      Mesh.prototype.addProgram = addProgram;
+    }
   },
 };
 

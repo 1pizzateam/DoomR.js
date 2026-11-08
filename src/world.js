@@ -8,7 +8,7 @@ import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEIL
 import { WALL_CELLS, diagWallFaceQuads, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
 import { createExplosion3dPose, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from './explosion.js';
 import { FIREBALL_FRAMES, fireballAtlas } from './fireball.js';
-import { grenadeAtlas, grenadeParts } from './grenade.js';
+import { GRENADE_SCALE, grenadeAtlas, grenadeParts } from './grenade.js';
 import { ACID_MIST_FRAGMENT, CRATE_FRAGMENT, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
 import { CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
 import { FOG_FAR, FOG_NEAR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar } from './fog.js';
@@ -2478,6 +2478,7 @@ export class World {
         addPart(parts.ridges[i].geometry, parts.ridges[i].position);
       addPart(parts.neck.geometry, parts.neck.position);
       addPart(parts.fuse.geometry, parts.fuse.position);
+      root.setScale(scratchScale.setScalar(GRENADE_SCALE, GRENADE_SCALE, GRENADE_SCALE));
       this.scene.addMesh(root);
       return { root };
     }
