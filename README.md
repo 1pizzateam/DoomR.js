@@ -21,7 +21,7 @@ Every action can be rebound. The home screen shows PLAY and OPTIONS buttons, ope
 | W A S D | move (ZQSD on AZERTY) | position |
 | mouse / ← → | turn | position |
 | click / X / Enter | fire | position |
-| F | grenade | position |
+| F | grenade (every level starts with 6; each throw uses one, the HUD shows the count, an empty throw is refused) | position |
 | Space | jump | position |
 | C | crouch | position |
 | Shift | run | position |
