@@ -13,6 +13,7 @@ import { WEAPON_SLOTS, WEAPONS, weaponCellUv, weaponFrame, weaponPlacement } fro
 const scratchBloodViewport = new Vec2();
 const scratchBloodSplat = { pos: new Vec2(), size: 0, age: 0, drip: 0, seed: 0 };
 const COLORS = ['#5b8cff', '#38c793', '#ff9f43', '#e8102c'];
+const GRENADE_COUNTS = ['0', '1', '2', '3', '4', '5', '6'];
 const BLUE = 0;
 const GREEN = 1;
 const ORANGE = 2;
@@ -666,6 +667,7 @@ export class Hud {
     this.drawArms(width - 360, base, player);
     this.drawKeys(width - 252, base, player.keys);
     this.drawAmmo(width - 28, base, player, weaponDef);
+    this.drawGrenades(width - 28, base, player);
 
     this.text(`${game.kills}/${game.totalEnemies} kills`, width / 2, 26, BLUE, { size: 12, align: 'center', alpha: 0.8 });
 
@@ -833,6 +835,13 @@ export class Hud {
     const from = player.ammoFrom?.[key] ?? count;
     const rollProgress = Utils.clamp(1 - Math.max(0, flash - 0.25) / (AMMO_FLASH_DURATION - 0.25), 0, 1);
     return Math.round(Utils.lerp(from, count, rollProgress));
+  }
+
+  /** Remaining grenade stock above the ammo tally. */
+  drawGrenades(rightX, base, player) {
+    const count = Utils.clamp(player.grenades, 0, GRENADE_COUNTS.length - 1);
+    this.text(GRENADE_COUNTS[count], rightX, base - 50, count <= 1 ? ORANGE : GREEN, { size: 12, align: 'right' });
+    this.text('GRENADES', rightX - 18, base - 50, BLUE, { size: 10, align: 'right', alpha: 0.8 });
   }
 
   /** Active weapon ammo readout and classic Doom 3-pool tally (Bullets, Shells, Rockets). */

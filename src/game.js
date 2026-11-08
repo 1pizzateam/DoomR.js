@@ -10,7 +10,7 @@ import { ARMOR_TYPES } from './armor.js';
 import { KNIFE_ATTACKS } from './arsenal.js';
 import { POWERUP_TYPES } from './powerups.js';
 import { defaultActionLabel } from './keymap.js';
-import { GRENADE_SCALE } from './grenade.js';
+import { GRENADE_SCALE, GRENADE_START } from './grenade.js';
 
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
@@ -379,6 +379,7 @@ export class Game {
     p.shells = AMMO_TYPES.shells.max;
     p.bullets = AMMO_TYPES.bullets.max;
     p.rockets = AMMO_TYPES.rockets.max;
+    p.grenades = GRENADE_START;
     p.ammo = p.shells;
     p.health = Math.max(p.health, 200);
     p.armor = 200;
@@ -621,6 +622,7 @@ export class Game {
       shells: carry.shells ?? carry.ammo ?? 0,
       bullets: carry.bullets ?? 0,
       rockets: carry.rockets ?? 0,
+      grenades: GRENADE_START,
       get ammo() {
         const pool = WEAPONS[this.weapon]?.ammoType ?? 'shells';
         return this[pool];
@@ -2651,7 +2653,13 @@ export class Game {
     if (input.use)
       this.use();
     if (input.grenade)
-      this.addGrenade(player.pos, this.scratch.setScalar(cos, sin));
+      if (player.grenades > 0) {
+        player.grenades--;
+        this.addGrenade(player.pos, this.scratch.setScalar(cos, sin));
+      } else {
+        this.say('No grenades', 1.5);
+        this.emit('dry');
+      }
     if (player.kick.burst > 0 && !input.fire)
       this.endBurst();
     player.triggerHeld = Boolean(input.fire);

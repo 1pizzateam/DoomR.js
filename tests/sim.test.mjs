@@ -53,7 +53,7 @@ import { KEYCARD_CELL, KEYCARD_CELLS, KEYCARD_FRAMES, keycardAtlas, keycardMesh 
 import { ARMOR_CELL, ARMOR_CELLS, ARMOR_COLORS, ARMOR_FRAMES, ARMOR_TYPES, armorAtlas, armorMesh } from '../src/armor.js';
 import { POWERUP_CELL, POWERUP_CELLS, POWERUP_FRAMES, POWERUP_TYPES, berserkAtlas, berserkMesh, nightvisionAtlas, nightvisionMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from '../src/powerups.js';
 import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.js';
-import { GRENADE_CELL, GRENADE_FRAMES, GRENADE_SCALE, grenadeAtlas, grenadeParts, skinGrenadeCylinder } from '../src/grenade.js';
+import { GRENADE_CELL, GRENADE_FRAMES, GRENADE_SCALE, GRENADE_START, grenadeAtlas, grenadeParts, skinGrenadeCylinder } from '../src/grenade.js';
 import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
 import { Overlay } from '../src/overlay.js';
@@ -613,8 +613,10 @@ const tests = {
     game.player.shells = 0;
     game.player.bullets = 0;
     game.player.rockets = 0;
+    assert.equal(game.player.grenades, 5);
     game.update(1 / 60, input({ grenade: true }));
     assert.equal(game.shots.length, 1, 'a later action launches even with empty ammo pools');
+    assert.equal(game.player.grenades, 4, 'later throw spends one grenade');
     game.load(0);
     assert.equal(game.shots.length, 0, 'loading a level clears grenades');
     for (const state of ['title', 'dead', 'cleared']) {
@@ -622,6 +624,93 @@ const tests = {
       game.update(1 / 60, input({ grenade: true }));
       assert.equal(game.shots.length, 0, `${state} does not accept throws`);
     }
+  },
+
+  'AC-1 level start grants exactly 6 grenades regardless of carry'() {
+    assert.equal(GRENADE_START, 6);
+    const game = rocketSelfDamageGame();
+    assert.equal(game.player.grenades, GRENADE_START);
+    game.load(0, { health: 100, grenades: 2 });
+    assert.equal(game.player.grenades, 6);
+    game.load(0, { health: 100 });
+    assert.equal(game.player.grenades, 6);
+  },
+
+  'AC-2 each throw spends one grenade and leaves other ammo untouched'() {
+    const game = rocketSelfDamageGame('#P.#.....#');
+    game.player.shells = 9;
+    game.player.bullets = 12;
+    game.player.rockets = 3;
+    game.update(1 / 60, input({ grenade: true }));
+    assert.equal(game.player.grenades, 5);
+    assert.equal(game.shots.length, 1);
+    assert.deepEqual([game.player.shells, game.player.bullets, game.player.rockets], [9, 12, 3]);
+  },
+
+  'AC-3 seventh throw is refused with feedback and spawns nothing'() {
+    const game = rocketSelfDamageGame('#P.#.....#');
+    for (let i = 0; i < 6; i++)
+      game.update(1 / 60, input({ grenade: true }));
+    assert.equal(game.player.grenades, 0);
+    const shots = game.shots.length;
+    game.events.length = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    assert.equal(game.shots.length, shots);
+    assert.equal(game.player.grenades, 0);
+    assert.equal(game.message.text, 'No grenades');
+    assert.ok(game.events.some((event) => event.type === 'dry'));
+  },
+
+  'AC-4 loading a level restores the grenade stock'() {
+    const game = rocketSelfDamageGame();
+    game.player.grenades = 0;
+    game.load(0);
+    assert.equal(game.player.grenades, 6);
+    assert.equal(game.shots.length, 0);
+    game.player.grenades = 0;
+    game.load(0, { health: 100, shells: 3 });
+    assert.equal(game.player.grenades, 6);
+    assert.equal(game.shots.length, 0);
+  },
+
+  'AC-5 title dead and cleared states do not spend grenades'() {
+    const game = rocketSelfDamageGame();
+    for (const state of ['title', 'dead', 'cleared']) {
+      game.state = state;
+      game.update(1 / 60, input({ grenade: true }));
+      assert.equal(game.player.grenades, 6, `${state} keeps the stock`);
+      assert.equal(game.shots.length, 0, `${state} spawns nothing`);
+    }
+  },
+
+  'AC-6 stock stays within 0 to 6 and fuse and radius are unchanged'() {
+    const game = rocketSelfDamageGame('#P.#.....#');
+    for (let i = 0; i < 10; i++) {
+      game.update(1 / 60, input({ grenade: true }));
+      assert.ok(game.player.grenades >= 0 && game.player.grenades <= 6);
+    }
+    assert.equal(game.player.grenades, 0);
+    assert.equal(game.shots[0].life, 1.5);
+    assert.equal(game.shots[0].body.radius, Math.round(6 * GRENADE_SCALE));
+  },
+
+  'AC-7 giveAll refills grenades to 6'() {
+    const game = rocketSelfDamageGame();
+    game.player.grenades = 3;
+    game.giveAll();
+    assert.equal(game.player.grenades, 6);
+  },
+
+  'AC-8 HUD grenade readout follows the player stock'() {
+    const texts = [];
+    const hud = Object.create(Hud.prototype);
+    hud.text = (text, x, y, color) => texts.push({ text, color });
+    hud.drawGrenades(900, 700, { grenades: 6 });
+    assert.ok(texts.some((t) => t.text === '6' && t.color === 1), 'full stock is green');
+    texts.length = 0;
+    hud.drawGrenades(900, 700, { grenades: 0 });
+    assert.ok(texts.some((t) => t.text === '0' && t.color === 2), 'empty stock is orange');
+    assert.ok(texts.some((t) => t.text === 'GRENADES'));
   },
 
   'AC-3 grenade throws faster and farther than the 280-unit baseline without extending its fuse'() {
