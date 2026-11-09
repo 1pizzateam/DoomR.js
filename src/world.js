@@ -1134,6 +1134,7 @@ export class World {
         bm.hi = mark.hi;
         bm.slope = mark.slope;
         bm.size = mark.size;
+        bm.variant = mark.variant;
         const quad = blastWallQuad(bm, scratchHoleQuad);
         if (quad) {
           blasts.quad(quad.corners, quad.uv);

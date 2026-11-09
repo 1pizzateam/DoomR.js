@@ -2488,13 +2488,13 @@ const tests = {
     assert.equal(holeQuad(vecMark({ ...hole, lo: -0.1, hi: 0.2 })), null);
 
     const atlas = impactAtlas();
-    assert.equal(atlas.width, 32 * IMPACT_CELL_COUNT);
+    assert.equal(atlas.width, 64 * IMPACT_CELL_COUNT);
     const solid = (cell) => {
       let n = 0;
       let bright = 0;
       for (let y = 0; y < 32; y++) {
         for (let x = 0; x < 32; x++) {
-          const o = (y * atlas.width + cell * 32 + x) * 4;
+          const o = (y * 2 * atlas.width + cell * 64 + x * 2) * 4;
           if (atlas.data[o + 3]) {
             n++;
             if (atlas.data[o] > 200)
@@ -2513,7 +2513,7 @@ const tests = {
       let key = '';
       for (let y = 0; y < 32; y++) {
         for (let x = 0; x < 32; x++)
-          key += atlas.data[(y * atlas.width + (IMPACT_CELLS.hole + v) * 32 + x) * 4 + 3] ? '1' : '0';
+          key += atlas.data[(y * 2 * atlas.width + (IMPACT_CELLS.hole + v) * 64 + x * 2) * 4 + 3] ? '1' : '0';
       }
       pictures.add(key);
       sizes.add(Math.round(solid(IMPACT_CELLS.hole + v).n / 8));
@@ -5343,14 +5343,14 @@ const tests = {
     assert.notEqual(sawQuad.uv[0], gunQuad.uv[0], 'chainsaw slash UV differs from firearm bullet hole UV');
     const impAtlas = impactAtlas();
     for (let v = 0; v < SLASH_VARIANTS; v++) {
-      const xBase = (IMPACT_CELLS.slash + v) * 32;
+      const xBase = (IMPACT_CELLS.slash + v) * 64;
       let minX = 32;
       let maxX = -1;
       let minY = 32;
       let maxY = -1;
       for (let y = 0; y < 32; y++)
         for (let x = 0; x < 32; x++)
-          if (impAtlas.data[(y * impAtlas.width + xBase + x) * 4 + 3] > 0) {
+          if (impAtlas.data[(y * 2 * impAtlas.width + xBase + x * 2) * 4 + 3] > 0) {
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
