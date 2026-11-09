@@ -7,9 +7,9 @@
   "subType": "projectile-grenade",
   "shader": "solid",
   "scale": {
-    "x": 1,
-    "y": 1,
-    "z": 1
+    "x": 0.45,
+    "y": 0.45,
+    "z": 0.45
   },
   "spinSpeed": 8,
   "bobAmp": 0.4,

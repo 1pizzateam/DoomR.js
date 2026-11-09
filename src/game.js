@@ -1,6 +1,7 @@
 import { Grid, Rand, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { Physics, Raycast, Scene } from '@1pizzateam/bumpr';
 import { Blood, makeFeet } from './blood.js';
+import { Rubble, severityOf } from './rubble.js';
 import { CONE_RANGE, Fog, marsFogNearFar } from './fog.js';
 import { CEILING, CROUCH_EYE, DOOR, EXIT, EYE, FLOOR, Level, TILE, WALL } from './level.js';
 import { LEVELS } from './levels.js';
@@ -10,6 +11,7 @@ import { ARMOR_TYPES } from './armor.js';
 import { KNIFE_ATTACKS } from './arsenal.js';
 import { POWERUP_TYPES } from './powerups.js';
 import { defaultActionLabel } from './keymap.js';
+import { GRENADE_SCALE, GRENADE_START } from './grenade.js';
 
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
@@ -26,6 +28,18 @@ const DUST_COUNT = 240;
 
 /** Explosive barrels: a couple of pellets set one off, and the blast sets off its neighbours. */
 const BARREL = { hp: 6, radius: 10, blast: 175, fuse: 0.08 };
+// blast damage to the surfaces round an explosion is only drawn; these do not touch damage
+const BLAST_RAYS = 16;
+const BLAST_RAY_COS = new Float64Array(BLAST_RAYS);
+const BLAST_RAY_SIN = new Float64Array(BLAST_RAYS);
+for (let i = 0; i < BLAST_RAYS; i++) {
+  BLAST_RAY_COS[i] = Math.cos((i / BLAST_RAYS) * Trigo.twopi);
+  BLAST_RAY_SIN[i] = Math.sin((i / BLAST_RAYS) * Trigo.twopi);
+}
+const BLAST_RING = 4;
+const BLAST_RING_REACH = 0.4;
+const BLAST_WALL_GAP = 12;
+const FIREBALL_BLAST = { radius: 48, power: 0.5 };
 
 /**
  * gait: radians of leg swing per unit walked, so one footfall is PI / gait units whatever the monster.
@@ -112,7 +126,7 @@ const CACHE_WEAPONS = new Set(['chainsaw', 'shotgun', 'chaingun', 'rocket']);
 const USE_RANGE = 96;
 const USE_DOT = 0.35;
 const CACHE_TOUCH_RANGE = TILE * 0.5;
-const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', take: 'TAKE', locked: 'LOCKED' });
+const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', take: 'TAKE', locked: 'LOCKED', jump: 'JUMP' });
 // seconds for a full 0 to 1 (in) or 1 to 0 (out) ramp of the use prompt
 const USE_PROMPT_FADE_IN = 0.12;
 const USE_PROMPT_FADE_OUT = 0.2;
@@ -170,6 +184,13 @@ export class Game {
     this.dustPool = [];
     this.dustFree = [];
     this.blood = new Blood();
+    this.rubble = new Rubble();
+    this.blastTo = new Vec2();
+    this.blastCheck = new Vec2();
+    this.blastNormal = new Vec2();
+    this.blastWall = new Vec3();
+    this.blastMark = new Vec3();
+    this.blastFace = { x: 0, y: 0, nx: 0, ny: 0, idx: 0, top: 0, height: 0, door: null, span: null, lo: 0, hi: 0, slope: 0 };
     // scratch vectors handed to the blood APIs, which read them immediately and keep no reference
     this.bloodPos = new Vec3();
     this.bloodDir = new Vec2();
@@ -182,7 +203,7 @@ export class Game {
       this.eventPool.push({ type: '', pos: new Vec2(), x: 0, y: 0, visible: true });
     this.eventCursor = 0;
     this.useTarget = { kind: null, door: null, cache: null, verb: '', lock: null, promptable: false };
-    this.usePrompt = { fade: 0, verb: '', lock: null };
+    this.usePrompt = { fade: 0, verb: '', lock: null, key: 'use' };
     this.load(0);
   }
 
@@ -294,6 +315,7 @@ export class Game {
     this.usePrompt.fade = 0;
     this.usePrompt.verb = '';
     this.usePrompt.lock = null;
+    this.usePrompt.key = 'use';
     this.clearUseTarget();
     const seedIndex = this.levelIndex;
     this.level = def instanceof Level ? def : new Level(def);
@@ -306,6 +328,7 @@ export class Game {
     this.limbRand = Rand.create(77 + seedIndex * 101);
     this.weatherRand = Rand.create(313 + seedIndex * 101);
     this.blood.reset(this.level, this.rand);
+    this.rubble.reset(this.level);
     this.events.length = 0;
     this.heartbeat = 0;
     this.windTimer = 0;
@@ -379,6 +402,7 @@ export class Game {
     p.shells = AMMO_TYPES.shells.max;
     p.bullets = AMMO_TYPES.bullets.max;
     p.rockets = AMMO_TYPES.rockets.max;
+    p.grenades = GRENADE_START;
     p.ammo = p.shells;
     p.health = Math.max(p.health, 200);
     p.armor = 200;
@@ -621,6 +645,7 @@ export class Game {
       shells: carry.shells ?? carry.ammo ?? 0,
       bullets: carry.bullets ?? 0,
       rockets: carry.rockets ?? 0,
+      grenades: GRENADE_START,
       get ammo() {
         const pool = WEAPONS[this.weapon]?.ammoType ?? 'shells';
         return this[pool];
@@ -1032,6 +1057,7 @@ export class Game {
         this.hitBarrel(other.ref, BARREL.hp);
       this.burst(shot.pos.x, shot.pos.y, EYE - 4, 'blast');
       this.emit('explode', shot.pos);
+      this.blastSurfaces(shot.pos, FIREBALL_BLAST.radius, FIREBALL_BLAST.power);
     };
     this.scene.addBody(body);
     this.shots.push(shot);
@@ -1073,10 +1099,10 @@ export class Game {
 
   addGrenade(from, direction) {
     const def = WEAPONS.rocket;
-    const body = makeBody(from, 6, {
+    const body = makeBody(from, Math.round(6 * GRENADE_SCALE), {
       category: CAT.SHOT,
       mask: CAT.WALL | CAT.ENEMY | CAT.BARREL,
-      velocity: new Vec2().scaleVector(direction, 340),
+      velocity: new Vec2().scaleVector(direction, 500),
     });
     body.setRestitution(0.45);
     body.setDamping(0.2);
@@ -1092,13 +1118,72 @@ export class Game {
       life: 1.5,
       age: 0,
       z: this.player.eye - 6,
-      vz: 90,
+      vz: 135,
       dead: false,
     };
     body.ref = shot;
     this.scene.addBody(body);
     this.shots.push(shot);
     return shot;
+  }
+
+  /**
+   * A blast scars the walls, floor and ceiling round it, as long as they are in the open to it. Only drawn: it takes no
+   * random numbers from the game and does no damage.
+   */
+  blastSurfaces(pos, radius, power) {
+    const { level, rubble, blood, blastTo, blastCheck, blastNormal, blastWall, blastMark, blastFace } = this;
+    let lastX = 0;
+    let lastY = 0;
+    let lastNx = 0;
+    let lastNy = 0;
+    let marked = false;
+    for (let i = 0; i < BLAST_RAYS; i++) {
+      blastTo.setScalar(pos.x + BLAST_RAY_COS[i] * radius, pos.y + BLAST_RAY_SIN[i] * radius);
+      const hit = this.scene.raycast(pos, blastTo, QUERY_WALL);
+      if (!hit)
+        continue;
+      const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
+      const ny = Math.abs(hit.normal.y) > 0.9 ? Math.round(hit.normal.y) : hit.normal.y;
+      const severity = severityOf(pos.getDistance(hit.point), radius, power);
+      if (severity === 0)
+        continue;
+      blastCheck.setScalar(hit.point.x + nx, hit.point.y + ny);
+      if (!this.canReach(pos, blastCheck))
+        continue;
+      const gapX = hit.point.x - lastX;
+      const gapY = hit.point.y - lastY;
+      if (marked && nx === lastNx && ny === lastNy && gapX * gapX + gapY * gapY < BLAST_WALL_GAP * BLAST_WALL_GAP)
+        continue;
+      blastWall.setScalar(hit.point.x, hit.point.y, this.player.eye - 2 + rubble.rand.float(-10, 10));
+      if (!blood.wallFace(blastWall, blastNormal.setScalar(nx, ny), blastFace))
+        continue;
+      const door = blastFace.door;
+      blastFace.top = door ? level.baseHeight[blastFace.idx] : blastFace.top;
+      blastMark.setScalar(blastFace.x, blastFace.y, door ? blastFace.height / (1 - door.open) : blastFace.height);
+      const slot = rubble.addWall(blastMark, blastNormal, severity, blastFace);
+      if (!slot)
+        continue;
+      marked = true;
+      lastX = hit.point.x;
+      lastY = hit.point.y;
+      lastNx = nx;
+      lastNy = ny;
+    }
+    for (let i = -1; i < BLAST_RING; i++) {
+      const reach = i < 0 ? 0 : radius * BLAST_RING_REACH;
+      const k = i < 0 ? 0 : i * (BLAST_RAYS / BLAST_RING);
+      blastCheck.setScalar(pos.x + BLAST_RAY_COS[k] * reach, pos.y + BLAST_RAY_SIN[k] * reach);
+      const cell = level.grid.getCell(blastCheck);
+      if (cell < 0 || level.heights[cell] > 0 || (i >= 0 && !this.canReach(pos, blastCheck)))
+        continue;
+      const severity = severityOf(reach, radius, power);
+      blastMark.setScalar(blastCheck.x, blastCheck.y, 0);
+      if (level.slime[cell] !== 1)
+        rubble.addFloor(blastMark, severity);
+      if (!level.isOutdoor(blastCheck))
+        rubble.addCeiling(blastMark, severity);
+    }
   }
 
   detonateRocket(shot, directRef = null) {
@@ -1149,6 +1234,7 @@ export class Game {
         dir.setScalar(1, 0);
       this.mutilateCorpse(enemy, dir.x, dir.y, true);
     }
+    this.blastSurfaces(pos, shot.radius, 1);
     for (const body of this.scene.queryCircle(pos, shot.radius, QUERY_BARREL, this.queryScratch)) {
       const barrel = body.ref;
       const d = barrel.pos.getDistance(pos);
@@ -1223,6 +1309,7 @@ export class Game {
         dir.setScalar(1, 0);
       this.mutilateCorpse(enemy, dir.x, dir.y, true);
     }
+    this.blastSurfaces(barrel.pos, BARREL.blast, 1);
     for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_BARREL, this.queryScratch)) {
       const other = body.ref;
       const d = other.pos.getDistance(barrel.pos);
@@ -2041,6 +2128,12 @@ export class Game {
     const player = this.player;
     const target = this.useTarget;
     this.clearUseTarget();
+    if (player.z < 0 && this.level.slimeAt(player.pos)) {
+      target.kind = 'pit';
+      target.verb = USE_VERBS.jump;
+      target.promptable = true;
+      return true;
+    }
     const facing = this.scratch.setScalar(1, 0).setRadian(player.angle);
     let best = null;
     let bestCache = null;
@@ -2089,9 +2182,11 @@ export class Game {
     const prompt = this.usePrompt;
     if (this.state !== 'play') {
       prompt.fade = 0;
+      prompt.key = 'use';
       return;
     }
     if (this.findUseTarget()) {
+      prompt.key = this.useTarget.kind === 'pit' ? 'jump' : 'use';
       prompt.verb = this.useTarget.verb;
       prompt.lock = this.useTarget.lock;
       prompt.fade = Utils.clamp(prompt.fade + dt / USE_PROMPT_FADE_IN, 0, 1);
@@ -2701,7 +2796,13 @@ export class Game {
     if (input.use)
       this.use();
     if (input.grenade)
-      this.addGrenade(player.pos, this.scratch.setScalar(cos, sin));
+      if (player.grenades > 0) {
+        player.grenades--;
+        this.addGrenade(player.pos, this.scratch.setScalar(cos, sin));
+      } else {
+        this.say('No grenades', 1.5);
+        this.emit('dry');
+      }
     if (player.kick.burst > 0 && !input.fire)
       this.endBurst();
     player.triggerHeld = Boolean(input.fire);

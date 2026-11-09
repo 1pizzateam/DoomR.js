@@ -15,6 +15,8 @@ import { Cylinder, Vec2, Vec3 } from '@1pizzateam/roostr';
 
 export const GRENADE_CELL = 32;
 export const GRENADE_FRAMES = 4;
+export const GRENADE_SCALE = 0.45;
+export const GRENADE_START = 6;
 const GRENADE_CELLS = { body: 0, rib: 1, neck: 2, fuse: 3 };
 
 const OLIVE = [

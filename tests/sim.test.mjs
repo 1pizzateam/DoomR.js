@@ -53,7 +53,7 @@ import { KEYCARD_CELL, KEYCARD_CELLS, KEYCARD_FRAMES, keycardAtlas, keycardMesh 
 import { ARMOR_CELL, ARMOR_CELLS, ARMOR_COLORS, ARMOR_FRAMES, ARMOR_TYPES, armorAtlas, armorMesh } from '../src/armor.js';
 import { POWERUP_CELL, POWERUP_CELLS, POWERUP_FRAMES, POWERUP_TYPES, berserkAtlas, berserkMesh, nightvisionAtlas, nightvisionMesh, radsuitAtlas, radsuitMesh, soulsphereAtlas, soulsphereMesh } from '../src/powerups.js';
 import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.js';
-import { GRENADE_CELL, GRENADE_FRAMES, grenadeAtlas, grenadeParts, skinGrenadeCylinder } from '../src/grenade.js';
+import { GRENADE_CELL, GRENADE_FRAMES, GRENADE_SCALE, GRENADE_START, grenadeAtlas, grenadeParts, skinGrenadeCylinder } from '../src/grenade.js';
 import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
 import { registerBaseHead, deserializeBaseHead, registerHairStyle, deserializeHairStyle, registerAtlasPainter, registerFaceProfile, deserializeFaceProfile } from '@1pizzateam/facer';
@@ -88,6 +88,37 @@ const input = (patch) => ({ ...idle, ...patch });
 function run(game, seconds, controls = idle) {
   for (let t = 0; t < seconds; t += 1 / 60)
     game.update(1 / 60, controls);
+}
+
+function pitGame() {
+  const game = new Game();
+  game.load({ name: 'Pit prompt', rows: ['###########', '#.........#', '#P.D.~~~a.#', '#...~~~...#', '#.........#', '###########'] });
+  game.state = 'play';
+  const door = [...game.level.doors.values()][0];
+  let slime = null;
+  for (let y = 0; y < 6 && !slime; y++)
+    for (let x = 0; x < game.level.width; x++)
+      if (game.level.isSlime(x, y)) {
+        slime = game.level.center(x, y);
+        break;
+      }
+  game.player.body.setPosition(new Vec2(slime.x, slime.y));
+  return { game, door };
+}
+
+function pitHud() {
+  const drawn = [];
+  const ctx = { globalAlpha: 1, font: '', fillStyle: '', setTransform() {}, clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText(str) { drawn.push({ str }); } };
+  const overlay = { clear() {}, glow: { line() {} }, crisp: { fillRect() {}, rectLine() {}, line() {}, circleLine() {}, weapon: { quad() {} }, sprites: { quad() {} }, face: { quad() {} } } };
+  const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
+  hud.resize(1024, 768, 1);
+  const { game } = pitGame();
+  game.message.age = 99;
+  game.player.z = -12;
+  game.usePrompt.fade = 1;
+  game.usePrompt.verb = 'JUMP';
+  game.usePrompt.key = 'jump';
+  return { hud, drawn, game };
 }
 
 function fresh(levelIndex = 0) {
@@ -603,6 +634,7 @@ const tests = {
     assert.ok(shot.pos.x > game.player.pos.x);
     assert.equal(shot.dead, false);
     assert.equal(shot.body.getSensor(), false, 'BumpR resolves grenade contacts');
+    assert.equal(shot.body.radius, Math.round(6 * GRENADE_SCALE));
     assert.equal(game.player.triggerHeld, false);
     run(game, 0.8);
     assert.equal(game.shots.length, 1, 'idle frames do not spawn more grenades');
@@ -622,8 +654,10 @@ const tests = {
     game.player.shells = 0;
     game.player.bullets = 0;
     game.player.rockets = 0;
+    assert.equal(game.player.grenades, 5);
     game.update(1 / 60, input({ grenade: true }));
     assert.equal(game.shots.length, 1, 'a later action launches even with empty ammo pools');
+    assert.equal(game.player.grenades, 4, 'later throw spends one grenade');
     game.load(0);
     assert.equal(game.shots.length, 0, 'loading a level clears grenades');
     for (const state of ['title', 'dead', 'cleared']) {
@@ -631,6 +665,93 @@ const tests = {
       game.update(1 / 60, input({ grenade: true }));
       assert.equal(game.shots.length, 0, `${state} does not accept throws`);
     }
+  },
+
+  'AC-1 level start grants exactly 6 grenades regardless of carry'() {
+    assert.equal(GRENADE_START, 6);
+    const game = rocketSelfDamageGame();
+    assert.equal(game.player.grenades, GRENADE_START);
+    game.load(0, { health: 100, grenades: 2 });
+    assert.equal(game.player.grenades, 6);
+    game.load(0, { health: 100 });
+    assert.equal(game.player.grenades, 6);
+  },
+
+  'AC-2 each throw spends one grenade and leaves other ammo untouched'() {
+    const game = rocketSelfDamageGame('#P.#.....#');
+    game.player.shells = 9;
+    game.player.bullets = 12;
+    game.player.rockets = 3;
+    game.update(1 / 60, input({ grenade: true }));
+    assert.equal(game.player.grenades, 5);
+    assert.equal(game.shots.length, 1);
+    assert.deepEqual([game.player.shells, game.player.bullets, game.player.rockets], [9, 12, 3]);
+  },
+
+  'AC-3 seventh throw is refused with feedback and spawns nothing'() {
+    const game = rocketSelfDamageGame('#P.#.....#');
+    for (let i = 0; i < 6; i++)
+      game.update(1 / 60, input({ grenade: true }));
+    assert.equal(game.player.grenades, 0);
+    const shots = game.shots.length;
+    game.events.length = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    assert.equal(game.shots.length, shots);
+    assert.equal(game.player.grenades, 0);
+    assert.equal(game.message.text, 'No grenades');
+    assert.ok(game.events.some((event) => event.type === 'dry'));
+  },
+
+  'AC-4 loading a level restores the grenade stock'() {
+    const game = rocketSelfDamageGame();
+    game.player.grenades = 0;
+    game.load(0);
+    assert.equal(game.player.grenades, 6);
+    assert.equal(game.shots.length, 0);
+    game.player.grenades = 0;
+    game.load(0, { health: 100, shells: 3 });
+    assert.equal(game.player.grenades, 6);
+    assert.equal(game.shots.length, 0);
+  },
+
+  'AC-5 title dead and cleared states do not spend grenades'() {
+    const game = rocketSelfDamageGame();
+    for (const state of ['title', 'dead', 'cleared']) {
+      game.state = state;
+      game.update(1 / 60, input({ grenade: true }));
+      assert.equal(game.player.grenades, 6, `${state} keeps the stock`);
+      assert.equal(game.shots.length, 0, `${state} spawns nothing`);
+    }
+  },
+
+  'AC-6 stock stays within 0 to 6 and fuse and radius are unchanged'() {
+    const game = rocketSelfDamageGame('#P.#.....#');
+    for (let i = 0; i < 10; i++) {
+      game.update(1 / 60, input({ grenade: true }));
+      assert.ok(game.player.grenades >= 0 && game.player.grenades <= 6);
+    }
+    assert.equal(game.player.grenades, 0);
+    assert.equal(game.shots[0].life, 1.5);
+    assert.equal(game.shots[0].body.radius, Math.round(6 * GRENADE_SCALE));
+  },
+
+  'AC-7 giveAll refills grenades to 6'() {
+    const game = rocketSelfDamageGame();
+    game.player.grenades = 3;
+    game.giveAll();
+    assert.equal(game.player.grenades, 6);
+  },
+
+  'AC-8 HUD grenade readout follows the player stock'() {
+    const texts = [];
+    const hud = Object.create(Hud.prototype);
+    hud.text = (text, x, y, color) => texts.push({ text, color });
+    hud.drawGrenades(900, 700, { grenades: 6 });
+    assert.ok(texts.some((t) => t.text === '6' && t.color === 1), 'full stock is green');
+    texts.length = 0;
+    hud.drawGrenades(900, 700, { grenades: 0 });
+    assert.ok(texts.some((t) => t.text === '0' && t.color === 2), 'empty stock is orange');
+    assert.ok(texts.some((t) => t.text === 'GRENADES'));
   },
 
   'AC-3 grenade throws faster and farther than the 280-unit baseline without extending its fuse'() {
@@ -656,6 +777,84 @@ const tests = {
     assert.equal(shot.dead, false, 'grenade remains live immediately before 1.5 seconds');
     game.update(1 / 30, idle);
     assert.equal(shot.dead, true, 'unchanged fuse detonates by the next frame after 1.5 seconds');
+  },
+
+  'AC-1 grenade launches at 500 horizontal speed with 135 vertical velocity'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    assert.ok(Math.abs(shot.body.velocity.getMagnitude() - 500) < 25, `horizontal speed ${shot.body.velocity.getMagnitude()}`);
+    assert.ok(Math.abs(shot.vz - 135) <= 10, `vertical velocity ${shot.vz}`);
+  },
+
+  'AC-2 grenade travels 270 to 320 units in an open corridor and clears its own splash radius'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    const start = shot.pos.clone();
+    for (let frame = 1; frame < 90; frame++)
+      game.update(1 / 60, idle);
+    const travel = shot.pos.x - start.x;
+    assert.ok(travel > 270 && travel < 320, `travel ${travel}`);
+    assert.ok(travel > 165 + 20, 'travel clears splash radius plus player radius');
+  },
+
+  'AC-3 grenade fuse stays 1.5 seconds'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    assert.equal(shot.life, 1.5);
+    for (let frame = 1; frame < 89; frame++)
+      game.update(1 / 60, idle);
+    assert.equal(shot.dead, false, 'live one frame before the fuse expires');
+    game.update(1 / 30, idle);
+    assert.equal(shot.dead, true, 'dead on the first frame after the fuse expires');
+  },
+
+  'AC-4 grenade arc stays between floor and ceiling and stays airborne longer than 0.55 seconds'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    let minZ = shot.z;
+    let maxZ = shot.z;
+    let landed = -1;
+    for (let frame = 1; frame < 80; frame++) {
+      game.update(1 / 60, idle);
+      minZ = Math.min(minZ, shot.z);
+      maxZ = Math.max(maxZ, shot.z);
+      if (landed < 0 && shot.z <= 6)
+        landed = frame / 60;
+    }
+    assert.ok(minZ >= 6, `min z ${minZ}`);
+    assert.ok(maxZ < 64, `max z ${maxZ}`);
+    assert.ok(landed > 0.6, `airtime ${landed}`);
+  },
+
+  'AC-5 grenade throw leaves ammo untouched and keeps rocket splash parameters'() {
+    const game = rocketSelfDamageGame();
+    game.player.angle = 0;
+    game.player.shells = 9;
+    game.player.bullets = 12;
+    game.player.rockets = 3;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    assert.deepEqual([game.player.shells, game.player.bullets, game.player.rockets], [9, 12, 3]);
+    assert.equal(shot.splash, WEAPONS.rocket.splashDamage);
+    assert.equal(shot.radius, WEAPONS.rocket.splashRadius);
+  },
+
+  'AC-6 grenade thrown at a nearby wall bounces without early detonation'() {
+    const game = rocketSelfDamageGame('#P.#.....#');
+    game.player.angle = 0;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    run(game, 0.8);
+    assert.equal(shot.dead, false);
+    assert.ok(shot.pos.x < 192 - 5, 'grenade stays on the near side of the wall');
   },
 
   'AC-4 grenade splash damages reachable enemies and barrels but not targets behind walls'() {
@@ -725,6 +924,8 @@ const tests = {
       assert.deepEqual(new Uint8Array(Buffer.from(pixelgun.rgbaBase64, 'base64')), atlas.data);
       const polygun = JSON.parse(readFileSync(new URL('../src/models/projectile-grenade.polygun.json', import.meta.url), 'utf8'));
       assert.equal(polygun.id, 'projectile-grenade');
+      assert.equal(GRENADE_SCALE, 0.45);
+      assert.deepEqual(polygun.scale, { x: 0.45, y: 0.45, z: 0.45 });
       assert.deepEqual(new Uint8Array(Buffer.from(polygun.atlas.dataBase64, 'base64')), atlas.data);
 
       const { root } = world.buildShot({ kind: 'grenade' });
@@ -847,6 +1048,9 @@ const tests = {
       const projectile = world.shotViews.get(shot);
       assert.ok(projectile?.root.active, 'grenade has an active projectile view');
       assert.ok(projectile.root.vertices.length > 0, 'grenade has real mesh geometry');
+      assert.equal(projectile.root.scale.x, GRENADE_SCALE);
+      assert.equal(projectile.root.scale.y, GRENADE_SCALE);
+      assert.equal(projectile.root.scale.z, GRENADE_SCALE);
       assert.deepEqual(
         [projectile.root.position.x, projectile.root.position.y, projectile.root.position.z],
         [shot.pos.x, shot.z, shot.pos.y],
@@ -2294,13 +2498,13 @@ const tests = {
     assert.equal(holeQuad(vecMark({ ...hole, lo: -0.1, hi: 0.2 })), null);
 
     const atlas = impactAtlas();
-    assert.equal(atlas.width, 32 * IMPACT_CELL_COUNT);
+    assert.equal(atlas.width, 64 * IMPACT_CELL_COUNT);
     const solid = (cell) => {
       let n = 0;
       let bright = 0;
       for (let y = 0; y < 32; y++) {
         for (let x = 0; x < 32; x++) {
-          const o = (y * atlas.width + cell * 32 + x) * 4;
+          const o = (y * 2 * atlas.width + cell * 64 + x * 2) * 4;
           if (atlas.data[o + 3]) {
             n++;
             if (atlas.data[o] > 200)
@@ -2319,7 +2523,7 @@ const tests = {
       let key = '';
       for (let y = 0; y < 32; y++) {
         for (let x = 0; x < 32; x++)
-          key += atlas.data[(y * atlas.width + (IMPACT_CELLS.hole + v) * 32 + x) * 4 + 3] ? '1' : '0';
+          key += atlas.data[(y * 2 * atlas.width + (IMPACT_CELLS.hole + v) * 64 + x * 2) * 4 + 3] ? '1' : '0';
       }
       pictures.add(key);
       sizes.add(Math.round(solid(IMPACT_CELLS.hole + v).n / 8));
@@ -5218,14 +5422,14 @@ const tests = {
     assert.notEqual(sawQuad.uv[0], gunQuad.uv[0], 'chainsaw slash UV differs from firearm bullet hole UV');
     const impAtlas = impactAtlas();
     for (let v = 0; v < SLASH_VARIANTS; v++) {
-      const xBase = (IMPACT_CELLS.slash + v) * 32;
+      const xBase = (IMPACT_CELLS.slash + v) * 64;
       let minX = 32;
       let maxX = -1;
       let minY = 32;
       let maxY = -1;
       for (let y = 0; y < 32; y++)
         for (let x = 0; x < 32; x++)
-          if (impAtlas.data[(y * impAtlas.width + xBase + x) * 4 + 3] > 0) {
+          if (impAtlas.data[(y * 2 * impAtlas.width + xBase + x * 2) * 4 + 3] > 0) {
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
@@ -11563,6 +11767,97 @@ const tests = {
     assert.equal(game.useTarget.kind, null);
   },
 
+  'AC-1 pit prompt: falling in shows the JUMP target and rising fade'() {
+    const { game } = pitGame();
+    for (const z of [-12, -3]) {
+      game.player.z = z;
+      game.usePrompt.fade = 0;
+      game.updateUsePrompt(0.05);
+      assert.equal(game.useTarget.kind, 'pit');
+      assert.equal(game.useTarget.verb, 'JUMP');
+      assert.equal(game.usePrompt.key, 'jump');
+      assert.ok(game.usePrompt.fade > 0);
+    }
+  },
+
+  'AC-2 pit prompt: pit beats doors and chests and use() does nothing'() {
+    const { game, door } = pitGame();
+    game.player.z = -12;
+    const cache = game.caches[0];
+    const state = cache.state;
+    game.player.angle = 0;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'pit');
+    const before = door.target;
+    game.use();
+    assert.equal(door.target, before);
+    assert.equal(cache.state, state);
+  },
+
+  'AC-3 pit prompt: leaving the pit restores use prompts and fades out'() {
+    const { game, door } = pitGame();
+    game.player.z = -12;
+    run(game, 0.1);
+    game.updateUsePrompt(0.05);
+    assert.equal(game.usePrompt.key, 'jump');
+    game.player.z = 0;
+    game.updateUsePrompt(0.05);
+    assert.notEqual(game.useTarget.kind, 'pit');
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 64));
+    game.player.angle = -Math.PI / 2;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'door');
+    assert.equal(game.usePrompt.key, 'use');
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 400));
+    for (let i = 0; i < 15; i++)
+      game.updateUsePrompt(1 / 60);
+    assert.equal(game.usePrompt.fade, 0);
+  },
+
+  'AC-4 pit prompt: HUD draws jumpKeyLabel and the signature tracks it'() {
+    const { hud, drawn, game } = pitHud();
+    hud.jumpKeyLabel = 'J';
+    hud.render(game);
+    assert.equal(drawn.filter((d) => d.str === 'J').length, 1);
+    assert.equal(drawn.filter((d) => d.str === 'JUMP').length, 1);
+    assert.equal(drawn.filter((d) => d.str === hud.useKeyLabel).length, 0);
+    const a = hud.computeHudTextKey(game, false);
+    hud.jumpKeyLabel = 'K';
+    const b = hud.computeHudTextKey(game, false);
+    assert.notEqual(a, b);
+  },
+
+  'AC-5 pit prompt: cleared outside play and on load'() {
+    const { game } = pitGame();
+    game.player.z = -12;
+    run(game, 0.2);
+    assert.equal(game.usePrompt.key, 'jump');
+    for (const state of ['paused', 'dead']) {
+      game.state = 'play';
+      game.updateUsePrompt(0.2);
+      assert.ok(game.usePrompt.fade > 0);
+      game.state = state;
+      game.updateUsePrompt(0.05);
+      assert.equal(game.usePrompt.fade, 0);
+      assert.equal(game.usePrompt.key, 'use');
+    }
+    game.state = 'play';
+    game.updateUsePrompt(0.2);
+    game.load(0);
+    assert.equal(game.usePrompt.fade, 0);
+    assert.equal(game.usePrompt.key, 'use');
+  },
+
+  'AC-6 pit prompt: door prompts keep useKeyLabel and verbs'() {
+    const { hud, drawn, game } = pitHud();
+    game.usePrompt.key = 'use';
+    game.usePrompt.verb = 'OPEN';
+    hud.render(game);
+    assert.equal(drawn.filter((d) => d.str === hud.useKeyLabel).length, 1);
+    assert.equal(drawn.filter((d) => d.str === 'OPEN').length, 1);
+    assert.equal(drawn.filter((d) => d.str === hud.jumpKeyLabel).length, 0);
+  },
+
   'AC-6 use prompt: the HUD draws a discreet keycap with the bound key'() {
     const drawn = [];
     const rects = [];
@@ -16493,6 +16788,44 @@ const tests = {
 
     const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
     assert.ok(!src.includes('.line(['));
+  },
+
+  'AC-1 through AC-5 grenade visual model and physics body scale proportionally to 0.45'() {
+    // AC-1: GRENADE_SCALE exported from src/grenade.js
+    assert.equal(GRENADE_SCALE, 0.45);
+
+    // AC-2: projectile-grenade.polygun.json declares scale vector of 0.45
+    const polygun = JSON.parse(readFileSync(new URL('../src/models/projectile-grenade.polygun.json', import.meta.url), 'utf8'));
+    assert.equal(polygun.id, 'projectile-grenade');
+    assert.deepEqual(polygun.scale, { x: 0.45, y: 0.45, z: 0.45 });
+
+    // AC-3: Game.addGrenade creates collision circle with scaled radius 3
+    const game = fresh(0);
+    const shot = game.addGrenade(game.player.pos, game.scratch.setScalar(1, 0));
+    assert.equal(shot.body.radius, Math.round(6 * GRENADE_SCALE));
+    assert.equal(shot.body.radius, 3);
+    assert.equal(shot.body.restitution, 0.45);
+    assert.equal(shot.body.damping, 0.2);
+    assert.equal(shot.life, 1.5);
+    assert.equal(shot.radius, WEAPONS.rocket.splashRadius);
+
+    // AC-4 & AC-5: World.buildShot sets uniform GRENADE_SCALE on root mesh without per-frame scale allocations
+    const addProgram = Mesh.prototype.addProgram;
+    Mesh.prototype.addProgram = () => true;
+    try {
+      const world = Object.assign(Object.create(World.prototype), {
+        gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, UNSIGNED_SHORT: 5123 },
+        scene: { addMesh() {} },
+        sharedTexture: () => ({}),
+        sharedTexturedMeshes: [],
+      });
+      const { root } = world.buildShot({ kind: 'grenade' });
+      assert.equal(root.scale.x, GRENADE_SCALE);
+      assert.equal(root.scale.y, GRENADE_SCALE);
+      assert.equal(root.scale.z, GRENADE_SCALE);
+    } finally {
+      Mesh.prototype.addProgram = addProgram;
+    }
   },
 };
 

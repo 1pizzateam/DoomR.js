@@ -21,8 +21,8 @@ Every action can be rebound. The home screen shows PLAY and OPTIONS buttons, ope
 | W A S D | move (ZQSD on AZERTY) | position |
 | mouse / ← → | turn | position |
 | click / X / Enter | fire | position |
-| F | grenade | position |
-| Space | jump | position |
+| F | grenade (every level starts with 6; each throw uses one, the HUD shows the count, an empty throw is refused) | position |
+| Space | jump (a JUMP keycap in your bound jump key shows under the crosshair when you are in an acid pool and must jump out) | position |
 | C | crouch | position |
 | Shift | run | position |
 | 1-4 | weapons | position |
@@ -38,6 +38,8 @@ Every action can be rebound. The home screen shows PLAY and OPTIONS buttons, ope
 | F1 | open the controls page (rebind any action) | position |
 
 Acid pools emit a glowing, drifting toxic mist that hovers inside the recess.
+
+Every explosion (rocket, grenade, barrel or fireball) leaves permanent blast damage on the walls, floor and ceiling it reaches in the open: three damage tiers by distance, kept until the level reloads. The damage is layered and detailed (craters with lit rims and deep shadow, cracks, exposed brick and rebar, hanging panels and rubble), in four variants per tier and soft edged so no square shows. It is purely visual and never changes damage.
 
 ## Tests
 

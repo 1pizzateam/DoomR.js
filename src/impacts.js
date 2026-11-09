@@ -11,15 +11,28 @@ const scratchPt = new Vec2();
  */
 
 const IMPACT_CELL = 32;
+// the atlas cells are twice as sharp: the legacy pictures are doubled, the blast art is painted at this size
+const ATLAS_CELL = 64;
+const ATLAS_SCALE = ATLAS_CELL / IMPACT_CELL;
+const mid2 = (ATLAS_CELL - 1) / 2;
 export const IMPACT_CELL_COUNT = 64;
 export const HOLE_VARIANTS = 12;
 export const SLASH_VARIANTS = 6;
 export const SPARK_FRAMES = 5;
 export const SPARK_VARIANTS = 4;
+const BLAST_TIERS = 3;
+// two painted bases per tier; the mark's variant picks one (bit 0) and mirrors it (bit 1)
+const BLAST_BASES = 2;
+const BLAST_SPAN = BLAST_TIERS * BLAST_BASES;
+const SLASH_CELL = HOLE_VARIANTS + SPARK_FRAMES * SPARK_VARIANTS;
+// three damage tiers of two paintings per surface: cell = surface start + tier * 2 + base, so an editor can mirror the layout
 export const IMPACT_CELLS = {
   hole: 0,
   spark: HOLE_VARIANTS,
-  slash: HOLE_VARIANTS + SPARK_FRAMES * SPARK_VARIANTS,
+  slash: SLASH_CELL,
+  brokenWall: SLASH_CELL + SLASH_VARIANTS,
+  brokenFloor: SLASH_CELL + SLASH_VARIANTS + BLAST_SPAN,
+  brokenCeiling: SLASH_CELL + SLASH_VARIANTS + BLAST_SPAN * 2,
 };
 
 // marks stop this far short of the edge of a face, so none sits right on a corner
@@ -27,12 +40,24 @@ const EDGE = 0.3;
 // a hole is a square this many world units across: the crater is a quarter of it, so about 3 units, and its cracks reach
 // a little further
 const HOLE_SIZE = 16;
+// blast marks sit a little closer to the face than bullet holes do, so a hole shot into a blast still shows
+const BLAST_OFFSET = 0.15;
+// a flat blast mark hovers this far off the floor or ceiling so it does not fight the surface for depth
+const FLAT_LIFT = 0.15;
+const CEILING_HEIGHT = 64;
+const MIN_SPAN = 1e-3;
 
 const CHAR = [5, 7, 11];
 const SCORCH = [12, 15, 23];
 const CRACK = [8, 10, 16];
 const RIM = [112, 130, 160];
 const CHIP = [150, 168, 196];
+const PLASTER = [172, 164, 148];
+const PLASTER_DARK = [96, 90, 80];
+const CONCRETE = [118, 120, 124];
+const CONCRETE_DARK = [68, 70, 76];
+const REBAR = [150, 74, 40];
+const RUBBLE_LIGHT = [136, 130, 120];
 const FLASH = [255, 252, 226];
 const YELLOW = [255, 220, 110];
 const ORANGE = [255, 150, 46];
@@ -376,11 +401,254 @@ function drawSlash(c, variant, rnd) {
   flecks(c, rnd, mid + (y1 - mid) * tilt, y1 - 1, 3, 1.5, 4.5);
 }
 
+
+const BRICK = [146, 78, 62];
+const BRICK_DARK = [92, 48, 40];
+const MORTAR = [128, 122, 112];
+const DUST = [118, 116, 112];
+const DUST_DARK = [70, 70, 74];
+const PANEL = [156, 162, 172];
+const PIPE = [104, 118, 130];
+const JOIST = [96, 68, 46];
+const SOOT = [[78, 80, 88], [38, 40, 48], [14, 16, 24]];
+const SKIN = [PLASTER, DUST, PANEL];
+const BORDER = 3;
+const BLAST_RADIUS = [12, 17, 22];
+const BLAST_CORE = [0, 0.45, 0.55];
+const SHARD_POINTS = 8;
+
+const bandOf = (v) => Math.max(0, Math.min(255, v));
+
+/** A 64 px cell for the blast art: same `put` as `Cell`, but with alpha blending and a cleared border. */
+class BlastCell {
+  constructor() {
+    this.pixels = new Uint8Array(ATLAS_CELL * ATLAS_CELL * 4);
+  }
+
+  put(x, y, color, alpha = 255, over = true) {
+    x = Math.round(x);
+    y = Math.round(y);
+    if (x < BORDER || y < BORDER || x >= ATLAS_CELL - BORDER || y >= ATLAS_CELL - BORDER || alpha <= 0)
+      return;
+    const o = (y * ATLAS_CELL + x) * 4;
+    const old = this.pixels[o + 3];
+    if (!over && old)
+      return;
+    const t = old ? alpha / 255 : 1;
+    this.pixels[o] = bandOf(Utils.lerp(this.pixels[o], color[0], t));
+    this.pixels[o + 1] = bandOf(Utils.lerp(this.pixels[o + 1], color[1], t));
+    this.pixels[o + 2] = bandOf(Utils.lerp(this.pixels[o + 2], color[2], t));
+    this.pixels[o + 3] = Math.max(old, alpha);
+  }
+
+  line(x0, y0, x1, y1, color, alpha = 255) {
+    const steps = Math.ceil(scratchPt.setScalar(x1 - x0, y1 - y0).getMagnitude() * 1.5) || 1;
+    for (let i = 0; i <= steps; i++)
+      this.put(Utils.lerp(x0, x1, i / steps), Utils.lerp(y0, y1, i / steps), color, alpha);
+  }
+}
+
+function hash2(ix, iy, seed) {
+  let h = Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263) ^ Math.imul(seed, 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function vnoise(x, y, seed) {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = Utils.smoothstep(0, 1, x - ix);
+  const fy = Utils.smoothstep(0, 1, y - iy);
+  return Utils.lerp(
+    Utils.lerp(hash2(ix, iy, seed), hash2(ix + 1, iy, seed), fx),
+    Utils.lerp(hash2(ix, iy + 1, seed), hash2(ix + 1, iy + 1, seed), fx),
+    fy,
+  );
+}
+
+/** Three octaves of value noise, 0 to 1. */
+function fbm(x, y, seed) {
+  return vnoise(x, y, seed) * 0.57 + vnoise(x * 2, y * 2, seed + 1) * 0.29 + vnoise(x * 4, y * 4, seed + 2) * 0.14;
+}
+
+function shade3(color, k, jitter = 0) {
+  return [color[0] * k + jitter, color[1] * k + jitter, color[2] * k + jitter];
+}
+
+/** What shows through the opening: brick courses on walls, slabs on floors, joists and panel backs on ceilings. */
+function substrate(surface, x, y, tone, noise) {
+  if (surface === 0) {
+    const row = Math.floor(y / 6);
+    const col = Math.floor((x + (row % 2) * 6) / 12);
+    const mortar = y % 6 === 0 || (x + (row % 2) * 6) % 12 === 0;
+    if (noise > 0.62)
+      return shade3(CONCRETE, 0.8 + tone * 0.3);
+    return mortar ? shade3(MORTAR, 0.85) : mix3(BRICK_DARK, BRICK, (tone + hash2(col, row, 3)) * 0.5);
+  }
+  if (surface === 1)
+    return mix3(CONCRETE_DARK, CONCRETE, tone);
+  return mix3(shade3(JOIST, 0.7), noise > 0.55 ? PANEL : JOIST, tone);
+}
+
+/**
+ * One blast cell, painted at the atlas resolution in layers: a ragged outline (domain-warped noise), a dark crater, the
+ * substrate in Voronoi shards with crack seams, a lit rim on the upper left and a shadowed one on the lower right, a
+ * soot halo, then loose pieces (bars, pipes, flaps, rubble). `tier` is 0 scuffed, 1 chipped, 2 blown out; `base` tells the
+ * two paintings of the same tier apart through their seed.
+ */
+function drawBlast(c, surface, tier, base, rnd) {
+  const seed = Math.floor(rnd() * 100000);
+  const ox = rnd() * 40;
+  const oy = rnd() * 40;
+  const radius = BLAST_RADIUS[tier];
+  const core = BLAST_CORE[tier];
+  const soot = SOOT[tier];
+  const skin = SKIN[surface];
+  const shards = SHARD_POINTS + tier * 3 + base * 4;
+  const sx = new Array(shards);
+  const sy = new Array(shards);
+  for (let i = 0; i < shards; i++) {
+    const a = rnd() * Trigo.twopi;
+    const r = Math.sqrt(rnd()) * radius * 1.1;
+    sx[i] = mid2 + Math.cos(a) * r;
+    sy[i] = mid2 + Math.sin(a) * r;
+  }
+  for (let y = BORDER; y < ATLAS_CELL - BORDER; y++)
+    for (let x = BORDER; x < ATLAS_CELL - BORDER; x++) {
+      const dx = x - mid2;
+      const dy = y - mid2;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const ux = dist ? dx / dist : 0;
+      const uy = dist ? dy / dist : 0;
+      const warp = fbm(ux * 1.7 + ox, uy * 1.7 + oy, seed) - 0.5;
+      const reach = radius * (1 + warp * (0.7 + tier * 0.25)) + (vnoise(x * 0.5, y * 0.5, seed + 9) - 0.5) * 2;
+      const d = dist / reach;
+      if (d > 1.4)
+        continue;
+      let near = 1e9;
+      let second = 1e9;
+      let id = 0;
+      for (let i = 0; i < shards; i++) {
+        const ddx = x - sx[i];
+        const ddy = y - sy[i];
+        const dd = ddx * ddx + ddy * ddy;
+        if (dd < near) {
+          second = near;
+          near = dd;
+          id = i;
+        } else if (dd < second)
+          second = dd;
+      }
+      const seam = Math.sqrt(second) - Math.sqrt(near);
+      const tone = hash2(id, seed, 17);
+      const grain = fbm(x * 0.4, y * 0.4, seed + 5);
+      const jitter = (hash2(x, y, seed) - 0.5) * 14;
+      // lit on the upper left, in shadow on the lower right
+      const lit = -(ux + uy) * 0.7071;
+      let color;
+      let alpha = 255;
+      if (core > 0 && d < core) {
+        const t = d / core;
+        color = mix3(CHAR, shade3(substrate(surface, x, y, tone, grain), 0.28), t * t);
+        if (seam < 1.2 && t > 0.4)
+          color = shade3(color, 1.6, 6);
+      } else if (d < 0.92) {
+        const ring = core > 0 ? (d - core) / (0.92 - core) : d / 0.92;
+        const ao = 0.55 + 0.45 * Utils.smoothstep(0, 1, ring);
+        if (tier === 0)
+          color = grain > 0.58 ? shade3(substrate(surface, x, y, tone, grain), 0.75 + 0.3 * lit) : shade3(skin, 0.62 + tone * 0.2 + lit * 0.12);
+        else
+          color = shade3(substrate(surface, x, y, tone, grain), ao + lit * 0.15 * ring);
+        if (seam < 1.3)
+          color = seam < 0.7 ? CRACK : shade3(color, 0.6);
+        else if (lit > 0.5 && seam < 2.4)
+          color = shade3(color, 1.35);
+      } else if (d < 1.1) {
+        // the lip: lit on the upper left, shadowed on the lower right
+        if (lit > 0.15)
+          color = shade3(skin, 0.95 + lit * 0.5 + (grain - 0.5) * 0.3);
+        else
+          color = shade3(DUST_DARK, 0.5 - lit * 0.2);
+      } else {
+        color = mix3(soot, shade3(skin, 0.5), grain * 0.5);
+        alpha = 230 * (1 - Utils.smoothstep(1.1, 1.4, d));
+      }
+      alpha *= Utils.smoothstep(BORDER, BORDER + 5, Math.min(x, y, ATLAS_CELL - 1 - x, ATLAS_CELL - 1 - y));
+      c.put(x, y, shade3(color, 1, jitter), alpha);
+    }
+  // hairline cracks fanning out of the opening into the surface
+  const cracks = 3 + tier * 2 + base * 2;
+  for (let i = 0; i < cracks; i++) {
+    let a = (i / cracks) * Trigo.twopi + rnd() * 0.6;
+    let px = mid2 + Math.cos(a) * radius * 0.9;
+    let py = mid2 + Math.sin(a) * radius * 0.9;
+    const length = radius * (0.4 + rnd() * 0.5);
+    for (let s = 0; s < length; s++) {
+      a += (rnd() - 0.5) * 0.7;
+      px += Math.cos(a);
+      py += Math.sin(a);
+      c.put(px, py, CRACK, 235);
+      c.put(px - 1, py - 1, CHIP, 150, false);
+      if (s % 7 === 6)
+        c.line(px, py, px + Math.cos(a + 0.9) * 4, py + Math.sin(a + 0.9) * 4, CRACK, 200);
+    }
+  }
+  if (tier === 0)
+    return;
+  const bars = tier === 1 ? 2 : 4;
+  for (let i = 0; i < bars; i++) {
+    const a = rnd() * Trigo.twopi;
+    const from = radius * 0.5;
+    const to = radius * (0.9 + rnd() * 0.3);
+    if (surface === 2) {
+      // a pipe crossing the opening and, further in, joists
+      const yy = mid2 - radius * 0.4 + i * 4;
+      c.line(mid2 - radius * 0.8, yy, mid2 + radius * 0.8, yy + 1, PIPE);
+      c.line(mid2 - radius * 0.8, yy - 1, mid2 + radius * 0.8, yy, CHIP, 220);
+      if (tier === 2)
+        c.line(mid2 - radius * 0.7 + i * 9, mid2 - radius * 0.7, mid2 - radius * 0.6 + i * 9, mid2 + radius * 0.7, JOIST);
+    } else {
+      c.line(mid2 + Math.cos(a) * from, mid2 + Math.sin(a) * from, mid2 + Math.cos(a) * to, mid2 + Math.sin(a) * to, REBAR);
+      c.put(mid2 + Math.cos(a) * to, mid2 + Math.sin(a) * to, BARE);
+    }
+  }
+  // flakes, flaps and rubble thrown round the opening
+  const pieces = 14 + tier * 12 + base * 6;
+  for (let i = 0; i < pieces; i++) {
+    const a = rnd() * Trigo.twopi;
+    const r = radius * (0.85 + rnd() * 0.5);
+    const px = mid2 + Math.cos(a) * r;
+    const py = mid2 + Math.sin(a) * r;
+    const size = 1 + Math.floor(rnd() * (1 + tier));
+    for (let k = 0; k < size; k++) {
+      c.put(px + k, py, i % 2 ? RUBBLE_LIGHT : skin, 255, false);
+      c.put(px + k + 1, py + 1, CONCRETE_DARK, 255, false);
+    }
+  }
+  if (surface === 0 && tier === 2) {
+    // a soot streak running up the wall from the top of the crater
+    const w = 3 + base * 2;
+    for (let y = BORDER; y < mid2 - radius; y++)
+      for (let x = -w; x <= w; x++)
+        c.put(mid2 + x + (vnoise(y * 0.3, seed, 4) - 0.5) * 6, y, SOOT[2], 150 * (1 - Math.abs(x) / (w + 1)) * ((y - BORDER) / (mid2 - radius - BORDER)), false);
+  }
+}
+
 /** The atlas as RGBA pixels, ready to be a texture. */
 export function impactAtlas() {
-  const width = IMPACT_CELL * IMPACT_CELL_COUNT;
-  const data = new Uint8Array(width * IMPACT_CELL * 4);
+  const width = ATLAS_CELL * IMPACT_CELL_COUNT;
+  const data = new Uint8Array(width * ATLAS_CELL * 4);
+  const blastEnd = IMPACT_CELLS.brokenCeiling + BLAST_SPAN;
   for (let cell = 0; cell < IMPACT_CELL_COUNT; cell++) {
+    if (cell >= IMPACT_CELLS.brokenWall && cell < blastEnd) {
+      const b = new BlastCell();
+      const broken = cell - IMPACT_CELLS.brokenWall;
+      const tierBase = broken % BLAST_SPAN;
+      drawBlast(b, Math.floor(broken / BLAST_SPAN), Math.floor(tierBase / BLAST_BASES), tierBase % BLAST_BASES, mulberry32(8192 + cell * 7919));
+      for (let y = 0; y < ATLAS_CELL; y++)
+        data.set(b.pixels.subarray(y * ATLAS_CELL * 4, (y + 1) * ATLAS_CELL * 4), (y * width + cell * ATLAS_CELL) * 4);
+      continue;
+    }
     const c = new Cell();
     if (cell < HOLE_VARIANTS)
       drawHole(c, cell, mulberry32(2024 + cell * 7919));
@@ -390,11 +658,13 @@ export function impactAtlas() {
       const slashIdx = cell - IMPACT_CELLS.slash;
       drawSlash(c, slashIdx, mulberry32(4096 + slashIdx * 6151));
     }
-    for (let y = 0; y < IMPACT_CELL; y++)
-      for (let x = 0; x < IMPACT_CELL; x++)
-        data.set(c.pixels.subarray((y * IMPACT_CELL + x) * 4, (y * IMPACT_CELL + x) * 4 + 4), (y * width + cell * IMPACT_CELL + x) * 4);
+    for (let y = 0; y < ATLAS_CELL; y++)
+      for (let x = 0; x < ATLAS_CELL; x++) {
+        const s = ((y / ATLAS_SCALE | 0) * IMPACT_CELL + (x / ATLAS_SCALE | 0)) * 4;
+        data.set(c.pixels.subarray(s, s + 4), (y * width + cell * ATLAS_CELL + x) * 4);
+      }
   }
-  return { name: 'impacts', data, width, height: IMPACT_CELL, cell: IMPACT_CELL, frames: IMPACT_CELL_COUNT };
+  return { name: 'impacts', data, width, height: ATLAS_CELL, cell: ATLAS_CELL, frames: IMPACT_CELL_COUNT };
 }
 
 /** Texture coordinates of a cell: [u0, v0, u1, v1], with v1 at the top of the image. */
@@ -452,5 +722,77 @@ export function holeQuad({ pos, normal, top, seed, kind = 'hole', lo = -Infinity
   uv[1] = 0 + ((cv0 - -half) / (half - -half)) * (1 - 0);
   uv[2] = a0 + ((cu1 - -half) / (half - -half)) * (a1 - a0);
   uv[3] = 0 + ((cv1 - -half) / (half - -half)) * (1 - 0);
+  return dest;
+}
+
+/**
+ * Blast damage on a wall face, a flat quad just in front of it and cut where the face ends, like `holeQuad` but
+ * larger (`size` world units across) and in the cell of the damage `tier` (0 to 2). Null when nothing of it is left.
+ * `pos` is a Vec3 (the height of the blast in z), `normal` a Vec2. With `out` the values are written in place.
+ */
+export function blastWallQuad({ pos, normal, top, seed, tier, lo = -Infinity, hi = Infinity, slope = 0, size, variant = seed % 4 }, out = null) {
+  const half = size / 2;
+  const cu0 = Math.max(-half, lo + EDGE);
+  const cu1 = Math.min(half, hi - EDGE);
+  const cv0 = Math.max(-half, 0.6 - pos.z);
+  const cv1 = Math.min(half, top - 0.6 - pos.z);
+  if (cu1 - cu0 < MIN_SPAN || cv1 - cv0 < MIN_SPAN)
+    return null;
+  const nx = normal.x;
+  const ny = normal.y;
+  const tx = -ny;
+  const ty = nx;
+  const n0 = BLAST_OFFSET - slope * cv0;
+  const n1 = BLAST_OFFSET - slope * cv1;
+  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
+  const c = dest.corners;
+  c[0] = pos.x + tx * cu0 + nx * n0;
+  c[1] = pos.z + cv0;
+  c[2] = pos.y + ty * cu0 + ny * n0;
+  c[3] = pos.x + tx * cu1 + nx * n0;
+  c[4] = pos.z + cv0;
+  c[5] = pos.y + ty * cu1 + ny * n0;
+  c[6] = pos.x + tx * cu1 + nx * n1;
+  c[7] = pos.z + cv1;
+  c[8] = pos.y + ty * cu1 + ny * n1;
+  c[9] = pos.x + tx * cu0 + nx * n1;
+  c[10] = pos.z + cv1;
+  c[11] = pos.y + ty * cu0 + ny * n1;
+  const cell = IMPACT_CELLS.brokenWall + Utils.clamp(tier, 0, BLAST_TIERS - 1) * BLAST_BASES + (variant & 1);
+  const a0 = cell / IMPACT_CELL_COUNT;
+  const a1 = (cell + 1) / IMPACT_CELL_COUNT;
+  const uv = dest.uv;
+  const mirror = (variant & 2) !== 0;
+  uv[0] = a0 + ((mirror ? half - cu0 : cu0 + half) / size) * (a1 - a0);
+  uv[1] = (cv0 + half) / size;
+  uv[2] = a0 + ((mirror ? half - cu1 : cu1 + half) / size) * (a1 - a0);
+  uv[3] = (cv1 + half) / size;
+  return dest;
+}
+
+/**
+ * Blast damage on the floor or, with `ceiling`, the ceiling: a horizontal square of `size` world units centred on `pos` (a
+ * Vec3 whose x and y are the game plane), turned a quarter turn per `variant`, hovering a little off the surface.
+ */
+export function blastFlatQuad({ pos, seed, tier, size, ceiling = false, variant = seed % 4 }, out = null) {
+  const half = size / 2;
+  const height = ceiling ? CEILING_HEIGHT - FLAT_LIFT : FLAT_LIFT;
+  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
+  const c = dest.corners;
+  // the corners go round the square, started a quarter turn further on for each variant
+  for (let k = 0; k < 4; k++) {
+    const q = (k + variant) % 4;
+    const sx = q === 0 || q === 3 ? -half : half;
+    const sy = q < 2 ? -half : half;
+    c[k * 3] = pos.x + sx;
+    c[k * 3 + 1] = height;
+    c[k * 3 + 2] = pos.y + sy;
+  }
+  const cell = (ceiling ? IMPACT_CELLS.brokenCeiling : IMPACT_CELLS.brokenFloor) + Utils.clamp(tier, 0, BLAST_TIERS - 1) * BLAST_BASES + (variant & 1);
+  const uv = dest.uv;
+  uv[0] = cell / IMPACT_CELL_COUNT;
+  uv[1] = 0;
+  uv[2] = (cell + 1) / IMPACT_CELL_COUNT;
+  uv[3] = 1;
   return dest;
 }
