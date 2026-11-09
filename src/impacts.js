@@ -24,6 +24,10 @@ const BLAST_TIERS = 3;
 // two painted bases per tier; the mark's variant picks one (bit 0) and mirrors it (bit 1)
 const BLAST_BASES = 2;
 const BLAST_SPAN = BLAST_TIERS * BLAST_BASES;
+// the burn backdrop is this many times wider than the damage it sits under, and a little deeper in the surface
+const BURN_SCALE = 1.9;
+const BURN_OFFSET = 0.1;
+const BURN_LIFT = 0.1;
 const SLASH_CELL = HOLE_VARIANTS + SPARK_FRAMES * SPARK_VARIANTS;
 // three damage tiers of two paintings per surface: cell = surface start + tier * 2 + base, so an editor can mirror the layout
 export const IMPACT_CELLS = {
@@ -33,6 +37,8 @@ export const IMPACT_CELLS = {
   brokenWall: SLASH_CELL + SLASH_VARIANTS,
   brokenFloor: SLASH_CELL + SLASH_VARIANTS + BLAST_SPAN,
   brokenCeiling: SLASH_CELL + SLASH_VARIANTS + BLAST_SPAN * 2,
+  // the scorched backdrop under the damage: three tiers for walls, then three for floor and ceiling
+  burn: SLASH_CELL + SLASH_VARIANTS + BLAST_SPAN * 3,
 };
 
 // marks stop this far short of the edge of a face, so none sits right on a corner
@@ -634,6 +640,43 @@ function drawBlast(c, surface, tier, base, rnd) {
   }
 }
 
+const BURN_REACH = [0.5, 0.68, 0.86];
+const BURN_ALPHA = [150, 195, 235];
+
+/**
+ * The scorched backdrop of a blast: soot that bleeds far past the crater, darkest at its heart, with tongues licking
+ * upward on walls (`flat` false) or spreading as a ragged star on floors and ceilings, fading out before the cell border.
+ */
+function drawBurn(c, flat, tier, rnd) {
+  const seed = Math.floor(rnd() * 100000);
+  const ox = rnd() * 40;
+  const oy = rnd() * 40;
+  const reach = (ATLAS_CELL / 2 - BORDER - 2) * BURN_REACH[tier];
+  const tongues = 5 + tier * 2;
+  const phase = rnd() * Trigo.twopi;
+  for (let y = BORDER; y < ATLAS_CELL - BORDER; y++)
+    for (let x = BORDER; x < ATLAS_CELL - BORDER; x++) {
+      const dx = x - mid2;
+      const dy = y - mid2;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const a = Math.atan2(dy, dx);
+      const warp = fbm(x * 0.12 + ox, y * 0.12 + oy, seed) - 0.5;
+      let r = reach * (1 + warp * 0.9) * (1 + 0.35 * Math.cos(a * tongues + phase) * (0.4 + tier * 0.2));
+      // flames climb: on a wall the soot reaches further up (small y) than down
+      if (!flat)
+        r *= dy < 0 ? 1.25 : 0.8;
+      const d = dist / r;
+      if (d >= 1)
+        continue;
+      const grain = fbm(x * 0.35, y * 0.35, seed + 3);
+      const fade = 1 - Utils.smoothstep(0.25, 1, d);
+      const alpha = BURN_ALPHA[tier] * fade * (0.7 + 0.3 * grain);
+      const heat = 1 - Utils.smoothstep(0, 0.55, d);
+      const color = mix3(shade3(SOOT[1], 0.6 + grain * 0.5), CHAR, heat);
+      c.put(x, y, shade3(color, 1, (hash2(x, y, seed) - 0.5) * 8), alpha * Utils.smoothstep(BORDER, BORDER + 5, Math.min(x, y, ATLAS_CELL - 1 - x, ATLAS_CELL - 1 - y)));
+    }
+}
+
 /** The atlas as RGBA pixels, ready to be a texture. */
 export function impactAtlas() {
   const width = ATLAS_CELL * IMPACT_CELL_COUNT;
@@ -645,6 +688,14 @@ export function impactAtlas() {
       const broken = cell - IMPACT_CELLS.brokenWall;
       const tierBase = broken % BLAST_SPAN;
       drawBlast(b, Math.floor(broken / BLAST_SPAN), Math.floor(tierBase / BLAST_BASES), tierBase % BLAST_BASES, mulberry32(8192 + cell * 7919));
+      for (let y = 0; y < ATLAS_CELL; y++)
+        data.set(b.pixels.subarray(y * ATLAS_CELL * 4, (y + 1) * ATLAS_CELL * 4), (y * width + cell * ATLAS_CELL) * 4);
+      continue;
+    }
+    if (cell >= IMPACT_CELLS.burn && cell < IMPACT_CELLS.burn + BLAST_TIERS * 2) {
+      const b = new BlastCell();
+      const n = cell - IMPACT_CELLS.burn;
+      drawBurn(b, n >= BLAST_TIERS, n % BLAST_TIERS, mulberry32(16384 + cell * 7919));
       for (let y = 0; y < ATLAS_CELL; y++)
         data.set(b.pixels.subarray(y * ATLAS_CELL * 4, (y + 1) * ATLAS_CELL * 4), (y * width + cell * ATLAS_CELL) * 4);
       continue;
@@ -731,6 +782,20 @@ export function holeQuad({ pos, normal, top, seed, kind = 'hole', lo = -Infinity
  * `pos` is a Vec3 (the height of the blast in z), `normal` a Vec2. With `out` the values are written in place.
  */
 export function blastWallQuad({ pos, normal, top, seed, tier, lo = -Infinity, hi = Infinity, slope = 0, size, variant = seed % 4 }, out = null) {
+  const cell = IMPACT_CELLS.brokenWall + Utils.clamp(tier, 0, BLAST_TIERS - 1) * BLAST_BASES + (variant & 1);
+  return wallQuadIn({ pos, normal, top, lo, hi, slope, size, variant }, out, cell, BLAST_OFFSET);
+}
+
+/**
+ * The scorched backdrop of a wall blast: the same marks as `blastWallQuad`, `BURN_SCALE` times wider, a little closer to
+ * the face so the damage draws over it, in the burn cell of the damage `tier`.
+ */
+export function burnWallQuad({ pos, normal, top, tier, lo = -Infinity, hi = Infinity, slope = 0, size, variant = 0 }, out = null) {
+  const cell = IMPACT_CELLS.burn + Utils.clamp(tier, 0, BLAST_TIERS - 1);
+  return wallQuadIn({ pos, normal, top, lo, hi, slope, size: size * BURN_SCALE, variant }, out, cell, BURN_OFFSET);
+}
+
+function wallQuadIn({ pos, normal, top, lo, hi, slope, size, variant }, out, cell, offset) {
   const half = size / 2;
   const cu0 = Math.max(-half, lo + EDGE);
   const cu1 = Math.min(half, hi - EDGE);
@@ -742,8 +807,8 @@ export function blastWallQuad({ pos, normal, top, seed, tier, lo = -Infinity, hi
   const ny = normal.y;
   const tx = -ny;
   const ty = nx;
-  const n0 = BLAST_OFFSET - slope * cv0;
-  const n1 = BLAST_OFFSET - slope * cv1;
+  const n0 = offset - slope * cv0;
+  const n1 = offset - slope * cv1;
   const dest = out ?? { corners: new Array(12), uv: new Array(4) };
   const c = dest.corners;
   c[0] = pos.x + tx * cu0 + nx * n0;
@@ -758,7 +823,6 @@ export function blastWallQuad({ pos, normal, top, seed, tier, lo = -Infinity, hi
   c[9] = pos.x + tx * cu0 + nx * n1;
   c[10] = pos.z + cv1;
   c[11] = pos.y + ty * cu0 + ny * n1;
-  const cell = IMPACT_CELLS.brokenWall + Utils.clamp(tier, 0, BLAST_TIERS - 1) * BLAST_BASES + (variant & 1);
   const a0 = cell / IMPACT_CELL_COUNT;
   const a1 = (cell + 1) / IMPACT_CELL_COUNT;
   const uv = dest.uv;
@@ -775,8 +839,19 @@ export function blastWallQuad({ pos, normal, top, seed, tier, lo = -Infinity, hi
  * Vec3 whose x and y are the game plane), turned a quarter turn per `variant`, hovering a little off the surface.
  */
 export function blastFlatQuad({ pos, seed, tier, size, ceiling = false, variant = seed % 4 }, out = null) {
+  const cell = (ceiling ? IMPACT_CELLS.brokenCeiling : IMPACT_CELLS.brokenFloor) + Utils.clamp(tier, 0, BLAST_TIERS - 1) * BLAST_BASES + (variant & 1);
+  return flatQuadIn(pos, size, ceiling, variant, out, cell, FLAT_LIFT);
+}
+
+/** The scorched backdrop of a floor or ceiling blast, `BURN_SCALE` times wider and under the damage. */
+export function burnFlatQuad({ pos, tier, size, ceiling = false, variant = 0 }, out = null) {
+  const cell = IMPACT_CELLS.burn + BLAST_TIERS + Utils.clamp(tier, 0, BLAST_TIERS - 1);
+  return flatQuadIn(pos, size * BURN_SCALE, ceiling, variant, out, cell, BURN_LIFT);
+}
+
+function flatQuadIn(pos, size, ceiling, variant, out, cell, lift) {
   const half = size / 2;
-  const height = ceiling ? CEILING_HEIGHT - FLAT_LIFT : FLAT_LIFT;
+  const height = ceiling ? CEILING_HEIGHT - lift : lift;
   const dest = out ?? { corners: new Array(12), uv: new Array(4) };
   const c = dest.corners;
   // the corners go round the square, started a quarter turn further on for each variant
@@ -788,7 +863,6 @@ export function blastFlatQuad({ pos, seed, tier, size, ceiling = false, variant 
     c[k * 3 + 1] = height;
     c[k * 3 + 2] = pos.y + sy;
   }
-  const cell = (ceiling ? IMPACT_CELLS.brokenCeiling : IMPACT_CELLS.brokenFloor) + Utils.clamp(tier, 0, BLAST_TIERS - 1) * BLAST_BASES + (variant & 1);
   const uv = dest.uv;
   uv[0] = cell / IMPACT_CELL_COUNT;
   uv[1] = 0;

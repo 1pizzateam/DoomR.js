@@ -17,6 +17,7 @@
 ### Changed
 
 - Breakable textures (#191): nicer, more detailed blast damage: layered 64 px painted craters with lit rims and deep shadow, cracks, exposed brick, rebar, hanging panels, pipes and rubble, four variants per tier and surface (two paintings, mirrored or turned), with soft alpha edges so no square shows. The impact atlas is now 4096 by 64 px and the old hole, spark and slash pictures are unchanged. Visual only, with no change to damage, collision or the `Rubble` ledger.
+- Breakable textures (#191): a scorched backdrop layer under every blast mark: a wider, soft soot patch (darkest at the heart, licking upward on walls, a ragged star on floor and ceiling) in three tiers, drawn behind the crater on walls, floor, ceiling and doors. Visual only.
 
 ### Fixed
 
