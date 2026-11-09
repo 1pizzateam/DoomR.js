@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Vec2, Vec3 } from '@1pizzateam/roostr';
 import { Game } from '../src/game.js';
 import { Rubble, RUBBLE, severityOf, SURFACE, tierOf } from '../src/rubble.js';
-import { blastFlatQuad, blastWallQuad, IMPACT_CELL_COUNT, IMPACT_CELLS, impactAtlas, impactCellUv, SLASH_VARIANTS } from '../src/impacts.js';
+import { blastFlatQuad, blastWallQuad, burnFlatQuad, burnWallQuad, IMPACT_CELL_COUNT, IMPACT_CELLS, impactAtlas, impactCellUv, SLASH_VARIANTS } from '../src/impacts.js';
 import { BLOOD } from '../src/blood.js';
 import { World } from '../src/world.js';
 
@@ -337,6 +337,52 @@ const checks = [
     const out = { corners: new Array(12), uv: new Array(4) };
     const mark = { pos: new Vec3(128, 100, 30), normal: new Vec2(1, 0), top: 64, seed: 5, tier: 1, lo: -30, hi: 30, slope: 0, size: 30, variant: 3 };
     assert.equal(blastWallQuad(mark, out), out);
+  }],
+  ['AC-3 burn backdrop cells are soft, dark, wider than the crater and deterministic', () => {
+    const a = impactAtlas();
+    const b = impactAtlas();
+    const width = a.width;
+    assert.ok(IMPACT_CELLS.burn + 6 <= IMPACT_CELL_COUNT && IMPACT_CELLS.burn >= IMPACT_CELLS.brokenCeiling + 6);
+    const opaque = [];
+    for (let n = 0; n < 6; n++) {
+      const cell = IMPACT_CELLS.burn + n;
+      let count = 0;
+      for (let y = 0; y < CELL; y++)
+        for (let x = 0; x < CELL; x++) {
+          const o = (y * width + cell * CELL + x) * 4;
+          assert.equal(a.data[o + 3], b.data[o + 3]);
+          assert.equal(a.data[o], b.data[o]);
+          if (x < 3 || y < 3 || x >= CELL - 3 || y >= CELL - 3)
+            assert.equal(a.data[o + 3], 0, 'border stays clear');
+          if (a.data[o + 3] > 0) {
+            count++;
+            assert.ok(a.data[o] < 120, 'soot is dark');
+          }
+        }
+      opaque.push(count);
+    }
+    assert.ok(opaque.every((n) => n >= 500), 'each burn is a wide patch');
+    for (const start of [0, 3])
+      assert.ok(opaque[start] < opaque[start + 1] && opaque[start + 1] < opaque[start + 2], 'burn grows with the tier');
+  }],
+  ['AC-5 burn quads sit under the damage, are wider and stay in their cell', () => {
+    const wall = { pos: new Vec3(128, 100, 30), normal: new Vec2(1, 0), top: 64, seed: 5, tier: 2, lo: -100, hi: 100, slope: 0, size: 20, variant: 0 };
+    const blast = blastWallQuad(wall);
+    const burn = burnWallQuad(wall);
+    const span = (q) => Math.abs(q.corners[7] - q.corners[1]);
+    assert.ok(span(burn) > span(blast), 'wider than the crater');
+    assert.ok(burn.corners[0] < blast.corners[0], 'behind the damage along the normal');
+    const a0 = (IMPACT_CELLS.burn + 2) / IMPACT_CELL_COUNT;
+    assert.ok(burn.uv[0] >= a0 - 1e-9 && burn.uv[2] <= a0 + 1 / IMPACT_CELL_COUNT + 1e-9);
+    assert.deepEqual(burnWallQuad(wall), burn);
+    for (const ceiling of [false, true]) {
+      const flat = { pos: new Vec3(100, 100, 0), seed: 1, tier: 1, size: 20, ceiling, variant: 1 };
+      const f = blastFlatQuad(flat);
+      const bf = burnFlatQuad(flat);
+      assert.ok(Math.abs(bf.corners[3] - bf.corners[0]) > Math.abs(f.corners[3] - f.corners[0]) || Math.abs(bf.corners[5] - bf.corners[2]) > 0);
+      assert.ok(ceiling ? bf.corners[1] > f.corners[1] : bf.corners[1] < f.corners[1]);
+      assert.equal(bf.uv[0], (IMPACT_CELLS.burn + 4) / IMPACT_CELL_COUNT);
+    }
   }],
   ['AC-7 blasts leave gameplay unchanged', () => {
     const run = (stub) => {
