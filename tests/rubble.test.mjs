@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Vec2, Vec3 } from '@1pizzateam/roostr';
 import { Game } from '../src/game.js';
 import { Rubble, RUBBLE, severityOf, SURFACE, tierOf } from '../src/rubble.js';
-import { blastFlatQuad, blastWallQuad, IMPACT_CELL_COUNT, IMPACT_CELLS, impactAtlas, SLASH_VARIANTS } from '../src/impacts.js';
+import { blastFlatQuad, blastWallQuad, IMPACT_CELL_COUNT, IMPACT_CELLS, impactAtlas, impactCellUv, SLASH_VARIANTS } from '../src/impacts.js';
 import { BLOOD } from '../src/blood.js';
 import { World } from '../src/world.js';
 
@@ -26,6 +26,24 @@ function methodBody(source, name) {
   const next = source.indexOf('\n  }\n', start);
   return source.slice(start, next);
 }
+
+const CELL = 64;
+const TIERS = 3;
+const BASES = 2;
+const blastCells = () => Array.from({ length: 3 * TIERS * BASES }, (_, i) => IMPACT_CELLS.brokenWall + i);
+function cellPixels(atlas, cell) {
+  const out = new Uint8Array(CELL * CELL * 4);
+  for (let y = 0; y < CELL; y++)
+    out.set(atlas.data.subarray((y * atlas.width + cell * CELL) * 4, (y * atlas.width + (cell + 1) * CELL) * 4), y * CELL * 4);
+  return out;
+}
+const lumsOf = (pixels) => {
+  const out = [];
+  for (let i = 0; i < pixels.length; i += 4)
+    if (pixels[i + 3] >= 128)
+      out.push(0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2]);
+  return out.sort((a, b) => a - b);
+};
 
 const checks = [
   ['AC-1 ledger records scalar marks, bumps version and evicts the oldest at the cap', () => {
@@ -80,21 +98,21 @@ const checks = [
   }],
   ['AC-3 atlas keeps its size and the new cells are painted and non-overlapping', () => {
     const atlas = impactAtlas();
-    assert.equal(atlas.width, 32 * IMPACT_CELL_COUNT);
+    assert.equal(atlas.width, 64 * IMPACT_CELL_COUNT);
     const slashEnd = IMPACT_CELLS.slash + SLASH_VARIANTS;
     const starts = [IMPACT_CELLS.brokenWall, IMPACT_CELLS.brokenFloor, IMPACT_CELLS.brokenCeiling];
     assert.ok(starts[0] >= slashEnd);
-    assert.equal(starts[1], starts[0] + 3);
-    assert.equal(starts[2], starts[1] + 3);
-    assert.ok(starts[2] + 3 <= IMPACT_CELL_COUNT);
+    assert.equal(starts[1], starts[0] + 6);
+    assert.equal(starts[2], starts[1] + 6);
+    assert.ok(starts[2] + 6 <= IMPACT_CELL_COUNT);
     for (const start of starts)
-      for (let tier = 0; tier < 3; tier++) {
+      for (let cell = start; cell < start + 6; cell++) {
         let painted = 0;
-        for (let y = 0; y < 32; y++)
-          for (let x = 0; x < 32; x++)
-            if (atlas.data[(y * atlas.width + (start + tier) * 32 + x) * 4 + 3] > 0)
+        for (let y = 0; y < 64; y++)
+          for (let x = 0; x < 64; x++)
+            if (atlas.data[(y * atlas.width + cell * 64 + x) * 4 + 3] > 0)
               painted++;
-        assert.ok(painted > 100, `cell ${start + tier} has ${painted} painted pixels`);
+        assert.ok(painted > 400, `cell ${cell} has ${painted} painted pixels`);
       }
   }],
   ['AC-4 quad builders place wall, floor and ceiling quads on the right plane', () => {
@@ -104,7 +122,7 @@ const checks = [
       assert.ok(quad.corners[k] > 128 && quad.corners[k] < 128.5, 'wall quad stands off the face along its normal');
       assert.ok(quad.corners[k + 1] >= 0 && quad.corners[k + 1] <= 64);
     }
-    const cell = IMPACT_CELLS.brokenWall + 1;
+    const cell = IMPACT_CELLS.brokenWall + 2 + (wall.seed % 4 & 1);
     assert.ok(quad.uv[0] >= cell / IMPACT_CELL_COUNT - 1e-9 && quad.uv[2] <= (cell + 1) / IMPACT_CELL_COUNT + 1e-9);
     assert.deepEqual(blastWallQuad(wall), quad, 'the same record builds the same quad');
     assert.equal(blastWallQuad({ ...wall, lo: -10, hi: -9.9 }), null, 'a degenerate span leaves nothing');
@@ -116,8 +134,8 @@ const checks = [
       assert.ok(ceiling.corners[k + 1] < 64 && ceiling.corners[k + 1] > 63.5, 'ceiling quad hangs just below the ceiling');
       assert.ok(Math.abs(floor.corners[k] - 50) === 20 && Math.abs(floor.corners[k + 2] - 60) === 20);
     }
-    assert.equal(floor.uv[0], (IMPACT_CELLS.brokenFloor + 2) / IMPACT_CELL_COUNT);
-    assert.equal(ceiling.uv[0], IMPACT_CELLS.brokenCeiling / IMPACT_CELL_COUNT);
+    assert.equal(floor.uv[0], (IMPACT_CELLS.brokenFloor + 4 + (3 & 1)) / IMPACT_CELL_COUNT);
+    assert.equal(ceiling.uv[0], (IMPACT_CELLS.brokenCeiling + (3 & 1)) / IMPACT_CELL_COUNT);
     assert.deepEqual(blastFlatQuad({ pos: new Vec3(50, 60, 0), seed: 3, tier: 2, size: 40 }), floor);
   }],
   ['AC-5 a rocket blast marks walls, floor and ceiling but never through walls', () => {
@@ -219,6 +237,128 @@ const checks = [
     const body = methodBody(source, 'syncBlasts');
     assert.ok(!/\bnew\b|=>|\{\}|\[\]|\bfunction\b/.test(body), 'syncBlasts allocates nothing');
     assert.equal(typeof World.prototype.syncBlasts, 'function');
+  }],
+  ['AC-1 atlas is a single 64 px row with unchanged legacy cells', () => {
+    const atlas = impactAtlas();
+    assert.equal(atlas.width, CELL * IMPACT_CELL_COUNT);
+    assert.equal(atlas.height, CELL);
+    assert.equal(atlas.frames, IMPACT_CELL_COUNT);
+    const px = (cell, x, y) => atlas.data.subarray((y * atlas.width + cell * CELL + x) * 4, (y * atlas.width + cell * CELL + x) * 4 + 4);
+    for (const cell of [IMPACT_CELLS.hole + 3, IMPACT_CELLS.spark + 1, IMPACT_CELLS.slash + 2])
+      for (let y = 0; y < CELL; y += 2)
+        for (let x = 0; x < CELL; x += 2) {
+          const a = px(cell, x, y);
+          for (const [dx, dy] of [[1, 0], [0, 1], [1, 1]])
+            assert.deepEqual(px(cell, x + dx, y + dy), a, `cell ${cell} is a 2x upscale at ${x},${y}`);
+        }
+    assert.equal(impactCellUv(IMPACT_CELL_COUNT - 1)[2], 1);
+  }],
+  ['AC-2 blast cell layout is non-overlapping and inside the atlas', () => {
+    const slashEnd = IMPACT_CELLS.slash + SLASH_VARIANTS;
+    assert.ok(IMPACT_CELLS.brokenWall >= slashEnd);
+    assert.equal(IMPACT_CELLS.brokenFloor, IMPACT_CELLS.brokenWall + TIERS * BASES);
+    assert.equal(IMPACT_CELLS.brokenCeiling, IMPACT_CELLS.brokenFloor + TIERS * BASES);
+    assert.ok(IMPACT_CELLS.brokenCeiling + TIERS * BASES <= IMPACT_CELL_COUNT);
+  }],
+  ['AC-3 every blast cell is deterministic, soft edged, opaque enough and layered', () => {
+    const a = impactAtlas();
+    const b = impactAtlas();
+    for (const cell of blastCells()) {
+      const pixels = cellPixels(a, cell);
+      assert.deepEqual(pixels, cellPixels(b, cell), `cell ${cell} is deterministic`);
+      for (let y = 0; y < CELL; y++)
+        for (let x = 0; x < CELL; x++)
+          if (x < 3 || y < 3 || x >= CELL - 3 || y >= CELL - 3)
+            assert.equal(pixels[(y * CELL + x) * 4 + 3], 0, `cell ${cell} edge ${x},${y} is clear`);
+      const lums = lumsOf(pixels);
+      assert.ok(lums.length >= 600, `cell ${cell} has ${lums.length} opaque pixels`);
+      assert.ok(new Set(lums.map((l) => Math.floor(l / 16))).size > 5, `cell ${cell} has more than 5 tonal bands`);
+      const median = lums[lums.length >> 1];
+      assert.ok(lums[lums.length - 1] >= median * 1.5, `cell ${cell} has a lit rim`);
+      assert.ok(lums[0] <= median * 0.6, `cell ${cell} has deep shadow`);
+    }
+  }],
+  ['AC-4 bases differ and damage escalates with tier on every surface', () => {
+    const atlas = impactAtlas();
+    for (const start of [IMPACT_CELLS.brokenWall, IMPACT_CELLS.brokenFloor, IMPACT_CELLS.brokenCeiling]) {
+      let lastCount = 0;
+      let lastDark = -1;
+      for (let tier = 0; tier < TIERS; tier++) {
+        const one = cellPixels(atlas, start + tier * BASES);
+        const two = cellPixels(atlas, start + tier * BASES + 1);
+        let differ = 0;
+        for (let i = 3; i < one.length; i += 4)
+          if ((one[i] >= 128) !== (two[i] >= 128))
+            differ++;
+        assert.ok(differ >= lumsOf(one).length * 0.05, `surface ${start} tier ${tier} bases differ (${differ})`);
+        const count = (lumsOf(one).length + lumsOf(two).length) / 2;
+        const dark = (lumsOf(one).filter((l) => l < 45).length / lumsOf(one).length + lumsOf(two).filter((l) => l < 45).length / lumsOf(two).length) / 2;
+        assert.ok(count > lastCount, `surface ${start} opaque count grows at tier ${tier}`);
+        assert.ok(dark > lastDark, `surface ${start} dark share grows at tier ${tier} (${dark})`);
+        lastCount = count;
+        lastDark = dark;
+      }
+    }
+  }],
+  ['AC-5 variants pick the base and mirror and keep planes and determinism', () => {
+    const wall = { pos: new Vec3(128, 100, 30), normal: new Vec2(1, 0), top: 64, seed: 5, lo: -30, hi: 30, slope: 0, size: 30 };
+    for (let tier = 0; tier < TIERS; tier++) {
+      const uvs = new Set();
+      for (let variant = 0; variant < 4; variant++) {
+        const quad = blastWallQuad({ ...wall, tier, variant });
+        const cell = IMPACT_CELLS.brokenWall + tier * BASES + (variant & 1);
+        const lo = cell / IMPACT_CELL_COUNT;
+        const hi = (cell + 1) / IMPACT_CELL_COUNT;
+        assert.ok(quad.uv[0] >= lo - 1e-9 && quad.uv[0] <= hi + 1e-9 && quad.uv[2] >= lo - 1e-9 && quad.uv[2] <= hi + 1e-9);
+        if (variant & 2)
+          assert.ok(quad.uv[0] > quad.uv[2], 'mirrored U runs backwards');
+        else
+          assert.ok(quad.uv[0] < quad.uv[2]);
+        for (let k = 0; k < 12; k += 3)
+          assert.ok(quad.corners[k] > 128 && quad.corners[k] < 128.5, 'wall quad stands off its face');
+        assert.deepEqual(blastWallQuad({ ...wall, tier, variant }), quad);
+        uvs.add(quad.uv.join());
+        for (const ceiling of [false, true]) {
+          const flat = blastFlatQuad({ pos: new Vec3(50, 60, 0), seed: 3, tier, size: 40, ceiling, variant });
+          const start = ceiling ? IMPACT_CELLS.brokenCeiling : IMPACT_CELLS.brokenFloor;
+          assert.equal(flat.uv[0], (start + tier * BASES + (variant & 1)) / IMPACT_CELL_COUNT);
+          for (let k = 0; k < 12; k += 3)
+            assert.ok(ceiling ? flat.corners[k + 1] < 64 && flat.corners[k + 1] > 63.5 : flat.corners[k + 1] > 0 && flat.corners[k + 1] < 0.5);
+        }
+      }
+      assert.equal(uvs.size, 4, 'four variants, four different quads');
+    }
+  }],
+  ['AC-6 door blast marks keep the mark variant and syncDoorMarks does not allocate', () => {
+    const source = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+    const body = methodBody(source, 'syncDoorMarks');
+    assert.ok(body.includes('bm.variant = mark.variant'));
+    assert.ok(!/\bnew\b|=>|\{\}|\[\]/.test(body), 'syncDoorMarks allocates nothing');
+    const out = { corners: new Array(12), uv: new Array(4) };
+    const mark = { pos: new Vec3(128, 100, 30), normal: new Vec2(1, 0), top: 64, seed: 5, tier: 1, lo: -30, hi: 30, slope: 0, size: 30, variant: 3 };
+    assert.equal(blastWallQuad(mark, out), out);
+  }],
+  ['AC-7 blasts leave gameplay unchanged', () => {
+    const run = (stub) => {
+      const game = gameOf(ROOM);
+      if (stub)
+        game.blastSurfaces = () => {};
+      game.detonateRocket(rocketAt(game, 4 * 64 + 32, 2 * 64 + 32));
+      const marks = [];
+      for (let kind = 0; kind < 3; kind++)
+        for (let i = 0; i < game.rubble.length(kind); i++) {
+          const m = game.rubble.slots[kind][i];
+          marks.push([m.kind, m.tier, m.seed, m.variant, m.size]);
+        }
+      return { marks, next: game.rand.float(0, 1), health: game.player.health };
+    };
+    const first = run(false);
+    assert.ok(first.marks.length > 0);
+    assert.deepEqual(run(false), first, 'same marks every run');
+    assert.ok(first.marks.every((m) => m[3] === m[2] % 4));
+    const stubbed = run(true);
+    assert.equal(first.next, stubbed.next);
+    assert.equal(first.health, stubbed.health);
   }],
 ];
 

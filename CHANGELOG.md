@@ -14,6 +14,10 @@
 - Player-configurable controls page (#26): two slots per action, mouse-button bindings, conflict stealing, unbound warnings, reset row and reset all, saved in the browser under `doomr.controls`, and opened with `F1` or from the title and pause screens.
 - Discreet use-key prompt (#28): when a door or supply chest is in reach, a small keycap with the player's bound use key (layout- and rebinding-aware) fades in under the crosshair with OPEN, CLOSE, LOOT, TAKE, or LOCKED (tinted by the keycard colour); unrevealed secret walls never prompt.
 
+### Changed
+
+- Breakable textures (#191): nicer, more detailed blast damage: layered 64 px painted craters with lit rims and deep shadow, cracks, exposed brick, rebar, hanging panels, pipes and rubble, four variants per tier and surface (two paintings, mirrored or turned), with soft alpha edges so no square shows. The impact atlas is now 4096 by 64 px and the old hole, spark and slash pictures are unchanged. Visual only, with no change to damage, collision or the `Rubble` ledger.
+
 ### Fixed
 
 - Fire defaults are now MOUSE L and X only (#29), so the CONTROLS page no longer shows `X +2`; CTRL and Option/Alt no longer fire by default and can be rebound to Fire on the CONTROLS page; the hidden overflow counter is removed; saved `doomr.controls` customisations are unaffected.

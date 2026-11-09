@@ -39,7 +39,7 @@ Every action can be rebound. The home screen shows PLAY and OPTIONS buttons, ope
 
 Acid pools emit a glowing, drifting toxic mist that hovers inside the recess.
 
-Every explosion (rocket, grenade, barrel or fireball) leaves permanent blast damage on the walls, floor and ceiling it reaches in the open: three damage tiers by distance, kept until the level reloads. It is purely visual and never changes damage.
+Every explosion (rocket, grenade, barrel or fireball) leaves permanent blast damage on the walls, floor and ceiling it reaches in the open: three damage tiers by distance, kept until the level reloads. The damage is layered and detailed (craters with lit rims and deep shadow, cracks, exposed brick and rebar, hanging panels and rubble), in four variants per tier and soft edged so no square shows. It is purely visual and never changes damage.
 
 ## Tests
 
