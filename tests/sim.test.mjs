@@ -16857,6 +16857,33 @@ const tests = {
       Mesh.prototype.addProgram = addProgram;
     }
   },
+
+  'tests/sim.test.mjs: AC-1 drawControlHints does not declare unused capPadX'() {
+    const fnStr = Hud.prototype.drawControlHints.toString();
+    assert.ok(!fnStr.includes('capPadX'), 'drawControlHints does not contain capPadX');
+  },
+
+  'tests/sim.test.mjs: AC-2 and AC-3 Hud instance and setControlsStatus do not assign controlsKeyLabel'() {
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ({}) }, {});
+    assert.equal(hud.controlsKeyLabel, undefined, 'new Hud instance does not define controlsKeyLabel');
+    assert.equal('controlsKeyLabel' in hud, false, 'controlsKeyLabel is not present on newly instantiated Hud');
+
+    hud.setControlsStatus('F2', 1);
+    assert.equal(hud.controlsKeyLabel, undefined, 'setControlsStatus does not assign controlsKeyLabel');
+    assert.equal('controlsKeyLabel' in hud, false, 'controlsKeyLabel remains absent after setControlsStatus');
+    assert.equal(hud.controlsEntryText, 'CONTROLS · F2');
+    assert.equal(hud.optionsText, 'OPTIONS · F2');
+    assert.equal(hud.unboundText, '1 controls unbound — open CONTROLS');
+  },
+
+  'tests/sim.test.mjs: AC-4 verify HUD status and test suite pass without regressions'() {
+    const hud = new Hud({ width: 0, height: 0, getContext: () => ({}) }, {});
+    hud.setControlsStatus('F1', 0);
+    assert.equal(hud.controlsEntryText, 'CONTROLS · F1');
+    assert.equal(hud.optionsText, 'OPTIONS · F1');
+    assert.equal(hud.unboundText, '');
+    assert.equal(typeof hud.drawControlHints, 'function');
+  },
 };
 
 function pausedHud() {
