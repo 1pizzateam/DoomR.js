@@ -59,7 +59,6 @@ const CRACK = [8, 10, 16];
 const RIM = [112, 130, 160];
 const CHIP = [150, 168, 196];
 const PLASTER = [172, 164, 148];
-const PLASTER_DARK = [96, 90, 80];
 const CONCRETE = [118, 120, 124];
 const CONCRETE_DARK = [68, 70, 76];
 const REBAR = [150, 74, 40];

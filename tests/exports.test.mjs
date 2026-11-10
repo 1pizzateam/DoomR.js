@@ -189,6 +189,25 @@ const checks = [
     for (const expected of ['PARTICLE_FRAGMENT', 'PARTICLE_VERTEX', 'QuadBatch', 'SOLID_TEXTURED_FRAGMENT', 'TEXTURED_FRAGMENT', 'texturedMesh'])
       assert.ok(imported.includes(expected), `world.js missing expected import ${expected} from ./quads.js`);
   }],
+  ['issue-198 AC-1 src/impacts.js has no PLASTER_DARK declaration or reference', () => {
+    const src = read('impacts');
+    assert.ok(!src.includes('PLASTER_DARK'), 'impacts.js still references or defines PLASTER_DARK');
+  }],
+  ['issue-198 AC-2 src/impacts.js preserves PLASTER palette constant and SKIN entry', () => {
+    const src = read('impacts');
+    assert.ok(/const PLASTER = \[172, 164, 148\];/.test(src), 'PLASTER palette constant was modified or removed');
+    assert.ok(/const SKIN = \[PLASTER, DUST, PANEL\];/.test(src), 'SKIN array was modified or removed');
+  }],
+  ['issue-198 AC-3 src/impacts.js dead-code check asserts PLASTER_DARK is absent', async () => {
+    const mod = await import('../src/impacts.js');
+    assert.ok(!('PLASTER_DARK' in mod), 'PLASTER_DARK leaked as an export from impacts.js');
+    const src = read('impacts');
+    assert.ok(!/\bPLASTER_DARK\b/.test(src), 'PLASTER_DARK identifier found in impacts.js');
+  }],
+  ['issue-198 AC-4 npm test runs complete test suite cleanly', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'package.json test script missing exports.test.mjs');
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');
