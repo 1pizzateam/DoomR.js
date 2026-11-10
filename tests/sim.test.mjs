@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Circ, Mat4, Rect } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
-import { ACID_PIT_DEPTH, ACID_SURFACE_DEPTH, CACHE_LID_TIME, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, EMPTY_PIT_DEPTH, ENEMY_TYPES, Game } from '../src/game.js';
+import { ACID_PIT_DEPTH, ACID_SURFACE_DEPTH, CACHE_LID_TIME, CACHE_LOOT_STAGGER, CACHE_LOOT_TIME, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, CHEST_LOCK_GAP_HALF, CHEST_LOCK_RINGS, DIFFICULTIES, DIFFICULTY_ORDER, ELEVATOR_RIDE_TIME, EMPTY_PIT_DEPTH, ENEMY_TYPES, Game } from '../src/game.js';
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
 import { BLOOD, Blood, makeFeet } from '../src/blood.js';
 import { DUCK_FLOOR, RECIPES, Sound, spatial } from '../src/audio.js';
@@ -36,8 +36,8 @@ import { ARSENAL_CELL, ARSENAL_FRAMES, CHAINSAW_TOOTH_PITCH, chaingunAtlas, chai
 import { AMMO_FLASH_DURATION, FIRE_COOLDOWN } from '../src/game.js';
 import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DYNAMIC_LIGHT_ATTENUATION, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
 import { diagWallFaceQuads, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallCellUv, wallFaceQuads } from '../src/wall.js';
-import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
-import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
+import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
+import { BARREL_ATLAS, BARREL_FIRE_FRAGMENT, BARREL_FIRE_VERTEX, BARREL_STAVE_COUNT, barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelFireMesh, barrelShrapnelFireMesh, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
 import { ACID_MIST_FRAGMENT, CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
 import { LIGHT_GLSL, PARTICLE_FRAGMENT, QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, TEXTURED_VERTEX, texturedMesh } from '../src/quads.js';
@@ -606,7 +606,7 @@ const tests = {
       document.onkeyup(press);
       for (const code of ['KeyX', 'Enter']) {
         document.onkeydown({ code, repeat: false, preventDefault() {} });
-        assert.equal(controls.poll().fire, true, `${code} still fires`);
+        assert.equal(controls.poll().fire, code === 'KeyX', `${code} fire check`);
         assert.equal(controls.poll().grenade, false);
         document.onkeyup({ code });
         controls.endFrame();
@@ -4597,6 +4597,7 @@ const tests = {
   'crouching lowers the player eye below low pillars, slows movement, and stands back up when released'() {
     const game = fresh();
     clearEnemies(game);
+    game.player.body.setPosition(new Vec2(2 * 64 + 32, 1 * 64 + 32));
     assert.equal(game.player.eye, EYE);
     assert.equal(game.player.crouch, 0);
 
@@ -4608,6 +4609,7 @@ const tests = {
 
     const gameWalk = fresh();
     clearEnemies(gameWalk);
+    gameWalk.player.body.setPosition(new Vec2(2 * 64 + 32, 1 * 64 + 32));
     run(gameWalk, 0.25, input({ forward: 1 }));
     const walkDist = gameWalk.player.pos.x - startX;
     assert.ok(crouchedDist > 0 && crouchedDist < walkDist * 0.75, 'crouching moves slower than walking');
@@ -5002,7 +5004,7 @@ const tests = {
       const secretDoors = [...g.level.doors.values()].filter((d) => d.secret);
       assert.ok(slimeTiles >= 6, `level ${i} has radioactive slime tiles (${slimeTiles})`);
       if (g.level.planet === 'mars')
-        assert.equal(g.level.doors.size, 1, 'Mars surface level has only the single starting-room door and zero exterior doors');
+        assert.equal(g.level.doors.size, 2, 'Mars surface level has only the starting elevator and airlock doors and zero exterior doors');
       else
         assert.ok(secretDoors.length >= 2, `level ${i} has secret push-wall doors (${secretDoors.length})`);
       assert.ok(g.level.crushers.length >= 1, `level ${i} has crushing ceiling traps (${g.level.crushers.length})`);
@@ -5177,7 +5179,7 @@ const tests = {
       const g = fresh(i);
       const { level } = g;
       if (level.planet === 'mars') {
-        assert.equal(level.doors.size, 1, 'Mars surface level has only the starting room door and no exterior locked doors');
+        assert.equal(level.doors.size, 2, 'Mars surface level has only the starting elevator and airlock doors and no exterior locked doors');
         continue;
       }
       const locks = new Set([...level.doors.values()].map((d) => d.lock).filter(Boolean));
@@ -7349,7 +7351,7 @@ const tests = {
     assert.equal(room1Caches.length, 1, 'the first room holds one chest');
     const [shotgunCache] = room1Caches;
     assert.deepEqual(shotgunCache.contents, ['ammo', 'shotgun'], 'the first room chest holds the shotgun and a shell pack');
-    assert.equal(game.level.grid.getCell(shotgunCache.pos), 1 * game.level.width + 3, 'the first-room chest backs the north wall on tile (3, 1)');
+    assert.equal(game.level.grid.getCell(shotgunCache.pos), 1 * game.level.width + 4, 'the first-room chest backs the north wall on tile (4, 1)');
     assert.equal(game.caches.some((c) => c !== shotgunCache && c.pos.x < 7 * 64 && c.pos.y < 5 * 64), false, 'no second chest in the first room');
 
     // Open the first-room chest: unlocks and equips the shotgun, the first shotgun adds no ammo of its own
@@ -8077,7 +8079,7 @@ const tests = {
     );
 
     // 2. Opening the starting airlock door leads directly outside onto the roofless Martian surface, with ZERO other doors on the planet
-    assert.equal(level.doors.size, 1, 'E1M5 has only 1 door (the first room door) and no doors outside on the planet');
+    assert.equal(level.doors.size, 2, 'E1M5 has only 2 doors (the starting elevator door and first room airlock door) and no doors outside on the planet');
     const airlockDoor = level.doors.get(3 * level.width + 6);
     assert.ok(airlockDoor, 'airlock door exists at (6, 3) on the east wall of the starting room');
     assert.equal(level.doorTouchesIndoor(airlockDoor.idx), true, 'airlock door borders the indoor starting room');
@@ -8516,6 +8518,48 @@ const tests = {
       assert.ok(bRest.staves[i].pos.y <= 2.5, `stave ${i} settles on the floor`);
       assert.ok(Math.hypot(bRest.staves[i].pos.x, bRest.staves[i].pos.z) > 15, `stave ${i} rests scattered around the barrel wreck`);
     }
+
+    // Post-detonation fire & smoke meshes, dedicated fire/smoke shader, and continuous ambient fire animation inside stump and on shrapnel pieces
+    assert.ok(
+      BARREL_FIRE_VERTEX.includes('uTime') &&
+      BARREL_FIRE_FRAGMENT.includes('isSmoke') &&
+      BARREL_FIRE_FRAGMENT.includes('quadId') &&
+      BARREL_FIRE_FRAGMENT.includes('plumeWave'),
+      'dedicated barrel fire & acid-fog-style smoke shader defined'
+    );
+    const fireGeo = barrelFireMesh(new Vec2(9.5, 26));
+    const shrapnelFireGeo = barrelShrapnelFireMesh(new Vec2(9.5, 26));
+    for (const geo of [fireGeo, shrapnelFireGeo]) {
+      assert.ok(geo.vertices.length > 0 && geo.vertices.length % 9 === 0, 'fire mesh has valid 3D triangles');
+      assert.equal(geo.normals.length, geo.vertices.length, 'fire mesh has matching vertex normals');
+      assert.equal(geo.uvs.length, (geo.vertices.length / 3) * 2, 'fire mesh has matching UVs');
+      let hasBedKind = false;
+      let hasFlameKind = false;
+      let hasSmokeKind = false;
+      for (let i = 0; i < geo.uvs.length; i += 2) {
+        const kind = Math.floor(geo.uvs[i + 1]);
+        if (kind === 0)
+          hasBedKind = true;
+        else if (kind === 1)
+          hasFlameKind = true;
+        else if (kind === 2)
+          hasSmokeKind = true;
+      }
+      assert.ok(hasBedKind && hasFlameKind && hasSmokeKind, 'fire mesh encodes ember bed, crossed flame plumes, and acid-fog-style smoke layers via quadId UVs');
+    }
+    const wf15 = bRest.wreckFire.scale.y;
+    const wfPhase15 = bRest.wreckFire.phase;
+    const lfRot15 = bRest.lidFire.rot.y;
+    const sfRot15 = bRest.staveFires[0].rot.y;
+    assert.ok(Math.hypot(bRest.lidFire.pos.x - bRest.lid.pos.x, bRest.lidFire.pos.z - bRest.lid.pos.z) < 1e-4, 'lid fire tracks lid resting position');
+    for (let i = 0; i < BARREL_STAVE_COUNT; i++)
+      assert.ok(Math.hypot(bRest.staveFires[i].pos.x - bRest.staves[i].pos.x, bRest.staveFires[i].pos.z - bRest.staves[i].pos.z) < 1e-4, `stave fire ${i} tracks stave resting position`);
+
+    const bLater = barrelExplosionPose(4.2, 7, barrelTarget);
+    assert.notEqual(bLater.wreckFire.scale.y, wf15, 'stump fire scale continues flickering long after shrapnel settles');
+    assert.notEqual(bLater.wreckFire.phase, wfPhase15, 'stump fire shader phase continues advancing');
+    assert.notEqual(bLater.lidFire.rot.y, lfRot15, 'lid fire continues dancing after lid settles');
+    assert.notEqual(bLater.staveFires[0].rot.y, sfRot15, 'stave fire continues dancing after staves settle');
 
     // 5. Detonating a barrel in Game tracks barrel.deadTime while keeping its position for persistent 3D wreck rendering
     const game = fresh();
@@ -10059,8 +10103,8 @@ const tests = {
       }
     }
     const first = fresh(0).caches.find((c) => c.contents.includes('shotgun'));
-    assert.equal(first.idx, 1 * fresh(0).level.width + 3);
-    assert.equal(first.wallSide, 3);
+    assert.equal(first.idx, 1 * fresh(0).level.width + 4);
+    assert.equal(first.wallSide, 0);
   },
 
   'AC-4 a wall chest opens from its tile and doors still win ties'() {
@@ -10729,7 +10773,7 @@ const tests = {
       }
       for (const code of ['KeyX', 'Enter']) {
         rig.down({ code, key: '' });
-        assert.equal(inp.poll().fire, true, `${code} fires`);
+        assert.equal(inp.poll().fire, code === 'KeyX', `${code} fire check`);
         rig.up({ code, key: '' });
         inp.endFrame();
       }
@@ -16924,7 +16968,7 @@ const tests = {
       assert.equal(hView.horizontal, true);
       assert.ok(hView.acidPuddle && hView.acidStream, 'horizontal barrel view has acidPuddle and acidStream child meshes');
       assert.equal(vView.acidPuddle, null, 'vertical barrel has no acidPuddle mesh');
-      assert.ok(Math.abs(hView.intact.rotation.x - (Trigo.halfpi + 0.06)) < 1e-5, 'horizontal drum lies on its side');
+      assert.ok(Math.abs(hView.intact.rotation.x - Trigo.halfpi) < 1e-5, 'horizontal drum lies flat on its side');
 
       world.updateBarrelView(horiz, hView);
       assert.equal(hView.acidStream.active, true, 'acidStream is active while barrel is intact');
@@ -16945,6 +16989,22 @@ const tests = {
       assert.equal(hView.acidStream.active, false, 'acidStream hides once drum ruptures');
       assert.equal(hView.acidPuddle.active, true, 'acidPuddle remains on the floor after detonation');
       assert.equal(hView.wreck.active, true, 'ruptured wreck activates on detonation');
+      assert.equal(hView.wreckFire.active, true, 'ruptured stump fire activates on detonation');
+      assert.equal(hView.wreckFire.depthWrite, false, 'wreckFire uses soft alpha blending with depthWrite disabled like acidMistBatch');
+      assert.equal(hView.lidFire.active, true, 'lid shrapnel fire activates on detonation');
+      assert.equal(hView.lidFire.depthWrite, false, 'lidFire disables depthWrite');
+      assert.ok(hView.staveFires.every((sf) => sf.active && sf.depthWrite === false), 'all stave shrapnel fires activate on detonation with depthWrite disabled');
+
+      // Advance past shrapnel settle threshold (1.25s) and verify fire animation keeps updating
+      horiz.deadTime = 2.0;
+      world.frameTime = 5.0;
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.wreckSettled, true, 'metal wreck and shrapnel settle after 1.25s');
+      const fireScaleAt2 = hView.wreckFire.scale.y;
+      horiz.deadTime = 2.35;
+      world.frameTime = 5.35;
+      world.updateBarrelView(horiz, hView);
+      assert.notEqual(hView.wreckFire.scale.y, fireScaleAt2, 'wreckFire continues animating after wreckSettled is true');
     } finally {
       Mesh.prototype.addProgram = addProgram;
     }
@@ -17220,6 +17280,211 @@ const tests = {
           minY = world.emptyPitMesh.vertices[i];
       assert.ok(minY <= -EMPTY_PIT_DEPTH + 0.5, `emptyPitMesh should reach pit bottom near -${EMPTY_PIT_DEPTH} (got ${minY})`);
     });
+  },
+
+  'chest loot items rise one by one sequentially and rotate slower': () => {
+    assert.equal(CACHE_LOOT_STAGGER, CACHE_LOOT_TIME * 0.5, 'each chest item starts in the middle of the previous item sequence');
+    const game = new Game();
+    game.load({ name: 'Sequential chest test', rows: ['#######', '#P....#', '#######'] });
+    game.state = 'play';
+    game.player.health = 50;
+    game.player.shells = 0;
+    game.player.weapons.shotgun = false;
+    const cache = game.addCache([1 * game.level.width + 3], ['health', 'ammo', 'shotgun']);
+    game.openCache(cache);
+    assert.equal(cache.items[0].delay, 0);
+    assert.equal(cache.items[1].delay, CACHE_LOOT_STAGGER);
+    assert.equal(cache.items[2].delay, CACHE_LOOT_STAGGER * 2);
+
+    // Quarter-way through first item's flight, second and third items are still waiting at progress 0
+    game.updateCaches(CACHE_LOOT_TIME * 0.25);
+    assert.ok(cache.items[0].progress > 0.2 && cache.items[0].progress < 0.3, 'first item is rising');
+    assert.equal(cache.items[1].progress, 0, 'second item waits in chest during first half of first item');
+    assert.equal(cache.items[2].progress, 0, 'third item waits in chest');
+
+    // Past the middle of first item's sequence, second item begins rising while third still waits
+    game.updateCaches(CACHE_LOOT_TIME * 0.5);
+    assert.ok(cache.items[0].progress > 0.7 && cache.items[0].progress < 0.8, 'first item is pulling toward player');
+    assert.ok(cache.items[1].progress > 0.2 && cache.items[1].progress < 0.3, 'second item is now rising');
+    assert.equal(cache.items[2].progress, 0, 'third item still waits until middle of second item');
+  },
+
+  'locked chests require the 3-ring line-art tumbler mini-game to open': () => {
+    const level = {
+      name: 'Locked chest test',
+      rows: ['##########', '#........#', '#P...=...#', '#........#', '##########'],
+      chests: [{ x: 5, y: 2, contents: ['rocket', 'rockets'], locked: true }],
+    };
+    const game = new Game();
+    game.load(level);
+    game.state = 'play';
+    const cache = game.caches[0];
+    assert.equal(cache.locked, true, 'chest starts locked');
+    game.player.body.setPosition(new Vec2(cache.pos.x - 56, cache.pos.y));
+    game.player.angle = 0;
+
+    // Facing a locked chest shows UNLOCK prompt
+    game.update(1 / 60, idle);
+    assert.equal(game.useTarget.kind, 'cache');
+    assert.equal(game.useTarget.verb, 'UNLOCK');
+
+    // Pressing USE starts the tumbler ring lock instead of opening immediately
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(cache.state, 'closed', 'chest stays closed while lockpicking');
+    assert.equal(game.chestLock.active, true, 'tumbler ring lock is active');
+    assert.equal(game.chestLock.cache, cache);
+    assert.equal(game.chestLock.stage, 0);
+
+    // Pressing USE again toggles the mini-game closed, and pressing USE re-opens it
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(game.chestLock.active, false, 'pressing E again closes the chest lock mini-game');
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(game.chestLock.active, true, 'pressing E re-opens the chest lock mini-game');
+
+    // Align ring 0 and lock it
+    game.chestLock.needle = game.chestLock.targets[0];
+    assert.equal(game.tryChestLock(), true, 'striking inside ring 0 gap locks ring 0');
+    assert.equal(game.chestLock.stage, 1);
+
+    // Miss on ring 1 steps back to ring 0 and triggers missFlash
+    game.chestLock.needle = (game.chestLock.targets[1] + Math.PI) % Trigo.twopi;
+    assert.equal(game.tryChestLock(), false, 'striking outside gap fails');
+    assert.equal(game.chestLock.stage, 0, 'missing steps back one ring');
+    assert.ok(game.chestLock.missFlash > 0, 'missing triggers red flash');
+
+    // Draw HUD tumbler lock line art
+    const { texts, hud } = pausedHud();
+    game.state = 'play';
+    let crispLines = 0;
+    let glowLines = 0;
+    hud.overlay.crisp.line = () => { crispLines++; };
+    hud.overlay.glow.line = () => { glowLines++; };
+    assert.equal(hud.computeHudTextKey(game, false), '', 'HUD text cache invalidates while chest lock is active');
+    hud.drawChestLock(game, 512, 384);
+    assert.ok(crispLines > CHEST_LOCK_RINGS * 20, 'tumbler rings and needle draw into overlay.crisp above fillRect');
+    assert.equal(glowLines, 0, 'tumbler lines are not drawn into glow underneath crisp.fillRect');
+    assert.ok(texts.some((t) => t.includes('LOCK')), 'lock status text rendered');
+
+    // Lock all 3 rings in sequence -> chest unlocks and opens!
+    for (let r = 0; r < CHEST_LOCK_RINGS; r++) {
+      assert.equal(game.chestLock.stage, r);
+      game.chestLock.needle = game.chestLock.targets[r] + CHEST_LOCK_GAP_HALF[r] * 0.5;
+      assert.equal(game.tryChestLock(), true, `ring ${r} locked`);
+    }
+    assert.equal(game.chestLock.active, false, 'mini-game closes on completion');
+    assert.equal(cache.locked, false, 'chest is now unlocked');
+    assert.equal(cache.state, 'opening', 'chest opens once all 3 rings are locked');
+    assert.equal(game.player.weapons.rocket, true, 'chest contents awarded');
+  },
+
+  'level start elevator: player spawns inside a 1-tile elevator cab with a thin threshold door that rumbles, opens into the first room, and locks behind them on exit'() {
+    const geoEW = elevatorDoorBox(new Vec3(TILE - 0.8, TILE, ELEVATOR_DOOR_THICKNESS), false);
+    const geoNS = elevatorDoorBox(new Vec3(TILE - 0.8, TILE, ELEVATOR_DOOR_THICKNESS), true);
+    assert.equal(geoEW.vertices.length, 30 * 3, 'thin elevator door builds a single 5-faced slab (30 vertices)');
+    assert.equal(geoNS.vertices.length, 30 * 3);
+    for (let k = 0; k < geoEW.vertices.length; k += 3)
+      assert.ok(Math.abs(geoEW.vertices[k]) <= ELEVATOR_DOOR_THICKNESS * 0.5 + 1e-6, 'EW elevator door depth stays within thin slab thickness');
+    for (let k = 2; k < geoNS.vertices.length; k += 3)
+      assert.ok(Math.abs(geoNS.vertices[k]) <= ELEVATOR_DOOR_THICKNESS * 0.5 + 1e-6, 'NS elevator door depth stays within thin slab thickness');
+
+    for (let i = 0; i < LEVELS.length; i++) {
+      const game = fresh(i);
+      const { level, elevator } = game;
+      assert.ok(level.elevator, `level ${i} (${level.name}) has a starting elevator alcove`);
+      assert.equal(elevator.active, true, `level ${i} elevator starts active`);
+      assert.equal(elevator.phase, 'arriving', `level ${i} elevator starts in arriving phase`);
+      assert.equal(elevator.door, level.elevator.door, `level ${i} elevator references the alcove door`);
+      assert.equal(level.elevator.door.elevator, true, `level ${i} elevator door is flagged`);
+      assert.equal(level.elevator.door.thin, true, `level ${i} elevator door is thin and does not take a full square`);
+      assert.equal(level.elevator.door.thickness, ELEVATOR_DOOR_THICKNESS, `level ${i} elevator door uses ELEVATOR_DOOR_THICKNESS`);
+      assert.equal(Math.min(level.elevator.door.body.body.size.x, level.elevator.door.body.body.size.y), ELEVATOR_DOOR_THICKNESS, `level ${i} elevator physics body is thin`);
+      assert.equal(level.elevator.door.elevatorLocked, false, `level ${i} elevator door starts unlocked while opening`);
+      assert.equal(game.player.angle, level.elevator.angle, `level ${i} player faces the elevator door into the first room`);
+      if (level.planet === 'mars') {
+        assert.equal(level.indoor.has(level.elevator.tileIdx), true, 'Mars elevator cab is indoor');
+        assert.equal(level.indoor.has(level.elevator.exitTileIdx), true, 'Mars airlock room outside elevator is indoor');
+      }
+    }
+
+    const game = fresh(0);
+    clearEnemies(game);
+    withWallWorld((world) => {
+      const solidVerts = [];
+      const origSolid = world.solid;
+      world.solid = function(vertices) {
+        solidVerts.push(...vertices);
+        return origSolid.call(this, vertices);
+      };
+      World.prototype.buildStatic.call(world, game.level);
+      let blockedThreshold = false;
+      for (let i = 0; i < solidVerts.length; i += 9) {
+        const x0 = solidVerts[i], y0 = solidVerts[i + 1], z0 = solidVerts[i + 2];
+        const x1 = solidVerts[i + 3], y1 = solidVerts[i + 4], z1 = solidVerts[i + 5];
+        const x2 = solidVerts[i + 6], y2 = solidVerts[i + 7], z2 = solidVerts[i + 8];
+        if (
+          Math.abs(x0 - (2 * TILE - 0.9)) < 0.2 &&
+          Math.abs(x1 - (2 * TILE - 0.9)) < 0.2 &&
+          Math.abs(x2 - (2 * TILE - 0.9)) < 0.2 &&
+          Math.min(y0, y1, y2) < CEILING - 1 &&
+          Math.max(z0, z1, z2) > TILE + 1 &&
+          Math.min(z0, z1, z2) < 2 * TILE - 1
+        )
+          blockedThreshold = true;
+      }
+      assert.equal(blockedThreshold, false, 'thin elevator doorway has no black hide occluder blocking the view into the first room');
+    });
+    const { elevator } = game;
+    const door = elevator.door;
+    assert.equal(door.open, 0, 'elevator door starts closed at t=0');
+    assert.equal(door.body.active, true, 'closed elevator door keeps the player inside the cab during the ride');
+    assert.equal(elevator.duration, ELEVATOR_RIDE_TIME, 'elevator ride lasts ELEVATOR_RIDE_TIME seconds');
+
+    // Step 2.5s during the ride: elevator shakes slowly, plays elevator sound, and keeps the door shut
+    const rideEvents = [];
+    const stepsRide = Math.round(2.5 * 60);
+    for (let i = 0; i < stepsRide; i++) {
+      game.update(1 / 60, input({ forward: 1 }));
+      for (const e of game.events)
+        rideEvents.push(e.type);
+    }
+    assert.equal(elevator.phase, 'arriving', 'elevator is still riding at t=2.5s');
+    assert.ok(game.shake > 0.04, 'elevator ride produces camera vibration');
+    assert.ok(rideEvents.includes('elevator'), 'elevator ride emits synthesized elevator sound pulses');
+    assert.equal(door.target, 0, 'elevator door remains targeted closed while riding');
+    assert.equal(door.open, 0, 'elevator door stays closed during the ride');
+    assert.equal(game.level.grid.getCell(game.player.pos), elevator.cabIdx, 'closed door keeps player inside cab during the ride');
+
+    // Finish the 4.2s ride and let the door slide open (~3.3s more)
+    const arrivalEvents = [];
+    const stepsArrival = Math.round(3.3 * 60);
+    for (let i = 0; i < stepsArrival; i++) {
+      game.update(1 / 60, idle);
+      for (const e of game.events)
+        arrivalEvents.push(e.type);
+    }
+    assert.ok(arrivalEvents.includes('elevatorStop'), 'elevator emits elevatorStop sound when arriving at the floor');
+    assert.ok(arrivalEvents.includes('doorOpen'), 'elevator emits doorOpen sound when the door slides open after the ride');
+    assert.equal(elevator.phase, 'open', 'elevator transitions to open phase once the ride finishes');
+    assert.equal(door.open, 1, 'elevator door opens completely into the first room after the ride');
+    assert.equal(door.body.active, false, 'opened elevator door deactivates collision body so player can walk out');
+
+    // Walk forward out of the elevator cab into the first room
+    run(game, 0.75, input({ forward: 1 }));
+    const playerTile = game.level.grid.getCell(game.player.pos);
+    assert.notEqual(playerTile, elevator.cabIdx, 'player stepped out of the elevator cab into the first room');
+    assert.equal(elevator.phase, 'locked', 'elevator locks behind the player after stepping into the first room');
+    assert.equal(door.elevatorLocked, true, 'elevator door is marked elevatorLocked');
+    assert.equal(door.target, 0, 'elevator door targets closed once locked');
+
+    // Wait for door to finish sliding shut; verify it cannot be reopened with use() or re-entered
+    run(game, 1.5);
+    assert.equal(door.open, 0, 'elevator door slides completely shut behind the player');
+    assert.equal(door.body.active, true, 'locked elevator door collision body blocks re-entry');
+    game.player.body.setPosition(new Vec2(2 * 64 + 20, 1 * 64 + 32));
+    game.player.angle = Math.PI;
+    game.use();
+    assert.equal(door.target, 0, 'pressing use on the locked elevator door does not reopen it');
+    assert.equal(game.findUseTarget(), false, 'locked elevator door does not show an interactive use prompt');
   },
 };
 

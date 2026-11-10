@@ -78,6 +78,7 @@ resize();
 function start() {
   game.selectingDifficulty = false;
   game.state = 'play';
+  input.releaseAll();
   input.lock();
 }
 
@@ -98,6 +99,7 @@ function control(dt) {
     hud.setControlsStatus(keymap.actionLabel('controls'), keymap.unboundActions().length);
     hud.useKeyLabel = keymap.actionLabel('use');
     hud.jumpKeyLabel = keymap.actionLabel('jump');
+    hud.fireKeyLabel = keymap.isCustom('fire') ? keymap.actionLabel('fire') : `CLICK / ${keymap.actionLabel('fire')}`;
     hud.setPauseKeyLabel(keymap.actionLabel('pause'));
     hintVersion = keymap.version;
   }
@@ -217,6 +219,7 @@ function control(dt) {
     case 'dead':
       if (game.player.deadTime > 1 && confirmed()) {
         game.restart();
+        input.releaseAll();
         input.lock();
       }
       break;
@@ -224,6 +227,7 @@ function control(dt) {
       hud.automap = false;
       if (confirmed() && !game.skipIntermission()) {
         game.nextLevel();
+        input.releaseAll();
         if (game.state === 'play')
           input.lock();
       }

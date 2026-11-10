@@ -1,7 +1,9 @@
 import { Utils } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
-import { TILE } from './level.js';
+import { ELEVATOR_DOOR_THICKNESS, TILE } from './level.js';
 import { FLOOR_FRAGMENT, FLOOR_VERTEX, GLOW, LIGHT, METAL, mix, plate, rivet, SHADOW, Tile, TILE_PIXELS } from './floor.js';
+
+export { ELEVATOR_DOOR_THICKNESS };
 
 /**
  * The doors of an old space base: heavy sliding blast doors in two leaves, with a hazard-striped frame, recessed
@@ -238,6 +240,50 @@ export function doubleDoorBox(dimensions, alongY = false, inset = DOOR_INSET) {
       push([[d1, 0, -h], [d0, 0, -h], [d0, height, -h], [d1, height, -h]], DOOR_TOP, edgeSpan, 1);
       push([[d1, height, h], [d1, height, -h], [d0, height, -h], [d0, height, h]], DOOR_TOP, 1, edgeSpan);
     }
+  }
+  return { vertices, uvs };
+}
+
+/**
+ * Single thin elevator door slab (`[-thickness / 2, +thickness / 2]`) that does not occupy a full grid square.
+ */
+export function elevatorDoorBox(dimensions, alongY = false) {
+  const h = dimensions.x / 2;
+  const height = dimensions.y;
+  const thickness = dimensions.z;
+  const d0 = -thickness / 2;
+  const d1 = thickness / 2;
+  const vertices = [];
+  const uvs = [];
+  const push = (corners, cell, uSpan = 1, vSpan = 1) => {
+    const u0 = cell / DOOR_CELLS;
+    const u1 = u0 + uSpan / DOOR_CELLS;
+    const insetU = 0.25 / (SIZE * DOOR_CELLS);
+    const insetV = 0.25 / SIZE;
+    const uv = [
+      [u0 + insetU, insetV],
+      [u1 - insetU, insetV],
+      [u1 - insetU, vSpan - insetV],
+      [u0 + insetU, vSpan - insetV],
+    ];
+    for (const k of [0, 1, 2, 0, 2, 3]) {
+      vertices.push(...corners[k]);
+      uvs.push(...uv[k]);
+    }
+  };
+  const edgeSpan = Math.min(1, thickness / TILE);
+  if (alongY) {
+    push([[-h, 0, d1], [h, 0, d1], [h, height, d1], [-h, height, d1]], DOOR_FACE);
+    push([[h, 0, d0], [-h, 0, d0], [-h, height, d0], [h, height, d0]], DOOR_FACE);
+    push([[h, 0, d1], [h, 0, d0], [h, height, d0], [h, height, d1]], DOOR_TOP, edgeSpan, 1);
+    push([[-h, 0, d0], [-h, 0, d1], [-h, height, d1], [-h, height, d0]], DOOR_TOP, edgeSpan, 1);
+    push([[-h, height, d1], [h, height, d1], [h, height, d0], [-h, height, d0]], DOOR_TOP, 1, edgeSpan);
+  } else {
+    push([[d1, 0, h], [d1, 0, -h], [d1, height, -h], [d1, height, h]], DOOR_FACE);
+    push([[d0, 0, -h], [d0, 0, h], [d0, height, h], [d0, height, -h]], DOOR_FACE);
+    push([[d0, 0, h], [d1, 0, h], [d1, height, h], [d0, height, h]], DOOR_TOP, edgeSpan, 1);
+    push([[d1, 0, -h], [d0, 0, -h], [d0, height, -h], [d1, height, -h]], DOOR_TOP, edgeSpan, 1);
+    push([[d1, height, h], [d1, height, -h], [d0, height, -h], [d0, height, h]], DOOR_TOP, 1, edgeSpan);
   }
   return { vertices, uvs };
 }

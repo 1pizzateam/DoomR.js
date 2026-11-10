@@ -138,14 +138,19 @@ export class HeadView {
 
     this.scene = new Scene({
       context: gl,
-      ambientColor: new Vec3(0.42, 0.41, 0.43),
+      ambientColor: new Vec3(0.54, 0.52, 0.55),
       depthTest: true,
       cullFace: 'NONE'
     });
     this.scene.addLight(new DirectionalLight({
       direction: new Vec3(-0.42, -0.56, -0.71),
-      diffuse: new Vec3(0.9, 0.84, 0.78),
-      specular: new Vec3(0.26, 0.24, 0.22)
+      diffuse: new Vec3(1.04, 0.97, 0.9),
+      specular: new Vec3(0.32, 0.29, 0.27)
+    }));
+    this.scene.addLight(new DirectionalLight({
+      direction: new Vec3(0.62, -0.18, -0.45),
+      diffuse: new Vec3(0.22, 0.26, 0.32),
+      specular: new Vec3(0, 0, 0)
     }));
     this.scene.addMesh(this.facer.mesh);
     // the shirt is stitched to the skin's neck seam, so the portrait shows his shoulders

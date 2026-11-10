@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { softClip } from '@1pizzateam/groovr';
 import { Vec2 } from '@1pizzateam/spock';
 import { RECIPES, Sound, spatial } from '../src/audio.js';
+import { Game } from '../src/game.js';
 
 let failed = 0;
 function test(name, fn) {
@@ -164,6 +165,46 @@ test('AC-6 spatial takes Vec2s without mutation', () => {
 test('AC-7 main.js passes no scalar coordinates to spatial', () => {
   assert.ok(!mainSource.includes('spatial('));
   assert.match(source, /spatial\(this\.listener\.pos, pos, this\.listener\)/);
+});
+
+test('AC-8 elevatorStop delegates female robotic welcome voice to speak', () => {
+  assert.match(importLine, /speak/);
+  assert.match(source, /elevatorStop\(ctx,\s*out,\s*t,\s*\{\s*gender\s*=\s*'female'\s*\}/);
+  assert.match(source, /speak\(ctx,\s*out,\s*t\s*\+\s*0\.42,\s*'welcome',\s*\{\s*gender,\s*gain:\s*0\.38/);
+  const { ctx, created } = mockContext();
+  const info = RECIPES.elevatorStop(ctx, node(), 0);
+  assert.ok(info.duration > 1, 'elevatorStop duration includes the welcome speech');
+  assert.ok(created.shapers.length >= 1, 'elevatorStop creates vocal-cord waveshaper for robotic voice');
+});
+
+test('AC-9 whoAreYou synthesizes "who are you ?" and triggers once when opening the first non-elevator door', () => {
+  assert.match(source, /whoAreYou\(ctx,\s*out,\s*t,\s*\{\s*gender\s*=\s*'female'\s*\}/);
+  assert.match(source, /speak\(ctx,\s*out,\s*t\s*\+\s*0\.18,\s*'who are you \?',\s*\{\s*gender,\s*gain:\s*0\.38/);
+  const { ctx, created } = mockContext();
+  const info = RECIPES.whoAreYou(ctx, node(), 0);
+  assert.ok(info.duration > 0.8, 'whoAreYou duration covers the full sentence');
+  assert.ok(created.shapers.length >= 1, 'whoAreYou creates vocal-cord waveshaper');
+
+  const game = new Game();
+  const doors = [...game.level.doors.values()].filter((d) => !d.elevator);
+  assert.ok(doors.length >= 2);
+  // Elevator door opening does not trigger whoAreYou
+  if (game.level.elevator?.door) {
+    game.level.elevator.door.target = 1;
+    game.events.length = 0;
+    game.updateDoors(1 / 60);
+    assert.equal(game.events.some((e) => e.type === 'whoAreYou'), false);
+  }
+  // First non-elevator door opening emits whoAreYou once
+  doors[0].target = 1;
+  game.events.length = 0;
+  game.updateDoors(1 / 60);
+  assert.equal(game.events.filter((e) => e.type === 'whoAreYou').length, 1);
+  // Second non-elevator door opening does not emit whoAreYou again
+  doors[1].target = 1;
+  game.events.length = 0;
+  game.updateDoors(1 / 60);
+  assert.equal(game.events.filter((e) => e.type === 'whoAreYou').length, 0);
 });
 
 process.exit(failed ? 1 : 0);

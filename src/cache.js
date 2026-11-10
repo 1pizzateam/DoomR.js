@@ -166,7 +166,7 @@ function pushBox(vertices, uvs, x0, y0, z0, x1, y1, z1, faces) {
   }
 }
 
-/** Chest body standing on y = 0, centred on x/z, front facing local +Z; the top is open onto the glowing interior. */
+/** Chest body standing on y = 0, centred on x/z, front facing local +Z; the top is open onto the interior. */
 export function chestBodyMesh() {
   const vertices = [];
   const uvs = [];
@@ -180,8 +180,6 @@ export function chestBodyMesh() {
     right: CHEST_CELLS.sidePanel,
     bottom: CHEST_CELLS.sidePanel,
   });
-  const y = hy - 2;
-  pushQuad(vertices, uvs, [[-hx + 2, y, hz - 2], [hx - 2, y, hz - 2], [hx - 2, y, -hz + 2], [-hx + 2, y, -hz + 2]], CHEST_CELLS.interiorGlow);
   pushBox(vertices, uvs, -3, 9, hz, 3, 15, hz + 1.5, { front: CHEST_CELLS.latch, left: CHEST_CELLS.latch, right: CHEST_CELLS.latch, top: CHEST_CELLS.latch });
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }

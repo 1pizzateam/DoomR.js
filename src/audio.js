@@ -8,7 +8,7 @@
  * of it should go to the room reverb. They also run in an OfflineAudioContext, which is
  * how they are checked for silence, clipping and clicks.
  */
-import { createImpulse, createNoise, softClip, spatial2D } from '@1pizzateam/groovr';
+import { createImpulse, createNoise, softClip, spatial2D, speak } from '@1pizzateam/groovr';
 import { Rand, Utils, Vec2 } from '@1pizzateam/spock';
 import { Music } from './music.js';
 import { SHOTGUN_PUMP, WEAPONS } from './weapon.js';
@@ -427,6 +427,30 @@ export const RECIPES = {
     noise(ctx, out, t + 0.5, { duration: 0.1, gain: 0.25, from: 600, to: 200 });
     return { duration: 0.75, wet: 0.3 };
   },
+  whoAreYou(ctx, out, t, { gender = 'female' } = {}) {
+    const voice = speak(ctx, out, t + 0.18, 'who are you ?', { gender, gain: 0.38, noise: noiseBuffer(ctx) });
+    return { duration: Utils.round(0.18 + voice.duration, 2), wet: 0.42 };
+  },
+  elevator(ctx, out, t) {
+    // Heavy industrial freight elevator hoist motor + cable vibration + shaft guide-rail clanks
+    tone(ctx, out, t, { type: 'sawtooth', from: 48, to: 52, duration: 0.72, gain: 0.2, attack: 0.05, drive: 3.5, filter: { freq: 190 }, vibrato: { rate: 7, depth: 4 } });
+    tone(ctx, out, t, { type: 'triangle', from: 32, to: 30, duration: 0.72, gain: 0.28, attack: 0.05 });
+    noise(ctx, out, t, { duration: 0.68, gain: 0.18, filter: 'bandpass', from: 360, to: 240, q: 2.2, attack: 0.06 });
+    tone(ctx, out, t + 0.12, { type: 'square', from: 190, to: 88, duration: 0.09, gain: 0.14, filter: { freq: 820 } });
+    noise(ctx, out, t + 0.12, { duration: 0.08, gain: 0.2, filter: 'bandpass', from: 1350, to: 620, q: 3 });
+    return { duration: 0.75, wet: 0.38 };
+  },
+  elevatorStop(ctx, out, t, { gender = 'female' } = {}) {
+    // Heavy hydraulic brake lock + landing thud + pneumatic pressure hiss + arrival chime + robotic "welcome"
+    tone(ctx, out, t, { type: 'triangle', from: 135, to: 32, duration: 0.28, gain: 0.48 });
+    tone(ctx, out, t, { type: 'sine', from: 68, to: 25, duration: 0.34, gain: 0.42 });
+    noise(ctx, out, t, { duration: 0.18, gain: 0.34, filter: 'lowpass', from: 1100, to: 180 });
+    noise(ctx, out, t + 0.06, { duration: 0.24, gain: 0.22, filter: 'bandpass', from: 2400, to: 900, q: 2.4, attack: 0.02 });
+    tone(ctx, out, t + 0.12, { type: 'triangle', from: 784, to: 784, duration: 0.26, gain: 0.16 });
+    tone(ctx, out, t + 0.2, { type: 'sine', from: 1175, to: 1175, duration: 0.3, gain: 0.14 });
+    const voice = speak(ctx, out, t + 0.42, 'welcome', { gender, gain: 0.38, noise: noiseBuffer(ctx) });
+    return { duration: Utils.round(0.42 + voice.duration, 2), wet: 0.42 };
+  },
 
   step(ctx, out, t, { pitch = 1 } = {}) {
     noise(ctx, out, t, { duration: 0.07, gain: 0.22, from: 500 * pitch, to: 200 });
@@ -675,12 +699,38 @@ export const RECIPES = {
     return { duration: 0.36, wet: 0.25 };
   },
   cacheOpen(ctx, out, t) {
-    noise(ctx, out, t, { duration: 0.04, gain: 0.3, filter: 'bandpass', from: 2200, to: 1200, q: 3 });
-    tone(ctx, out, t, { type: 'square', from: 520, to: 260, duration: 0.03, gain: 0.14 });
-    noise(ctx, out, t + 0.05, { duration: 0.25, gain: 0.14, filter: 'highpass', from: 5000, to: 2500, attack: 0.03 });
-    tone(ctx, out, t + 0.3, { type: 'triangle', from: 110, to: 50, duration: 0.14, gain: 0.3 });
-    noise(ctx, out, t + 0.3, { duration: 0.12, gain: 0.2, filter: 'lowpass', from: 700, to: 200 });
-    return { duration: 0.5, wet: 0.25 };
+    // Twin metallic latch release clicks + chamber thud
+    noise(ctx, out, t, { duration: 0.045, gain: 0.36, filter: 'bandpass', from: 2600, to: 1400, q: 3.2 });
+    tone(ctx, out, t, { type: 'square', from: 760, to: 280, duration: 0.04, gain: 0.22 });
+    tone(ctx, out, t, { type: 'triangle', from: 170, to: 62, duration: 0.09, gain: 0.34 });
+    noise(ctx, out, t + 0.05, { duration: 0.04, gain: 0.32, filter: 'bandpass', from: 3200, to: 1700, q: 3.4 });
+    tone(ctx, out, t + 0.05, { type: 'square', from: 980, to: 360, duration: 0.038, gain: 0.2 });
+    // Pneumatic seal hiss + rising motorized lid hinge sweep
+    noise(ctx, out, t + 0.07, { duration: 0.24, gain: 0.26, filter: 'bandpass', from: 1100, to: 3400, q: 2.2, attack: 0.025 });
+    tone(ctx, out, t + 0.07, { type: 'sawtooth', from: 120, to: 280, duration: 0.22, gain: 0.16, filter: { freq: 820 } });
+    tone(ctx, out, t + 0.08, { type: 'triangle', from: 240, to: 520, duration: 0.2, gain: 0.18 });
+    // Heavy lid-open stop clunk
+    tone(ctx, out, t + 0.29, { type: 'triangle', from: 150, to: 48, duration: 0.14, gain: 0.38 });
+    noise(ctx, out, t + 0.29, { duration: 0.1, gain: 0.26, filter: 'lowpass', from: 950, to: 220 });
+    return { duration: 0.46, wet: 0.3 };
+  },
+  cacheItem(ctx, out, t, { kind = 'ammo', slot = 0 } = {}) {
+    const step = 1 + Math.min(slot, 4) * 0.12;
+    // Rising magnetic pull whoosh as the item lifts out of the chest toward the player
+    noise(ctx, out, t, { duration: 0.12, gain: 0.24, filter: 'bandpass', from: 950 * step, to: 2800 * step, q: 2.4, attack: 0.015 });
+    tone(ctx, out, t, { type: 'sine', from: 260 * step, to: 520 * step, duration: 0.11, gain: 0.2 });
+    if (kind === 'shotgun' || kind === 'chaingun' || kind === 'rocket' || kind === 'chainsaw') {
+      noise(ctx, out, t + 0.05, { duration: 0.06, gain: 0.28, filter: 'bandpass', from: 2200, to: 1100, q: 3 });
+      arpeggio(ctx, out, t + 0.04, [392 * step, 587 * step, 784 * step], { spacing: 0.05, length: 0.15, gain: 0.24, type: 'triangle' });
+      return { duration: 0.34, wet: 0.28 };
+    }
+    if (kind === 'health') {
+      arpeggio(ctx, out, t + 0.03, [523 * step, 659 * step, 988 * step], { spacing: 0.055, length: 0.14, gain: 0.24, type: 'triangle' });
+      return { duration: 0.32, wet: 0.28 };
+    }
+    noise(ctx, out, t + 0.03, { duration: 0.035, gain: 0.22, filter: 'highpass', from: 2600 });
+    arpeggio(ctx, out, t + 0.03, [587 * step, 880 * step], { spacing: 0.055, length: 0.13, gain: 0.22, type: 'triangle' });
+    return { duration: 0.28, wet: 0.22 };
   },
   weaponSwitch(ctx, out, t) {
     noise(ctx, out, t, { duration: 0.05, gain: 0.22, filter: 'bandpass', from: 2100, to: 900, q: 3.5 });
@@ -752,6 +802,9 @@ const MIN_INTERVAL = {
   clang: 0.04,
   doorOpen: 0.2,
   doorClose: 0.2,
+  whoAreYou: 0.2,
+  elevator: 0.25,
+  elevatorStop: 0.2,
   tallyTick: 0.04,
   tallyBoom: 0.08,
   acid: 0.18,
@@ -766,6 +819,7 @@ const MIN_INTERVAL = {
   rocketFire: 0.12,
   weaponPickup: 0.08,
   cacheOpen: 0.1,
+  cacheItem: 0.06,
   weaponSwitch: 0.06,
   armor: 0.08,
   powerup: 0.08,
@@ -796,6 +850,8 @@ const R_CHAINGUN_SPIN = def('chaingunSpin', true, false, 0, 0, { heat: 0 });
 const ROUTE_CHAINGUN_SPIN = [R_CHAINGUN_SPIN];
 const R_STOMP = def('stomp', false, false, 0, 0, { power: undefined });
 const ROUTE_STOMP = [R_STOMP];
+const R_CACHE_ITEM = def('cacheItem', true, false, 0, 0, { kind: 'ammo', slot: 0 });
+const ROUTE_CACHE_ITEM = [R_CACHE_ITEM];
 const R_WEAPON_SWITCH = def('weaponSwitch', true, false, 0, 0, EMPTY_PARAMS);
 const R_CHAINSAW_UP = def('chainsawUp', true, true, 0, 0, EMPTY_PARAMS);
 const ROUTE_SWITCH_SAW = [R_WEAPON_SWITCH, R_CHAINSAW_UP];
@@ -811,7 +867,7 @@ addStatic('knife', 'knife', true, true);
 addStatic('chainsawIdle', 'chainsawIdle', true, true);
 addStatic('chainsawUp', 'chainsawUp', true, true);
 addStatic('rocketFire', 'rocketFire', true, false, WEAPONS.rocket.feel.duck);
-for (const name of ['weaponPickup', 'armor', 'powerup', 'automap', 'dry', 'hurt', 'death', 'heartbeat', 'clear', 'secret', 'tallyBoom', 'acid', 'keycard'])
+for (const name of ['weaponPickup', 'armor', 'powerup', 'automap', 'dry', 'hurt', 'death', 'heartbeat', 'clear', 'secret', 'tallyBoom', 'acid', 'keycard', 'elevator', 'elevatorStop', 'whoAreYou'])
   addStatic(name, name, true);
 addStatic('wind', 'wind', true, true);
 addStatic('tallyTick', 'tallyTick', true, true);
@@ -858,6 +914,10 @@ function route(event) {
     case 'stomp':
       R_STOMP.params.power = event.power;
       return ROUTE_STOMP;
+    case 'cacheItem':
+      R_CACHE_ITEM.params.kind = event.kind ?? 'ammo';
+      R_CACHE_ITEM.params.slot = event.slot ?? 0;
+      return ROUTE_CACHE_ITEM;
     case 'pickup': return STATIC_ROUTES.get(event.kind === 'health' ? 'pickupHealth' : 'pickupAmmo');
     case 'step': return STATIC_ROUTES.get(event.wet ? 'stepWet' : 'step');
     default: return STATIC_ROUTES.get(event.type) ?? ROUTE_NONE;
@@ -1053,6 +1113,8 @@ export class Sound {
   }
 
   handle(event) {
+    if (event.fromCache)
+      return;
     const routes = route(event);
     const visible = event.visible !== false;
     for (let i = 0; i < routes.length; i++) {

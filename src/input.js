@@ -247,6 +247,11 @@ export class Input {
     }
     if ((event.metaKey || event.ctrlKey || event.altKey) && !keymap.isBound(which))
       return;
+    if (event.repeat && !this.heldWhich.has(which)) {
+      if (keymap.isBound(which))
+        event.preventDefault?.();
+      return;
+    }
     if (code && which !== 0)
       this.downByCode.set(code, which);
     if (!event.repeat) {
@@ -364,7 +369,7 @@ export class Input {
       run: keys.has('run'),
       jump: keys.has('jump'),
       crouch: keys.has('crouch'),
-      fire: keys.has('fire') || (!this.keymap.isCustom('fire') && keys.has('confirm')),
+      fire: keys.has('fire'),
       grenade: this.took('grenade'),
       use: this.took('use'),
       nightVision: this.took('nightVision'),

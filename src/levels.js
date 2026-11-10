@@ -63,14 +63,14 @@ export const LEVELS = [
     name: 'E1M1 · Hangar',
     par: 90,
     chests: [
-      { x: 3, y: 1, contents: ['ammo', 'shotgun'] },
+      { x: 4, y: 1, contents: ['ammo', 'shotgun'] },
       { x: 24, y: 1, contents: ['health', 'ammo'] },
       { x: 32, y: 1, contents: ['ammo', 'bullets'] },
       { x: 12, y: 2, contents: ['ammo', 'ammo'] },
       { x: 52, y: 2, contents: ['health', 'chainsaw'] },
       { x: 13, y: 6, contents: ['rocket', 'rockets'] },
       { x: 41, y: 10, contents: ['ammo', 'health'] },
-      { x: 10, y: 12, contents: ['health', 'chaingun', 'bullets', 'health'] },
+      { x: 10, y: 12, contents: ['health', 'chaingun', 'bullets', 'health'], locked: true },
       { x: 53, y: 19, contents: ['health', 'ammo'] },
       { x: 3, y: 21, contents: ['health', 'rockets'] },
       { x: 34, y: 28, contents: ['health', 'ammo'] },
@@ -82,13 +82,13 @@ export const LEVELS = [
     //        01234567890123456789012345678901234567890123456789012345
     rows: [
       /* 00 */ '########################################################', // Outer Hull
-      /* 01 */ '#P.=◥#i......#g.x....#..=.#....#=....########....#######', // NW Entry Bay / NE Comms Closets
-      /* 02 */ '#....#...o..=#....x..#.i..#....#..i..#......#..c.#..=Os#', // NW Reception / North Alcoves (Chainsaw & Soulsphere Secret)
-      /* 03 */ '#....D.......D.x.x..iS....D....◥##D###..#w..D....S.....#', // North Airlock Corridor & Secret Push-Walls
-      /* 04 */ '#◣...#.....i.#..x....#....#..........D......#....#...i.#', // Upper Tech Hallway & Crusher
-      /* 05 */ '###D#######D##########....####D#######..#w..############', // Bulkhead Connectors
-      /* 06 */ '#...#.....#.#=...S.s.#....#.V..~~~~~.#..u..◢#◤........◥#', // North-West Dogleg & Rad Suit by Slime Pool
-      /* 07 */ '#...#.....#.######...#,,z,#..o.~~~#~.########..o....o..#', // West Supply / North Hub Slime Pool
+      /* 01 */ '#P..=#i......#g......#..=.#....#=....########....#######', // NW Entry Bay / NE Comms Closets
+      /* 02 */ '##...#...o..=#.......#.i..#....#..i..#......#..c.#..=Os#', // NW Reception / North Alcoves (Chainsaw & Soulsphere Secret)
+      /* 03 */ '#....D.......D.x.x..iD....D....◥##D###..#s..D....S.....#', // North Airlock Corridor & Secret Push-Walls
+      /* 04 */ '#◣...#.....i.#.......#....#..........D......#....#...i.#', // Upper Tech Hallway & Crusher
+      /* 05 */ '###D#######D#######D##....####D#######..#s..############', // Bulkhead Connectors
+      /* 06 */ '#...#.....#.#=...S...#....#.V..~~~~~.#..u..◢#◤........◥#', // North-West Dogleg & Rad Suit by Slime Pool
+      /* 07 */ '#...#.....#.######.s.#,,z,#..o.~~~#~.########..o....o..#', // West Supply / North Hub Slime Pool
       /* 08 */ '#.............i..#...#....#...x~~....D......D....b.....#', // West Command Hall (North)
       /* 09 */ '#..o.................D....#...i~~....###D####..........#', // West Command Hall (Main Sightline)
       /* 10 */ '#........i..b........#....#..o.~~~#~.#...=..#..o....o..#', // West Command Hall (South)
@@ -96,11 +96,11 @@ export const LEVELS = [
       /* 12 */ '#.........=......#........#####D######......◥####D######', // West Command Support
       /* 13 */ '#########D#.######...##.......#.#....#..........#.#....#', // South-West Connector
       /* 14 */ '#.......#.#.#........##..i.x..#.#.y..########...#.#....#', // Mid-Base Crossway
-      /* 15 */ '#.......#.#.#..i.c...######D###.#...........#...#.#....#', // Mid-West Ambush Closet
-      /* 16 */ '#.......#.#.#........#..~~~.....###....#T#..#...#.#....#', // Central Courtyard & Teleporter Pad A
-      /* 17 */ '#..i.x..D.#..........#..#~~~~#....#.....b...U...#......#', // Courtyard Airlocks & Blue-Locked Reactor
-      /* 18 */ '#.......#.#..........#..~~~~~~....#....#.#..#...#......#', // Central Courtyard / Yellow Key in Reactor
-      /* 19 */ '#####D###.#############...##......###.......#...#####=.#', // Courtyard Bulkhead & Monoliths
+      /* 15 */ '#.......#.#.#..i.c...######D###.#.........b.#...#.#....#', // Mid-West Ambush Closet
+      /* 16 */ '#.......#.#.#........#..~~~.....###....#.#..#...#.#....#', // Central Courtyard & Teleporter Pad A
+      /* 17 */ '#..i.x..D.#..........#..#~~~~#....#.....T...U...#.◥##D##', // Courtyard Airlocks & Blue-Locked Reactor
+      /* 18 */ '#.......#.#..........#..~~~~~~....#....#.#..#...#◣.....#', // Central Courtyard / Yellow Key in Reactor
+      /* 19 */ '#####D###.#############...##......###.....b.#...◥####=.#', // Courtyard Bulkhead & Monoliths
       /* 20 */ '#####.#.......#....#......##........####U####.......#..#', // Central Courtyard (Core & Teleporter Pad B)
       /* 21 */ '#..=..S..x.i..D....#.T.b..~~.c.........#.#....i..z,.#..#', // Courtyard Secret Closet & Catwalk
       /* 22 */ '#.A...#.......#....#......~~...##......#.#..........#..#', // West Secret Ammo Closet / Courtyard South
@@ -153,9 +153,9 @@ export const LEVELS = [
       /* 08 */ '#...O#.....#.#...=...#..o...#.,z.u.#......#.#..........#', // Pillbox Secret Soulsphere & Blue Keycard
       /* 09 */ '######S#####.#########......#......########.#..o.....o.#', // Pillbox Secret Closet
       /* 10 */ '#..........#.#.......########D######........D....r.....#', // Mid-North Security Junction
-      /* 11 */ '#...i..x.....D..=....#.............#####U####..........#', // Supply Airlock & Blue-Locked Wraith Hall
-      /* 12 */ '#.P....g...#.#########..o...s...o..#...#.#..####D#######', // West Arrival Bay (4,12 open) & Hub
-      /* 13 */ '#..o....o..#.#.......D.............S...#.#......#.#....#', // Central Spine Hallway & Secret Cache
+      /* 11 */ '##..i..x.....D..=....#.............#####U####..........#', // Supply Airlock & Blue-Locked Wraith Hall
+      /* 12 */ '#P.....g...#.#########..o...s...o..#...#.#..####D#######', // West Arrival Bay (4,12 open) & Hub
+      /* 13 */ '##..o...o..#.#.......D.............S...#.#......#.#....#', // Central Spine Hallway & Secret Cache
       /* 14 */ '#....V.....D.#..c.z,.#######Y#######.=.#.######.#.#.w..#', // Rad Suit before Slime Maze & Boss Approach
       /* 15 */ '#####D######.#.......##◤...........◥##.#......#.#.#....#', // Warden Sanctum (North Chamfer)
       /* 16 */ '#####.#~~~~#.####D####.T.o.....o...###.######.#.#.####D#', // Warden Sanctum (Upper Ring & Teleporter Pad A)
@@ -205,7 +205,7 @@ export const LEVELS = [
     rows: [
       /* 00 */ '########################################################', // Outer Hull
       /* 01 */ '#P....#........#######.....#########....#######...######', // Refinery Entry & North Closets
-      /* 02 */ '#.....#..i..x..#..~~.#..c..#..=....#..s.#..=..#.w.#..=O#', // North Guard Alcoves & Soulsphere Secret
+      /* 02 */ '##....#..i..x..#..~~.#..c..#..=....#..s.#..=..#.w.#..=O#', // North Guard Alcoves & Soulsphere Secret
       /* 03 */ '#..o..D........D..=..D.....D...#...D....D..x..D...S....#', // North Refinery Conduit & Secret Wall
       /* 04 */ '#.....#........#######..~..#.......#....#.....#...######', // North Vat Chambers
       /* 05 */ '####D######D##########.,z..####D####....###D###........#', // North Bulkhead Airlocks
@@ -267,7 +267,7 @@ export const LEVELS = [
     rows: [
       /* 00 */ '########################################################', // Outer Hull
       /* 01 */ '#P.=..#..........######.....########....#######...######', // Anomaly Breach Entry & North Closets
-      /* 02 */ '#.....#..i...x...#....#..c..#.=~~..#..s.#..=..#.w.#..=O#', // North Guard Posts & Soulsphere Secret
+      /* 02 */ '##....#..i...x...#....#..c..#.=~~..#..s.#..=..#.w.#..=O#', // North Guard Posts & Soulsphere Secret
       /* 03 */ '#..g..D..........D....D.....D......D....D..x..D...S....#', // North Anomaly Conduit & Secret Push-Wall
       /* 04 */ '#.....#....i.....######..~..#..~~..#....#.....#...######', // North Nukage Sump
       /* 05 */ '####D#######D#########..,z..####D###....###D###........#', // North Bulkhead Airlocks
@@ -326,9 +326,9 @@ export const LEVELS = [
     //        01234567890123456789012345678901234567890123456789012345
     rows: [
       /* 00 */ '########################################################', // Outer Martian Canyon Rim
-      /* 01 */ '#..=..#..............######............#######...#######', // Airlock Start Room & North Dust Wastes
-      /* 02 */ '#.....#...i....x.....#....#....c.......#..=..#...#..=O.#', // Airlock Chamber & North Canyon Secret Crevice
-      /* 03 */ '#.P...D..N............=................x.....#.i.......#', // Airlock Door Opening to Hostile Mars Surface
+      /* 01 */ '#P.=..#..............######............#######...#######', // Airlock Start Room & North Dust Wastes
+      /* 02 */ '##....#...i....x.....#....#....c.......#..=..#...#..=O.#', // Airlock Chamber & North Canyon Secret Crevice
+      /* 03 */ '#.....D..N............=................x.....#.i.......#', // Airlock Door Opening to Hostile Mars Surface
       /* 04 */ '#.g...#....o....o....######....o...o...#.....#...#######', // Martian Regolith Boulders & Outcrops
       /* 05 */ '#######..............#..~..#...........###.###.........#', // Sealed Airlock Hull & Dust Plain
       /* 06 */ '#....................#..~..#..o.....o....#.#...o....o..#', // Swept Martian Dune Field

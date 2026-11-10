@@ -1,6 +1,7 @@
 import { Grid, RightTriangle, Vec2 } from '@1pizzateam/spock';
 
 export const TILE = 64;
+export const ELEVATOR_DOOR_THICKNESS = 6;
 export const EYE = 32;
 export const CROUCH_EYE = 18;
 /** The ceiling is one wall texture high. Blood thrown up this far lands on it. */
@@ -89,7 +90,7 @@ export const CACHE_WALL_OFFSET = 14;
  * line where a wall really starts or ends.
  */
 export class Level {
-  constructor({ name, rows, angle = 0, par = 120, planet = null, wind = null, chests = [] }) {
+  constructor({ name, rows, angle = null, par = 120, planet = null, wind = null, chests = [] }) {
     this.name = name;
     this.rows = rows;
     this.par = par;
@@ -112,7 +113,8 @@ export class Level {
     this.secretByTile = new Int16Array(total).fill(-1);
 
     this.playerStart = null;
-    this.playerAngle = angle;
+    this.playerAngle = angle ?? 0;
+    this.elevator = null;
     this.enemies = [];
     this.pickups = [];
     this.chestDefs = Array.isArray(chests) ? chests : [];
@@ -131,6 +133,9 @@ export class Level {
 
     this.parse();
     this.buildFaces();
+    this.elevator = this.findElevator();
+    if (angle === null && this.elevator)
+      this.playerAngle = this.elevator.angle;
     this.indoor = this.findIndoor();
     this.outdoor = this.findOutdoor();
     this.bossArena = this.findBossArena();
@@ -138,6 +143,118 @@ export class Level {
     this.secrets = this.findSecrets();
     this.findRooms();
     this.buildChests();
+  }
+
+  /**
+   * Starting elevator cab: when `playerStart` sits in a 1-tile alcove enclosed on three sides by solid walls
+   * and opening into the first room on the fourth side, builds a thin elevator door on the cab threshold.
+   */
+  findElevator() {
+    if (!this.playerStart)
+      return null;
+    const { width, kind, diag } = this;
+    const startIdx = this.grid.getCell(this.playerStart);
+    if (startIdx < 0 || kind[startIdx] !== FLOOR || diag[startIdx] !== 0)
+      return null;
+    const x = startIdx % width;
+    const y = (startIdx - x) / width;
+    let wallCount = 0;
+    let door = null;
+    let doorDir = -1;
+    let opensToFloor = false;
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DX[d];
+      const ny = y + DY[d];
+      if (!this.inBounds(nx, ny))
+        return null;
+      const nidx = ny * width + nx;
+      if (kind[nidx] === WALL && diag[nidx] === 0)
+        wallCount++;
+      else if (kind[nidx] === DOOR) {
+        const candidate = this.doors.get(nidx);
+        if (candidate && !candidate.secret && !candidate.lock) {
+          door = candidate;
+          doorDir = d;
+        }
+      } else if (kind[nidx] === FLOOR && diag[nidx] === 0 && !this.doors.has(nidx)) {
+        const perpX = DY[d];
+        const perpY = DX[d];
+        const roomWider =
+          (this.inBounds(nx + perpX, ny + perpY) && kind[(ny + perpY) * width + (nx + perpX)] === FLOOR) ||
+          (this.inBounds(nx - perpX, ny - perpY) && kind[(ny - perpY) * width + (nx - perpX)] === FLOOR);
+        if (roomWider) {
+          opensToFloor = true;
+          doorDir = d;
+        }
+      }
+    }
+    if (wallCount !== 3 || doorDir < 0 || (!door && !opensToFloor))
+      return null;
+    if (opensToFloor) {
+      const exitX = x + DX[doorDir];
+      const exitY = y + DY[doorDir];
+      if (!this.isWalkable(exitX, exitY))
+        return null;
+      const offset = TILE * 0.5 - ELEVATOR_DOOR_THICKNESS * 0.5;
+      door = {
+        idx: startIdx,
+        x,
+        y,
+        center: new Vec2(
+          (x + 0.5) * TILE + DX[doorDir] * offset,
+          (y + 0.5) * TILE + DY[doorDir] * offset,
+        ),
+        open: 0,
+        target: 0,
+        timer: 0,
+        secret: false,
+        lock: null,
+        revealed: false,
+        alongY: DY[doorDir] !== 0,
+        framed: true,
+        elevator: true,
+        thin: true,
+        thickness: ELEVATOR_DOOR_THICKNESS,
+        baseHeight: CEILING,
+        dirX: DX[doorDir],
+        dirY: DY[doorDir],
+        body: null,
+      };
+      this.doors.set(startIdx, door);
+      return {
+        tileIdx: startIdx,
+        x,
+        y,
+        doorIdx: door.idx,
+        door,
+        dirX: DX[doorDir],
+        dirY: DY[doorDir],
+        angle: Math.atan2(DY[doorDir], DX[doorDir]),
+        exitTileIdx: exitY * width + exitX,
+        exitCenter: this.center(exitX, exitY),
+      };
+    }
+    const exitX = x + DX[doorDir] * 2;
+    const exitY = y + DY[doorDir] * 2;
+    if (!this.isWalkable(exitX, exitY))
+      return null;
+    door.elevator = true;
+    door.thin = true;
+    door.thickness = ELEVATOR_DOOR_THICKNESS;
+    door.alongY = DY[doorDir] !== 0;
+    door.framed = true;
+    return {
+      tileIdx: startIdx,
+      x,
+      y,
+      doorIdx: door.idx,
+      door,
+      dirX: DX[doorDir],
+      dirY: DY[doorDir],
+      angle: Math.atan2(DY[doorDir], DX[doorDir]),
+      exitTileIdx: exitY * width + exitX,
+      exitCenter: this.center(exitX, exitY),
+    };
   }
 
   /**
@@ -323,7 +440,7 @@ export class Level {
     return -1;
   }
 
-  createChest(x, y, contents = ['ammo'], wallSide = null, angle = null) {
+  createChest(x, y, contents = ['ammo'], wallSide = null, angle = null, locked = false) {
     const idx = y * this.width + x;
     const resolvedWallSide = Number.isInteger(wallSide) && wallSide >= 0 && wallSide < 4
       ? wallSide
@@ -366,6 +483,7 @@ export class Level {
       pos,
       angle: resolvedAngle,
       contents: normalizedContents,
+      locked: Boolean(locked),
     };
   }
 
@@ -380,13 +498,13 @@ export class Level {
     for (const tile of this.chestTiles) {
       seen.add(tile.idx);
       const entry = defsByIdx.get(tile.idx);
-      this.chests.push(this.createChest(tile.x, tile.y, entry?.contents, entry?.wallSide, entry?.angle));
+      this.chests.push(this.createChest(tile.x, tile.y, entry?.contents, entry?.wallSide, entry?.angle, entry?.locked));
     }
     for (const [idx, entry] of defsByIdx) {
       if (seen.has(idx) || this.kind[idx] !== FLOOR)
         continue;
       seen.add(idx);
-      this.chests.push(this.createChest(entry.x, entry.y, entry.contents, entry.wallSide, entry.angle));
+      this.chests.push(this.createChest(entry.x, entry.y, entry.contents, entry.wallSide, entry.angle, entry?.locked));
     }
   }
 
@@ -446,7 +564,7 @@ export class Level {
     const { width } = this;
     const indoor = new Set();
     const startIdx = this.grid.getCell(this.playerStart);
-    const stack = [startIdx];
+    const stack = this.elevator ? [startIdx, this.elevator.exitTileIdx] : [startIdx];
     while (stack.length) {
       const idx = stack.pop();
       if (indoor.has(idx) || (this.kind[idx] !== FLOOR && this.kind[idx] !== PILLAR))
@@ -634,6 +752,7 @@ export class Level {
       const solidX = (solidWall(door.x - 1, door.y) ? 1 : 0) + (solidWall(door.x + 1, door.y) ? 1 : 0);
       const solidY = (solidWall(door.x, door.y - 1) ? 1 : 0) + (solidWall(door.x, door.y + 1) ? 1 : 0);
       door.alongY = solidX > solidY;
+      door.framed = (door.alongY ? solidX : solidY) === 2;
     }
     for (let i = 0; i < this.teleporters.length; i++) {
       const pad = this.teleporters[i];
@@ -801,6 +920,7 @@ export class Level {
   /** Doors sink into the floor, so an open door is just a wall with no height left. */
   setDoorOpen(door, open) {
     door.open = open;
-    this.heights[door.idx] = this.baseHeight[door.idx] * (1 - open);
+    if (this.kind[door.idx] === DOOR)
+      this.heights[door.idx] = this.baseHeight[door.idx] * (1 - open);
   }
 }

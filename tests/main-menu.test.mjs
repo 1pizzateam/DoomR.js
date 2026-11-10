@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const { MainMenu, MENU_PLAY, MENU_OPTIONS, MENU_NONE } = await import('../src/menu.js');
-const { NAV_UP, NAV_DOWN, NAV_NONE } = await import('../src/input.js');
+const { Input, NAV_UP, NAV_DOWN, NAV_NONE } = await import('../src/input.js');
+const { Keymap } = await import('../src/keymap.js');
+const { Game } = await import('../src/game.js');
 const { Hud, layoutMainMenu } = await import('../src/hud.js');
 const mainSrc = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
@@ -128,6 +130,61 @@ const checks = [
     assert.equal(m.view.cursor, 1);
     m.focus(MENU_PLAY);
     assert.equal(m.cursor, 0);
+  }],
+  ['AC-9 starting gameplay via Enter, Click, or Space does not trigger a knife hit or jump on the first frame', () => {
+    assert.match(mainSrc, /function start\(\)\s*\{\s*game\.selectingDifficulty = false;\s*game\.state = 'play';\s*input\.releaseAll\(\);\s*input\.lock\(\);\s*\}/);
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    const canvasHandlers = {};
+    globalThis.document = { addEventListener() {}, pointerLockElement: null };
+    globalThis.window = { addEventListener() {} };
+    try {
+      const target = { addEventListener(name, handler) { canvasHandlers[name] = handler; }, requestPointerLock() {} };
+      const inp = new Input(target, new Keymap({ storage: null, navigator: null }));
+      const game = new Game();
+      game.selectingDifficulty = true;
+
+      // Press Enter to start the game
+      globalThis.document.onkeydown({ code: 'Enter', key: 'Enter', repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, preventDefault() {} });
+      assert.equal(inp.took('confirm'), true);
+      assert.equal(inp.poll().fire, false, 'Enter does not map to fire');
+      game.selectingDifficulty = false;
+      game.state = 'play';
+      inp.releaseAll();
+      game.update(1 / 60, inp.poll());
+      assert.equal(game.player.cooldown, 0, 'Enter does not trigger a knife attack');
+      assert.equal(game.events.some((e) => e.type === 'knife'), false);
+      inp.endFrame();
+
+      // Click to start the game (Mouse0 is bound to fire, but releaseAll on start clears it)
+      game.state = 'title';
+      game.selectingDifficulty = true;
+      canvasHandlers.mousedown({ button: 0, clientX: 0, clientY: 0, metaKey: false });
+      assert.equal(inp.took('Click'), true);
+      game.selectingDifficulty = false;
+      game.state = 'play';
+      inp.releaseAll();
+      game.update(1 / 60, inp.poll());
+      assert.equal(game.player.cooldown, 0, 'Click to start does not trigger a knife attack');
+      assert.equal(game.events.some((e) => e.type === 'knife'), false);
+      inp.endFrame();
+
+      // Space to start the game (Space is bound to jump, but releaseAll on start clears it and ignores repeats)
+      game.state = 'title';
+      game.selectingDifficulty = true;
+      globalThis.document.onkeydown({ code: 'Space', key: ' ', repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, preventDefault() {} });
+      assert.equal(inp.took('jump'), true);
+      game.selectingDifficulty = false;
+      game.state = 'play';
+      inp.releaseAll();
+      globalThis.document.onkeydown({ code: 'Space', key: ' ', repeat: true, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, preventDefault() {} });
+      game.update(1 / 60, inp.poll());
+      assert.equal(game.player.vz, 0, 'Space to start does not trigger a jump');
+      inp.endFrame();
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
   }],
 ];
 

@@ -83,9 +83,9 @@ const SHIRT_FRAGMENT = `
     float rim = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0) * max(dot(normal, rimDir) + 0.25, 0.0) * 0.45;
     float fuzz = pow(1.0 - max(dot(normal, viewDir), 0.0), 2.6) * 0.16;
 
-    vec3 light = vec3(0.2, 0.21, 0.24) * (0.55 + 0.45 * sky)
-      + vec3(0.88, 0.84, 0.78) * wrapKey
-      + vec3(0.55, 0.65, 0.82) * fill;
+    vec3 light = vec3(0.25, 0.26, 0.29) * (0.55 + 0.45 * sky)
+      + vec3(0.98, 0.94, 0.88) * wrapKey
+      + vec3(0.62, 0.72, 0.90) * fill;
     vec3 sheen = mix(tex.rgb, vec3(0.8), 0.25);
     vec3 color = tex.rgb * light + sheen * (fuzz + rim * 0.7) * (0.4 + tex.a * 0.6);
     gl_FragColor = vec4(color, 1.0);

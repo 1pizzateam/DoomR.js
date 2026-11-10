@@ -97,7 +97,7 @@ const profile = {
   format: 'facer-profile', version: 1, id: 'doomr',
   defaultBaseHead: 'african_sculpt',
   emotions, appearance, personality,
-  material: { ambient: [0.38, 0.34, 0.34], diffuse: [0.92, 0.90, 0.88], specular: [0.22, 0.20, 0.18], shininess: 22 },
+  material: { ambient: [0.46, 0.42, 0.42], diffuse: [0.98, 0.96, 0.94], specular: [0.26, 0.24, 0.22], shininess: 22 },
   damage, impulses, holdShooting,
 };
 const out = path.resolve(here, '../src/face/doomr.facerprofile.json');

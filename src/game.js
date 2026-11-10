@@ -16,6 +16,7 @@ import { GRENADE_SCALE, GRENADE_START } from './grenade.js';
 
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
+export const ELEVATOR_RIDE_TIME = 4.2;
 
 // shared read-only query options: BumpR only reads them
 const QUERY_WALL = Object.freeze({ mask: CAT.WALL });
@@ -127,13 +128,16 @@ const CACHE_WEAPONS = new Set(['chainsaw', 'shotgun', 'chaingun', 'rocket']);
 const USE_RANGE = 96;
 const USE_DOT = 0.35;
 const CACHE_TOUCH_RANGE = TILE * 0.5;
-const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', take: 'TAKE', locked: 'LOCKED', jump: 'JUMP' });
+const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', unlock: 'UNLOCK', take: 'TAKE', locked: 'LOCKED', jump: 'JUMP' });
 // seconds for a full 0 to 1 (in) or 1 to 0 (out) ramp of the use prompt
 const USE_PROMPT_FADE_IN = 0.12;
 const USE_PROMPT_FADE_OUT = 0.2;
 export const CACHE_LID_TIME = 0.35;
 export const CACHE_LOOT_TIME = 0.68;
-const CACHE_LOOT_STAGGER = 0.09;
+export const CACHE_LOOT_STAGGER = CACHE_LOOT_TIME * 0.5;
+export const CHEST_LOCK_RINGS = 3;
+export const CHEST_LOCK_SPEEDS = Object.freeze([1.85, -2.35, 2.9]);
+export const CHEST_LOCK_GAP_HALF = Object.freeze([0.42, 0.36, 0.30]);
 
 function makeBody(pos, radius, { type = 'dynamic', mass = 1, sensor = false, category, mask, velocity }) {
   const size = new Vec2(radius * 2, radius * 2);
@@ -200,6 +204,25 @@ export class Game {
     this.eventCursor = 0;
     this.useTarget = { kind: null, door: null, cache: null, verb: '', lock: null, promptable: false };
     this.usePrompt = { fade: 0, verb: '', lock: null, key: 'use' };
+    this.chestLock = {
+      active: false,
+      cache: null,
+      stage: 0,
+      needle: 0,
+      targets: [0.8, 2.9, 4.7],
+      lockedAngles: [0, 0, 0],
+      missFlash: 0,
+      hitFlash: 0,
+    };
+    this.elevator = {
+      active: false,
+      phase: 'none',
+      timer: 0,
+      duration: ELEVATOR_RIDE_TIME,
+      pulseTimer: 0,
+      cabIdx: -1,
+      door: null,
+    };
     this.load(0);
   }
 
@@ -313,6 +336,7 @@ export class Game {
     this.usePrompt.lock = null;
     this.usePrompt.key = 'use';
     this.clearUseTarget();
+    this.cancelChestLock();
     const seedIndex = this.levelIndex;
     this.level = def instanceof Level ? def : new Level(def);
     // the grid lets BumpR test only bodies that share a cell instead of every pair; two tiles per cell
@@ -341,6 +365,7 @@ export class Game {
     this.secretsFound = 0;
     this.discoveredSecrets = new Set();
     this.chimedSecrets = new Set();
+    this.firstDoorOpened = false;
     this.intermission = null;
     this.flowTile = -1;
     this.flow = new Int16Array(this.level.width * this.level.rowCount);
@@ -348,6 +373,25 @@ export class Game {
 
     this.addWalls();
     this.addPlayer(carry);
+    const elev = this.level.elevator;
+    if (elev) {
+      this.elevator.active = true;
+      this.elevator.phase = 'arriving';
+      this.elevator.timer = 0;
+      this.elevator.duration = ELEVATOR_RIDE_TIME;
+      this.elevator.pulseTimer = 0;
+      this.elevator.cabIdx = elev.tileIdx;
+      this.elevator.door = elev.door;
+      elev.door.elevatorLocked = false;
+      elev.door.body.setActive(true);
+    } else {
+      this.elevator.active = false;
+      this.elevator.phase = 'none';
+      this.elevator.timer = 0;
+      this.elevator.pulseTimer = 0;
+      this.elevator.cabIdx = -1;
+      this.elevator.door = null;
+    }
     this.fog = new Fog(this.level);
     this.fog.update(this.player.pos, this.player.angle, this.fogConeRange());
     const diff = this.difficultyDef;
@@ -538,6 +582,8 @@ export class Game {
     ev.x = at.x;
     ev.y = at.y;
     ev.visible = this.fog ? this.fog.canSee(at) : true;
+    if (this.inCacheOpen)
+      ev.fromCache = true;
     for (const key in extra)
       ev[key] = extra[key];
     if (this.events.length >= EVENT_CAPACITY) {
@@ -599,8 +645,12 @@ export class Game {
         x += run;
       }
     }
-    for (const door of level.doors.values())
-      door.body = this.addStaticBox(door.center, new Vec2(TILE, TILE));
+    for (const door of level.doors.values()) {
+      const size = door.thin
+        ? new Vec2(door.alongY ? TILE : door.thickness, door.alongY ? door.thickness : TILE)
+        : new Vec2(TILE, TILE);
+      door.body = this.addStaticBox(door.center, size);
+    }
   }
 
   addStaticTriangle(df) {
@@ -768,13 +818,13 @@ export class Game {
       this.addCache(chest);
   }
 
-  addCache(chestOrTiles, contents) {
+  addCache(chestOrTiles, contents, locked = false) {
     let chest = chestOrTiles;
     if (typeof chestOrTiles === 'number' || Array.isArray(chestOrTiles)) {
       const idx = Array.isArray(chestOrTiles) ? chestOrTiles[0] : chestOrTiles;
       const x = idx % this.level.width;
       const y = (idx - x) / this.level.width;
-      chest = this.level.createChest(x, y, contents);
+      chest = this.level.createChest(x, y, contents, null, null, locked);
     }
     const list = [...(chest.contents ?? contents ?? [])];
     const items = list.map((type, slot) => ({
@@ -798,6 +848,7 @@ export class Game {
       contents: list,
       items,
       hasWeapon: list.some((type) => CACHE_WEAPONS.has(type)),
+      locked: Boolean(chest.locked ?? locked),
       state: 'closed',
       lid: 0,
     };
@@ -805,7 +856,88 @@ export class Game {
     return cache;
   }
 
+  startChestLock(cache) {
+    const lock = this.chestLock;
+    lock.active = true;
+    lock.cache = cache;
+    lock.stage = 0;
+    lock.needle = 0;
+    lock.missFlash = 0;
+    lock.hitFlash = 0;
+    const base = ((cache.idx * 73) % 100) / 100 * Trigo.twopi;
+    lock.targets[0] = (base + 1.15) % Trigo.twopi;
+    lock.targets[1] = (base + 3.25) % Trigo.twopi;
+    lock.targets[2] = (base + 5.15) % Trigo.twopi;
+    lock.lockedAngles[0] = 0;
+    lock.lockedAngles[1] = 0;
+    lock.lockedAngles[2] = 0;
+    this.emit('pickup', cache.pos);
+  }
+
+  cancelChestLock() {
+    const lock = this.chestLock;
+    if (!lock)
+      return;
+    lock.active = false;
+    lock.cache = null;
+    lock.stage = 0;
+    lock.missFlash = 0;
+    lock.hitFlash = 0;
+  }
+
+  tryChestLock() {
+    const lock = this.chestLock;
+    if (!lock?.active || !lock.cache)
+      return false;
+    const stage = lock.stage;
+    const target = lock.targets[stage];
+    const diff = Math.abs(Trigo.deltaRadian(lock.needle, target));
+    if (diff <= CHEST_LOCK_GAP_HALF[stage]) {
+      lock.lockedAngles[stage] = lock.needle;
+      lock.stage = stage + 1;
+      lock.hitFlash = 0.25;
+      lock.missFlash = 0;
+      if (lock.stage >= CHEST_LOCK_RINGS) {
+        const cache = lock.cache;
+        this.cancelChestLock();
+        cache.locked = false;
+        this.openCache(cache);
+      } else
+        this.emit('pickup', lock.cache.pos);
+      return true;
+    }
+    lock.stage = Math.max(0, stage - 1);
+    lock.missFlash = 0.35;
+    lock.hitFlash = 0;
+    this.emit('locked', lock.cache.pos);
+    return false;
+  }
+
+  updateChestLock(dt) {
+    const lock = this.chestLock;
+    if (!lock?.active)
+      return;
+    const cache = lock.cache;
+    if (
+      this.state !== 'play' ||
+      !cache ||
+      cache.state !== 'closed' ||
+      !cache.locked ||
+      this.player.pos.getDistance(cache.pos) > USE_RANGE + 12
+    ) {
+      this.cancelChestLock();
+      return;
+    }
+    const speed = CHEST_LOCK_SPEEDS[lock.stage] ?? CHEST_LOCK_SPEEDS[0];
+    lock.needle = (((lock.needle + speed * dt) % Trigo.twopi) + Trigo.twopi) % Trigo.twopi;
+    lock.missFlash = Math.max(0, lock.missFlash - dt);
+    lock.hitFlash = Math.max(0, lock.hitFlash - dt);
+  }
+
   openCache(cache) {
+    cache.locked = false;
+    if (this.chestLock?.cache === cache)
+      this.cancelChestLock();
     if (cache.state === 'closed') {
       cache.state = 'opening';
       cache.lid = 0;
@@ -823,6 +955,7 @@ export class Game {
     let line = '';
     let granted = false;
     let refused = null;
+    this.inCacheOpen = true;
     for (let read = 0; read < contents.length; read++) {
       const type = contents[read];
       const isNew = CACHE_WEAPONS.has(type) && !player.weapons[type];
@@ -835,6 +968,8 @@ export class Game {
               entry.state = 'flying';
               entry.progress = 0;
               entry.delay = grantedOrder * CACHE_LOOT_STAGGER;
+              entry.order = grantedOrder;
+              entry.sfxPlayed = false;
               grantedOrder++;
               break;
             }
@@ -847,6 +982,7 @@ export class Game {
         refused = type;
       }
     }
+    this.inCacheOpen = false;
     contents.length = write;
     if (granted) {
       if (player.health > health)
@@ -896,12 +1032,20 @@ export class Game {
         const item = items[j];
         if (item.state !== 'flying')
           continue;
+        let step = dt;
         if (item.delay > 0) {
-          item.delay = Math.max(0, item.delay - dt);
-          if (item.delay > 0)
+          if (dt <= item.delay) {
+            item.delay -= dt;
             continue;
+          }
+          step = dt - item.delay;
+          item.delay = 0;
         }
-        item.progress = Math.min(1, item.progress + dt / CACHE_LOOT_TIME);
+        item.progress = Math.min(1, item.progress + step / CACHE_LOOT_TIME);
+        if (!item.sfxPlayed && item.progress >= 0.45) {
+          item.sfxPlayed = true;
+          this.emit('cacheItem', cache.pos, { kind: item.type, slot: item.order ?? item.slot });
+        }
         if (item.progress >= 1 - 1e-6) {
           item.progress = 1;
           item.state = 'taken';
@@ -1511,6 +1655,8 @@ export class Game {
     }
     player.health = Math.max(0, player.health - healthLoss);
     player.hurt = 0.4;
+    if (this.chestLock?.active)
+      this.cancelChestLock();
     this.emit('hurt');
     this.blood.splat(Math.ceil(amount / 5) + 1);
     this.bloodAt.setScalar(player.pos.x + this.rand.float(-18, 18), player.pos.y + this.rand.float(-18, 18));
@@ -2120,6 +2266,8 @@ export class Game {
     let bestCache = null;
     let bestDistance = USE_RANGE;
     for (const door of this.level.doors.values()) {
+      if (door.elevator)
+        continue;
       const toDoor = this.toPlayer.subVectors(door.center, player.pos);
       const distance = toDoor.getMagnitude();
       if (distance > 0 && distance < bestDistance && toDoor.dotProduct(facing) / distance > USE_DOT) {
@@ -2144,8 +2292,10 @@ export class Game {
     if (bestCache) {
       target.kind = 'cache';
       target.cache = bestCache;
-      target.verb = bestCache.state === 'closed' ? USE_VERBS.loot : USE_VERBS.take;
-      target.promptable = true;
+      target.verb = bestCache.state === 'closed'
+        ? (bestCache.locked ? USE_VERBS.unlock : USE_VERBS.loot)
+        : USE_VERBS.take;
+      target.promptable = !this.chestLock?.active;
     } else if (best) {
       target.kind = 'door';
       target.door = best;
@@ -2198,10 +2348,17 @@ export class Game {
   }
 
   use() {
+    if (this.chestLock?.active) {
+      this.cancelChestLock();
+      return;
+    }
     this.findUseTarget();
     const target = this.useTarget;
     if (target.kind === 'cache') {
-      this.openCache(target.cache);
+      if (target.cache.state === 'closed' && target.cache.locked)
+        this.startChestLock(target.cache);
+      else
+        this.openCache(target.cache);
       return;
     }
     if (target.kind === 'door') {
@@ -2226,16 +2383,71 @@ export class Game {
     return Boolean(this.scene.queryCircleFirst(point, enemyDistance, this.actorQuery));
   }
 
+  updateElevator(dt) {
+    const elev = this.elevator;
+    if (!elev.active || this.state !== 'play')
+      return;
+    const door = elev.door;
+    const playerTile = this.level.grid.getCell(this.player.pos);
+    const inCabOrDoorway =
+      playerTile === elev.cabIdx ||
+      (!door.thin && playerTile === door.idx) ||
+      this.actorNear(door.center, door.thin ? 24 : 56, 24);
+    if (elev.phase === 'arriving') {
+      if (!inCabOrDoorway) {
+        elev.phase = 'locked';
+        door.elevatorLocked = true;
+        door.target = 0;
+        door.timer = 0;
+        return;
+      }
+      door.target = 0;
+      door.timer = 0;
+      if (elev.pulseTimer <= 0) {
+        this.emit('elevator', door.center);
+        elev.pulseTimer += 0.68;
+      }
+      elev.pulseTimer -= dt;
+      elev.timer += dt;
+      if (elev.timer < elev.duration) {
+        const u = elev.timer / elev.duration;
+        const railJolt = Math.pow(Math.max(0, Math.sin(elev.timer * 4.6)), 6) * 0.12;
+        const hum = 0.08 + 0.03 * Math.sin(elev.timer * 8.5);
+        this.shake = Math.max(this.shake, (hum + railJolt) * (0.75 + 0.25 * (1 - u * 0.35)));
+      } else {
+        elev.phase = 'open';
+        this.shake = Math.max(this.shake, 0.28);
+        this.emit('elevatorStop', door.center);
+        door.target = 1;
+        door.timer = 0;
+      }
+    } else if (elev.phase === 'open') {
+      if (inCabOrDoorway) {
+        door.target = 1;
+        door.timer = 0;
+      } else {
+        elev.phase = 'locked';
+        door.elevatorLocked = true;
+        door.target = 0;
+        door.timer = 0;
+      }
+    } else if (elev.phase === 'locked') {
+      door.target = 0;
+      door.timer = 0;
+    }
+  }
+
   updateDoors(dt) {
     for (const door of this.level.doors.values()) {
+      const doorTime = door.elevator ? 1.4 : 0.7;
       if (door.target && door.open < 1)
-        this.level.setDoorOpen(door, Math.min(1, door.open + dt / 0.7));
+        this.level.setDoorOpen(door, Math.min(1, door.open + dt / doorTime));
       else if (!door.target && door.open > 0) {
         // only the player opens doors; a closing one just waits for whatever stands in its way
-        if (this.actorNear(door.center, 52, 36))
+        if (!door.elevatorLocked && this.actorNear(door.center, 52, 36))
           door.target = 1;
         else
-          this.level.setDoorOpen(door, Math.max(0, door.open - dt / 0.7));
+          this.level.setDoorOpen(door, Math.max(0, door.open - dt / doorTime));
       }
       door.body.setActive(door.open < 0.55);
       if (door.open >= 1) {
@@ -2251,6 +2463,10 @@ export class Game {
         door.lastTarget = door.target;
         this.emit(door.target ? 'doorOpen' : 'doorClose', door.center);
         if (door.target) {
+          if (!door.elevator && !this.firstDoorOpened) {
+            this.firstDoorOpened = true;
+            this.emit('whoAreYou', door.center);
+          }
           const secretIndex = this.level.secretRoomByDoor.get(door.idx);
           if (secretIndex !== undefined && !this.chimedSecrets.has(secretIndex)) {
             this.chimedSecrets.add(secretIndex);
@@ -2794,6 +3010,7 @@ export class Game {
       player.z = floor;
       player.vz = 0;
     }
+    const wasPickingLock = Boolean(this.chestLock?.active);
     const wasAirborne = player.z > floor;
     if (input.jump && !wasAirborne) {
       player.vz = floor < 0 ? 180 : JUMP_VELOCITY;
@@ -2834,12 +3051,22 @@ export class Game {
     if (this.state === 'play' && ((wasAirborne && !airborne) || (!airborne && landed(player.bob) > landed(before))))
       this.emit('step', null, { wet: player.feet.blood > 0.08 || Boolean(this.level.acidSplashAt?.(player.pos)) || this.inBarrelAcid(player.pos), who: 'player' });
 
+    this.updateChestLock(dt);
     if (input.weapon)
       this.selectWeapon(input.weapon);
     if (input.nightVision)
       this.toggleNightVision();
     if (input.use)
       this.use();
+    const wasHoldingTrigger = Boolean(player.triggerHeld);
+    player.triggerHeld = Boolean(input.fire);
+    if (wasPickingLock || this.chestLock?.active) {
+      if (player.kick.burst > 0)
+        this.endBurst();
+      if (this.chestLock?.active && input.fire && !wasHoldingTrigger)
+        this.tryChestLock();
+      return;
+    }
     if (input.grenade)
       if (player.grenades > 0) {
         player.grenades--;
@@ -2850,7 +3077,6 @@ export class Game {
       }
     if (player.kick.burst > 0 && !input.fire)
       this.endBurst();
-    player.triggerHeld = Boolean(input.fire);
     if (input.fire && player.cooldown <= 0) {
       const def = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
       const pool = def.ammoType ? AMMO_TYPES[def.ammoType] : null;
@@ -3174,7 +3400,7 @@ export class Game {
     }
     let airlockOpen = false;
     for (const door of level.doors.values())
-      if (door.open > 0.05 && level.doorTouchesIndoor(door.idx)) {
+      if (!door.elevator && door.open > 0.05 && level.doorTouchesIndoor(door.idx)) {
         airlockOpen = true;
         break;
       }
@@ -3222,6 +3448,7 @@ export class Game {
     } else
       this.player.body.setVelocity(this.zero);
 
+    this.updateElevator(dt);
     this.updateFlow();
     this.updateDoors(dt);
     this.updateCaches(dt);

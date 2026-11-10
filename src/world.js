@@ -2,9 +2,9 @@ import { CustomMesh, Cylinder, FullscreenQuad, Grid, Material, Mesh, Perspective
 import { BLOOD } from './blood.js';
 import { RUBBLE, SURFACE } from './rubble.js';
 import { ACID_SURFACE_DEPTH, EMPTY_PIT_DEPTH } from './game.js';
-import { barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
+import { BARREL_FIRE_FRAGMENT, BARREL_FIRE_VERTEX, barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelFireMesh, barrelShrapnelFireMesh, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
 import { bloodAtlas, createQuadTarget, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
-import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
+import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
 import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, MARS_SKY_FRAGMENT, MARS_SKY_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, marsSkyAtlas, marsSkyMesh, updateCeilingLights } from './ceiling.js';
 import { WALL_CELLS, diagWallFaceQuads, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
 import { createExplosion3dPose, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from './explosion.js';
@@ -1154,7 +1154,7 @@ export class World {
       this.doorMarks.set(door, marks);
     }
     const height = 1 - door.open;
-    const drop = door.open * this.level.baseHeight[door.idx];
+    const drop = door.open * (door.baseHeight ?? this.level.baseHeight[door.idx]);
     if (height <= 0.02) {
       marks.holes.show(false);
       marks.splats.show(false);
@@ -1535,8 +1535,10 @@ export class World {
 
     // a doorway has no wall of its own, so its two open ends get a lintel from the door's height up to the roof
     for (const door of level.doors.values()) {
+      if (door.thin)
+        continue;
       const { x, y } = door;
-      const top = Math.min(baseHeight[door.idx], ROOF);
+      const top = Math.min(door.baseHeight ?? baseHeight[door.idx], ROOF);
       if (top >= ROOF)
         continue;
       const alongY = solid(x - 1, y) && solid(x + 1, y);
@@ -2437,7 +2439,11 @@ export class World {
         : (this.doorPixels ??= doorAtlas());
     const { vertices, uvs } = isSecret
       ? secretDoorBox(scratchScale.setScalar(TILE, TILE, TILE))
-      : doubleDoorBox(scratchScale.setScalar(TILE - 0.8, TILE, DOOR_THICKNESS), Boolean(door.alongY), DOOR_INSET);
+      : door.elevator || door.thin
+        ? elevatorDoorBox(scratchScale.setScalar(TILE - 0.8, TILE, door.thickness || ELEVATOR_DOOR_THICKNESS), Boolean(door.alongY))
+        : door.framed === false
+          ? doorBox(scratchScale.setScalar(TILE - 0.8, TILE, TILE - 0.8))
+          : doubleDoorBox(scratchScale.setScalar(TILE - 0.8, TILE, DOOR_THICKNESS), Boolean(door.alongY), DOOR_INSET);
     const geometry = new CustomMesh();
     geometry.vertices = new Float32Array(vertices);
     geometry.setUvs(uvs);
@@ -2757,8 +2763,9 @@ export class World {
       const iv = itemViews[i];
       const item = items ? items[i] : null;
       const trayX = total <= 1 ? 0 : ((i / (total - 1)) - 0.5) * Math.min(24, (total - 1) * 11);
-      const trayY = 15.8;
+      const trayY = 2.0;
       const trayZ = 1.2;
+      const spin = iv.spinSpeed * 0.4;
 
       if (item && item.state === 'flying') {
         if (!lidOpen && item.progress <= 0) {
@@ -2768,8 +2775,9 @@ export class World {
         iv.mesh.setActive();
         const p = item.progress;
         if (p <= 0) {
-          iv.mesh.setPosition(scratchPos.setScalar(trayX, trayY, trayZ));
-          iv.mesh.setRotation(scratchRot.setScalar(0, time * iv.spinSpeed + i * 1.1, 0));
+          const bob = Math.sin(time * 3.2 + i * 1.4) * 0.7 * cache.lid;
+          iv.mesh.setPosition(scratchPos.setScalar(trayX, trayY + bob, trayZ));
+          iv.mesh.setRotation(scratchRot.setScalar(0, time * spin + i * 1.1, 0));
           iv.mesh.setScale(scratchScale.setScalar(iv.trayScale, iv.trayScale, iv.trayScale));
         } else if (p <= 0.52) {
           const u = p / 0.52;
@@ -2779,7 +2787,7 @@ export class World {
           const lz = trayZ + (11.0 - trayZ) * ease;
           const s = iv.trayScale + (0.96 - iv.trayScale) * ease;
           const pitch = -0.22 * Math.sin(u * Math.PI);
-          const yawRot = time * iv.spinSpeed + i * 1.1 + u * Math.PI * 1.6;
+          const yawRot = time * spin + i * 1.1 + u * Math.PI * 0.35;
           iv.mesh.setPosition(scratchPos.setScalar(lx, ly, lz));
           iv.mesh.setRotation(scratchRot.setScalar(pitch, yawRot, 0));
           iv.mesh.setScale(scratchScale.setScalar(s, s, s));
@@ -2803,7 +2811,7 @@ export class World {
           const ly = startY + (targetY - startY) * pull + Math.sin((1 - w) * Math.PI) * 2.5;
           const lz = startZ + (targetZ - startZ) * pull;
           const s = 0.96 * (1 - w * 0.72);
-          const yawRot = time * iv.spinSpeed + i * 1.1 + Math.PI * 1.6 + w * Math.PI * 1.2;
+          const yawRot = time * spin + i * 1.1 + Math.PI * 0.35 + w * Math.PI * 0.25;
           iv.mesh.setPosition(scratchPos.setScalar(lx, ly, lz));
           iv.mesh.setRotation(scratchRot.setScalar(-0.15 * (1 - w), yawRot, 0));
           iv.mesh.setScale(scratchScale.setScalar(s, s, s));
@@ -2820,7 +2828,7 @@ export class World {
         const bob = Math.sin(time * 3.2 + i * 1.4) * 0.7 * cache.lid;
         iv.mesh.setActive();
         iv.mesh.setPosition(scratchPos.setScalar(trayX, trayY + bob, trayZ));
-        iv.mesh.setRotation(scratchRot.setScalar(0, time * iv.spinSpeed * 0.75 + i * 0.9, 0));
+        iv.mesh.setRotation(scratchRot.setScalar(0, time * spin + i * 0.9, 0));
         iv.mesh.setScale(scratchScale.setScalar(iv.trayScale, iv.trayScale, iv.trayScale));
       } else {
         iv.mesh.setInactive();
@@ -2837,6 +2845,9 @@ export class World {
     this.barrelPixels ??= barrelAtlas();
     this.barrelWreckGeo ??= barrelWreckMesh(new Vec2(R, H));
     this.barrelShrapnelGeo ??= barrelShrapnelParts(new Vec2(R, H));
+    this.barrelFireGeo ??= barrelFireMesh(new Vec2(R, H));
+    this.barrelShrapnelFireGeo ??= barrelShrapnelFireMesh(new Vec2(R, H));
+    this.explosion3dPixels ??= explosion3dAtlas();
 
     const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
     const sharedBarrelTex = this.sharedTexture(this.barrelPixels, texOpts);
@@ -2860,7 +2871,7 @@ export class World {
     }
     if (horizontal) {
       intact.setPosition(scratchPos.setScalar(0, R * 0.9, 0));
-      intact.setRotation(scratchRot.setScalar(Trigo.halfpi + 0.06, 0.35 + (barrel?.roll ?? 0), 0));
+      intact.setRotation(scratchRot.setScalar(Trigo.halfpi, 0.35 + (barrel?.roll ?? 0), 0));
     }
     root.addChild(intact);
 
@@ -2929,6 +2940,43 @@ export class World {
     const lid = makePart(this.barrelShrapnelGeo.lid);
     const staves = this.barrelShrapnelGeo.staves.map((staveGeo) => makePart(staveGeo));
 
+    const fireTexOpts = { magFilter: gl.LINEAR ?? gl.NEAREST, minFilter: gl.LINEAR ?? gl.NEAREST };
+    const sharedFireTex = this.sharedTexture(this.explosion3dPixels, fireTexOpts);
+    const fireMaterial = new Material({ diffuse: new Vec3(1, 0.85, 0.42) });
+    const makeFirePart = (partGeo) => {
+      const geometry = new CustomMesh();
+      geometry.vertices = partGeo.vertices;
+      geometry.normals = partGeo.normals;
+      geometry.uvs = partGeo.uvs;
+      geometry.setPrimitive('TRIANGLES');
+      const mesh = texturedMesh(gl, geometry, {
+        vertex: BARREL_FIRE_VERTEX,
+        fragment: BARREL_FIRE_FRAGMENT,
+        atlas: this.explosion3dPixels,
+        sharedTexture: sharedFireTex,
+        material: fireMaterial,
+        textureOptions: fireTexOpts,
+      });
+      if (sharedFireTex) {
+        mesh.sharedAtlas = this.explosion3dPixels;
+        mesh.sharedTexOptions = fireTexOpts;
+        this.sharedTexturedMeshes.push(mesh);
+      }
+      mesh.addCustomUniform('time', 'uniform1f', 0);
+      mesh.addCustomUniform('dissolve', 'uniform1f', 0.2);
+      mesh.addCustomUniform('heat', 'uniform1f', 1.08);
+      mesh.addCustomUniform('phase', 'uniform1f', 0.7);
+      mesh.setBlend('SRC_ALPHA', 'ONE_MINUS_SRC_ALPHA');
+      mesh.setDepthWrite(false);
+      mesh.setInactive();
+      root.addChild(mesh);
+      return mesh;
+    };
+
+    const wreckFire = makeFirePart(this.barrelFireGeo);
+    const lidFire = makeFirePart(this.barrelShrapnelFireGeo);
+    const staveFires = this.barrelShrapnelGeo.staves.map(() => makeFirePart(this.barrelShrapnelFireGeo));
+
     this.scene.addMesh(root);
     return {
       root,
@@ -2938,9 +2986,13 @@ export class World {
       wreck,
       lid,
       staves,
+      wreckFire,
+      lidFire,
+      staveFires,
       horizontal,
       skinMaterial,
       wreckMaterial,
+      fireMaterial,
       pose: createBarrelExplosionPose(),
       wasGone: false,
       lastX: Number.NaN,
@@ -3005,12 +3057,16 @@ export class World {
         view.lid.setInactive();
         for (const stave of view.staves)
           stave.setInactive();
+        view.wreckFire.setInactive();
+        view.lidFire.setInactive();
+        for (const staveFire of view.staveFires)
+          staveFire.setInactive();
       }
       if (barrel.horizontal) {
         const roll = barrel.roll ?? 0;
         if (roll !== view.lastRoll) {
           view.lastRoll = roll;
-          view.intact.setRotation(scratchRot.setScalar(Trigo.halfpi + 0.06, 0.35 + roll, 0));
+          view.intact.setRotation(scratchRot.setScalar(Trigo.halfpi, 0.35 + roll, 0));
         }
       }
       if (view.acidStream) {
@@ -3045,25 +3101,61 @@ export class World {
       view.lid.setActive();
       for (const stave of view.staves)
         stave.setActive();
+      view.wreckFire.setActive();
+      view.lidFire.setActive();
+      for (const staveFire of view.staveFires)
+        staveFire.setActive();
     }
-    if (view.wreckSettled)
-      return;
     const deadTime = barrel.deadTime ?? 0;
+    const phase = barrel.phase ?? 0;
+    barrelExplosionPose(deadTime, phase, view.pose);
     const flash = deadTime < 0.45 ? (1 - deadTime / 0.45) * 0.65 : 0;
-    scratchPos.setScalar(0.92 + flash, 0.9 + flash * 0.7, 0.88 + flash * 0.35);
+    const emberPulse = 0.04 * (0.5 + 0.5 * Math.sin(deadTime * 10.4 + phase * 1.9));
+    scratchPos.setScalar(0.92 + flash + emberPulse, 0.9 + flash * 0.7 + emberPulse * 0.55, 0.88 + flash * 0.35);
     view.wreckMaterial.setDiffuse(scratchPos);
 
-    barrelExplosionPose(deadTime, barrel.phase ?? 0, view.pose);
-    view.wreck.setRotation(view.pose.wreckRot);
-    view.wreck.setScale(view.pose.wreckScale);
-    view.lid.setPosition(view.pose.lid.pos);
-    view.lid.setRotation(view.pose.lid.rot);
-    for (let i = 0; i < view.staves.length; i++) {
-      view.staves[i].setPosition(view.pose.staves[i].pos);
-      view.staves[i].setRotation(view.pose.staves[i].rot);
+    if (!view.wreckSettled) {
+      view.wreck.setRotation(view.pose.wreckRot);
+      view.wreck.setScale(view.pose.wreckScale);
+      view.lid.setPosition(view.pose.lid.pos);
+      view.lid.setRotation(view.pose.lid.rot);
+      for (let i = 0; i < view.staves.length; i++) {
+        view.staves[i].setPosition(view.pose.staves[i].pos);
+        view.staves[i].setRotation(view.pose.staves[i].rot);
+      }
+      if (deadTime >= 1.25)
+        view.wreckSettled = true;
     }
-    if (deadTime >= 1.25)
-      view.wreckSettled = true;
+
+    const wf = view.pose.wreckFire;
+    view.fireMaterial.setDiffuse(view.pose.fireColor);
+    view.wreckFire.setPosition(wf.pos);
+    view.wreckFire.setRotation(wf.rot);
+    view.wreckFire.setScale(wf.scale);
+    view.wreckFire.setCustomUniform('time', time);
+    view.wreckFire.setCustomUniform('dissolve', wf.dissolve);
+    view.wreckFire.setCustomUniform('heat', wf.heat);
+    view.wreckFire.setCustomUniform('phase', wf.phase);
+
+    view.lidFire.setPosition(view.pose.lidFire.pos);
+    view.lidFire.setRotation(view.pose.lidFire.rot);
+    view.lidFire.setScale(view.pose.lidFire.scale);
+    view.lidFire.setCustomUniform('time', time);
+    view.lidFire.setCustomUniform('dissolve', wf.dissolve + 0.03);
+    view.lidFire.setCustomUniform('heat', wf.heat * 0.96);
+    view.lidFire.setCustomUniform('phase', (wf.phase + 0.37) % 1);
+
+    for (let i = 0; i < view.staveFires.length; i++) {
+      const sfMesh = view.staveFires[i];
+      const sfPose = view.pose.staveFires[i];
+      sfMesh.setPosition(sfPose.pos);
+      sfMesh.setRotation(sfPose.rot);
+      sfMesh.setScale(sfPose.scale);
+      sfMesh.setCustomUniform('time', time);
+      sfMesh.setCustomUniform('dissolve', wf.dissolve + 0.04);
+      sfMesh.setCustomUniform('heat', wf.heat * 0.94);
+      sfMesh.setCustomUniform('phase', (wf.phase + (i + 1) * 0.19) % 1);
+    }
   }
 
   buildShot(shot) {
@@ -3369,7 +3461,7 @@ export class World {
       const inRange = (!Number.isFinite(cullDistSq) || door.center.getDistance(scratchCam2d, true) <= cullDistSq) && (!occludeFog || occludeFog.canSeeNear(door.center));
       if (height > 0.02 && inRange) {
         // the door slides down into the floor whole; the part below the floor is not drawn
-        view.setPosition(scratchPos.setScalar(door.center.x, -door.open * game.level.baseHeight[door.idx], door.center.y));
+        view.setPosition(scratchPos.setScalar(door.center.x, -door.open * (door.baseHeight ?? game.level.baseHeight[door.idx]), door.center.y));
         view.setActive();
         this.syncDoorMarks(door, game.blood, true, game.rubble);
       } else {
@@ -3740,13 +3832,20 @@ export class World {
     const baseEye = player.eye ?? EYE;
     const pitFloor = game.level?.emptyPitAt?.(player.pos) ? -EMPTY_PIT_DEPTH : -ACID_SURFACE_DEPTH;
     const minEye = Math.max(pitFloor + 4, 8 + (player.z ?? 0));
-    const eyeY = Math.max(minEye, baseEye - drop) + bob;
+    const elevRiding = Boolean(game.elevator?.active && game.elevator.phase === 'arriving');
+    const elevTime = game.time ?? 0;
+    const elevBob = elevRiding
+      ? Math.sin(elevTime * 5.2) * 0.85 + Math.sin(elevTime * 2.4) * 0.55
+      : 0;
+    const elevSwayX = elevRiding ? Math.sin(elevTime * 3.8) * 0.42 : 0;
+    const elevSwayZ = elevRiding ? Math.cos(elevTime * 3.1) * 0.42 : 0;
+    const eyeY = Math.max(minEye, baseEye - drop) + bob + elevBob;
     // the shot shoves the eye straight back along the aim; render-only, relaxes in game.relaxKick
     const push = kick.push ?? 0;
     camera.position.setScalar(
-      player.pos.x + Rand.float(-0.5, 0.5) * shake - Math.cos(player.angle) * push,
+      player.pos.x + elevSwayX + Rand.float(-0.5, 0.5) * shake - Math.cos(player.angle) * push,
       eyeY + Rand.float(-0.5, 0.5) * shake,
-      player.pos.y + Rand.float(-0.5, 0.5) * shake - Math.sin(player.angle) * push
+      player.pos.y + elevSwayZ + Rand.float(-0.5, 0.5) * shake - Math.sin(player.angle) * push
     );
     writeViewBasis(player.angle, kick);
     camera.target.setScalar(
