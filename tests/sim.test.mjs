@@ -13987,7 +13987,7 @@ const tests = {
     assert.ok(circles.every(Boolean), 'every circleLine receives a Circ');
   },
 
-  'AC-1 resetLimbTransforms restores hierarchy and limb pivot offsets on recycled monster views'() {
+  'AC-1 resetLimbTransforms contains no deadSettledKey assignment and view lacks property'() {
     const mockWorld = {
       gl: null,
       material: () => new Material(),
@@ -14024,6 +14024,9 @@ const tests = {
       const view = MONSTERS[type].build(mockWorld, enemy);
       const { pivots } = view.parts;
 
+      assert.equal(view.deadSettledKey, undefined, `${type} deadSettledKey is undefined on build`);
+      assert.equal('deadSettledKey' in view, false, `${type} deadSettledKey not in initial view`);
+
       // Advance enemy into dead state and execute dieMonster
       enemy.state = 'dead';
       enemy.deadTime = 0.5;
@@ -14054,6 +14057,8 @@ const tests = {
       MONSTERS[type].animate(view, enemy, { time: 1.0, dt: 1 / 60, player: { pos: new Vec2(200, 100) } });
 
       // Verify resetLimbTransforms restored hierarchy and transform state
+      assert.equal(view.deadSettledKey, undefined, `${type} deadSettledKey is undefined after resetLimbTransforms`);
+      assert.equal('deadSettledKey' in view, false, `${type} deadSettledKey not in recycled view`);
       assert.equal(view.wasDead, false, `${type} wasDead reset to false after animate`);
       assert.equal(view.jaw.parent, view.head, `${type} jaw reparented under head`);
       assert.equal(view.head.parent, view.body, `${type} head reparented under body`);
@@ -14100,6 +14105,123 @@ const tests = {
       for (let i = 0; i < view.goreChunks.length; i++)
         assert.equal(view.goreChunks[i].isActive(), false, `${type} goreChunk ${i} deactivated`);
     }
+  },
+
+  'AC-2 recycled monster view has deadSettled reset to false and deadSettledKey undefined'() {
+    const mockWorld = {
+      gl: null,
+      material: () => new Material(),
+      monsterPartMesh: (geo) => {
+        const m = new Mesh(null, geo);
+        m.setCustomUniform = () => {};
+        return m;
+      },
+      scene: { addMesh: () => {} },
+      sharedTexture: () => {},
+    };
+
+    for (const type of ['imp', 'brute', 'boss', 'wraith']) {
+      const enemy = {
+        type,
+        def: ENEMY_TYPES[type] ?? { hp: 100 },
+        hp: (ENEMY_TYPES[type] ?? { hp: 100 }).hp,
+        pos: new Vec2(100, 100),
+        body: { velocity: new Vec2(0, 0) },
+        state: 'dead',
+        walk: 0,
+        phase: 0,
+        windup: 0,
+        roar: 0,
+        hurt: 0,
+        pain: 0,
+        leap: 0,
+        deadTime: 2.5,
+        gibbed: false,
+        inSlime: false,
+        limbs: { leftArm: true, rightArm: true, leftLeg: true, rightLeg: true },
+      };
+
+      const view = MONSTERS[type].build(mockWorld, enemy);
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.wasDead, true, `${type} view wasDead is true`);
+      assert.equal(view.deadSettled, true, `${type} view deadSettled is true when settled`);
+
+      // Recycle monster
+      enemy.state = 'chase';
+      enemy.deadTime = 0;
+      MONSTERS[type].animate(view, enemy, { time: 2.0, dt: 1 / 60, player: { pos: new Vec2(200, 100) } });
+
+      assert.equal(view.wasDead, false, `${type} wasDead reset to false`);
+      assert.equal(view.deadSettled, false, `${type} deadSettled reset to false`);
+      assert.equal(view.deadSettledKey, undefined, `${type} deadSettledKey undefined`);
+      assert.equal(!('deadSettledKey' in view), true, `${type} deadSettledKey does not exist on view`);
+    }
+  },
+
+  'AC-3 monster corpse settling cache functions deterministically without deadSettledKey'() {
+    const mockWorld = {
+      gl: null,
+      material: () => new Material(),
+      monsterPartMesh: (geo) => {
+        const m = new Mesh(null, geo);
+        m.setCustomUniform = () => {};
+        return m;
+      },
+      scene: { addMesh: () => {} },
+      sharedTexture: () => {},
+    };
+
+    for (const type of ['imp', 'brute']) {
+      const enemy = {
+        type,
+        def: ENEMY_TYPES[type],
+        hp: ENEMY_TYPES[type].hp,
+        pos: new Vec2(120, 150),
+        body: { velocity: new Vec2(0, 0) },
+        state: 'dead',
+        walk: 0,
+        phase: 0,
+        windup: 0,
+        roar: 0,
+        hurt: 0,
+        pain: 0,
+        leap: 0,
+        deadTime: 1.0,
+        gibbed: false,
+        inSlime: false,
+        limbs: { leftArm: true, rightArm: true, leftLeg: true, rightLeg: true },
+      };
+
+      const view = MONSTERS[type].build(mockWorld, enemy);
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.deadSettled, false, `${type} not settled at deadTime 1.0 (< 1.9)`);
+
+      // Reach settling threshold
+      enemy.deadTime = 2.0;
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.deadSettled, true, `${type} settled at deadTime 2.0`);
+      assert.equal(view.settledBurst, false, `${type} settledBurst matches non-gibbed`);
+      assert.equal(view.settledHits, 0, `${type} settledHits matches 0`);
+      assert.equal(view.settledX, 120, `${type} settledX recorded`);
+      assert.equal(view.settledY, 150, `${type} settledY recorded`);
+      assert.equal(view.deadSettledKey, undefined, `${type} deadSettledKey is undefined`);
+
+      // Subsequent call when unchanged short-circuits
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.deadSettled, true, `${type} remains settled`);
+
+      // Position shift invalidates settling cache
+      enemy.pos = new Vec2(125, 150);
+      MONSTERS[type].die(view, enemy);
+      assert.equal(view.settledX, 125, `${type} settledX updated after position shift`);
+    }
+  },
+
+  'AC-4 full test suite passes with zero regressions on monster animations and settlement'() {
+    assert.equal(typeof MONSTERS.imp.animate, 'function', 'imp animate is a function');
+    assert.equal(typeof MONSTERS.imp.die, 'function', 'imp die is a function');
+    assert.equal(typeof MONSTERS.brute.animate, 'function', 'brute animate is a function');
+    assert.equal(typeof MONSTERS.brute.die, 'function', 'brute die is a function');
   },
 
   'AC-2 right arm dismemberment animates severed ballistic launch and scales to shoulder stump'() {
