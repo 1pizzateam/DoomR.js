@@ -27,6 +27,8 @@ const FLOOR_SEEN = dimmed(RGB[BLUE], 0.25);
 const FLOOR_VISIBLE = dimmed(RGB[BLUE], 0.6);
 const SLIME_SEEN = dimmed(RGB[GREEN], 0.38);
 const SLIME_VISIBLE = dimmed(RGB[GREEN], 0.82);
+const PIT_SEEN = dimmed(RGB[RED], 0.38);
+const PIT_VISIBLE = dimmed(RGB[RED], 0.82);
 const EMPTY_CACHES = Object.freeze([]);
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -629,23 +631,25 @@ export class Hud {
     const faceTL = faceRect.topLeftCorner;
     const faceBR = faceRect.bottomRightCorner;
     const weaponDef = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
-    const crisp = this.overlay.crisp;
-    const borderCol =
-      (player.teleFlash ?? 0) > 0
-        ? RGB[GREEN]
-        : (player.soulFlash ?? 0) > 0
-          ? RGB[BLUE]
-          : (player.berserkTimer ?? 0) > 0
-            ? RGB[RED]
-            : player.hurt > 0 || player.health < 30
-              ? RGB[ORANGE]
-              : RGB[BLUE];
-    crisp.fillRect(setRect(faceTL.x - 4, faceTL.y - 4, faceBR.x - faceTL.x + 8, faceBR.y - faceTL.y + 8), portraitBackdrop(player));
-    crisp.rectLine(setRect(faceTL.x - 4.5, faceTL.y - 4.5, faceBR.x - faceTL.x + 9, faceBR.y - faceTL.y + 9), borderCol, player.hurt > 0 || (player.berserkTimer ?? 0) > 0 || (player.soulFlash ?? 0) > 0 || (player.teleFlash ?? 0) > 0 ? 0.85 : 0.45);
-    this.drawPortraitWall(faceRect);
-    if (game.state !== 'paused')
-      this.overlay.head?.update(player, game.time);
-    this.overlay.head?.place(faceRect);
+    if (this.overlay.head) {
+      const crisp = this.overlay.crisp;
+      const borderCol =
+        (player.teleFlash ?? 0) > 0
+          ? RGB[GREEN]
+          : (player.soulFlash ?? 0) > 0
+            ? RGB[BLUE]
+            : (player.berserkTimer ?? 0) > 0
+              ? RGB[RED]
+              : player.hurt > 0 || player.health < 30
+                ? RGB[ORANGE]
+                : RGB[BLUE];
+      crisp.fillRect(setRect(faceTL.x - 4, faceTL.y - 4, faceBR.x - faceTL.x + 8, faceBR.y - faceTL.y + 8), portraitBackdrop(player));
+      crisp.rectLine(setRect(faceTL.x - 4.5, faceTL.y - 4.5, faceBR.x - faceTL.x + 9, faceBR.y - faceTL.y + 9), borderCol, player.hurt > 0 || (player.berserkTimer ?? 0) > 0 || (player.soulFlash ?? 0) > 0 || (player.teleFlash ?? 0) > 0 ? 0.85 : 0.45);
+      this.drawPortraitWall(faceRect);
+      if (game.state !== 'paused')
+        this.overlay.head.update(player, game.time);
+      this.overlay.head.place(faceRect);
+    }
 
     const base = height - 28;
     const hx = faceBR.x + 18;
@@ -980,9 +984,14 @@ export class Hud {
             layer.rectLine(setRect(colX + 0.5, rowY + 0.5, boxS, boxS), RGB[GREEN], visible ? 0.95 : 0.65);
             continue;
           }
-          const isSlime = level.slime?.[idx] === 1;
-          const col = isSlime ? (visible ? SLIME_VISIBLE : SLIME_SEEN) : (visible ? FLOOR_VISIBLE : FLOOR_SEEN);
-          layer.fillRect(setRect(colX + halfS, rowY + halfS, isSlime ? 1.5 : 1, isSlime ? 1.5 : 1), col);
+          const isEmptyPit = level.emptyPit?.[idx] === 1;
+          const isSlime = level.slime?.[idx] === 1 || level.acidSplash?.[idx] === 1;
+          const col = isEmptyPit
+            ? (visible ? PIT_VISIBLE : PIT_SEEN)
+            : isSlime
+              ? (visible ? SLIME_VISIBLE : SLIME_SEEN)
+              : (visible ? FLOOR_VISIBLE : FLOOR_SEEN);
+          layer.fillRect(setRect(colX + halfS, rowY + halfS, (isSlime || isEmptyPit) ? 1.5 : 1, (isSlime || isEmptyPit) ? 1.5 : 1), col);
           continue;
         }
         const doorObj = k === DOOR ? level.doors.get(idx) : null;
@@ -1113,13 +1122,25 @@ export class Hud {
         if (!kind || hVal <= 0) {
           const isTeleporter = level.teleporter?.[idx] === 1;
           const isSlime = level.slime?.[idx] === 1;
+          const isAcidSplash = level.acidSplash?.[idx] === 1;
+          const isEmptyPit = level.emptyPit?.[idx] === 1;
           if (isTeleporter) {
             layer.rectLine(setRect(tx + 1.5, ty + 1.5, Math.max(2, s - 3), Math.max(2, s - 3)), RGB[GREEN], visible ? 0.95 : 0.72);
             layer.circleLine(setCirc(tx + s * 0.5, ty + s * 0.5, Math.max(1.5, s * 0.28)), RGB[BLUE], visible ? 0.85 : 0.55);
             this.text('T', tx + s * 0.5, ty + s * 0.5 + 3, GREEN, { size: Utils.clamp(Math.floor(s * 0.55), 8, 11), align: 'center', weight: 800, glow: 5 });
+          } else if (isEmptyPit) {
+            layer.rectLine(setRect(tx + 1.5, ty + 1.5, Math.max(2, s - 3), Math.max(2, s - 3)), RGB[RED], visible ? 0.85 : 0.45);
+            layer.rectLine(setRect(tx + 3.5, ty + 3.5, Math.max(1, s - 7), Math.max(1, s - 7)), RGB[RED], visible ? 0.55 : 0.28);
           } else if (isSlime) {
             layer.fillRect(setRect(tx + 1.5, ty + 1.5, Math.max(1, s - 3), Math.max(1, s - 3)), visible ? SLIME_VISIBLE : SLIME_SEEN);
             layerSegment(layer, tx + 2, ty + s - 2, tx + s - 2, ty + 2, RGB[GREEN], visible ? 0.55 : 0.3);
+          } else if (isAcidSplash) {
+            const splashCol = visible ? SLIME_VISIBLE : SLIME_SEEN;
+            const d0 = Math.max(1.5, s * 0.32);
+            const d1 = Math.max(1, s * 0.18);
+            layer.fillRect(setRect(tx + s * 0.48 - d0 * 0.5, ty + s * 0.46 - d0 * 0.5, d0, d0), splashCol);
+            layer.fillRect(setRect(tx + s * 0.24, ty + s * 0.68, d1, d1), splashCol);
+            layer.fillRect(setRect(tx + s * 0.68, ty + s * 0.22, d1, d1), splashCol);
           } else
             layer.fillRect(setRect(tx + s * 0.5 - 0.5, ty + s * 0.5 - 0.5, 1.5, 1.5), visible ? FLOOR_VISIBLE : FLOOR_SEEN);
           if (game.discoveredSecrets?.has(idx)) {

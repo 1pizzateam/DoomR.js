@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Circ, Mat4, Rect } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
-import { ACID_PIT_DEPTH, ACID_SURFACE_DEPTH, CACHE_LID_TIME, CACHE_OUTDOOR_LINK, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
+import { ACID_PIT_DEPTH, ACID_SURFACE_DEPTH, CACHE_LID_TIME, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, EMPTY_PIT_DEPTH, ENEMY_TYPES, Game } from '../src/game.js';
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
 import { BLOOD, Blood, makeFeet } from '../src/blood.js';
 import { DUCK_FLOOR, RECIPES, Sound, spatial } from '../src/audio.js';
@@ -37,7 +37,7 @@ import { AMMO_FLASH_DURATION, FIRE_COOLDOWN } from '../src/game.js';
 import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DYNAMIC_LIGHT_ATTENUATION, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
 import { diagWallFaceQuads, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallCellUv, wallFaceQuads } from '../src/wall.js';
 import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
-import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
+import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
 import { ACID_MIST_FRAGMENT, CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
 import { LIGHT_GLSL, PARTICLE_FRAGMENT, QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, TEXTURED_VERTEX, texturedMesh } from '../src/quads.js';
@@ -58,6 +58,7 @@ import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
 import { registerBaseHead, deserializeBaseHead, registerHairStyle, deserializeHairStyle, registerAtlasPainter, registerFaceProfile, deserializeFaceProfile } from '@1pizzateam/facer';
 import { paintFaceAtlas } from '../src/skin/atlas.js';
+import '../src/head.js';
 registerAtlasPainter(paintFaceAtlas);
 // FaceR bundles no heads: register the marine's head asset from src/heads before any HeadView is built
 registerFaceProfile(deserializeFaceProfile(JSON.parse(
@@ -92,7 +93,7 @@ function run(game, seconds, controls = idle) {
 
 function pitGame() {
   const game = new Game();
-  game.load({ name: 'Pit prompt', rows: ['###########', '#.........#', '#P.D.~~~a.#', '#...~~~...#', '#.........#', '###########'] });
+  game.load({ name: 'Pit prompt', rows: ['###########', '#.........#', '#P.D.~~~=.#', '#...~~~...#', '#.........#', '###########'] });
   game.state = 'play';
   const door = [...game.level.doors.values()][0];
   let slime = null;
@@ -225,6 +226,8 @@ function withWallWorld(check) {
     floorBatch: stub,
     marsDirtBatch: stub,
     slimeBatch: stub,
+    acidSplashBatch: stub,
+    emptyPitBatch: stub,
     acidMistBatch: stub,
     teleporterBatch: stub,
     crateBatch: stub,
@@ -7345,8 +7348,8 @@ const tests = {
     const room1Caches = game.caches.filter((c) => c.pos.x < 7 * 64 && c.pos.y < 5 * 64);
     assert.equal(room1Caches.length, 1, 'the first room holds one chest');
     const [shotgunCache] = room1Caches;
-    assert.deepEqual(shotgunCache.contents, ['shotgun', 'ammo'], 'the first room chest holds the shotgun and a shell pack');
-    assert.equal(game.level.grid.getCell(shotgunCache.pos), 1 * game.level.width + 2, 'the first-room chest backs the north wall on tile (2, 1)');
+    assert.deepEqual(shotgunCache.contents, ['ammo', 'shotgun'], 'the first room chest holds the shotgun and a shell pack');
+    assert.equal(game.level.grid.getCell(shotgunCache.pos), 1 * game.level.width + 3, 'the first-room chest backs the north wall on tile (3, 1)');
     assert.equal(game.caches.some((c) => c !== shotgunCache && c.pos.x < 7 * 64 && c.pos.y < 5 * 64), false, 'no second chest in the first room');
 
     // Open the first-room chest: unlocks and equips the shotgun, the first shotgun adds no ammo of its own
@@ -7365,15 +7368,15 @@ const tests = {
     assert.ok(game.events.some((e) => e.type === 'dry'), 'dry-firing emits dry click');
 
     // The next room's chest holds two shell packs
-    const nextCache = game.caches.find((c) => c.tiles.includes(3 * game.level.width + 6));
+    const nextCache = game.caches.find((c) => c.idx === 2 * game.level.width + 12);
     assert.deepEqual(nextCache.contents, ['ammo', 'ammo'], 'the next room chest holds two shell packs');
     game.openCache(nextCache);
     assert.equal(game.player.shells, AMMO_TYPES.shells.bonus * 2, 'the next chest adds two crates of shotgun shells');
 
-    // 4. Chainsaw is hidden in the center of the top-right secret room of Level 1 (col 52, row 3), directly in the line of sight of secret door S at (49, 3)
+    // 4. Chainsaw is hidden in the top-right secret room of Level 1 (col 52, row 2), guarded by secret door S at (49, 3)
     const secretChainsaw = game.caches.find((c) => c.contents.includes('chainsaw'));
     assert.ok(secretChainsaw, 'chainsaw cache exists in Level 1');
-    assert.ok(secretChainsaw.tiles.includes(3 * game.level.width + 52), 'chainsaw cache covers column 52, row 3');
+    assert.equal(secretChainsaw.idx, 2 * game.level.width + 52, 'chainsaw cache stands at column 52, row 2');
     assert.deepEqual(secretChainsaw.contents, ['health', 'chainsaw'], 'the chainsaw shares its chest with the health pack');
     const secretDoor = game.level.doors.get(3 * game.level.width + 49);
     assert.ok(secretDoor?.secret, 'top-right secret room is guarded by secret push-wall at (49, 3)');
@@ -9467,30 +9470,30 @@ const tests = {
     assert.ok(log.includes('#21') && log.includes('doomr.keyboardLayout'));
   },
 
-  'AC-1 supply chests hold every authored supply once per level'() {
-    const expected = [15, 13, 13, 14, 11];
+  'AC-1 supply chests hold every authored chest once per level'() {
+    const expected = [14, 13, 13, 14, 11];
     const supply = new Set(CACHE_TYPES);
     for (let i = 0; i < LEVELS.length; i++) {
       const game = fresh(i);
       assert.equal(game.caches.length, expected[i], `level ${i} has ${expected[i]} caches`);
       const inCaches = game.caches.flatMap((c) => c.contents).sort();
-      const authored = game.level.pickups.filter((p) => supply.has(p.type)).map((p) => p.type).sort();
-      assert.deepEqual(inCaches, authored, `level ${i} caches hold every authored supply exactly once`);
+      const authored = game.level.chests.flatMap((c) => c.contents).sort();
+      assert.deepEqual(inCaches, authored, `level ${i} caches hold every authored chest item`);
       for (const cache of game.caches) {
         assert.equal(game.level.roomByTile[cache.idx], cache.room, 'the chest stands in its room');
         assert.equal(cache.state, 'closed');
         assert.equal(cache.lid, 0);
       }
       assert.equal(game.pickups.some((p) => supply.has(p.type)), false, `level ${i} keeps no supply on the floor`);
-      assert.ok(game.pickups.every((p) => p.initial), 'only authored non-supply pickups start on the floor');
-      assert.equal(game.totalItems, game.level.pickups.length, 'the item tally still counts every authored item');
+      assert.ok(game.pickups.every((p) => p.initial), 'only authored floor pickups start on the floor');
+      assert.equal(game.totalItems, game.level.pickups.length + game.caches.reduce((sum, c) => sum + c.contents.length, 0), 'the item tally counts every floor pickup and chest item');
     }
   },
 
   'AC-2 use opens the targeted chest once and animates the lid'() {
     const level = {
       name: 'Use test',
-      rows: ['##########', '#........#', '#P...a...#', '#........#', '##########'],
+      rows: ['##########', '#........#', '#P...=...#', '#........#', '##########'],
     };
     const place = (game, dx, angle) => {
       game.player.body.setPosition(new Vec2(game.caches[0].pos.x + dx, game.caches[0].pos.y));
@@ -9534,7 +9537,7 @@ const tests = {
     const tie = new Game();
     tie.load({
       name: 'Door tie test',
-      rows: ['#######', '#.....#', '#..D.a#', '#..P..#', '#######'],
+      rows: ['#######', '#.....#', '#..D.=#', '#..P..#', '#######'],
     });
     tie.state = 'play';
     const door = [...tie.level.doors.values()][0];
@@ -9578,7 +9581,14 @@ const tests = {
 
   'AC-4 refused contents stay in the chest until they can be taken'() {
     const game = new Game();
-    game.load({ name: 'Refuse test', rows: ['###########', '#P.ha#.m..#', '#....D....#', '###########'] });
+    game.load({
+      name: 'Refuse test',
+      rows: ['###########', '#P.=.#.=..#', '#....D....#', '###########'],
+      chests: [
+        { x: 3, y: 1, contents: ['health', 'ammo'] },
+        { x: 7, y: 1, contents: ['bullets'] },
+      ],
+    });
     game.state = 'play';
     const player = game.player;
     assert.equal(game.totalItems, 3);
@@ -9626,7 +9636,7 @@ const tests = {
     const game = new Game();
     game.load({
       name: 'Passive test',
-      rows: ['############', '#P...a.....#', '#..........#', '#..........#', '############'],
+      rows: ['############', '#P...=.....#', '#..........#', '#..........#', '############'],
     });
     game.state = 'play';
     game.totalItems = 5;
@@ -9685,7 +9695,15 @@ const tests = {
       assert.ok(lid.vertices[i] >= 0 && lid.vertices[i] <= 27, 'lid z stays within the hinge-to-front span');
 
     const game = new Game();
-    game.load({ name: 'View test', rows: ['#############', '#P.h#..a#..m#', '#...D...D...#', '#...#...#...#', '#############'] });
+    game.load({
+      name: 'View test',
+      rows: ['#############', '#P.=#..=#..=#', '#...D...D...#', '#...#...#...#', '#############'],
+      chests: [
+        { x: 3, y: 1, contents: ['health'] },
+        { x: 7, y: 1, contents: ['ammo'] },
+        { x: 11, y: 1, contents: ['bullets'] },
+      ],
+    });
     game.state = 'play';
     assert.equal(game.caches.length, 3);
     const addProgram = Mesh.prototype.addProgram;
@@ -9926,14 +9944,14 @@ const tests = {
 
   'AC-1 one supply chest per room holds every authored supply'() {
     const supply = new Set(CACHE_TYPES);
-    const expected = [15, 13, 13, 14, 11];
+    const expected = [14, 13, 13, 14, 11];
     for (let i = 0; i < LEVELS.length; i++) {
       const game = fresh(i);
       const { level } = game;
       assert.equal(game.caches.length, expected[i], `level ${i} chest count`);
       const inCaches = game.caches.flatMap((c) => c.contents).sort();
-      const authored = level.pickups.filter((p) => supply.has(p.type)).map((p) => p.type).sort();
-      assert.deepEqual(inCaches, authored, `level ${i} chests hold the authored supply multiset`);
+      const authored = level.chests.flatMap((c) => c.contents).sort();
+      assert.deepEqual(inCaches, authored, `level ${i} chests hold the authored chest contents`);
       const rooms = new Set();
       for (const cache of game.caches) {
         assert.ok(cache.contents.length <= 4, 'a chest holds at most 4 items');
@@ -9946,20 +9964,25 @@ const tests = {
         }
       }
       assert.equal(game.pickups.some((p) => supply.has(p.type)), false, 'no supply stays on the floor');
-      assert.equal(game.totalItems, level.pickups.length);
+      assert.equal(game.totalItems, level.pickups.length + game.caches.reduce((sum, c) => sum + c.contents.length, 0));
     }
   },
 
-  'AC-2 doors, secret closets, and outdoor pockets split chests'() {
+  'AC-2 schema chests and standalone floor pickups coexist'() {
     const game = new Game();
-    game.load({ name: 'Rooms', rows: ['############', '#P.h.#..a..#', '#....D.....#', '#.a..#..m..#', '#######S####', '#####..h.###', '############'] });
+    game.load({
+      name: 'Rooms',
+      rows: ['############', '#P.=.#..=..#', '#....D.....#', '#.a..#..m..#', '#######S####', '#####..=.###', '############'],
+      chests: [
+        { x: 3, y: 1, contents: ['health', 'ammo'] },
+        { x: 8, y: 1, contents: ['ammo', 'bullets'] },
+        { x: 7, y: 5, contents: ['health'] },
+      ],
+    });
     assert.deepEqual(game.caches.map((c) => c.contents), [['health', 'ammo'], ['ammo', 'bullets'], ['health']]);
     assert.ok(game.level.secretByTile[game.caches[2].idx] >= 0, 'the closet chest stands in the secret area');
-    assert.equal(CACHE_OUTDOOR_LINK, 6);
-    const mars = new Game();
-    mars.load({ name: 'Mars', planet: 'mars', rows: ['####################', '#P.#...............#', '#..D.h.....a......m#', '#..#...............#', '####################'] });
-    assert.equal(mars.caches.length, 2);
-    assert.deepEqual(mars.caches.map((c) => c.contents), [['health', 'ammo'], ['bullets']]);
+    assert.deepEqual(game.pickups.map((p) => p.type), ['ammo', 'bullets'], 'supply glyphs on rows spawn as floor pickups');
+    assert.equal(game.totalItems, 7, 'totalItems sums floor pickups and chest contents');
   },
 
   'AC-7 room partition respects doors, walls, and secrets'() {
@@ -10036,12 +10059,12 @@ const tests = {
       }
     }
     const first = fresh(0).caches.find((c) => c.contents.includes('shotgun'));
-    assert.equal(first.idx, 1 * fresh(0).level.width + 2);
+    assert.equal(first.idx, 1 * fresh(0).level.width + 3);
     assert.equal(first.wallSide, 3);
   },
 
   'AC-4 a wall chest opens from its tile and doors still win ties'() {
-    const rows = ['##########', '#........#', '#P...a...#', '#........#', '##########'];
+    const rows = ['##########', '#........#', '#P...=...#', '#........#', '##########'];
     const make = () => {
       const g = new Game();
       g.load({ name: 'Wall chest', rows });
@@ -10074,7 +10097,7 @@ const tests = {
     assert.equal(tryAt(100, false), 0, 'beyond 96 units opens nothing');
 
     const tie = new Game();
-    tie.load({ name: 'Door tie', rows: ['#######', '#.....#', '#..D.a#', '#..P..#', '#######'] });
+    tie.load({ name: 'Door tie', rows: ['#######', '#.....#', '#..D.=#', '#..P..#', '#######'] });
     tie.state = 'play';
     const door = [...tie.level.doors.values()][0];
     tie.player.body.setPosition(new Vec2((door.center.x + tie.caches[0].pos.x) / 2, tie.caches[0].pos.y + 56));
@@ -11636,7 +11659,7 @@ const tests = {
   },
 
   'AC-2 use prompt: chests prompt LOOT, emptied chests do not, and the door wins ties'() {
-    const level = { name: 'Prompt chest', rows: ['##########', '#........#', '#P...a...#', '#........#', '##########'] };
+    const level = { name: 'Prompt chest', rows: ['##########', '#........#', '#P...=...#', '#........#', '##########'] };
     const make = (dx, angle) => {
       const game = new Game();
       game.load(level);
@@ -11667,7 +11690,7 @@ const tests = {
     assert.equal(empty.usePrompt.fade, 0);
 
     const tie = new Game();
-    tie.load({ name: 'Prompt tie', rows: ['#######', '#.....#', '#..D.a#', '#..P..#', '#######'] });
+    tie.load({ name: 'Prompt tie', rows: ['#######', '#.....#', '#..D.=#', '#..P..#', '#######'] });
     tie.state = 'play';
     const door = [...tie.level.doors.values()][0];
     tie.player.body.setPosition(new Vec2((door.center.x + tie.caches[0].pos.x) / 2, tie.caches[0].pos.y + 56));
@@ -13354,7 +13377,8 @@ const tests = {
   'AC-1 opened supply chest holding refused items presents TAKE use prompt verb'() {
     const level = {
       name: 'Refused prompt verb test',
-      rows: ['##########', '#........#', '#P...a...#', '#........#', '##########'],
+      rows: ['##########', '#........#', '#P...=...#', '#........#', '##########'],
+      chests: [{ x: 5, y: 2, contents: ['ammo'] }],
     };
     const game = new Game();
     game.load(level);
@@ -16826,6 +16850,376 @@ const tests = {
     } finally {
       Mesh.prototype.addProgram = addProgram;
     }
+  },
+
+  'horizontal leaking acid barrels (z): lie on their side, leak glowing green acid puddles that burn the player unless Rad Suit is active, and detonate when shot'() {
+    // 1. Every campaign level E1M1..E1M5 contains both vertical ('x') and horizontal leaking ('z') barrels
+    for (let i = 0; i < LEVELS.length; i++) {
+      const level = new Level(LEVELS[i]);
+      assert.ok(level.barrels.some((b) => !b.horizontal), `level ${i} has vertical barrels`);
+      assert.ok(level.barrels.some((b) => b.horizontal), `level ${i} has horizontal leaking acid barrels`);
+    }
+
+    // 2. Geometry builders produce valid triangle meshes
+    for (const geo of [barrelAcidPuddleMesh(), barrelAcidStreamMesh()]) {
+      assert.ok(geo.vertices instanceof Float32Array && geo.vertices.length >= 36);
+      assert.equal(geo.vertices.length, geo.normals.length);
+      assert.equal(geo.vertices.length / 3, geo.uvs.length / 2);
+    }
+
+    // 3. Standing in a horizontal barrel's leaking green acid puddle inflicts periodic acid damage & green radFlash unless Rad Suit is active
+    const game = new Game();
+    game.load({
+      name: 'Acid Barrel Lab',
+      rows: [
+        '#########',
+        '#P..z..x#',
+        '#.......#',
+        '#########',
+      ],
+    });
+    game.state = 'play';
+    const horiz = game.barrels.find((b) => b.horizontal);
+    const vert = game.barrels.find((b) => !b.horizontal);
+    assert.ok(horiz && horiz.leaking && horiz.puddlePos instanceof Vec2 && horiz.puddleRadius > 0);
+    assert.ok(vert && !vert.horizontal && !vert.leaking);
+
+    // Stand in the leaked acid puddle just outside the drum's collision radius (26 units from drum center, 16 units from puddle center <= 22 puddleRadius)
+    game.player.body.setPosition(new Vec2(
+      horiz.pos.x + Math.cos(horiz.angle) * 26,
+      horiz.pos.y + Math.sin(horiz.angle) * 26,
+    ));
+    assert.equal(game.inBarrelAcid(game.player.pos), true, 'player standing on puddle is in barrel acid');
+    game.events.length = 0;
+    run(game, 0.9);
+    assert.equal(game.player.health, 95, 'leaking green acid puddle deals 5 damage per tick');
+    assert.ok(game.player.radFlash > 0, 'acid puddle triggers green radFlash');
+    assert.ok(game.events.some((e) => e.type === 'acid'), 'acid puddle emits acid sizzle sound');
+
+    // Radiation Suit protects against horizontal barrel acid puddles
+    game.player.radSuit = 10;
+    const healthBefore = game.player.health;
+    run(game, 1.0);
+    assert.equal(game.player.health, healthBefore, 'active Radiation Suit blocks horizontal barrel acid puddle damage');
+
+    // 4. World builds horizontal barrel view with tilted side-lying drum, acidPuddle, and acidStream; detonation hides acidStream while acidPuddle persists
+    const addProgram = Mesh.prototype.addProgram;
+    Mesh.prototype.addProgram = () => true;
+    const noop = () => {};
+    const world = Object.assign(Object.create(World.prototype), {
+      level: game.level,
+      cutaway: true,
+      syncStamp: 0,
+      frameTime: 2.5,
+      frameCullDistSq: Infinity,
+      frameOccludeFog: null,
+      gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, viewport() {}, UNSIGNED_SHORT: 5123, NEAREST_MIPMAP_NEAREST: 9984, REPEAT: 10497 },
+      sharedTexture: () => ({}),
+      sharedTexturedMeshes: [],
+      scene: { addMesh() {} },
+    });
+    try {
+      const hView = world.buildBarrelView(horiz);
+      const vView = world.buildBarrelView(vert);
+      assert.equal(hView.horizontal, true);
+      assert.ok(hView.acidPuddle && hView.acidStream, 'horizontal barrel view has acidPuddle and acidStream child meshes');
+      assert.equal(vView.acidPuddle, null, 'vertical barrel has no acidPuddle mesh');
+      assert.ok(Math.abs(hView.intact.rotation.x - (Trigo.halfpi + 0.06)) < 1e-5, 'horizontal drum lies on its side');
+
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.acidStream.active, true, 'acidStream is active while barrel is intact');
+      assert.equal(hView.acidPuddle.active, true, 'acidPuddle is active while barrel is intact');
+
+      // Detonate the horizontal barrel
+      game.player.body.setPosition(new Vec2(horiz.pos.x - 60, horiz.pos.y));
+      game.player.radSuit = 0;
+      game.player.health = 100;
+      game.hitBarrel(horiz, 99, 0);
+      run(game, 0.05);
+      assert.equal(horiz.gone, true, 'horizontal barrel detonates when damaged');
+      assert.ok(game.player.health < 100, 'horizontal barrel blast damages nearby player');
+
+      world.frameTime = 3.0;
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.intact.active, false, 'intact drum hides on detonation');
+      assert.equal(hView.acidStream.active, false, 'acidStream hides once drum ruptures');
+      assert.equal(hView.acidPuddle.active, true, 'acidPuddle remains on the floor after detonation');
+      assert.equal(hView.wreck.active, true, 'ruptured wreck activates on detonation');
+    } finally {
+      Mesh.prototype.addProgram = addProgram;
+    }
+  },
+
+  'acid splash floor tiles (,): stay at floor level without a recessed pit, orient adjacent z barrels, burn the player unless Rad Suit is active, and render 3D splashes'() {
+    const customLevel = {
+      name: 'Acid Splash Test',
+      par: 60,
+      rows: [
+        '########',
+        '#P..z,.#',
+        '#.,....#',
+        '#.....X#',
+        '########',
+      ],
+    };
+    const game = new Game();
+    game.load(customLevel);
+    game.state = 'play';
+
+    assert.equal(game.level.isAcidSplash(5, 1), true, '(5,1) is parsed as an acid splash tile');
+    assert.equal(game.level.isAcidSplash(2, 2), true, '(2,2) is parsed as an acid splash tile');
+    assert.equal(game.level.isSlime(5, 1), false, 'acid splash tile is not a recessed slime pit');
+    assert.equal(game.level.kind[1 * game.level.width + 5], 0, 'acid splash tile remains walkable FLOOR kind');
+
+    // Horizontal barrel at (4,1) points its leaking end east (+X, angle ~ 0) toward the ',' tile at (5,1)
+    const barrel = game.barrels[0];
+    assert.ok(barrel && barrel.horizontal, 'horizontal barrel spawned at (4,1)');
+    assert.ok(Math.cos(barrel.angle) > 0.9, 'horizontal barrel points its leaking end toward adjacent acid splash tile');
+
+    // Move player onto the standalone ',' tile at (2,2) (far from barrel puddle)
+    const splashCenter = game.level.center(2, 2);
+    game.player.body.setPosition(splashCenter);
+    assert.equal(game.level.acidSplashAt(game.player.pos), true, 'acidSplashAt detects player on splash tile');
+    assert.equal(game.playerFloorHeight(), 0, 'acid splash tile keeps normal floor height (z = 0, no pit drop)');
+
+    const startHp = game.player.health;
+    run(game, 0.9);
+    assert.equal(game.player.health, startHp - 5, 'standing on acid splash tile inflicts 5 acid damage after 0.85s');
+    assert.ok(game.player.radFlash > 0, 'acid splash triggers green radiation flash');
+    assert.ok(game.events.some((e) => e.type === 'acid'), 'emits acid sizzle sound');
+    assert.equal(game.player.z, 0, 'player stays at z = 0 floor level on acid splash tile');
+
+    // Radiation suit prevents acid splash damage
+    game.player.radSuit = 10;
+    const hpAfterSuit = game.player.health;
+    run(game, 1.0);
+    assert.equal(game.player.health, hpAfterSuit, 'Radiation Suit blocks acid splash tile damage');
+
+    // 3D world builds floor-level acid splash puddles alongside normal deck floor
+    withWallWorld((world, programs) => {
+      world.floorBatch = World.prototype.floorBatch;
+      world.acidSplashBatch = World.prototype.acidSplashBatch;
+      World.prototype.buildStatic.call(world, game.level);
+      const splash = programs.find(({ fragment }) => fragment === SLIME_FRAGMENT);
+      const floors = programs.filter(({ fragment }) => fragment === FLOOR_FRAGMENT);
+      assert.ok(splash, 'acidSplashBatch builds a SLIME_FRAGMENT mesh');
+      assert.ok(floors.length > 0, 'normal deck floor is still built beneath acid splash tiles');
+      assert.equal(splash.vertex, FLOOR_VERTEX);
+      assert.ok(splash.mesh.used >= 24, 'multi-lobed splash pools and droplets are emitted for the 2 acid splash tiles');
+      for (let i = 1; i < splash.mesh.used * 18; i += 3)
+        assert.ok(splash.mesh.vertices[i] > 0, 'acid splash geometry sits slightly above the floor deck');
+      assert.equal(splash.mesh.customUniforms.time.value, 0);
+      splash.mesh.setCustomUniform('time', 1.75);
+      assert.equal(splash.mesh.customUniforms.time.value, 1.75);
+    });
+  },
+
+  'rolling horizontal barrels (z): player push rolls barrel across the floor, spins 3D drum, anchors initial puddle, stops stream, and detonates at new rolled position'() {
+    const game = new Game();
+    game.load({
+      name: 'Rolling Barrel Corridor',
+      rows: [
+        '#############',
+        '#P.z......i.#',
+        '#..x........#',
+        '#############',
+      ],
+    });
+    game.state = 'play';
+    const horiz = game.barrels.find((b) => b.horizontal);
+    const vert = game.barrels.find((b) => !b.horizontal);
+    const imp = game.enemies[0];
+    assert.ok(horiz && vert && imp);
+    assert.equal(horiz.body.bodyType, 'dynamic', 'horizontal barrel has dynamic physics body');
+    assert.equal(vert.body.bodyType, 'static', 'vertical barrel remains static');
+
+    const startX = horiz.pos.x;
+    const startY = horiz.pos.y;
+    const spawnPuddle = horiz.puddlePos.clone();
+
+    // Enemy starts far outside blast range (175) of the barrel's initial position
+    assert.ok(imp.pos.getDistance(horiz.pos) > 350, 'imp starts far outside barrel blast radius');
+
+    // Player walks east (+X) pushing the horizontal barrel down the corridor toward the imp
+    game.player.angle = 0;
+    for (let i = 0; i < 95; i++)
+      game.update(1 / 60, input({ forward: 1, run: true }));
+
+    // Let barrel coast briefly so it is still actively rolling down the corridor
+    for (let i = 0; i < 6; i++)
+      game.update(1 / 60, input());
+
+    assert.ok(horiz.body.velocity.x > 20, 'horizontal barrel is still actively rolling');
+    assert.ok(horiz.pos.x > startX + 220, `horizontal barrel rolled far down the corridor (from ${startX} to ${horiz.pos.x})`);
+    assert.ok(horiz.rolled > 220, 'barrel tracked total distance rolled');
+    assert.ok(Math.abs(horiz.roll) > 15, 'barrel drum spin angle advanced with distance rolled');
+    assert.equal(horiz.leaking, false, 'barrel stops pouring once rolled away from initial puddle');
+    assert.equal(game.inBarrelAcid(spawnPuddle), true, 'initial leaked puddle remains hazardous on the floor at spawn');
+    assert.equal(game.inBarrelAcid(horiz.pos), false, 'rolled barrel no longer has a puddle underneath its new spot');
+
+    // Verify 3D view updates drum spin, hides pouring stream, and counter-transforms puddle to stay anchored at spawnPos
+    const addProgram = Mesh.prototype.addProgram;
+    Mesh.prototype.addProgram = () => true;
+    const world = Object.assign(Object.create(World.prototype), {
+      level: game.level,
+      cutaway: true,
+      syncStamp: 0,
+      frameTime: 1.5,
+      frameCullDistSq: Infinity,
+      frameOccludeFog: null,
+      gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, viewport() {}, UNSIGNED_SHORT: 5123, NEAREST_MIPMAP_NEAREST: 9984, REPEAT: 10497 },
+      sharedTexture: () => ({}),
+      sharedTexturedMeshes: [],
+      scene: { addMesh() {} },
+    });
+    try {
+      const hView = world.buildBarrelView(horiz);
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.root.position.x, horiz.pos.x, 'barrel root moved to rolled X position');
+      assert.equal(hView.acidStream.active, false, 'pouring stream mesh is hidden after barrel rolls away');
+      assert.equal(hView.acidPuddle.active, true, 'initial puddle mesh stays active');
+      assert.ok(Math.hypot(hView.acidPuddle.position.x, hView.acidPuddle.position.z) > 200, 'puddle local offset compensates for root movement to stay anchored at spawn');
+    } finally {
+      Mesh.prototype.addProgram = addProgram;
+    }
+
+    // Shoot the barrel with the shotgun while it is still rolling and verify it explodes at its rolled position
+    assert.ok(imp.pos.getDistance(horiz.pos) < 175, 'rolled barrel is now within blast range of the imp');
+    game.player.weapons.shotgun = true;
+    game.player.weapon = 'shotgun';
+    game.player.shells = 8;
+    game.player.cooldown = 0;
+    game.player.angle = Math.atan2(horiz.pos.y - game.player.pos.y, horiz.pos.x - game.player.pos.x);
+    game.fire();
+    assert.ok(horiz.fuse >= 0, 'shotgun hitscan pellets struck the rolling barrel and lit its fuse');
+    run(game, 0.12);
+    assert.equal(horiz.gone, true, 'rolling horizontal barrel detonated at its new position');
+    assert.equal(imp.state, 'dead', 'explosion at the rolled barrel position killed the nearby imp');
+  },
+
+  'jump prompt in front of pit or acid splash: displays JUMP when facing ~ pit, , acid splash, or z barrel puddle, and clears when turning away'() {
+    const game = new Game();
+    game.load({
+      name: 'Jump Prompt Hazard Edge',
+      rows: [
+        '#########',
+        '#P.~.,..#',
+        '#....z..#',
+        '#.......#',
+        '#########',
+      ],
+    });
+    game.state = 'play';
+
+    // 1. Standing at (2, 1) facing east (angle = 0) right in front of slime pit '~' at (3, 1)
+    game.player.body.setPosition(game.level.center(2, 1));
+    game.player.angle = 0;
+    game.usePrompt.fade = 0;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'pit', 'facing adjacent slime pit sets pit target');
+    assert.equal(game.useTarget.verb, 'JUMP', 'facing adjacent slime pit prompts JUMP');
+    assert.equal(game.usePrompt.key, 'jump', 'facing adjacent slime pit uses jump key');
+    assert.ok(game.usePrompt.fade > 0, 'jump prompt fades in when facing slime pit');
+
+    // Turning away (facing west toward open floor at (1, 1)) clears the jump target
+    game.player.angle = Math.PI;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, null, 'turning away from pit clears target');
+
+    // 2. Standing at (4, 1) facing east (angle = 0) right in front of acid splash ',' at (5, 1)
+    game.player.body.setPosition(game.level.center(4, 1));
+    game.player.angle = 0;
+    game.usePrompt.fade = 0;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'pit', 'facing adjacent acid splash tile sets jump target');
+    assert.equal(game.useTarget.verb, 'JUMP', 'facing adjacent acid splash tile prompts JUMP');
+    assert.equal(game.usePrompt.key, 'jump', 'facing adjacent acid splash tile uses jump key');
+    assert.ok(game.usePrompt.fade > 0, 'jump prompt fades in when facing acid splash tile');
+
+    // 3. Standing on an acid splash tile ',' at (5, 1) facing south (away from other hazards) also prompts JUMP
+    game.player.body.setPosition(game.level.center(5, 1));
+    game.player.angle = 0;
+    game.usePrompt.fade = 0;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'pit', 'standing on acid splash tile prompts JUMP');
+    assert.equal(game.usePrompt.key, 'jump');
+
+    // While airborne (jumping, z > 0), the prompt clears
+    game.player.z = 10;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, null, 'airborne player no longer shows jump target');
+  },
+  'empty pits (_): display JUMP prompt in front, kill the player when falling in even with Rad Suit or Armor, kill non-flying enemies, and render recessed 3D shaft': () => {
+    const rows = [
+      '##########',
+      '#........#',
+      '#..P_...i#',
+      '#........#',
+      '##########',
+    ];
+    const game = new Game();
+    game.load({ name: 'Empty Pit Test', par: 30, rows });
+    game.state = 'play';
+
+    assert.equal(game.level.isEmptyPit(4, 2), true, 'tile (4,2) should be an empty pit');
+    assert.equal(game.level.emptyPitAt(new Vec2(4 * TILE + TILE / 2, 2 * TILE + TILE / 2)), true);
+    assert.equal(game.level.isSlime(4, 2), false, 'empty pit is not acid slime');
+
+    // Standing at (3,2) facing east (+X) toward empty pit at (4,2) displays JUMP prompt
+    game.player.body.setPosition(new Vec2(3 * TILE + TILE / 2, 2 * TILE + TILE / 2));
+    game.player.pos = game.player.body.position;
+    game.player.angle = 0;
+    game.usePrompt.fade = 0;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'pit', 'standing in front of an empty pit prompts JUMP');
+    assert.equal(game.usePrompt.key, 'jump');
+
+    // Jumping over the 1-tile empty pit crosses safely
+    for (let i = 0; i < 35; i++)
+      game.update(1 / 60, input({ forward: 1, run: true, jump: i === 0 }));
+    assert.equal(game.state, 'play', 'player survives jumping across a 1-tile empty pit');
+    assert.ok(game.player.pos.x > 5 * TILE, 'player landed past the empty pit');
+
+    // Non-flying enemy falling into an empty pit dies
+    const imp = game.enemies.find((e) => e.state !== 'dead');
+    assert.ok(imp, 'imp should exist');
+    imp.body.setPosition(new Vec2(4 * TILE + TILE / 2, 2 * TILE + TILE / 2));
+    imp.pos = imp.body.position;
+    for (let i = 0; i < 40 && imp.state !== 'dead'; i++)
+      game.update(1 / 60, input());
+    assert.equal(imp.state, 'dead', 'non-flying enemy falling into an empty pit dies');
+
+    // Player walking into an empty pit dies even with Radiation Suit and MegaArmor
+    game.player.radSuit = 45;
+    game.player.armor = 200;
+    game.player.armorType = 'blue';
+    game.player.health = 200;
+    game.player.body.setPosition(new Vec2(4 * TILE + TILE / 2, 2 * TILE + TILE / 2));
+    game.player.pos = game.player.body.position;
+    game.player.z = 0;
+    game.player.vz = 0;
+    for (let i = 0; i < 30 && game.state === 'play'; i++)
+      game.update(1 / 60, input());
+    assert.ok(game.player.z <= -ACID_PIT_DEPTH, `player z (${game.player.z}) should drop into the empty pit`);
+    assert.equal(game.player.health, 0, 'falling into an empty pit kills the player');
+    assert.equal(game.state, 'dead', 'game state becomes dead when player falls into an empty pit');
+
+    // Verify 3D emptyPitBatch builds recessed shaft geometry with deep vertical pit fog
+    withWallWorld((world, programs) => {
+      world.floorBatch = World.prototype.floorBatch;
+      world.emptyPitBatch = World.prototype.emptyPitBatch;
+      World.prototype.buildStatic.call(world, game.level);
+      assert.ok(world.emptyPitMesh instanceof QuadBatch, 'emptyPitMesh should be built for empty pit tiles');
+      assert.equal(world.emptyPitMesh.used, 9, 'emptyPitMesh should emit 1 bottom quad + 4 rim quads + 4 shaft wall quads for an isolated pit tile');
+      const pitProgram = programs.find((p) => p.mesh === world.emptyPitMesh);
+      assert.equal(pitProgram?.fragment, SOLID_TEXTURED_FRAGMENT, 'emptyPitMesh uses SOLID_TEXTURED_FRAGMENT so geometry below y = -0.21 is not discarded');
+      assert.ok(SOLID_TEXTURED_FRAGMENT.includes('pitDepthFade'), 'pit shader fades deeper shaft walls and bottom into abyssal fog');
+      let minY = Infinity;
+      for (let i = 1; i < world.emptyPitMesh.used * 18; i += 3)
+        if (world.emptyPitMesh.vertices[i] < minY)
+          minY = world.emptyPitMesh.vertices[i];
+      assert.ok(minY <= -EMPTY_PIT_DEPTH + 0.5, `emptyPitMesh should reach pit bottom near -${EMPTY_PIT_DEPTH} (got ${minY})`);
+    });
   },
 };
 

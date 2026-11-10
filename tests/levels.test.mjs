@@ -25,18 +25,17 @@ for (const def of LEVELS) {
     }
   }
   const reachable = (pos) => seen.has(`${Math.floor(pos.x / 64)},${Math.floor(pos.y / 64)}`);
-  const unreachable = [...level.enemies, ...level.pickups].filter((o) => !reachable(o.pos));
+  const unreachable = [...level.enemies, ...level.pickups, ...level.chests].filter((o) => !reachable(o.pos));
   const exitReachable = level.exits.some((e) => [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => seen.has(`${Math.floor(e.x / 64) + dx},${Math.floor(e.y / 64) + dy}`)));
   const enclosed = level.rows[0].includes('.') || level.rows[rowCount - 1].includes('.');
-  console.log(`${def.name}: ${width}x${rowCount}, ${level.enemies.length} enemies, ${level.pickups.length} pickups, ${level.doors.size} doors, exits ${level.exits.length}`);
+  console.log(`${def.name}: ${width}x${rowCount}, ${level.enemies.length} enemies, ${level.pickups.length} pickups, ${level.chests.length} chests, ${level.doors.size} doors, exits ${level.exits.length}`);
   if (unreachable.length || !exitReachable || enclosed || !level.exits.length) {
     failed = true;
-    console.log('  PROBLEM', { unreachable: unreachable.map((o) => o.type), exitReachable, enclosed });
+    console.log('  PROBLEM', { unreachable: unreachable.map((o) => o.type || 'chest'), exitReachable, enclosed });
   }
 }
 
 const testName = 'AC-1: secret rooms retain their entrance-door associations';
-let hasOrdinaryEntrance = false;
 let hasSecretEntrance = false;
 let hasDoorlessSecret = false;
 let secretAssociationsValid = true;
@@ -54,21 +53,19 @@ for (const def of LEVELS) {
       continue;
     }
     const door = level.doors.get(doorIdx);
-    if (!door || level.secretRoomByDoor.get(doorIdx) !== secretIndex) {
+    if (!door || !door.secret || level.secretRoomByDoor.get(doorIdx) !== secretIndex) {
       failed = true;
       secretAssociationsValid = false;
       console.log(`FAIL ${testName}: ${def.name} secret ${secretIndex} has an invalid entrance`);
     }
     if (door?.secret)
       hasSecretEntrance = true;
-    else if (door)
-      hasOrdinaryEntrance = true;
   }
 }
-if (!hasOrdinaryEntrance || !hasSecretEntrance || !hasDoorlessSecret) {
+if (!hasSecretEntrance || !hasDoorlessSecret) {
   failed = true;
   secretAssociationsValid = false;
-  console.log(`FAIL ${testName}: authored levels must cover ordinary, secret, and doorless entrances`);
+  console.log(`FAIL ${testName}: authored levels must cover secret and doorless entrances`);
 }
 if (secretAssociationsValid)
   console.log(`ok   ${testName}`);

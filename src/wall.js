@@ -523,41 +523,45 @@ function createSharedRockTile() {
       const wy = y + (warpY(x, y) - 0.5) * 20 * S;
       const c = coarse(wx, wy);
       const m = medium(wx + 11 * S, wy + 7 * S);
-      const f = fine(x, y) * 0.72 + micro(x, y) * 0.28;
+      const f = fine(x, y) * 0.68 + micro(x, y) * 0.32;
       const ridge = 1 - Math.abs((coarse(wx + 23 * S, wy + 37 * S) - 0.5) * 2);
-      const shade = c * 0.45 + m * 0.35 + f * 0.2;
+      const crag = 1 - Math.abs((medium(wx + 17 * S, wy + 29 * S) - 0.5) * 2);
+      const shade = c * 0.42 + m * 0.34 + f * 0.24;
       let col = mix(ROCK_DARK, ROCK_BASE, Utils.clamp(shade * 1.15, 0, 1));
-      col = mix(col, ROCK_LIGHT, ridge * 0.4 + (f - 0.5) * 0.24);
-      if (shade > 0.64 && ridge > 0.56)
-        col = mix(col, ROCK_OCHRE, (shade - 0.64) * 1.55);
+      col = mix(col, ROCK_LIGHT, ridge * 0.36 + crag * 0.14 + (f - 0.5) * 0.24);
+      if (shade > 0.62 && ridge > 0.54)
+        col = mix(col, ROCK_OCHRE, Utils.clamp((shade - 0.62) * 1.65, 0, 0.92));
+      else if (shade < 0.34 && crag < 0.32)
+        col = mix(col, ROCK_ABYSS, Utils.clamp((0.34 - shade) * 1.8, 0, 0.78));
 
-      const grain = periodicGrain(x, y) * 12;
+      const grain = periodicGrain(x, y) * 14;
       tile.set(x, y, [col[0] + grain, col[1] + grain * 0.7, col[2] + grain * 0.45]);
     }
 
-  // Modulo-wrapped regolith pebbles & stones matching the floor density and shading
-  for (let k = 0; k < 22 * S; k++) {
+  // Fine, irregular mineral clasts & micro-grit (kept at 1.5..3.8 texel scale with soft polygonal falloff, never large ringed ovals)
+  for (let k = 0; k < 36; k++) {
     const px = baseRnd() * SIZE;
     const py = baseRnd() * SIZE;
-    const rx = (1.1 + baseRnd() * 2.4) * S;
-    const ry = (0.9 + baseRnd() * 2.0) * S;
-    const basalt = baseRnd() < 0.45;
-    const rockCol = basalt ? mix(ROCK_BASALT, ROCK_BASE, 0.25) : mix(ROCK_BASE, ROCK_LIGHT, 0.5);
-    const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
+    const rx = 1.4 + baseRnd() * 2.4;
+    const ry = 1.2 + baseRnd() * 2.0;
+    const p1 = baseRnd() * Math.PI * 2;
+    const p2 = baseRnd() * Math.PI * 2;
+    const basalt = baseRnd() < 0.48;
+    const rockCol = basalt ? mix(ROCK_BASALT, ROCK_DARK, 0.35) : mix(ROCK_BASE, ROCK_LIGHT, 0.5);
+    const rCeil = Math.ceil(Math.max(rx, ry) * 1.35) + 1;
     for (let dy = -rCeil; dy <= rCeil; dy++)
       for (let dx = -rCeil; dx <= rCeil; dx++) {
-        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude();
-        if (d > 1.15)
+        const ang = Math.atan2(dy, dx);
+        const facet = 1 + 0.24 * Math.cos(ang * 3 + p1) + 0.14 * Math.sin(ang * 5 + p2);
+        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude() / facet;
+        if (d >= 1.0)
           continue;
         const wx = wrapCoord(px + dx);
         const wy = wrapCoord(py + dy);
-        if (d > 0.88)
-          tile.set(wx, wy, k === 0 ? ROCK_ABYSS : ROCK_DARK, 0.65);
-        else {
-          const highlight = dx - dy < 0 ? 0.35 : -0.25;
-          const c = highlight > 0 ? mix(rockCol, ROCK_OCHRE, highlight) : mix(rockCol, ROCK_DARK, -highlight);
-          tile.set(wx, wy, c, 0.92);
-        }
+        const falloff = (1 - d) * (1 - d);
+        const dirLit = Utils.clamp((-dx / rx - dy / ry) * 0.32, -0.35, 0.38);
+        const c = dirLit >= 0 ? mix(rockCol, ROCK_OCHRE, dirLit) : mix(rockCol, ROCK_ABYSS, -dirLit);
+        tile.set(wx, wy, k === 0 && d < 0.45 ? ROCK_ABYSS : c, (k === 0 && d < 0.45 ? 0.85 : 0.48) * falloff);
       }
   }
 
@@ -573,14 +577,16 @@ function rockCliffBase(t) {
 
 function scatterRockNodules(t, rnd, count, maxRadius = 3.4) {
   const S = SIZE / 64;
-  for (let k = 0; k < count; k++) {
+  for (let k = 0; k < count * 2; k++) {
     const px = 6 * S + rnd() * (SIZE - 12 * S);
     const py = 6 * S + rnd() * (SIZE - 12 * S);
-    const rx = (1.3 + rnd() * maxRadius) * S;
-    const ry = (1.0 + rnd() * (maxRadius * 0.8)) * S;
+    const rx = 1.5 + rnd() * (maxRadius * 1.15);
+    const ry = 1.2 + rnd() * (maxRadius * 0.9);
+    const p1 = rnd() * Math.PI * 2;
+    const p2 = rnd() * Math.PI * 2;
     const basalt = rnd() < 0.48;
-    const rockCol = basalt ? mix(ROCK_BASALT, ROCK_BASE, 0.3) : mix(ROCK_BASE, ROCK_LIGHT, 0.55);
-    const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
+    const rockCol = basalt ? mix(ROCK_BASALT, ROCK_DARK, 0.35) : mix(ROCK_BASE, ROCK_LIGHT, 0.55);
+    const rCeil = Math.ceil(Math.max(rx, ry) * 1.35) + 1;
     for (let dy = -rCeil; dy <= rCeil; dy++)
       for (let dx = -rCeil; dx <= rCeil; dx++) {
         const x = Math.round(px + dx);
@@ -588,35 +594,51 @@ function scatterRockNodules(t, rnd, count, maxRadius = 3.4) {
         const mask = edgeMask(x, y, 5);
         if (mask <= 0.01)
           continue;
-        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude();
-        if (d > 1.15)
+        const ang = Math.atan2(dy, dx);
+        const facet = 1 + 0.25 * Math.cos(ang * 3 + p1) + 0.16 * Math.sin(ang * 5 + p2);
+        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude() / facet;
+        if (d >= 1.0)
           continue;
-        if (d > 0.86)
-          t.set(x, y, ROCK_ABYSS, 0.72 * mask);
-        else {
-          const highlight = dx - dy < 0 ? 0.42 : -0.32;
-          const c = highlight > 0 ? mix(rockCol, ROCK_OCHRE, highlight) : mix(rockCol, ROCK_DARK, -highlight);
-          t.set(x, y, c, 0.88 * mask);
-        }
+        const falloff = (1 - d) * (1 - d);
+        const dirLit = Utils.clamp((-dx / rx - dy / ry) * 0.35, -0.38, 0.42);
+        const c = dirLit >= 0 ? mix(rockCol, ROCK_OCHRE, dirLit) : mix(rockCol, ROCK_DARK, -dirLit);
+        t.set(x, y, c, 0.52 * falloff * mask);
       }
   }
 }
 
 function carveRockCracks(t, rnd, count) {
   const S = SIZE / 64;
+  const bend = periodicField(rnd, 3, SIZE);
+  const microBend = periodicField(rnd, 9, SIZE);
   for (let k = 0; k < count; k++) {
-    let x = (8 + Math.floor(rnd() * (64 - 16))) * S;
-    let y = (6 + Math.floor(rnd() * 6)) * S;
-    const maxY = (64 - 6 - Math.floor(rnd() * 6)) * S;
-    while (y < maxY) {
-      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.6), 7 * S, SIZE - 8 * S);
-      y += 1;
-      const mask = edgeMask(x, y, 5);
+    const xBase = (10 + rnd() * 44) * S;
+    const y0 = Math.round((6 + rnd() * 6) * S);
+    const y1 = Math.round((58 - rnd() * 6) * S);
+    const span = Math.max(1, y1 - y0);
+    const seedX = rnd() * SIZE;
+    for (let y = y0; y < y1; y++) {
+      const progress = (y - y0) / span;
+      const taper = Math.sin(progress * Math.PI);
+      const offset = (bend(seedX, y) - 0.5) * 14 * S + (microBend(seedX + 37, y) - 0.5) * 3.5 * S;
+      const cx = Utils.clamp(xBase + offset, 7 * S, SIZE - 8 * S);
+      const xInt = Math.round(cx);
+      const mask = edgeMask(xInt, y, 5) * taper;
       if (mask <= 0.02)
         continue;
-      t.set(x, y, ROCK_ABYSS, 0.85 * mask);
-      t.set(x - 1, y, ROCK_DARK, 0.58 * mask);
-      t.set(x + 1, y, ROCK_OCHRE, 0.5 * mask);
+      const halfW = 1.2 + taper * 1.4;
+      const rSpan = Math.ceil(halfW) + 2;
+      for (let dx = -rSpan; dx <= rSpan; dx++) {
+        const dist = (xInt + dx - cx) / halfW;
+        const ad = Math.abs(dist);
+        if (ad < 0.75) {
+          t.set(xInt + dx, y, ROCK_ABYSS, (1 - ad / 0.75) * 0.78 * mask);
+        } else if (ad < 1.6) {
+          const rimFade = 1 - (ad - 0.75) / 0.85;
+          const rimCol = dist > 0 ? ROCK_OCHRE : ROCK_DARK;
+          t.set(xInt + dx, y, rimCol, rimFade * (dist > 0 ? 0.28 : 0.42) * mask);
+        }
+      }
     }
   }
 }
@@ -684,19 +706,31 @@ function drawRockMagmaVeins(t, rnd) {
   const S = SIZE / 64;
   rockCliffBase(t);
   carveRockCracks(t, rnd, 3);
-  for (const xStart of [20 * S, 44 * S]) {
-    let x = xStart;
-    for (let y = 6 * S; y < 58 * S; y++) {
-      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.0), 8 * S, SIZE - 8 * S);
-      const mask = edgeMask(x, y, 5);
-      for (let dx = -2 * S; dx <= 2 * S; dx++) {
-        const ad = Math.abs(dx) / S;
-        if (ad < 0.55)
-          t.set(x + dx, y, [255, 148, 48], 0.88 * mask);
-        else if (ad < 1.35)
-          t.set(x + dx, y, [210, 72, 20], 0.6 * mask);
-        else
-          t.set(x + dx, y, ROCK_DARK, 0.7 * mask);
+  const sway = periodicField(rnd, 3, SIZE);
+  const jag = periodicField(rnd, 8, SIZE);
+  for (const [xStart, seed] of [[21 * S, 19], [43 * S, 97]]) {
+    const y0 = 7 * S;
+    const y1 = 57 * S;
+    const span = y1 - y0;
+    for (let y = y0; y < y1; y++) {
+      const progress = (y - y0) / span;
+      const taper = Math.sin(progress * Math.PI);
+      const bend = (sway(seed * S, y) - 0.5) * 18 * S + (jag(seed * S + 41, y) - 0.5) * 4.5 * S;
+      const cx = Utils.clamp(xStart + bend, 8 * S, SIZE - 8 * S);
+      const xInt = Math.round(cx);
+      const mask = edgeMask(xInt, y, 5) * taper;
+      if (mask <= 0.01)
+        continue;
+      const widthScale = (0.45 + 0.55 * jag(xInt, y)) * taper;
+      const halfSpan = Math.ceil(1.6 * S);
+      for (let dx = -halfSpan; dx <= halfSpan; dx++) {
+        const ad = Math.abs(xInt + dx - cx) / (S * Math.max(0.35, widthScale));
+        if (ad < 0.42)
+          t.set(xInt + dx, y, [242, 136, 48], (1 - ad / 0.42) * 0.72 * mask);
+        else if (ad < 1.05)
+          t.set(xInt + dx, y, [196, 68, 22], (1 - (ad - 0.42) / 0.63) * 0.52 * mask);
+        else if (ad < 1.65)
+          t.set(xInt + dx, y, ROCK_DARK, (1 - (ad - 1.05) / 0.6) * 0.58 * mask);
       }
     }
   }

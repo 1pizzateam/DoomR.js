@@ -78,6 +78,9 @@ const PICKUPS = {
 // Face directions: the side of a tile a ray enters through (0: -x, 1: +x, 2: -y, 3: +y).
 const DX = [-1, 1, 0, 0];
 const DY = [0, 0, -1, 1];
+const WALL_DX = [1, 0, -1, 0];
+const WALL_DY = [0, 1, 0, -1];
+export const CACHE_WALL_OFFSET = 14;
 
 /**
  * A tile map parsed from ASCII rows.
@@ -86,7 +89,7 @@ const DY = [0, 0, -1, 1];
  * line where a wall really starts or ends.
  */
 export class Level {
-  constructor({ name, rows, angle = 0, par = 120, planet = null, wind = null }) {
+  constructor({ name, rows, angle = 0, par = 120, planet = null, wind = null, chests = [] }) {
     this.name = name;
     this.rows = rows;
     this.par = par;
@@ -100,6 +103,8 @@ export class Level {
     this.kind = new Uint8Array(total);
     this.diag = new Uint8Array(total);
     this.slime = new Uint8Array(total);
+    this.acidSplash = new Uint8Array(total);
+    this.emptyPit = new Uint8Array(total);
     this.teleporter = new Uint8Array(total);
     this.baseHeight = new Float32Array(total);
     this.heights = new Float32Array(total);
@@ -110,6 +115,9 @@ export class Level {
     this.playerAngle = angle;
     this.enemies = [];
     this.pickups = [];
+    this.chestDefs = Array.isArray(chests) ? chests : [];
+    this.chestTiles = [];
+    this.chests = [];
     this.barrels = [];
     this.crushers = [];
     this.teleporters = [];
@@ -129,17 +137,24 @@ export class Level {
     this.arena = this.findArena();
     this.secrets = this.findSecrets();
     this.findRooms();
+    this.buildChests();
   }
 
   /**
-   * Secret supply closets: small dead-end rooms behind a single door (or disguised push-wall 'S') that hold supplies and are not the start or exit.
+   * Secret supply closets: small dead-end rooms behind a single disguised push-wall 'S' that hold supplies and are not the start or exit.
    */
   findSecrets() {
     const { width, rowCount, kind } = this;
     const total = width * rowCount;
     const visited = new Uint8Array(total);
     const startIdx = this.grid.getCell(this.playerStart);
-    const pickupTiles = new Set(this.pickups.map((p) => this.grid.getCell(p.pos)));
+    const pickupTiles = new Set([
+      ...this.pickups.map((p) => this.grid.getCell(p.pos)),
+      ...this.chestTiles.map((c) => c.idx),
+      ...this.chestDefs
+        .filter((c) => Number.isInteger(c?.x) && Number.isInteger(c?.y) && this.inBounds(c.x, c.y))
+        .map((c) => c.y * width + c.x),
+    ]);
     const secrets = [];
 
     for (let i = 0; i < total; i++) {
@@ -177,7 +192,7 @@ export class Level {
       const [doorIdx] = doors;
       const doorObj = doors.size === 1 ? this.doors.get(doorIdx) : null;
       const isSecretDoor = !!doorObj?.secret;
-      if (doors.size === 1 && !doorObj?.lock && !touchesExit && !tiles.has(startIdx) && hasPickup && ((isSecretDoor && tiles.size <= 45) || tiles.size <= 24)) {
+      if (doors.size === 1 && isSecretDoor && !doorObj?.lock && !touchesExit && !tiles.has(startIdx) && hasPickup && tiles.size <= 45) {
         const secretIndex = secrets.length;
         secrets.push(tiles);
         this.secretDoorByRoom.push(doorIdx);
@@ -281,6 +296,100 @@ export class Level {
     }
   }
 
+  chestWallSide(x, y) {
+    const { width, kind, diag } = this;
+    const isWall = (tx, ty) => this.inBounds(tx, ty) && kind[ty * width + tx] === WALL && diag[ty * width + tx] === 0;
+    for (const requireWalkableOpposite of [true, false]) {
+      let side = -1;
+      let sideScore = -1;
+      for (let d = 0; d < 4; d++) {
+        const ox = x - WALL_DX[d];
+        const oy = y - WALL_DY[d];
+        if (!isWall(x + WALL_DX[d], y + WALL_DY[d]) || (requireWalkableOpposite && !this.isWalkable(ox, oy)))
+          continue;
+        let score = 0;
+        for (let e = 0; e < 4; e++) {
+          if (this.isWalkable(ox + WALL_DX[e], oy + WALL_DY[e]))
+            score++;
+        }
+        if (score > sideScore) {
+          sideScore = score;
+          side = d;
+        }
+      }
+      if (side >= 0)
+        return side;
+    }
+    return -1;
+  }
+
+  createChest(x, y, contents = ['ammo'], wallSide = null, angle = null) {
+    const idx = y * this.width + x;
+    const resolvedWallSide = Number.isInteger(wallSide) && wallSide >= 0 && wallSide < 4
+      ? wallSide
+      : this.chestWallSide(x, y);
+    const pos = this.center(x, y);
+    let resolvedAngle = 0;
+    if (resolvedWallSide >= 0) {
+      pos.x += WALL_DX[resolvedWallSide] * CACHE_WALL_OFFSET;
+      pos.y += WALL_DY[resolvedWallSide] * CACHE_WALL_OFFSET;
+      resolvedAngle = Math.atan2(-WALL_DY[resolvedWallSide], -WALL_DX[resolvedWallSide]);
+    } else {
+      let bestScore = -1;
+      for (let d = 0; d < 4; d++) {
+        const nx = x + WALL_DX[d];
+        const ny = y + WALL_DY[d];
+        if (!this.isWalkable(nx, ny))
+          continue;
+        let score = 0;
+        for (let e = 0; e < 4; e++) {
+          if (this.isWalkable(nx + WALL_DX[e], ny + WALL_DY[e]))
+            score++;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          resolvedAngle = Math.atan2(WALL_DY[d], WALL_DX[d]);
+        }
+      }
+    }
+    if (typeof angle === 'number' && Number.isFinite(angle))
+      resolvedAngle = angle;
+    const normalizedContents = Array.isArray(contents) && contents.length > 0
+      ? contents.map((item) => PICKUPS[item] ?? item)
+      : ['ammo'];
+    return {
+      idx,
+      x,
+      y,
+      room: this.roomByTile[idx],
+      wallSide: resolvedWallSide,
+      pos,
+      angle: resolvedAngle,
+      contents: normalizedContents,
+    };
+  }
+
+  buildChests() {
+    const defsByIdx = new Map();
+    for (const entry of this.chestDefs) {
+      if (!entry || !Number.isInteger(entry.x) || !Number.isInteger(entry.y) || !this.inBounds(entry.x, entry.y))
+        continue;
+      defsByIdx.set(entry.y * this.width + entry.x, entry);
+    }
+    const seen = new Set();
+    for (const tile of this.chestTiles) {
+      seen.add(tile.idx);
+      const entry = defsByIdx.get(tile.idx);
+      this.chests.push(this.createChest(tile.x, tile.y, entry?.contents, entry?.wallSide, entry?.angle));
+    }
+    for (const [idx, entry] of defsByIdx) {
+      if (seen.has(idx) || this.kind[idx] !== FLOOR)
+        continue;
+      seen.add(idx);
+      this.chests.push(this.createChest(entry.x, entry.y, entry.contents, entry.wallSide, entry.angle));
+    }
+  }
+
   /** Secret index at a 2D world point (`Vec2`), or -1. */
   secretAt(pos) {
     const idx = this.grid.getCell(pos);
@@ -295,6 +404,26 @@ export class Level {
   slimeAt(pos) {
     const idx = this.grid.getCell(pos);
     return idx >= 0 && this.slime[idx] === 1;
+  }
+
+  isAcidSplash(x, y) {
+    return this.inBounds(x, y) && this.acidSplash[y * this.width + x] === 1;
+  }
+
+  /** Whether a 2D world point (`Vec2`) lies on a floor-level acid splash tile (','). */
+  acidSplashAt(pos) {
+    const idx = this.grid.getCell(pos);
+    return idx >= 0 && this.acidSplash[idx] === 1;
+  }
+
+  isEmptyPit(x, y) {
+    return this.inBounds(x, y) && this.emptyPit[y * this.width + x] === 1;
+  }
+
+  /** Whether a 2D world point (`Vec2`) lies on a bottomless/empty pit tile ('_'). */
+  emptyPitAt(pos) {
+    const idx = this.grid.getCell(pos);
+    return idx >= 0 && this.emptyPit[idx] === 1;
   }
 
   isTeleporter(x, y) {
@@ -459,12 +588,18 @@ export class Level {
           this.playerStart = this.center(x, y);
         else if (ENEMIES[char])
           this.enemies.push({ type: ENEMIES[char], pos: this.center(x, y) });
-        else if (char === 'x')
-          this.barrels.push({ pos: this.center(x, y) });
+        else if (char === 'x' || char === 'z')
+          this.barrels.push({ x, y, pos: this.center(x, y), horizontal: char === 'z', angle: 0 });
         else if (PICKUPS[char])
           this.pickups.push({ type: PICKUPS[char], pos: this.center(x, y) });
+        else if (char === '=')
+          this.chestTiles.push({ idx, x, y });
         else if (char === '~')
           this.slime[idx] = 1;
+        else if (char === ',')
+          this.acidSplash[idx] = 1;
+        else if (char === '_')
+          this.emptyPit[idx] = 1;
         else if (char === 'T') {
           this.teleporter[idx] = 1;
           const pad = { idx, x, y, center: this.center(x, y), pair: 0, targetIdx: idx, target: this.center(x, y) };
@@ -509,6 +644,34 @@ export class Level {
         pad.targetIdx = mate.idx;
         pad.target = mate.center;
       }
+    }
+    for (const barrel of this.barrels) {
+      if (!barrel.horizontal)
+        continue;
+      let bestDir = 0;
+      let bestScore = -1;
+      for (let d = 0; d < 4; d++) {
+        const nx = barrel.x + WALL_DX[d];
+        const ny = barrel.y + WALL_DY[d];
+        if (!this.inBounds(nx, ny))
+          continue;
+        const nidx = ny * this.width + nx;
+        if (this.kind[nidx] !== FLOOR || this.diag[nidx] > 0)
+          continue;
+        let score = this.acidSplash[nidx] ? 10 : this.slime[nidx] ? 1 : 4;
+        for (let e = 0; e < 4; e++) {
+          const ex = nx + WALL_DX[e];
+          const ey = ny + WALL_DY[e];
+          if (this.inBounds(ex, ey) && this.kind[ey * this.width + ex] === FLOOR)
+            score++;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          bestDir = d;
+        }
+      }
+      const jitter = (((barrel.x * 13 + barrel.y * 7) % 5) - 2) * 0.12;
+      barrel.angle = Math.atan2(WALL_DY[bestDir], WALL_DX[bestDir]) + jitter;
     }
     for (let y = 0; y < this.rowCount; y++)
       for (let x = 0; x < this.width; x++) {

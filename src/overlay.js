@@ -1,7 +1,6 @@
 import { CustomMesh, Material, Mesh, Scene, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { Trigo } from '@1pizzateam/spock';
 import { bloodAtlas } from './bloodsprites.js';
-import { HeadView } from './head.js';
 import { wallAtlas } from './wall.js';
 import { arsenalAtlas } from './weapon.js';
 import hudOverlayShader from './shaders/hud-overlay.shadergun.json' with { type: 'json' };
@@ -295,6 +294,13 @@ class Layer {
   }
 }
 
+let headViewCtor = null;
+
+/** Registers the 3D portrait view constructor (used by DoomR; omitted by tools such as MappR that do not load FaceR). */
+export function registerHeadView(Ctor) {
+  headViewCtor = Ctor;
+}
+
 /**
  * The HUD's line art. It has two layers:
  *  - glow: drawn into the 3D scene before the neon pass, so it shines like the world does;
@@ -305,25 +311,25 @@ export class Overlay {
     this.glow = new Layer(world, 96, 8192);
     // blood on the view is a picture, so it goes on the finished image where nothing blurs it
     this.crisp = new Layer(world, 8192, 8192, 128, true);
-    // the marine's portrait is a live 3D head, drawn in its box after the crisp layer
-    this.head = new HeadView(world.gl);
+    // the marine's portrait is a live 3D head when registered, drawn in its box after the crisp layer
+    this.head = headViewCtor ? new headViewCtor(world.gl) : null;
   }
 
   resize(cssWidth, cssHeight, width, height) {
     this.glow.resize(cssWidth, cssHeight, width, height);
     this.crisp.resize(cssWidth, cssHeight, width, height);
-    this.head.resize(cssWidth, cssHeight, width, height);
+    this.head?.resize(cssWidth, cssHeight, width, height);
   }
 
   clear() {
     this.glow.clear();
     this.crisp.clear();
-    this.head.hide();
+    this.head?.hide();
   }
 
   restore() {
     this.glow.scene.restore();
     this.crisp.scene.restore();
-    this.head.restore();
+    this.head?.restore();
   }
 }

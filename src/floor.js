@@ -1448,29 +1448,30 @@ function createSharedDirtTile() {
       tile.set(x, y, [col[0] + grain, col[1] + grain * 0.7, col[2] + grain * 0.45]);
     }
 
-  // Modulo-wrapped pebbles across the entire 256x256 tile (no empty border corridor)
-  for (let k = 0; k < 20 * S; k++) {
+  // Fine modulo-wrapped regolith gravel & grit across the 256x256 tile (polygonal falloff, no large ringed ovals)
+  for (let k = 0; k < 34; k++) {
     const px = baseRnd() * TILE_PIXELS;
     const py = baseRnd() * TILE_PIXELS;
-    const rx = (1.1 + baseRnd() * 2.3) * S;
-    const ry = (0.9 + baseRnd() * 1.9) * S;
+    const rx = 1.3 + baseRnd() * 2.2;
+    const ry = 1.1 + baseRnd() * 1.8;
+    const p1 = baseRnd() * Trigo.twopi;
+    const p2 = baseRnd() * Trigo.twopi;
     const basalt = baseRnd() < 0.45;
-    const rockCol = basalt ? mix(MARS_BASALT, MARS_DIRT_BASE, 0.25) : mix(MARS_DIRT_BASE, MARS_DIRT_LIGHT, 0.5);
-    const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
+    const rockCol = basalt ? mix(MARS_BASALT, MARS_DIRT_SHADOW, 0.3) : mix(MARS_DIRT_BASE, MARS_DIRT_LIGHT, 0.5);
+    const rCeil = Math.ceil(Math.max(rx, ry) * 1.35) + 1;
     for (let dy = -rCeil; dy <= rCeil; dy++)
       for (let dx = -rCeil; dx <= rCeil; dx++) {
-        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude();
-        if (d > 1.15)
+        const ang = Math.atan2(dy, dx);
+        const facet = 1 + 0.24 * Math.cos(ang * 3 + p1) + 0.14 * Math.sin(ang * 5 + p2);
+        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude() / facet;
+        if (d >= 1.0)
           continue;
         const wx = wrapDirtCoord(px + dx);
         const wy = wrapDirtCoord(py + dy);
-        if (d > 0.88)
-          tile.set(wx, wy, MARS_DIRT_SHADOW, 0.65);
-        else {
-          const highlight = dx - dy < 0 ? 0.35 : -0.25;
-          const c = highlight > 0 ? mix(rockCol, MARS_DIRT_OCHRE, highlight) : mix(rockCol, MARS_DIRT_SHADOW, -highlight);
-          tile.set(wx, wy, c, 0.92);
-        }
+        const falloff = (1 - d) * (1 - d);
+        const dirLit = Utils.clamp((-dx / rx - dy / ry) * 0.3, -0.32, 0.35);
+        const c = dirLit >= 0 ? mix(rockCol, MARS_DIRT_OCHRE, dirLit) : mix(rockCol, MARS_DIRT_SHADOW, -dirLit);
+        tile.set(wx, wy, c, 0.46 * falloff);
       }
   }
 
@@ -1486,14 +1487,16 @@ function drawMarsRegolithBase(t) {
 
 function scatterMarsPebbles(t, rnd, count, maxRadius = 3.0) {
   const S = TILE_PIXELS / 64;
-  for (let k = 0; k < count; k++) {
+  for (let k = 0; k < count * 2; k++) {
     const px = 6 * S + rnd() * (TILE_PIXELS - 12 * S);
     const py = 6 * S + rnd() * (TILE_PIXELS - 12 * S);
-    const rx = (1.1 + rnd() * maxRadius) * S;
-    const ry = (0.9 + rnd() * (maxRadius * 0.85)) * S;
+    const rx = 1.4 + rnd() * (maxRadius * 1.1);
+    const ry = 1.1 + rnd() * (maxRadius * 0.88);
+    const p1 = rnd() * Trigo.twopi;
+    const p2 = rnd() * Trigo.twopi;
     const basalt = rnd() < 0.45;
-    const rockCol = basalt ? mix(MARS_BASALT, MARS_DIRT_BASE, 0.25) : mix(MARS_DIRT_BASE, MARS_DIRT_LIGHT, 0.5);
-    const rCeil = Math.ceil(Math.max(rx, ry)) + 1;
+    const rockCol = basalt ? mix(MARS_BASALT, MARS_DIRT_SHADOW, 0.3) : mix(MARS_DIRT_BASE, MARS_DIRT_LIGHT, 0.5);
+    const rCeil = Math.ceil(Math.max(rx, ry) * 1.35) + 1;
     for (let dy = -rCeil; dy <= rCeil; dy++)
       for (let dx = -rCeil; dx <= rCeil; dx++) {
         const x = Math.round(px + dx);
@@ -1501,16 +1504,15 @@ function scatterMarsPebbles(t, rnd, count, maxRadius = 3.0) {
         const mask = dirtEdgeMask(x, y, 5);
         if (mask <= 0.01)
           continue;
-        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude();
-        if (d > 1.15)
+        const ang = Math.atan2(dy, dx);
+        const facet = 1 + 0.25 * Math.cos(ang * 3 + p1) + 0.15 * Math.sin(ang * 5 + p2);
+        const d = scratchPt.setScalar(dx / rx, dy / ry).getMagnitude() / facet;
+        if (d >= 1.0)
           continue;
-        if (d > 0.88)
-          t.set(x, y, MARS_DIRT_SHADOW, 0.65 * mask);
-        else {
-          const highlight = dx - dy < 0 ? 0.35 : -0.25;
-          const c = highlight > 0 ? mix(rockCol, MARS_DIRT_OCHRE, highlight) : mix(rockCol, MARS_DIRT_SHADOW, -highlight);
-          t.set(x, y, c, 0.92 * mask);
-        }
+        const falloff = (1 - d) * (1 - d);
+        const dirLit = Utils.clamp((-dx / rx - dy / ry) * 0.32, -0.35, 0.38);
+        const c = dirLit >= 0 ? mix(rockCol, MARS_DIRT_OCHRE, dirLit) : mix(rockCol, MARS_DIRT_SHADOW, -dirLit);
+        t.set(x, y, c, 0.5 * falloff * mask);
       }
   }
 }
@@ -1559,9 +1561,10 @@ function drawMarsCrater(t, rnd) {
   drawMarsRegolithBase(t);
   const cx = (31.5 + (rnd() - 0.5) * 8) * S;
   const cy = (31.5 + (rnd() - 0.5) * 8) * S;
-  const rOuter = 20 * S;
-  const rimWidth = 4.5 * S;
+  const rOuter = 19 * S;
+  const rimWidth = 5.5 * S;
   const wobble = periodicField(rnd, 4, TILE_PIXELS);
+  const fineWobble = periodicField(rnd, 9, TILE_PIXELS);
   for (let y = 0; y < TILE_PIXELS; y++)
     for (let x = 0; x < TILE_PIXELS; x++) {
       const mask = dirtEdgeMask(x, y, 5);
@@ -1569,14 +1572,20 @@ function drawMarsCrater(t, rnd) {
         continue;
       const dx = x - cx;
       const dy = y - cy;
-      const d = scratchPt.setScalar(dx, dy).getMagnitude() + (wobble(x, y) - 0.5) * 3.8 * S;
-      if (d < rOuter && d >= rOuter - rimWidth) {
-        const lit = (dx + dy) < 0 ? MARS_DIRT_OCHRE : MARS_DIRT_SHADOW;
-        t.set(x, y, lit, 0.52 * mask);
-      } else if (d < rOuter - rimWidth) {
-        const depth = 1 - d / (rOuter - rimWidth);
-        const bowl = (dx + dy) > 0 ? MARS_DIRT_LIGHT : MARS_DIRT_SHADOW;
-        t.set(x, y, mix(MARS_DIRT_SHADOW, bowl, 0.35), (0.38 + depth * 0.45) * mask);
+      const rawR = scratchPt.setScalar(dx, dy).getMagnitude();
+      const d = rawR + (wobble(x, y) - 0.5) * 7.5 * S + (fineWobble(x, y) - 0.5) * 2.8 * S;
+      if (d >= rOuter)
+        continue;
+      const dir = (dx + dy) / (rawR + 4 * S);
+      const rInner = rOuter - rimWidth;
+      if (d >= rInner) {
+        const rimProfile = Math.sin(((d - rInner) / rimWidth) * Trigo.pi);
+        const rimCol = mix(MARS_DIRT_SHADOW, MARS_DIRT_OCHRE, Utils.clamp(0.5 - dir * 0.45, 0, 1));
+        t.set(x, y, rimCol, rimProfile * 0.42 * mask);
+      } else {
+        const depth = Utils.smoothstep(rInner, 0, d);
+        const bowlCol = mix(MARS_DIRT_SHADOW, MARS_DIRT_LIGHT, Utils.clamp(0.32 + dir * 0.28, 0, 0.72));
+        t.set(x, y, bowlCol, depth * 0.52 * mask);
       }
     }
   scatterMarsPebbles(t, rnd, 12, 2.5);
@@ -1606,23 +1615,33 @@ function drawMarsCrackedClay(t, rnd) {
   const S = TILE_PIXELS / 64;
   drawMarsRegolithBase(t);
   const basin = periodicField(rnd, 3, TILE_PIXELS);
+  const bend = periodicField(rnd, 3, TILE_PIXELS);
+  const microBend = periodicField(rnd, 9, TILE_PIXELS);
   for (let y = 0; y < TILE_PIXELS; y++)
     for (let x = 0; x < TILE_PIXELS; x++) {
       const mask = dirtEdgeMask(x, y, 5);
       if (mask > 0.01 && basin(x, y) > 0.48)
         t.set(x, y, mix(MARS_DIRT_BASE, MARS_DIRT_OCHRE, 0.38), (basin(x, y) - 0.48) * 1.1 * mask);
     }
-  for (let c = 0; c < 5; c++) {
-    let x = (10 + Math.floor(rnd() * 44)) * S;
-    let y = 6 * S;
-    while (y < TILE_PIXELS - 6 * S) {
-      x = Utils.clamp(x + Math.round((rnd() - 0.5) * 2.8), 7 * S, TILE_PIXELS - 8 * S);
-      y += 1;
-      const mask = dirtEdgeMask(x, y, 5);
-      t.set(x, y, MARS_DIRT_SHADOW, 0.88 * mask);
-      t.set(x - 1, y, MARS_DIRT_SHADOW, 0.55 * mask);
-      t.set(x + 1, y, MARS_DIRT_OCHRE, 0.36 * mask);
-      t.set(x + 2, y, MARS_DIRT_OCHRE, 0.22 * mask);
+  for (let c = 0; c < 4; c++) {
+    const xBase = (12 + rnd() * 40) * S;
+    const y0 = Math.round((7 + rnd() * 5) * S);
+    const y1 = Math.round((57 - rnd() * 5) * S);
+    const span = Math.max(1, y1 - y0);
+    const seedX = rnd() * TILE_PIXELS;
+    for (let y = y0; y < y1; y++) {
+      const progress = (y - y0) / span;
+      const taper = Math.sin(progress * Trigo.pi);
+      const offset = (bend(seedX, y) - 0.5) * 14 * S + (microBend(seedX + 29, y) - 0.5) * 3.2 * S;
+      const cx = Utils.clamp(xBase + offset, 7 * S, TILE_PIXELS - 8 * S);
+      const xInt = Math.round(cx);
+      const mask = dirtEdgeMask(xInt, y, 5) * taper;
+      if (mask <= 0.02)
+        continue;
+      t.set(xInt, y, MARS_DIRT_SHADOW, 0.76 * mask);
+      t.set(xInt - 1, y, MARS_DIRT_SHADOW, 0.45 * mask);
+      t.set(xInt + 1, y, MARS_DIRT_OCHRE, 0.32 * mask);
+      t.set(xInt + 2, y, MARS_DIRT_OCHRE, 0.16 * mask);
     }
   }
   scatterMarsPebbles(t, rnd, 11, 2.3);
@@ -1672,18 +1691,31 @@ function drawMarsThreshold(t, rnd) {
 function drawMarsFissure(t, rnd) {
   const S = TILE_PIXELS / 64;
   drawMarsRegolithBase(t);
-  let y = (24 + Math.floor(rnd() * 16)) * S;
-  for (let x = 6 * S; x < TILE_PIXELS - 6 * S; x++) {
-    y = Utils.clamp(y + Math.round((rnd() - 0.5) * 2.2), 10 * S, TILE_PIXELS - 10 * S);
-    const mask = dirtEdgeMask(x, y, 5);
-    for (let dy = -2 * S; dy <= 2 * S; dy++) {
-      const ad = Math.abs(dy) / S;
-      if (ad < 0.55)
-        t.set(x, y + dy, [255, 142, 42], 0.82 * mask);
-      else if (ad < 1.35)
-        t.set(x, y + dy, [220, 88, 24], 0.55 * mask);
-      else
-        t.set(x, y + dy, MARS_DIRT_SHADOW, 0.68 * mask);
+  const sway = periodicField(rnd, 3, TILE_PIXELS);
+  const jag = periodicField(rnd, 8, TILE_PIXELS);
+  const yBase = (24 + rnd() * 16) * S;
+  const x0 = 6 * S;
+  const x1 = TILE_PIXELS - 6 * S;
+  const span = x1 - x0;
+  for (let x = x0; x < x1; x++) {
+    const progress = (x - x0) / span;
+    const taper = Math.sin(progress * Trigo.pi);
+    const cy = Utils.clamp(
+      yBase + (sway(x, 31 * S) - 0.5) * 16 * S + (jag(x, 47 * S) - 0.5) * 4 * S,
+      10 * S,
+      TILE_PIXELS - 10 * S
+    );
+    const yInt = Math.round(cy);
+    const mask = dirtEdgeMask(x, yInt, 5) * taper;
+    const halfSpan = Math.ceil(1.6 * S);
+    for (let dy = -halfSpan; dy <= halfSpan; dy++) {
+      const ad = Math.abs(yInt + dy - cy) / S;
+      if (ad < 0.5)
+        t.set(x, yInt + dy, [255, 142, 42], (1 - ad / 0.5) * 0.78 * mask);
+      else if (ad < 1.25)
+        t.set(x, yInt + dy, [220, 88, 24], (1 - (ad - 0.5) / 0.75) * 0.54 * mask);
+      else if (ad < 1.85)
+        t.set(x, yInt + dy, MARS_DIRT_SHADOW, (1 - (ad - 1.25) / 0.6) * 0.62 * mask);
     }
   }
   scatterMarsPebbles(t, rnd, 12, 2.4);
@@ -1892,5 +1924,134 @@ export function marsBoulderMesh(center = new Vec3(0, 0, 0), size = new Vec2(64, 
   }
   return { vertices, uvs };
 }
+
+const SPLASH_LOBES_A = [1.06, 1.22, 0.92, 1.18, 1.04, 0.86, 1.15, 0.94];
+const SPLASH_LOBES_B = [0.94, 1.14, 1.08, 0.88, 1.18, 1.02, 0.9, 1.12];
+const SPLASH_LOBES_DROP = [1.04, 0.92, 1.08, 0.95, 1.05, 0.9, 1.06, 0.96];
+
+/**
+ * Builds the 3D organic floor-level acid splash puddles and satellite splatter droplets for an Acid Splash Floor tile (',').
+ * `center` is `Vec3(x, baseY, z)` and `size` is `Vec2(tileSize, 0)`.
+ * Unlike recessed '~' slime pits, ',' keeps the normal floor deck at `baseY` (-0.2) and layers raised, glowing green
+ * acid pools (`y ≈ 0.10 .. 0.24`) and connecting rivulets across the floor.
+ */
+export function acidSplashQuads(center, size = new Vec2(64, 0), seed = 0, neighborMask = 0) {
+  const cx = center.x;
+  const baseY = center.y;
+  const cz = center.z;
+  const scaleXZ = size.x / 64;
+  const edgeY = baseY + 0.30;
+  const rimY = baseY + 0.38;
+  const innerY = baseY + 0.44;
+  const quads = [];
+  const uv = [0, 0, 1, 1];
+
+  const pushSplashBlob = (ox, oz, rx, rz, rot, lobes, bevel = 1.25) => {
+    const bx = cx + ox * scaleXZ;
+    const bz = cz + oz * scaleXZ;
+    const cosR = Math.cos(rot);
+    const sinR = Math.sin(rot);
+    const segs = 8;
+    const px = new Array(segs);
+    const pz = new Array(segs);
+    const ex = new Array(segs);
+    const ez = new Array(segs);
+
+    for (let i = 0; i < segs; i++) {
+      const a = (i / segs) * Trigo.twopi;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const l = lobes[(i + (seed & 7)) & 7];
+      const lx = ca * rx * l * scaleXZ;
+      const lz = sa * rz * l * scaleXZ;
+      const lox = ca * (rx * l + bevel) * scaleXZ;
+      const loz = sa * (rz * l + bevel) * scaleXZ;
+      px[i] = bx + lx * cosR - lz * sinR;
+      pz[i] = bz + lx * sinR + lz * cosR;
+      ex[i] = bx + lox * cosR - loz * sinR;
+      ez[i] = bz + lox * sinR + loz * cosR;
+    }
+
+    for (let i = 0; i < segs; i += 2) {
+      const i1 = (i + 1) & 7;
+      const i2 = (i + 2) & 7;
+      quads.push({
+        corners: [
+          bx, innerY, bz,
+          px[i2], rimY, pz[i2],
+          px[i1], rimY, pz[i1],
+          px[i], rimY, pz[i],
+        ],
+        uv,
+      });
+    }
+
+    for (let i = 0; i < segs; i++) {
+      const next = (i + 1) & 7;
+      quads.push({
+        corners: [
+          px[i], rimY, pz[i],
+          ex[i], edgeY, ez[i],
+          ex[next], edgeY, ez[next],
+          px[next], rimY, pz[next],
+        ],
+        uv,
+      });
+    }
+  };
+
+  const s0 = (seed & 7) - 3.5;
+  const s1 = ((seed >>> 3) & 7) - 3.5;
+  const rot0 = ((seed & 15) / 16) * Trigo.twopi;
+  const mainOx = s0 * 0.85;
+  const mainOz = s1 * 0.85;
+
+  // 1. Central irregular multi-lobed acid splash pool
+  pushSplashBlob(mainOx, mainOz, 15.8, 13.6, rot0, SPLASH_LOBES_A, 1.35);
+
+  // 2. Secondary medium splash pool offset into a deterministic quadrant
+  const quadAngle = rot0 + 0.95;
+  const secOx = Math.cos(quadAngle) * 14.5;
+  const secOz = Math.sin(quadAngle) * 14.5;
+  pushSplashBlob(secOx, secOz, 9.2, 7.8, rot0 + 1.4, SPLASH_LOBES_B, 1.05);
+
+  // 3. Three satellite splatter droplets scattered toward the remaining quadrants
+  for (let d = 0; d < 3; d++) {
+    const da = rot0 + 2.25 + d * 1.45;
+    const dist = (18.5 + ((seed + d * 5) & 3) * 1.8);
+    const dr = 3.8 + (((seed >>> (d * 2)) & 3) * 0.65);
+    pushSplashBlob(
+      Math.cos(da) * dist,
+      Math.sin(da) * dist,
+      dr * 1.12,
+      dr * 0.92,
+      da,
+      SPLASH_LOBES_DROP,
+      0.65
+    );
+  }
+
+  // 4. Connecting rivulets toward cardinal neighbors (0: -x, 1: +x, 2: -z, 3: +z) that also have acid/barrels
+  const dirX = [-1, 1, 0, 0];
+  const dirZ = [0, 0, -1, 1];
+  for (let d = 0; d < 4; d++) {
+    if (!(neighborMask & (1 << d)))
+      continue;
+    const dx = dirX[d];
+    const dz = dirZ[d];
+    pushSplashBlob(
+      mainOx * 0.4 + dx * 21.5,
+      mainOz * 0.4 + dz * 21.5,
+      dx !== 0 ? 10.5 : 6.8,
+      dz !== 0 ? 10.5 : 6.8,
+      rot0 + d * 0.7,
+      SPLASH_LOBES_B,
+      0.95
+    );
+  }
+
+  return quads;
+}
+
 
 

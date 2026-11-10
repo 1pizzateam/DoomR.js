@@ -1,8 +1,8 @@
 import { CustomMesh, Cylinder, FullscreenQuad, Grid, Material, Mesh, PerspectiveCamera, Quat, Rand, Renderer, RenderTarget, Scene, Sprite, Texture, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { BLOOD } from './blood.js';
 import { RUBBLE, SURFACE } from './rubble.js';
-import { ACID_SURFACE_DEPTH } from './game.js';
-import { barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
+import { ACID_SURFACE_DEPTH, EMPTY_PIT_DEPTH } from './game.js';
+import { barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
 import { bloodAtlas, createQuadTarget, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
 import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
 import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, MARS_SKY_FRAGMENT, MARS_SKY_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, marsSkyAtlas, marsSkyMesh, updateCeilingLights } from './ceiling.js';
@@ -10,7 +10,7 @@ import { WALL_CELLS, diagWallFaceQuads, marsRockAtlas, wallAtlas, wallCellUv, wa
 import { createExplosion3dPose, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from './explosion.js';
 import { FIREBALL_FRAMES, fireballAtlas } from './fireball.js';
 import { GRENADE_SCALE, grenadeAtlas, grenadeParts } from './grenade.js';
-import { ACID_MIST_FRAGMENT, CRATE_FRAGMENT, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
+import { ACID_MIST_FRAGMENT, CRATE_FRAGMENT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, acidSplashQuads, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
 import { CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
 import { FOG_FAR, FOG_NEAR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar } from './fog.js';
 import { faceCorners, quadTriangles } from './lines.js';
@@ -439,6 +439,8 @@ export class World {
     this.staticChunks = [];
     this.skyMesh = null;
     this.slimeMesh = null;
+    this.emptyPitMesh = null;
+    this.acidSplashMesh = null;
     this.acidMistMesh = null;
     this.chainsawView = null;
     this.chaingunView = null;
@@ -937,6 +939,8 @@ export class World {
     this.lightConesMeshes = [];
     this.skyMesh = null;
     this.slimeMesh = null;
+    this.emptyPitMesh = null;
+    this.acidSplashMesh = null;
     this.acidMistMesh = null;
     this.knifeView = null;
     this.chainsawView = null;
@@ -1561,19 +1565,41 @@ export class World {
     // Close the exposed edges below the deck, including walls adjoining a pit.
     for (let ty = 0; ty < rowCount; ty++)
       for (let tx = 0; tx < width; tx++) {
-        if (!level.slime[ty * width + tx])
+        const idx = ty * width + tx;
+        const isSlime = level.slime[idx] === 1;
+        const isEmptyPit = level.emptyPit?.[idx] === 1;
+        if (!isSlime && !isEmptyPit)
           continue;
+        const pitBottom = isEmptyPit ? -EMPTY_PIT_DEPTH : -ACID_SURFACE_DEPTH - 0.35;
+        if (isEmptyPit) {
+          hide.push(
+            tx * TILE, pitBottom, ty * TILE,
+            (tx + 1) * TILE, pitBottom, ty * TILE,
+            (tx + 1) * TILE, pitBottom, (ty + 1) * TILE,
+            tx * TILE, pitBottom, ty * TILE,
+            (tx + 1) * TILE, pitBottom, (ty + 1) * TILE,
+            tx * TILE, pitBottom, (ty + 1) * TILE,
+          );
+        }
         for (let d = 0; d < 4; d++) {
           const nx = tx + (d === 0 ? -1 : d === 1 ? 1 : 0);
           const ny = ty + (d === 2 ? -1 : d === 3 ? 1 : 0);
-          if (level.inBounds(nx, ny) && level.slime[ny * width + nx])
-            continue;
+          const nIdx = ny * width + nx;
+          if (level.inBounds(nx, ny)) {
+            if (isSlime && (level.slime[nIdx] || level.emptyPit?.[nIdx]))
+              continue;
+            if (isEmptyPit && level.emptyPit?.[nIdx])
+              continue;
+          }
+          const topEdge = isEmptyPit && level.inBounds(nx, ny) && level.slime[nIdx]
+            ? -ACID_SURFACE_DEPTH - 0.35
+            : -0.2;
           const axis = d < 2 ? 'x' : 'z';
           const plane = (d < 2 ? tx + (d === 1 ? 1 : 0) : ty + (d === 3 ? 1 : 0)) * TILE;
           const along = (d < 2 ? ty : tx) * TILE;
           hide.push(...quadTriangles(axis === 'x'
-            ? faceCorners(axis, new Vec3(plane, -ACID_SURFACE_DEPTH - 0.35, along), new Vec3(plane, -0.2, along + TILE))
-            : faceCorners(axis, new Vec3(along, -ACID_SURFACE_DEPTH - 0.35, plane), new Vec3(along + TILE, -0.2, plane))));
+            ? faceCorners(axis, new Vec3(plane, pitBottom, along), new Vec3(plane, topEdge, along + TILE))
+            : faceCorners(axis, new Vec3(along, pitBottom, plane), new Vec3(along + TILE, topEdge, plane))));
         }
       }
 
@@ -1675,7 +1701,7 @@ export class World {
             const idx = ty * width + tx;
             const k = kind[idx];
             const walkable = k === FLOOR || k === DOOR || k === PILLAR || level.diag[idx] > 0;
-            if (walkable && !level.slime[idx] && !level.teleporter?.[idx]) {
+            if (walkable && !level.slime[idx] && !level.emptyPit?.[idx] && !level.teleporter?.[idx]) {
               if (isMars && !level.isIndoorTile(idx))
                 hasDirt = true;
               else
@@ -1719,6 +1745,10 @@ export class World {
         this.track(this.marsDirtBatch(level), this.staticMeshes);
     }
     this.slimeMesh = this.track(this.slimeBatch(level), this.staticMeshes);
+    if (typeof this.emptyPitBatch === 'function')
+      this.emptyPitMesh = this.track(this.emptyPitBatch(level), this.staticMeshes);
+    if (typeof this.acidSplashBatch === 'function')
+      this.acidSplashMesh = this.track(this.acidSplashBatch(level), this.staticMeshes);
     this.acidMistMesh = this.track(this.acidMistBatch(level), this.staticMeshes);
     this.teleporterMesh = this.track(this.teleporterBatch(level), this.staticMeshes);
     this.crateMeshes = [];
@@ -1917,7 +1947,7 @@ export class World {
       for (let tx = x0Bound; tx < x1Bound; tx++) {
         const idx = ty * level.width + tx;
         const kind = level.kind[idx];
-        if ((kind !== FLOOR && kind !== DOOR && kind !== PILLAR && !level.diag[idx]) || level.slime[idx] || level.teleporter?.[idx])
+        if ((kind !== FLOOR && kind !== DOOR && kind !== PILLAR && !level.diag[idx]) || level.slime[idx] || level.emptyPit?.[idx] || level.teleporter?.[idx])
           continue;
         if (isMars && !level.isIndoorTile(idx))
           continue;
@@ -1960,7 +1990,7 @@ export class World {
       for (let tx = x0Bound; tx < x1Bound; tx++) {
         const idx = ty * level.width + tx;
         const kind = level.kind[idx];
-        if ((kind !== FLOOR && kind !== DOOR && kind !== PILLAR && !level.diag[idx]) || level.slime[idx] || level.teleporter?.[idx])
+        if ((kind !== FLOOR && kind !== DOOR && kind !== PILLAR && !level.diag[idx]) || level.slime[idx] || level.emptyPit?.[idx] || level.teleporter?.[idx])
           continue;
         if (level.isIndoorTile(idx))
           continue;
@@ -2006,6 +2036,133 @@ export class World {
         const z1 = z0 + TILE;
         batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], [0, 0, 1, 1]);
       }
+    return batch.end();
+  }
+
+  /** Deep empty pits ('_'): recessed dark industrial chasm walls with hazard rim striping and a grated bottom at -EMPTY_PIT_DEPTH. */
+  emptyPitBatch(level) {
+    const { gl } = this;
+    this.floorPixels ??= floorAtlas();
+    let count = 0;
+    if (level.emptyPit) {
+      for (let ty = 0; ty < level.rowCount; ty++)
+        for (let tx = 0; tx < level.width; tx++) {
+          if (!level.emptyPit[ty * level.width + tx])
+            continue;
+          count += 9;
+        }
+    }
+    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
+    const sharedTexture = this.sharedTexture(this.floorPixels, texOpts);
+    const batch = new QuadBatch(gl, {
+      capacity: Math.max(1, count),
+      atlas: this.floorPixels,
+      sharedTexture,
+      material: new Material({ diffuse: new Vec3(0.42, 0.46, 0.54) }),
+      vertex: FLOOR_VERTEX,
+      fragment: SOLID_TEXTURED_FRAGMENT,
+      textureOptions: texOpts,
+    });
+    if (sharedTexture) {
+      batch.sharedAtlas = this.floorPixels;
+      batch.sharedTexOptions = texOpts;
+      this.sharedTexturedMeshes.push(batch);
+    }
+    const rimUv = floorCellUv(FLOOR_CELLS.hazard);
+    const wallUv = floorCellUv(FLOOR_CELLS.plain);
+    const bottomUv = floorCellUv(FLOOR_CELLS.grating);
+    const topY = -0.2;
+    const rimY = -10;
+    const botY = -EMPTY_PIT_DEPTH + 0.15;
+    batch.begin();
+    if (level.emptyPit) {
+      for (let ty = 0; ty < level.rowCount; ty++)
+        for (let tx = 0; tx < level.width; tx++) {
+          const idx = ty * level.width + tx;
+          if (!level.emptyPit[idx])
+            continue;
+          const x0 = tx * TILE;
+          const x1 = x0 + TILE;
+          const z0 = ty * TILE;
+          const z1 = z0 + TILE;
+          batch.quad([x0, botY, z1, x1, botY, z1, x1, botY, z0, x0, botY, z0], bottomUv);
+          if (!(level.inBounds(tx - 1, ty) && level.emptyPit[ty * level.width + (tx - 1)])) {
+            batch.quad([x0 + 0.15, rimY, z0, x0 + 0.15, rimY, z1, x0 + 0.15, topY, z1, x0 + 0.15, topY, z0], rimUv);
+            batch.quad([x0 + 0.15, botY, z0, x0 + 0.15, botY, z1, x0 + 0.15, rimY, z1, x0 + 0.15, rimY, z0], wallUv);
+          }
+          if (!(level.inBounds(tx + 1, ty) && level.emptyPit[ty * level.width + (tx + 1)])) {
+            batch.quad([x1 - 0.15, rimY, z1, x1 - 0.15, rimY, z0, x1 - 0.15, topY, z0, x1 - 0.15, topY, z1], rimUv);
+            batch.quad([x1 - 0.15, botY, z1, x1 - 0.15, botY, z0, x1 - 0.15, rimY, z0, x1 - 0.15, rimY, z1], wallUv);
+          }
+          if (!(level.inBounds(tx, ty - 1) && level.emptyPit[(ty - 1) * level.width + tx])) {
+            batch.quad([x1, rimY, z0 + 0.15, x0, rimY, z0 + 0.15, x0, topY, z0 + 0.15, x1, topY, z0 + 0.15], rimUv);
+            batch.quad([x1, botY, z0 + 0.15, x0, botY, z0 + 0.15, x0, rimY, z0 + 0.15, x1, rimY, z0 + 0.15], wallUv);
+          }
+          if (!(level.inBounds(tx, ty + 1) && level.emptyPit[(ty + 1) * level.width + tx])) {
+            batch.quad([x0, rimY, z1 - 0.15, x1, rimY, z1 - 0.15, x1, topY, z1 - 0.15, x0, topY, z1 - 0.15], rimUv);
+            batch.quad([x0, botY, z1 - 0.15, x1, botY, z1 - 0.15, x1, rimY, z1 - 0.15, x0, rimY, z1 - 0.15], wallUv);
+          }
+        }
+    }
+    return batch.end();
+  }
+
+  /** Floor-level green acid splash puddles and splatters (','): raised multi-lobed liquid pools over the normal deck/dirt floor. */
+  acidSplashBatch(level) {
+    const { gl } = this;
+    this.slimePixels ??= slimeAtlas();
+    const allQuads = [];
+    if (level.acidSplash) {
+      const center = new Vec3();
+      const size = new Vec2(TILE, 0);
+      const baseY = -0.2;
+      const barrelTiles = new Set();
+      if (Array.isArray(level.barrels))
+        for (const b of level.barrels)
+          if (b.horizontal && Number.isInteger(b.x) && Number.isInteger(b.y))
+            barrelTiles.add(b.y * level.width + b.x);
+      const hasNeighborAcid = (nx, ny) => {
+        if (!level.inBounds(nx, ny))
+          return false;
+        const nidx = ny * level.width + nx;
+        return Boolean(level.acidSplash[nidx] || level.slime?.[nidx] || barrelTiles.has(nidx));
+      };
+      for (let ty = 0; ty < level.rowCount; ty++)
+        for (let tx = 0; tx < level.width; tx++) {
+          const idx = ty * level.width + tx;
+          if (!level.acidSplash[idx])
+            continue;
+          const neighborMask =
+            (hasNeighborAcid(tx - 1, ty) ? 1 : 0) |
+            (hasNeighborAcid(tx + 1, ty) ? 2 : 0) |
+            (hasNeighborAcid(tx, ty - 1) ? 4 : 0) |
+            (hasNeighborAcid(tx, ty + 1) ? 8 : 0);
+          const seed = (tx * 73 + ty * 151) & 255;
+          center.setScalar((tx + 0.5) * TILE, baseY, (ty + 0.5) * TILE);
+          const quads = acidSplashQuads(center, size, seed, neighborMask);
+          for (const q of quads)
+            allQuads.push(q);
+        }
+    }
+    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST, wrapS: gl.REPEAT, wrapT: gl.REPEAT };
+    const sharedTexture = this.sharedTexture(this.slimePixels, texOpts);
+    const batch = new QuadBatch(gl, {
+      capacity: Math.max(1, allQuads.length),
+      atlas: this.slimePixels,
+      sharedTexture,
+      vertex: FLOOR_VERTEX,
+      fragment: SLIME_FRAGMENT,
+      textureOptions: texOpts,
+    });
+    if (sharedTexture) {
+      batch.sharedAtlas = this.slimePixels;
+      batch.sharedTexOptions = texOpts;
+      this.sharedTexturedMeshes.push(batch);
+    }
+    batch.addCustomUniform('time', 'uniform1f', 0);
+    batch.begin();
+    for (const q of allQuads)
+      batch.quad(q.corners, q.uv);
     return batch.end();
   }
 
@@ -2383,21 +2540,21 @@ export class World {
     this.updateEnemy(enemy, view, this.framePlayer, this.frameTime, this.frameGame, this.frameCullDistSq, this.frameOccludeFog);
   }
 
-  buildPickup(pickup) {
+  createPickupMesh(type) {
     const { gl } = this;
-    const keyColor = pickup.type === 'redKey' ? 'red' : pickup.type === 'yellowKey' ? 'yellow' : pickup.type === 'blueKey' ? 'blue' : null;
-    const armorColor = pickup.type === 'greenArmor' ? 'green' : pickup.type === 'blueArmor' ? 'blue' : null;
-    const isSoulsphere = pickup.type === 'soulsphere';
-    const isBerserk = pickup.type === 'berserk';
-    const isRadsuit = pickup.type === 'radsuit';
-    const isNightvision = pickup.type === 'nightvision';
-    const isHealth = pickup.type === 'health';
-    const isChainsaw = pickup.type === 'chainsaw';
-    const isShotgun = pickup.type === 'shotgun';
-    const isChaingun = pickup.type === 'chaingun';
-    const isRocket = pickup.type === 'rocket';
-    const isBullets = pickup.type === 'bullets';
-    const isRockets = pickup.type === 'rockets';
+    const keyColor = type === 'redKey' ? 'red' : type === 'yellowKey' ? 'yellow' : type === 'blueKey' ? 'blue' : null;
+    const armorColor = type === 'greenArmor' ? 'green' : type === 'blueArmor' ? 'blue' : null;
+    const isSoulsphere = type === 'soulsphere';
+    const isBerserk = type === 'berserk';
+    const isRadsuit = type === 'radsuit';
+    const isNightvision = type === 'nightvision';
+    const isHealth = type === 'health';
+    const isChainsaw = type === 'chainsaw';
+    const isShotgun = type === 'shotgun';
+    const isChaingun = type === 'chaingun';
+    const isRocket = type === 'rocket';
+    const isBullets = type === 'bullets';
+    const isRockets = type === 'rockets';
     const atlas = keyColor
       ? ((this.keycardPixels ??= {})[keyColor] ??= keycardAtlas(keyColor))
       : armorColor
@@ -2458,7 +2615,8 @@ export class World {
     geometry.setPrimitive('TRIANGLES');
     const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
     const sharedTexture = this.sharedTexture(atlas, texOpts);
-    const root = texturedMesh(gl, geometry, {
+    const isWeapon = Boolean(isChainsaw || isShotgun || isChaingun || isRocket);
+    const mesh = texturedMesh(gl, geometry, {
       fragment: SOLID_TEXTURED_FRAGMENT,
       atlas,
       sharedTexture,
@@ -2466,12 +2624,17 @@ export class World {
       textureOptions: texOpts,
     });
     if (sharedTexture) {
-      root.sharedAtlas = atlas;
-      root.sharedTexOptions = texOpts;
-      this.sharedTexturedMeshes.push(root);
+      mesh.sharedAtlas = atlas;
+      mesh.sharedTexOptions = texOpts;
+      this.sharedTexturedMeshes.push(mesh);
     }
-    this.scene.addMesh(root);
-    return { root, spinSpeed: isChainsaw || isShotgun || isChaingun || isRocket ? 1.4 : 1.8 };
+    return { mesh, spinSpeed: isWeapon ? 1.4 : 1.8, isWeapon };
+  }
+
+  buildPickup(pickup) {
+    const { mesh, spinSpeed } = this.createPickupMesh(pickup.type);
+    this.scene.addMesh(mesh);
+    return { root: mesh, spinSpeed };
   }
 
   buildPickupView(pickup) {
@@ -2492,7 +2655,7 @@ export class World {
     view.root.setRotation(scratchRot.setScalar(0, time * view.spinSpeed + pickup.phase, 0));
   }
 
-  /** A supply chest: a textured body plus a lid child hinged at the back top edge. */
+  /** A supply chest: a textured body plus a lid child hinged at the back top edge, holding 3D supply item meshes. */
   buildCache(cache) {
     const { gl } = this;
     const atlas = (this.chestPixels ??= chestAtlas());
@@ -2527,11 +2690,40 @@ export class World {
     root.addChild(body);
     root.addChild(lid);
     lid.setPosition(scratchPos.setScalar(CHEST_LID_HINGE.x, CHEST_LID_HINGE.y, CHEST_LID_HINGE.z));
+
+    const itemViews = [];
+    const items = cache.items;
+    const count = items ? items.length : (cache.contents ? cache.contents.length : 0);
+    for (let i = 0; i < count; i++) {
+      const type = items ? items[i].type : cache.contents[i];
+      const { mesh, spinSpeed, isWeapon } = this.createPickupMesh(type);
+      mesh.setInactive();
+      root.addChild(mesh);
+      itemViews.push({
+        mesh,
+        type,
+        spinSpeed,
+        trayScale: isWeapon ? 0.52 : 0.65,
+      });
+    }
+
     const yaw = Trigo.halfpi - cache.angle;
     root.setPosition(scratchPos.setScalar(cache.pos.x, 0, cache.pos.y));
     root.setRotation(scratchRot.setScalar(0, yaw, 0));
     this.scene.addMesh(root);
-    return { root, body, lid, bodyMaterial, lidMaterial, yaw, lastLid: -1, lastState: '' };
+    return {
+      root,
+      body,
+      lid,
+      bodyMaterial,
+      lidMaterial,
+      yaw,
+      cosYaw: Math.cos(yaw),
+      sinYaw: Math.sin(yaw),
+      itemViews,
+      lastLid: -1,
+      lastState: '',
+    };
   }
 
   updateCache(cache, view) {
@@ -2551,12 +2743,96 @@ export class World {
       view.lidMaterial.setDiffuse(tint);
       view.lastState = cache.state;
     }
+
+    const itemViews = view.itemViews;
+    if (!itemViews || !itemViews.length)
+      return;
+    const total = itemViews.length;
+    const time = this.frameTime;
+    const player = this.framePlayer;
+    const items = cache.items;
+    const lidOpen = cache.lid > 0.02 && cache.state !== 'closed';
+
+    for (let i = 0; i < total; i++) {
+      const iv = itemViews[i];
+      const item = items ? items[i] : null;
+      const trayX = total <= 1 ? 0 : ((i / (total - 1)) - 0.5) * Math.min(24, (total - 1) * 11);
+      const trayY = 15.8;
+      const trayZ = 1.2;
+
+      if (item && item.state === 'flying') {
+        if (!lidOpen && item.progress <= 0) {
+          iv.mesh.setInactive();
+          continue;
+        }
+        iv.mesh.setActive();
+        const p = item.progress;
+        if (p <= 0) {
+          iv.mesh.setPosition(scratchPos.setScalar(trayX, trayY, trayZ));
+          iv.mesh.setRotation(scratchRot.setScalar(0, time * iv.spinSpeed + i * 1.1, 0));
+          iv.mesh.setScale(scratchScale.setScalar(iv.trayScale, iv.trayScale, iv.trayScale));
+        } else if (p <= 0.52) {
+          const u = p / 0.52;
+          const ease = 1 - (1 - u) * (1 - u);
+          const lx = trayX * (1 - u * 0.15);
+          const ly = trayY + (29.5 - trayY) * ease + Math.sin(u * Math.PI) * 5.0;
+          const lz = trayZ + (11.0 - trayZ) * ease;
+          const s = iv.trayScale + (0.96 - iv.trayScale) * ease;
+          const pitch = -0.22 * Math.sin(u * Math.PI);
+          const yawRot = time * iv.spinSpeed + i * 1.1 + u * Math.PI * 1.6;
+          iv.mesh.setPosition(scratchPos.setScalar(lx, ly, lz));
+          iv.mesh.setRotation(scratchRot.setScalar(pitch, yawRot, 0));
+          iv.mesh.setScale(scratchScale.setScalar(s, s, s));
+        } else {
+          const w = (p - 0.52) / 0.48;
+          const pull = w * w;
+          const startX = trayX * 0.85;
+          const startY = 29.5;
+          const startZ = 11.0;
+          let targetX = 0;
+          let targetY = 22;
+          let targetZ = 24;
+          if (player?.pos) {
+            const dx = player.pos.x - cache.pos.x;
+            const dz = player.pos.y - cache.pos.y;
+            targetX = dx * view.cosYaw - dz * view.sinYaw;
+            targetY = Math.max(12, (player.eye ?? 28) - 7);
+            targetZ = dx * view.sinYaw + dz * view.cosYaw;
+          }
+          const lx = startX + (targetX - startX) * pull;
+          const ly = startY + (targetY - startY) * pull + Math.sin((1 - w) * Math.PI) * 2.5;
+          const lz = startZ + (targetZ - startZ) * pull;
+          const s = 0.96 * (1 - w * 0.72);
+          const yawRot = time * iv.spinSpeed + i * 1.1 + Math.PI * 1.6 + w * Math.PI * 1.2;
+          iv.mesh.setPosition(scratchPos.setScalar(lx, ly, lz));
+          iv.mesh.setRotation(scratchRot.setScalar(-0.15 * (1 - w), yawRot, 0));
+          iv.mesh.setScale(scratchScale.setScalar(s, s, s));
+        }
+        continue;
+      }
+
+      const stillStored = (!item || item.state === 'stored') &&
+        lidOpen &&
+        cache.state !== 'emptied' &&
+        cache.contents.length > 0 &&
+        cache.contents.includes(iv.type);
+      if (stillStored) {
+        const bob = Math.sin(time * 3.2 + i * 1.4) * 0.7 * cache.lid;
+        iv.mesh.setActive();
+        iv.mesh.setPosition(scratchPos.setScalar(trayX, trayY + bob, trayZ));
+        iv.mesh.setRotation(scratchRot.setScalar(0, time * iv.spinSpeed * 0.75 + i * 0.9, 0));
+        iv.mesh.setScale(scratchScale.setScalar(iv.trayScale, iv.trayScale, iv.trayScale));
+      } else {
+        iv.mesh.setInactive();
+      }
+    }
   }
 
   /** An oil drum: ribbed sides, a zig-zag hazard band, and a lid; when detonated, its ruptured stump and flying 3D shrapnel remain. */
-  buildBarrel() {
+  buildBarrel(barrel = null) {
     const R = 9.5;
     const H = 26;
+    const horizontal = Boolean(barrel?.horizontal);
     const { gl } = this;
     this.barrelPixels ??= barrelAtlas();
     this.barrelWreckGeo ??= barrelWreckMesh(new Vec2(R, H));
@@ -2566,8 +2842,9 @@ export class World {
     const sharedBarrelTex = this.sharedTexture(this.barrelPixels, texOpts);
     const root = new Mesh(gl, new CustomMesh());
     const cylinder = skinBarrel(new Cylinder(new Vec2(R * 0.985, R * 0.985), H, 20, 1, false), 20, 1);
-    for (let i = 1; i < cylinder.vertices.length; i += 3)
-      cylinder.vertices[i] += H / 2;
+    if (!horizontal)
+      for (let i = 1; i < cylinder.vertices.length; i += 3)
+        cylinder.vertices[i] += H / 2;
     const skinMaterial = new Material({ diffuse: new Vec3(1, 1, 1) });
     const intact = texturedMesh(gl, cylinder, {
       fragment: SOLID_TEXTURED_FRAGMENT,
@@ -2581,7 +2858,48 @@ export class World {
       intact.sharedTexOptions = texOpts;
       this.sharedTexturedMeshes.push(intact);
     }
+    if (horizontal) {
+      intact.setPosition(scratchPos.setScalar(0, R * 0.9, 0));
+      intact.setRotation(scratchRot.setScalar(Trigo.halfpi + 0.06, 0.35 + (barrel?.roll ?? 0), 0));
+    }
     root.addChild(intact);
+
+    let acidPuddle = null;
+    let acidStream = null;
+    if (horizontal) {
+      this.slimePixels ??= slimeAtlas();
+      this.barrelAcidPuddleGeo ??= barrelAcidPuddleMesh(new Vec2(R, H));
+      this.barrelAcidStreamGeo ??= barrelAcidStreamMesh(new Vec2(R, H));
+      const slimeTexOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST, wrapS: gl.REPEAT, wrapT: gl.REPEAT };
+      const sharedSlimeTex = this.sharedTexture(this.slimePixels, slimeTexOpts);
+      const acidMaterial = new Material({ diffuse: new Vec3(1, 1, 1) });
+      const makeAcidPart = (partGeo) => {
+        const geometry = new CustomMesh();
+        geometry.vertices = partGeo.vertices;
+        geometry.normals = partGeo.normals;
+        geometry.uvs = partGeo.uvs;
+        geometry.setPrimitive('TRIANGLES');
+        const mesh = texturedMesh(gl, geometry, {
+          vertex: FLOOR_VERTEX,
+          fragment: SLIME_FRAGMENT,
+          atlas: this.slimePixels,
+          sharedTexture: sharedSlimeTex,
+          material: acidMaterial,
+          textureOptions: slimeTexOpts,
+        });
+        if (sharedSlimeTex) {
+          mesh.sharedAtlas = this.slimePixels;
+          mesh.sharedTexOptions = slimeTexOpts;
+          this.sharedTexturedMeshes.push(mesh);
+        }
+        mesh.addCustomUniform('time', 'uniform1f', 0);
+        root.addChild(mesh);
+        return mesh;
+      };
+      acidPuddle = makeAcidPart(this.barrelAcidPuddleGeo);
+      acidStream = makeAcidPart(this.barrelAcidStreamGeo);
+      root.setRotation(scratchRot.setScalar(0, Trigo.halfpi - (barrel?.angle ?? 0), 0));
+    }
 
     const wreckMaterial = new Material({ diffuse: new Vec3(1, 1, 1) });
     const makePart = (partGeo) => {
@@ -2615,22 +2933,28 @@ export class World {
     return {
       root,
       intact,
+      acidPuddle,
+      acidStream,
       wreck,
       lid,
       staves,
+      horizontal,
       skinMaterial,
       wreckMaterial,
       pose: createBarrelExplosionPose(),
       wasGone: false,
       lastX: Number.NaN,
       lastY: Number.NaN,
+      lastZ: Number.NaN,
+      lastAngle: barrel?.angle ?? Number.NaN,
+      lastRoll: barrel?.roll ?? Number.NaN,
       intactSettled: false,
       wreckSettled: false,
     };
   }
 
-  buildBarrelView() {
-    return this.buildBarrel();
+  buildBarrelView(barrel) {
+    return this.buildBarrel(barrel);
   }
 
   updateBarrelView(barrel, view) {
@@ -2642,12 +2966,36 @@ export class World {
       return;
     }
     view.root.setActive();
-    if (barrel.pos.x !== view.lastX || barrel.pos.y !== view.lastY) {
+    const bz = barrel.z ?? 0;
+    const posChanged = barrel.pos.x !== view.lastX || barrel.pos.y !== view.lastY || bz !== view.lastZ;
+    if (posChanged) {
       view.lastX = barrel.pos.x;
       view.lastY = barrel.pos.y;
-      view.root.setPosition(scratchPos.setScalar(barrel.pos.x, 0, barrel.pos.y));
+      view.lastZ = bz;
+      view.root.setPosition(scratchPos.setScalar(barrel.pos.x, bz, barrel.pos.y));
+    }
+    const angle = barrel.angle ?? 0;
+    const angleChanged = barrel.horizontal && angle !== view.lastAngle;
+    if (angleChanged) {
+      view.lastAngle = angle;
+      view.root.setRotation(scratchRot.setScalar(0, Trigo.halfpi - angle, 0));
+    }
+    if (view.acidPuddle) {
+      view.acidPuddle.setCustomUniform('time', time);
+      if ((posChanged || angleChanged) && barrel.spawnPos) {
+        const yaw = Trigo.halfpi - angle;
+        const cosYaw = Math.cos(yaw);
+        const sinYaw = Math.sin(yaw);
+        const dx = barrel.spawnPos.x - barrel.pos.x;
+        const dz = barrel.spawnPos.y - barrel.pos.y;
+        const localX = dx * cosYaw - dz * sinYaw;
+        const localZ = dx * sinYaw + dz * cosYaw;
+        view.acidPuddle.setPosition(scratchPos.setScalar(localX, -bz, localZ));
+        view.acidPuddle.setRotation(scratchRot.setScalar(0, angle - (barrel.spawnAngle ?? angle), 0));
+      }
     }
     if (!barrel.gone) {
+      const streamActive = (barrel.rolled ?? 0) < 3;
       if (view.wasGone) {
         view.wasGone = false;
         view.intactSettled = false;
@@ -2657,6 +3005,21 @@ export class World {
         view.lid.setInactive();
         for (const stave of view.staves)
           stave.setInactive();
+      }
+      if (barrel.horizontal) {
+        const roll = barrel.roll ?? 0;
+        if (roll !== view.lastRoll) {
+          view.lastRoll = roll;
+          view.intact.setRotation(scratchRot.setScalar(Trigo.halfpi + 0.06, 0.35 + roll, 0));
+        }
+      }
+      if (view.acidStream) {
+        if (streamActive) {
+          view.acidStream.setActive();
+          view.acidStream.setCustomUniform('time', time);
+        } else {
+          view.acidStream.setInactive();
+        }
       }
       // a barrel that has been set off flickers and shudders until it blows
       const burning = barrel.fuse >= 0;
@@ -2676,6 +3039,8 @@ export class World {
       view.intactSettled = false;
       view.wreckSettled = false;
       view.intact.setInactive();
+      if (view.acidStream)
+        view.acidStream.setInactive();
       view.wreck.setActive();
       view.lid.setActive();
       for (const stave of view.staves)
@@ -2983,6 +3348,8 @@ export class World {
 
     if (this.slimeMesh)
       this.slimeMesh.setCustomUniform('time', time);
+    if (this.acidSplashMesh)
+      this.acidSplashMesh.setCustomUniform('time', time);
     if (this.acidMistMesh)
       this.acidMistMesh.setCustomUniform('time', time);
     if (this.teleporterMesh)
@@ -3044,7 +3411,7 @@ export class World {
     this.syncViews(
       this.barrelViews,
       game.barrels,
-      (this.buildBarrelViewFn ??= () => this.buildBarrelView()),
+      (this.buildBarrelViewFn ??= (barrel) => this.buildBarrelView(barrel)),
       (this.updateBarrelViewFn ??= (barrel, view) => this.updateBarrelView(barrel, view))
     );
     this.syncViews(
@@ -3371,7 +3738,8 @@ export class World {
       camera.setProjectionMatrix(this.viewportSize);
     }
     const baseEye = player.eye ?? EYE;
-    const minEye = Math.max(-ACID_SURFACE_DEPTH + 4, 8 + (player.z ?? 0));
+    const pitFloor = game.level?.emptyPitAt?.(player.pos) ? -EMPTY_PIT_DEPTH : -ACID_SURFACE_DEPTH;
+    const minEye = Math.max(pitFloor + 4, 8 + (player.z ?? 0));
     const eyeY = Math.max(minEye, baseEye - drop) + bob;
     // the shot shoves the eye straight back along the aim; render-only, relaxes in game.relaxKick
     const push = kick.push ?? 0;

@@ -592,3 +592,178 @@ export function barrelExplosionPose(elapsed, seed = 0, target = createBarrelExpl
 
   return target;
 }
+
+/**
+ * Builds the 3D multi-lobed glowing green acid puddle on the floor underneath and in front of a horizontal
+ * leaking barrel (`'z'`), complete with a raised outer meniscus rim and satellite splatter pools.
+ */
+export function barrelAcidPuddleMesh(size = new Vec2(9.5, 26)) {
+  const R = size.x;
+  const H = size.y;
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const segs = 16;
+  const centerX = 0;
+  const centerZ = H * 0.36;
+  const innerY = 0.22;
+  const rimY = 0.18;
+  const floorY = 0.12;
+  const lobeRadii = [
+    1.04, 1.16, 1.28, 1.18,
+    0.96, 1.12, 1.24, 1.08,
+    0.88, 0.94, 1.06, 0.92,
+    0.86, 1.02, 1.18, 1.10,
+  ];
+  const radiusX = R * 1.65;
+  const radiusZ = H * 0.72;
+  const centerTop = new Vec3(centerX, innerY, centerZ);
+  const centerUv = new Vec2(0.5, 0.5);
+
+  for (let i = 0; i < segs; i++) {
+    const next = (i + 1) % segs;
+    const a0 = (i / segs) * Trigo.twopi;
+    const a1 = (next / segs) * Trigo.twopi;
+    const c0 = Math.cos(a0);
+    const s0 = Math.sin(a0);
+    const c1 = Math.cos(a1);
+    const s1 = Math.sin(a1);
+    const l0 = lobeRadii[i];
+    const l1 = lobeRadii[next];
+
+    const x0 = centerX + c0 * radiusX * l0;
+    const z0 = centerZ + s0 * radiusZ * l0;
+    const x1 = centerX + c1 * radiusX * l1;
+    const z1 = centerZ + s1 * radiusZ * l1;
+
+    const ox0 = centerX + c0 * (radiusX * l0 + 1.35);
+    const oz0 = centerZ + s0 * (radiusZ * l0 + 1.35);
+    const ox1 = centerX + c1 * (radiusX * l1 + 1.35);
+    const oz1 = centerZ + s1 * (radiusZ * l1 + 1.35);
+
+    const p0 = new Vec3(x0, rimY, z0);
+    const p1 = new Vec3(x1, rimY, z1);
+    const e0 = new Vec3(ox0, floorY, oz0);
+    const e1 = new Vec3(ox1, floorY, oz1);
+
+    pushTri(
+      vertices,
+      normals,
+      uvs,
+      centerTop,
+      p1,
+      p0,
+      centerUv,
+      new Vec2(0.5 + c1 * 0.44 * l1, 0.5 + s1 * 0.44 * l1),
+      new Vec2(0.5 + c0 * 0.44 * l0, 0.5 + s0 * 0.44 * l0)
+    );
+    pushQuad(vertices, normals, uvs, p0, p1, e1, e0, i / segs, 0.15, (i + 1) / segs, 0.85);
+  }
+
+  // Satellite acid splatter droplets around the main pool
+  const droplets = [
+    new Vec3(-R * 1.48, H * 0.78, 3.8),
+    new Vec3(R * 1.36, H * 0.86, 3.2),
+    new Vec3(-R * 0.35, H * 1.18, 2.9),
+  ];
+  const dropSegs = 8;
+  for (let d = 0; d < droplets.length; d++) {
+    const drop = droplets[d];
+    const dx = drop.x;
+    const dz = drop.y;
+    const dr = drop.z;
+    const dropCenter = new Vec3(dx, 0.17, dz);
+    for (let i = 0; i < dropSegs; i++) {
+      const a0 = (i / dropSegs) * Trigo.twopi;
+      const a1 = ((i + 1) / dropSegs) * Trigo.twopi;
+      const c0 = Math.cos(a0);
+      const s0 = Math.sin(a0);
+      const c1 = Math.cos(a1);
+      const s1 = Math.sin(a1);
+      pushTri(
+        vertices,
+        normals,
+        uvs,
+        dropCenter,
+        new Vec3(dx + c1 * dr, floorY, dz + s1 * dr),
+        new Vec3(dx + c0 * dr, floorY, dz + s0 * dr),
+        centerUv,
+        new Vec2(0.5 + c1 * 0.25, 0.5 + s1 * 0.25),
+        new Vec2(0.5 + c0 * 0.25, 0.5 + s0 * 0.25)
+      );
+    }
+  }
+
+  return {
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  };
+}
+
+/**
+ * Builds the 3D gushing/dripping green acid streams pouring from a horizontal barrel's lower front bung and
+ * corroded belly seam down into the floor puddle.
+ */
+export function barrelAcidStreamMesh(size = new Vec2(9.5, 26)) {
+  const R = size.x;
+  const H = size.y;
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const buildStreamTube = (topX, topY, topZ, midX, midY, midZ, botX, botY, botZ, rTop, rMid, rBot) => {
+    const radial = 6;
+    for (let i = 0; i < radial; i++) {
+      const u0 = i / radial;
+      const u1 = (i + 1) / radial;
+      const a0 = u0 * Trigo.twopi;
+      const a1 = u1 * Trigo.twopi;
+      const c0 = Math.cos(a0);
+      const s0 = Math.sin(a0);
+      const c1 = Math.cos(a1);
+      const s1 = Math.sin(a1);
+
+      const t0 = new Vec3(topX + c0 * rTop, topY, topZ + s0 * rTop);
+      const t1 = new Vec3(topX + c1 * rTop, topY, topZ + s1 * rTop);
+      const m0 = new Vec3(midX + c0 * rMid, midY, midZ + s0 * rMid);
+      const m1 = new Vec3(midX + c1 * rMid, midY, midZ + s1 * rMid);
+      const b0 = new Vec3(botX + c0 * rBot, botY, botZ + s0 * rBot);
+      const b1 = new Vec3(botX + c1 * rBot, botY, botZ + s1 * rBot);
+
+      pushQuad(vertices, normals, uvs, m0, m1, t1, t0, u0, 0.05, u1, 0.5);
+      pushQuad(vertices, normals, uvs, b0, b1, m1, m0, u0, 0.5, u1, 0.95);
+    }
+  };
+
+  // 1. Primary gushing stream pouring from the lower bung on the front lid (+Z end)
+  buildStreamTube(
+    -R * 0.18, R * 0.62, H * 0.48,
+    -R * 0.2, R * 0.34, H * 0.57,
+    -R * 0.22, 0.15, H * 0.63,
+    1.15, 0.92, 2.25
+  );
+
+  // 2. Secondary trickle dripping from the corroded lower lid rim
+  buildStreamTube(
+    R * 0.24, R * 0.78, H * 0.47,
+    R * 0.26, R * 0.42, H * 0.52,
+    R * 0.28, 0.15, H * 0.56,
+    0.72, 0.55, 1.45
+  );
+
+  // 3. Weeping rivulet running down the corroded side seam of the horizontal drum
+  buildStreamTube(
+    R * 0.86, R * 0.74, H * 0.12,
+    R * 0.94, R * 0.38, H * 0.16,
+    R * 0.88, 0.15, H * 0.2,
+    0.68, 0.82, 1.65
+  );
+
+  return {
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  };
+}

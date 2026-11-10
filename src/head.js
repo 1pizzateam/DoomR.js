@@ -1,4 +1,5 @@
 import { DirectionalLight, PerspectiveCamera, Scene, Texture } from '@1pizzateam/roostr';
+import { registerHeadView } from './overlay.js';
 import { createShirtMesh, updateShirt } from './shirt.js';
 import { paintFaceAtlas } from './skin/atlas.js';
 import {
@@ -271,3 +272,5 @@ export class HeadView {
     }
   }
 }
+
+registerHeadView(HeadView);
