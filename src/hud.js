@@ -293,7 +293,6 @@ export class Hud {
     this.selectHint = DEFAULT_SELECT_HINT;
     this.controlsView = null;
     this.controlsEntryText = 'CONTROLS · F1';
-    this.controlsKeyLabel = 'F1';
     this.optionsText = 'OPTIONS · F1';
     this.mainMenuView = { cursor: 0, items: MAIN_MENU_ITEMS };
     this.unboundText = '';
@@ -311,7 +310,6 @@ export class Hud {
 
   setControlsStatus(label, unboundCount) {
     this.controlsEntryText = `CONTROLS · ${label}`;
-    this.controlsKeyLabel = label;
     this.optionsText = `OPTIONS · ${label}`;
     this.unboundText = unboundCount > 0 ? `${unboundCount} controls unbound — open CONTROLS` : '';
   }
@@ -331,7 +329,6 @@ export class Hud {
     const L = layoutHints(hints, this.width, this.height);
     const rowH = 18;
     const headerH = 16;
-    const capPadX = 3;
     const capH = 14;
 
     for (let g = 0; g < hints.length; g++) {
