@@ -408,12 +408,13 @@ const tests = {
     const base = BLOOD_BASELINE;
     const splat = { pos: new Vec2(0.5, 0.4), size: 50, drip: 120, seed: 42 };
     const viewport = new Vec2(800, 600);
-    assert.deepEqual(screenSplatQuadsVec({ ...splat, age: 0 }, viewport, 0.7), base.s0);
+    const flat = (q) => ({ x0: q.rect.topLeftCorner.x, y0: q.rect.topLeftCorner.y, x1: q.rect.bottomRightCorner.x, y1: q.rect.bottomRightCorner.y, uv: q.uv, fade: q.fade });
+    assert.deepEqual(screenSplatQuadsVec({ ...splat, age: 0 }, viewport, 0.7).map(flat), base.s0);
     assert.equal(base.s0.length, 1);
-    assert.deepEqual(screenSplatQuadsVec({ ...splat, age: 2 }, viewport, 0.7), base.s1);
+    assert.deepEqual(screenSplatQuadsVec({ ...splat, age: 2 }, viewport, 0.7).map(flat), base.s1);
     const target = createQuadTarget();
     screenSplatQuadsVec({ ...splat, age: 2 }, viewport, 0.7, target);
-    assert.deepEqual(target.quads.slice(0, target.count), base.s1);
+    assert.deepEqual(target.quads.slice(0, target.count).map(flat), base.s1);
   },
 
   'AC-6 World splat, gib, print, wall and drip sync batches quads identical to baseline'() {
@@ -3461,14 +3462,14 @@ const tests = {
     assert.equal(signatures.size, CEILING_CELL_COUNT, 'every ceiling cell has a unique pixel-art pattern');
     const light = (y, x) => atlas.data[(y * atlas.width + CEILING_CELLS.light * 64 + x) * 4 + 2];
     assert.ok(light(32, 30) > 150, 'a light fixture is bright');
-    assert.equal(ceilingCellFor(2, 3), CEILING_CELLS.light);
-    assert.equal(ceilingCellFor(7, 3), CEILING_CELLS.light, 'fixtures repeat every five by four tiles');
-    assert.notEqual(ceilingCellFor(2, 2), CEILING_CELLS.light, 'adjacent rows are not crowded with light fixtures');
-    assert.equal(ceilingCellFor(3, 7), ceilingCellFor(3, 7), 'the same ceiling every time');
+    assert.equal(ceilingCellFor(new Vec2(2, 3)), CEILING_CELLS.light);
+    assert.equal(ceilingCellFor(new Vec2(7, 3)), CEILING_CELLS.light, 'fixtures repeat every five by four tiles');
+    assert.notEqual(ceilingCellFor(new Vec2(2, 2)), CEILING_CELLS.light, 'adjacent rows are not crowded with light fixtures');
+    assert.equal(ceilingCellFor(new Vec2(3, 7)), ceilingCellFor(new Vec2(3, 7)), 'the same ceiling every time');
     const seen = new Set();
     for (let y = 0; y < 24; y++) {
       for (let x = 0; x < 24; x++)
-        seen.add(ceilingCellFor(x, y));
+        seen.add(ceilingCellFor(new Vec2(x, y)));
     }
     assert.equal(seen.size, CEILING_CELL_COUNT, 'rooms mix all 8 coffered overhead ceiling cells');
     assert.ok(!CEILING_FRAGMENT.includes('RUST_BRIGHT'), 'ceiling shader does not paint brown floor rust puddles onto the ceiling');
@@ -3713,12 +3714,12 @@ const tests = {
 
     const [u0, v0, u1, v1] = floorCellUv(3);
     assert.ok(u0 > 3 / FLOOR_CELL_COUNT && u1 < 4 / FLOOR_CELL_COUNT && v0 === 0 && v1 === 1, 'a cell is sampled a hair inside its edges');
-    assert.equal(floorCellFor(4, 7, true), FLOOR_CELLS.hazard);
-    assert.equal(floorCellFor(4, 7), floorCellFor(4, 7), 'the same tile always looks the same');
+    assert.equal(floorCellFor(new Vec2(4, 7), true), FLOOR_CELLS.hazard);
+    assert.equal(floorCellFor(new Vec2(4, 7)), floorCellFor(new Vec2(4, 7)), 'the same tile always looks the same');
     const seen = new Set();
     for (let y = 0; y < 30; y++) {
       for (let x = 0; x < 30; x++)
-        seen.add(floorCellFor(x, y));
+        seen.add(floorCellFor(new Vec2(x, y)));
     }
     assert.ok(seen.size >= 7 && !seen.has(FLOOR_CELLS.hazard), 'a room mixes the patterns, and keeps the stripes for doors');
   },
@@ -3784,17 +3785,19 @@ const tests = {
     assert.equal(last, WEAPON_FRAMES.idle, 'it ends at rest');
 
     // placement: whole screen pixels per art pixel, centred, standing on the bottom, kicking up and swaying
-    const still = weaponPlacement({ width: 1280, height: 760 });
+    const wedges = (p) => ({ x0: p.rect.topLeftCorner.x, y0: p.rect.topLeftCorner.y, x1: p.rect.bottomRightCorner.x, y1: p.rect.bottomRightCorner.y, pixel: p.pixel });
+    const place = (w, h, o) => wedges(weaponPlacement(new Vec2(w, h), o, { rect: new Rect(), pixel: 0 }));
+    const still = place(1280, 760);
     assert.ok(Number.isInteger(still.pixel) && still.pixel >= 2, 'pixels are whole, so the art stays sharp');
     assert.equal(still.x1 - still.x0, WEAPON_CELL_W * still.pixel);
     assert.equal(still.y1 - still.y0, WEAPON_CELL_H * still.pixel);
     assert.ok(Math.abs((still.x0 + still.x1) / 2 - 640) <= 1, 'centred');
     assert.ok(still.y1 > 760, 'it stands below the edge of the screen');
-    const kicked = weaponPlacement({ width: 1280, height: 760, recoil: 1 });
+    const kicked = place(1280, 760, { recoil: 1 });
     assert.ok(kicked.y1 < still.y1 && kicked.y1 > 760, 'the kick lifts it but never shows a gap under it');
-    const swayed = weaponPlacement({ width: 1280, height: 760, bob: Math.PI / 2, moving: 1 });
+    const swayed = place(1280, 760, { bob: Math.PI / 2, moving: 1 });
     assert.ok(swayed.x0 !== still.x0, 'it sways as you walk');
-    assert.ok(weaponPlacement({ width: 3000, height: 2000 }).pixel > still.pixel, 'and it is bigger on a bigger screen');
+    assert.ok(place(3000, 2000).pixel > still.pixel, 'and it is bigger on a bigger screen');
     const [u0, v0, u1, v1] = weaponCellUv(2);
     assert.ok(u0 > 2 / WEAPON_FRAME_COUNT && u1 < 3 / WEAPON_FRAME_COUNT && v0 === 0 && v1 === 1);
   },
@@ -3990,11 +3993,11 @@ const tests = {
     const grown = screenSplatQuads({ ...splat, age: 2 }, 1000, 800, 0.5);
     assert.equal(fresh0.length, 1, 'a fresh splat has no drip yet');
     assert.ok(grown.length >= 3, 'an older one has a drip, made of a stem and a tip');
-    assert.ok(grown[0].x1 - grown[0].x0 > fresh0[0].x1 - fresh0[0].x0, 'the starburst grows');
+    assert.ok(grown[0].rect.bottomRightCorner.x - grown[0].rect.topLeftCorner.x > fresh0[0].rect.bottomRightCorner.x - fresh0[0].rect.topLeftCorner.x, 'the starburst grows');
     assert.ok(grown.every((q) => q.fade === 0.5), 'all of it fades together');
     const dripQuads = grown.slice(1);
-    const reach = Math.max(...dripQuads.map((q) => q.y1)) - Math.min(...dripQuads.map((q) => q.y0));
-    assert.ok(Math.min(...dripQuads.map((q) => q.y0)) > grown[0].y0, 'the drip starts inside the burst and runs down from it');
+    const reach = Math.max(...dripQuads.map((q) => q.rect.bottomRightCorner.y)) - Math.min(...dripQuads.map((q) => q.rect.topLeftCorner.y));
+    assert.ok(Math.min(...dripQuads.map((q) => q.rect.topLeftCorner.y)) > grown[0].rect.topLeftCorner.y, 'the drip starts inside the burst and runs down from it');
     assert.ok(reach > 100, 'the drip runs down');
 
     // Hud.drawBlood always keeps screen blood translucent so the player can see the 3D world behind it
@@ -4141,7 +4144,7 @@ const tests = {
     assert.ok(fixtures.length >= 10 && fixtures.length <= Math.ceil((level.width * level.rowCount) / 18), 'a level has sparse, well-spaced ceiling light fixtures');
     for (const fixture of fixtures) {
       assert.ok(fixture.tile instanceof Vec2 && fixture.position instanceof Vec3, 'fixtures use Vec2 tile coords and Vec3 positions');
-      assert.equal(ceilingCellFor(fixture.tile.x, fixture.tile.y), CEILING_CELLS.light, 'every fixture sits on a ceiling light cell');
+      assert.equal(ceilingCellFor(new Vec2(fixture.tile.x, fixture.tile.y)), CEILING_CELLS.light, 'every fixture sits on a ceiling light cell');
       assert.equal(fixture.position.x, (fixture.tile.x + 0.5) * 64);
       assert.equal(fixture.position.y, 62);
       assert.equal(fixture.position.z, (fixture.tile.y + 0.5) * 64);
@@ -7914,7 +7917,7 @@ const tests = {
     assert.equal(game.level.baseHeight[pillarIdx], 26, 'half-size PILLAR has height 26 (< 64 ceiling)');
     assert.equal(game.blood.hitsCeiling(new Vec2(2.5 * 64, 3.5 * 64)), true, 'ceiling exists above half-size wall in a roofed room');
 
-    // Tile (2, 3) satisfies ceilingCellFor(2, 3) === CEILING_CELLS.light (2 % 5 === 2 && 3 % 4 === 3)
+    // Tile (2, 3) satisfies ceilingCellFor(new Vec2(2, 3)) === CEILING_CELLS.light (2 % 5 === 2 && 3 % 4 === 3)
     const fixtures = ceilingLightFixtures(game.level);
     assert.ok(fixtures.some((f) => f.tile.x === 2 && f.tile.y === 3), 'ceiling light fixture is placed on the ceiling above a half-size wall at (2, 3)');
 
@@ -10921,7 +10924,7 @@ const tests = {
       for (const t of ['CONTROLS', 'MOVEMENT', 'COMBAT', 'WEAPONS', 'INTERFACE', 'KEY 1', 'KEY 2', '[RESET ALL]', '[BACK]', 'UNBOUND'])
         assert.ok(texts.includes(t), `draws ${t}`);
       menu.view.scroll = 0;
-      const L = layoutControls(1024, 768);
+      const L = layoutControls(new Vec2(1024, 768));
       const probe = new Vec2(L.slot1X, L.rowsTop + 1 * 20 + 10);
       assert.equal(hud.controlsHitAt(probe), 3);
       probe.setScalar(L.slot0X, L.rowsTop + 1 * 20 + 10);
@@ -12283,18 +12286,19 @@ const tests = {
 
   'AC-3 weaponPlacement and facePlacement fill a supplied scratch rect'() {
     const wOpts = [
-      { width: 1280, height: 760 },
-      { width: 1280, height: 760, recoil: 1 },
-      { width: 1920, height: 1080, bob: 1.3, moving: 1 },
-      { width: 800, height: 600, switchOffset: 0.6 },
+      [new Vec2(1280, 760), {}],
+      [new Vec2(1280, 760), { recoil: 1 }],
+      [new Vec2(1920, 1080), { bob: 1.3, moving: 1 }],
+      [new Vec2(800, 600), { switchOffset: 0.6 }],
     ];
-    const wOut = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
-    for (const o of wOpts) {
-      const expected = weaponPlacement(o);
-      assert.equal(weaponPlacement(o, wOut), wOut);
-      assert.deepEqual(wOut, expected);
+    const wOut = { rect: new Rect(), pixel: 0 };
+    const wsnap = (p) => [p.rect.topLeftCorner.x, p.rect.topLeftCorner.y, p.rect.bottomRightCorner.x, p.rect.bottomRightCorner.y, p.pixel];
+    for (const [size, o] of wOpts) {
+      const expected = wsnap(weaponPlacement(size, o, { rect: new Rect(), pixel: 0 }));
+      assert.equal(weaponPlacement(size, o, wOut), wOut);
+      assert.deepEqual(wsnap(wOut), expected);
     }
-    assert.ok(wOut.pixel >= 2 && wOut.x1 - wOut.x0 === WEAPON_CELL_W * wOut.pixel);
+    assert.ok(wOut.pixel >= 2 && wOut.rect.bottomRightCorner.x - wOut.rect.topLeftCorner.x === WEAPON_CELL_W * wOut.pixel);
     const fOpts = [[new Vec2(1280, 760), 0], [new Vec2(1280, 760), 0.3], [new Vec2(2560, 1440), 0.8]];
     const fOut = { rect: new Rect(), pixel: 0 };
     const snap = (p) => [p.rect.topLeftCorner.x, p.rect.topLeftCorner.y, p.rect.bottomRightCorner.x, p.rect.bottomRightCorner.y, p.pixel];
@@ -12304,6 +12308,66 @@ const tests = {
       assert.deepEqual(snap(fOut), expected);
     }
     assert.notDeepEqual(snap(fOut), snap(facePlacement(fOpts[0][0], fOpts[0][1], { rect: new Rect(), pixel: 0 })), 'a later call overwrote the same object');
+  },
+
+  'AC-2 weaponPlacement takes a Vec2 viewportSize and fills the supplied rect'() {
+    const out = { rect: new Rect(), pixel: 0 };
+    const got = weaponPlacement(new Vec2(1280, 760), {}, out);
+    assert.equal(got, out);
+    assert.ok(out.pixel >= 2);
+    assert.ok(out.rect.bottomRightCorner.y > out.rect.topLeftCorner.y);
+    const src = readFileSync(new URL('../src/weapon.js', import.meta.url), 'utf8');
+    assert.doesNotMatch(src, /function mag2\b/);
+  },
+
+  'AC-3 weaponPlacement bob, recoil and switch offsets move the rect in a Spock Rect'() {
+    const at = (o) => weaponPlacement(new Vec2(1280, 760), o, { rect: new Rect(), pixel: 0 });
+    const base = at({});
+    assert.ok(base.rect instanceof Rect);
+    assert.ok(at({ recoil: 1 }).rect.topLeftCorner.y !== base.rect.topLeftCorner.y);
+    assert.ok(at({ switchOffset: 0.6 }).rect.topLeftCorner.y > base.rect.topLeftCorner.y);
+    assert.ok(at({ bob: 1.3, moving: 1 }).rect.topLeftCorner.x !== base.rect.topLeftCorner.x);
+  },
+
+  'AC-4 hud passes Vec2 viewport sizes and reads the placement Rect'() {
+    const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
+    assert.doesNotMatch(src, /weaponPlacement\(\{[^)]*\b(width|height)\b/);
+    assert.match(src, /scratchViewport/);
+    assert.doesNotMatch(src, /\.(x0|y0|x1|y1)\b/);
+  },
+
+  'AC-5 floorCellFor and ceilingCellFor accept a Vec2 tile'() {
+    for (let y = 0; y < 6; y++)
+      for (let x = 0; x < 6; x++) {
+        const tile = new Vec2(x, y);
+        assert.ok(Number.isInteger(floorCellFor(tile)));
+        assert.ok(Number.isInteger(floorCellFor(tile, true)));
+        const c = ceilingCellFor(tile);
+        assert.ok(c >= 0 && c < CEILING_CELL_COUNT);
+        assert.equal(ceilingCellFor(new Vec2(x, y)), c);
+      }
+    assert.equal(ceilingCellFor.length, 1);
+    assert.equal(floorCellFor.length, 1);
+  },
+
+  'AC-6 screenSplatQuads descriptors are Rect-backed with no loose x0, y0, x1, y1'() {
+    const out = screenSplatQuadsVec({ pos: new Vec2(0.5, 0.5), size: 40, age: 0.5, drip: 30, seed: 7 }, new Vec2(1280, 760), 1);
+    assert.ok(out.length > 0);
+    for (let i = 0; i < out.length; i++) {
+      const q = out[i];
+      assert.ok(q.rect instanceof Rect);
+      assert.ok(q.rect.bottomRightCorner.x > q.rect.topLeftCorner.x);
+      for (const k of ['x0', 'y0', 'x1', 'y1'])
+        assert.ok(!(k in q), `${k} still on the quad`);
+    }
+  },
+
+  'AC-7 sector bounds are Rects built from Vec2 inputs and fog visibility reads them'() {
+    const src = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+    assert.match(src, /function makeSectorBounds\(sectorTile, gridSize\)/);
+    assert.match(src, /const bounds = new Rect\(\);/);
+    assert.match(src, /const \{ topLeftCorner, bottomRightCorner \} = bounds;/);
+    assert.doesNotMatch(src.slice(src.indexOf('function isChunkVisibleInFog'), src.indexOf('/** Fades a colour')), /bounds\.x0/);
   },
 
   'AC-4 weaponCellUv and faceCellUv return cached identical tuples with the original values'() {
@@ -12366,9 +12430,9 @@ const tests = {
       hud.render(game);
       const wq = weaponQuads[weaponQuads.length - 1];
       const fq = faceQuads[faceQuads.length - 1];
-      const wp = weaponPlacement({ width: 1280, height: 760, bob: f.bob, moving: f.moving, recoil: f.recoil, switchOffset: 0 });
+      const wp = weaponPlacement(new Vec2(1280, 760), { bob: f.bob, moving: f.moving, recoil: f.recoil, switchOffset: 0 }, { rect: new Rect(), pixel: 0 });
       const fp = facePlacement(new Vec2(1280, 760), f.hurt, { rect: new Rect(), pixel: 0 });
-      assert.deepEqual(wq.slice(0, 4), [wp.x0, wp.y0, wp.x1, wp.y1]);
+      assert.deepEqual(wq.slice(0, 4), [wp.rect.topLeftCorner.x, wp.rect.topLeftCorner.y, wp.rect.bottomRightCorner.x, wp.rect.bottomRightCorner.y]);
       assert.deepEqual(fq.slice(0, 4), [fp.rect.topLeftCorner.x, fp.rect.topLeftCorner.y, fp.rect.bottomRightCorner.x, fp.rect.bottomRightCorner.y]);
       assert.ok(Object.isFrozen(wq[4]) && Object.isFrozen(fq[4]), 'UVs are the cached frozen tuples');
       assert.ok(Array.from({ length: FACE_FRAME_COUNT }, (_, i) => faceCellUv(i)).includes(fq[4]));
@@ -16019,7 +16083,7 @@ const tests = {
     assert.equal(hud.controlsHitAt(new Vec2(500, 400)), HIT_NONE);
 
     // Layout dimensions
-    const L = layoutControls(hud.width, hud.height);
+    const L = layoutControls(new Vec2(hud.width, hud.height));
     hud.controlsView = {
       open: true,
       scroll: 0,

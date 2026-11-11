@@ -1,4 +1,4 @@
-import { Utils } from '@1pizzateam/spock';
+import { Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 import { FLOOR_FRAGMENT, FLOOR_VERTEX, GLOW, LIGHT, METAL, mix, plate, rivet, SHADOW, Tile } from './floor.js';
 
@@ -156,35 +156,48 @@ export function lockedDoorAtlas(color = 'red') {
   return buildDoorAtlas(`${color}Door`, color);
 }
 
+const scratchCorner0 = new Vec3();
+const scratchCorner1 = new Vec3();
+const scratchCorner2 = new Vec3();
+const scratchCorner3 = new Vec3();
+const scratchUvMin = new Vec2();
+const scratchUvMax = new Vec2();
+
+function pushQuad(vertices, uvs, c0, c1, c2, c3, uvMin, uvMax) {
+  vertices.push(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, c0.x, c0.y, c0.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z);
+  uvs.push(uvMin.x, uvMin.y, uvMax.x, uvMin.y, uvMax.x, uvMax.y, uvMin.x, uvMin.y, uvMax.x, uvMax.y, uvMin.x, uvMax.y);
+}
+
+// one cell of an atlas of `cells` cells across, a hair inside its edges, v = 1 at the top of the picture
+function pushCellQuad(vertices, uvs, c0, c1, c2, c3, cell, cells) {
+  const u0 = cell / cells;
+  const u1 = (cell + 1) / cells;
+  const inset = 0.25 / (SIZE * cells);
+  pushQuad(vertices, uvs, c0, c1, c2, c3, scratchUvMin.setScalar(u0 + inset, 0), scratchUvMax.setScalar(u1 - inset, 1));
+}
+
+// the four sides of a box standing on y = 0 take sideCell and its top takes topCell
+function pushBoxFaces(vertices, uvs, h, height, sideCell, topCell, cells) {
+  const c0 = scratchCorner0;
+  const c1 = scratchCorner1;
+  const c2 = scratchCorner2;
+  const c3 = scratchCorner3;
+  pushCellQuad(vertices, uvs, c0.setScalar(-h, 0, h), c1.setScalar(h, 0, h), c2.setScalar(h, height, h), c3.setScalar(-h, height, h), sideCell, cells);
+  pushCellQuad(vertices, uvs, c0.setScalar(h, 0, -h), c1.setScalar(-h, 0, -h), c2.setScalar(-h, height, -h), c3.setScalar(h, height, -h), sideCell, cells);
+  pushCellQuad(vertices, uvs, c0.setScalar(h, 0, h), c1.setScalar(h, 0, -h), c2.setScalar(h, height, -h), c3.setScalar(h, height, h), sideCell, cells);
+  pushCellQuad(vertices, uvs, c0.setScalar(-h, 0, -h), c1.setScalar(-h, 0, h), c2.setScalar(-h, height, h), c3.setScalar(-h, height, -h), sideCell, cells);
+  pushCellQuad(vertices, uvs, c0.setScalar(-h, height, h), c1.setScalar(h, height, h), c2.setScalar(h, height, -h), c3.setScalar(-h, height, -h), topCell, cells);
+}
+
 /**
  * The door as a box: four sides showing the face and a top, standing on y = 0. `dimensions` is a
  * Vec2(size, height) or Vec3(size, height, depth); the box is `size` wide and deep and `height` tall.
  * Vertices, texture coordinates (v = 1 at the top of a picture) and a primitive, for a RoostR CustomMesh.
  */
 export function doorBox(dimensions) {
-  const h = dimensions.x / 2;
-  const height = dimensions.y;
-  const sides = [
-    [[-h, 0, h], [h, 0, h], [h, height, h], [-h, height, h]],
-    [[h, 0, -h], [-h, 0, -h], [-h, height, -h], [h, height, -h]],
-    [[h, 0, h], [h, 0, -h], [h, height, -h], [h, height, h]],
-    [[-h, 0, -h], [-h, 0, h], [-h, height, h], [-h, height, -h]],
-  ];
   const vertices = [];
   const uvs = [];
-  const push = (corners, cell) => {
-    const u0 = cell / DOOR_CELLS;
-    const u1 = (cell + 1) / DOOR_CELLS;
-    const inset = 0.25 / (SIZE * DOOR_CELLS);
-    const uv = [[u0 + inset, 0], [u1 - inset, 0], [u1 - inset, 1], [u0 + inset, 1]];
-    for (const k of [0, 1, 2, 0, 2, 3]) {
-      vertices.push(...corners[k]);
-      uvs.push(...uv[k]);
-    }
-  };
-  for (const corners of sides)
-    push(corners, DOOR_FACE);
-  push([[-h, height, h], [h, height, h], [h, height, -h], [-h, height, -h]], DOOR_TOP);
+  pushBoxFaces(vertices, uvs, dimensions.x / 2, dimensions.y, DOOR_FACE, DOOR_TOP, DOOR_CELLS);
   return { vertices, uvs };
 }
 
@@ -199,42 +212,45 @@ export function doubleDoorBox(dimensions, alongY = false, inset = DOOR_INSET) {
   const height = dimensions.y;
   const thickness = dimensions.z;
   const outer = SIZE / 2 - inset;
-  const slabs = [
-    [-outer, -outer + thickness],
-    [outer - thickness, outer],
-  ];
   const vertices = [];
   const uvs = [];
-  const push = (corners, cell, uSpan = 1, vSpan = 1) => {
+  const c0 = scratchCorner0;
+  const c1 = scratchCorner1;
+  const c2 = scratchCorner2;
+  const c3 = scratchCorner3;
+  const push = (cell, uSpan = 1, vSpan = 1) => {
     const u0 = cell / DOOR_CELLS;
     const u1 = u0 + uSpan / DOOR_CELLS;
     const insetU = 0.25 / (SIZE * DOOR_CELLS);
     const insetV = 0.25 / SIZE;
-    const uv = [
-      [u0 + insetU, insetV],
-      [u1 - insetU, insetV],
-      [u1 - insetU, vSpan - insetV],
-      [u0 + insetU, vSpan - insetV],
-    ];
-    for (const k of [0, 1, 2, 0, 2, 3]) {
-      vertices.push(...corners[k]);
-      uvs.push(...uv[k]);
-    }
+    pushQuad(vertices, uvs, c0, c1, c2, c3, scratchUvMin.setScalar(u0 + insetU, insetV), scratchUvMax.setScalar(u1 - insetU, vSpan - insetV));
   };
   const edgeSpan = Math.min(1, thickness / SIZE);
-  for (const [d0, d1] of slabs) {
+  for (let slab = 0; slab < 2; slab++) {
+    const d0 = slab === 0 ? -outer : outer - thickness;
+    const d1 = slab === 0 ? -outer + thickness : outer;
     if (alongY) {
-      push([[-h, 0, d1], [h, 0, d1], [h, height, d1], [-h, height, d1]], DOOR_FACE);
-      push([[h, 0, d0], [-h, 0, d0], [-h, height, d0], [h, height, d0]], DOOR_FACE);
-      push([[h, 0, d1], [h, 0, d0], [h, height, d0], [h, height, d1]], DOOR_TOP, edgeSpan, 1);
-      push([[-h, 0, d0], [-h, 0, d1], [-h, height, d1], [-h, height, d0]], DOOR_TOP, edgeSpan, 1);
-      push([[-h, height, d1], [h, height, d1], [h, height, d0], [-h, height, d0]], DOOR_TOP, 1, edgeSpan);
+      c0.setScalar(-h, 0, d1); c1.setScalar(h, 0, d1); c2.setScalar(h, height, d1); c3.setScalar(-h, height, d1);
+      push(DOOR_FACE);
+      c0.setScalar(h, 0, d0); c1.setScalar(-h, 0, d0); c2.setScalar(-h, height, d0); c3.setScalar(h, height, d0);
+      push(DOOR_FACE);
+      c0.setScalar(h, 0, d1); c1.setScalar(h, 0, d0); c2.setScalar(h, height, d0); c3.setScalar(h, height, d1);
+      push(DOOR_TOP, edgeSpan, 1);
+      c0.setScalar(-h, 0, d0); c1.setScalar(-h, 0, d1); c2.setScalar(-h, height, d1); c3.setScalar(-h, height, d0);
+      push(DOOR_TOP, edgeSpan, 1);
+      c0.setScalar(-h, height, d1); c1.setScalar(h, height, d1); c2.setScalar(h, height, d0); c3.setScalar(-h, height, d0);
+      push(DOOR_TOP, 1, edgeSpan);
     } else {
-      push([[d1, 0, h], [d1, 0, -h], [d1, height, -h], [d1, height, h]], DOOR_FACE);
-      push([[d0, 0, -h], [d0, 0, h], [d0, height, h], [d0, height, -h]], DOOR_FACE);
-      push([[d0, 0, h], [d1, 0, h], [d1, height, h], [d0, height, h]], DOOR_TOP, edgeSpan, 1);
-      push([[d1, 0, -h], [d0, 0, -h], [d0, height, -h], [d1, height, -h]], DOOR_TOP, edgeSpan, 1);
-      push([[d1, height, h], [d1, height, -h], [d0, height, -h], [d0, height, h]], DOOR_TOP, 1, edgeSpan);
+      c0.setScalar(d1, 0, h); c1.setScalar(d1, 0, -h); c2.setScalar(d1, height, -h); c3.setScalar(d1, height, h);
+      push(DOOR_FACE);
+      c0.setScalar(d0, 0, -h); c1.setScalar(d0, 0, h); c2.setScalar(d0, height, h); c3.setScalar(d0, height, -h);
+      push(DOOR_FACE);
+      c0.setScalar(d0, 0, h); c1.setScalar(d1, 0, h); c2.setScalar(d1, height, h); c3.setScalar(d0, height, h);
+      push(DOOR_TOP, edgeSpan, 1);
+      c0.setScalar(d1, 0, -h); c1.setScalar(d0, 0, -h); c2.setScalar(d0, height, -h); c3.setScalar(d1, height, -h);
+      push(DOOR_TOP, edgeSpan, 1);
+      c0.setScalar(d1, height, h); c1.setScalar(d1, height, -h); c2.setScalar(d0, height, -h); c3.setScalar(d0, height, h);
+      push(DOOR_TOP, 1, edgeSpan);
     }
   }
   return { vertices, uvs };
@@ -245,29 +261,9 @@ export function doubleDoorBox(dimensions, alongY = false, inset = DOOR_INSET) {
  * `dimensions` is a Vec2(size, height) or Vec3(size, height, depth).
  */
 export function secretDoorBox(dimensions, wallCells = 8) {
-  const h = dimensions.x / 2;
-  const height = dimensions.y;
-  const sides = [
-    [[-h, 0, h], [h, 0, h], [h, height, h], [-h, height, h]],
-    [[h, 0, -h], [-h, 0, -h], [-h, height, -h], [h, height, -h]],
-    [[h, 0, h], [h, 0, -h], [h, height, -h], [h, height, h]],
-    [[-h, 0, -h], [-h, 0, h], [-h, height, h], [-h, height, -h]],
-  ];
   const vertices = [];
   const uvs = [];
-  const push = (corners, cell) => {
-    const u0 = cell / wallCells;
-    const u1 = (cell + 1) / wallCells;
-    const inset = 0.25 / (SIZE * wallCells);
-    const uv = [[u0 + inset, 0], [u1 - inset, 0], [u1 - inset, 1], [u0 + inset, 1]];
-    for (const k of [0, 1, 2, 0, 2, 3]) {
-      vertices.push(...corners[k]);
-      uvs.push(...uv[k]);
-    }
-  };
-  for (const corners of sides)
-    push(corners, 0);
-  push([[-h, height, h], [h, height, h], [h, height, -h], [-h, height, -h]], 0);
+  pushBoxFaces(vertices, uvs, dimensions.x / 2, dimensions.y, 0, 0, wallCells);
   return { vertices, uvs };
 }
 

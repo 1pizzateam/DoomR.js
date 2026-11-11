@@ -7,6 +7,7 @@
  *   - Cell 3 (GRIP): Heavy dark-steel top grip collar with recessed lanyard slot and hazard chevrons.
  * - `keycardMesh()` builds the 3D UAC security keycard geometry: main pass slab, raised top grip collar, and protruding LED header.
  */
+import { Vec2, Vec3 } from '@1pizzateam/spock';
 
 export const KEYCARD_CELL = 32;
 export const KEYCARD_FRAMES = 4;
@@ -192,13 +193,19 @@ export function keycardAtlas(color = 'red') {
   return { name: `${color}Key`, data, width, height, cell: KEYCARD_CELL, frames: KEYCARD_FRAMES };
 }
 
-function pushQuad(vertices, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
-  const corners = [c0, c1, c2, c3];
-  const quadUvs = [[u0, v1], [u1, v1], [u1, v0], [u0, v0]];
-  for (const k of [0, 1, 2, 0, 2, 3]) {
-    vertices.push(...corners[k]);
-    uvs.push(...quadUvs[k]);
-  }
+const scratchCorner0 = new Vec3();
+const scratchCorner1 = new Vec3();
+const scratchCorner2 = new Vec3();
+const scratchCorner3 = new Vec3();
+const scratchUvMin = new Vec2();
+const scratchUvMax = new Vec2();
+
+const scratchBoxMin = new Vec3();
+const scratchBoxMax = new Vec3();
+
+function pushQuad(vertices, uvs, c0, c1, c2, c3, uvMin, uvMax) {
+  vertices.push(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, c0.x, c0.y, c0.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z);
+  uvs.push(uvMin.x, uvMax.y, uvMax.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMin.y);
 }
 
 function cellRange(cell) {
@@ -206,20 +213,23 @@ function cellRange(cell) {
   return [cell / KEYCARD_FRAMES + inset, (cell + 1) / KEYCARD_FRAMES - inset];
 }
 
-function pushBox(vertices, uvs, x0, y0, z0, x1, y1, z1, frontCell, sideCell, topCell) {
+/** The box spans the Vec3 `min` and `max`; the three cells pick the atlas cell of the front/back, sides and top/bottom faces. */
+function pushBox(vertices, uvs, min, max, frontCell, sideCell, topCell) {
+  const { x: x0, y: y0, z: z0 } = min;
+  const { x: x1, y: y1, z: z1 } = max;
   const [uf0, uf1] = cellRange(frontCell);
   const [us0, us1] = cellRange(sideCell);
   const [ut0, ut1] = cellRange(topCell);
 
   // Front (+Z) and Back (-Z)
-  pushQuad(vertices, uvs, [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], uf0, 0, uf1, 1);
-  pushQuad(vertices, uvs, [x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], uf0, 0, uf1, 1);
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(x0, y0, z1), scratchCorner1.setScalar(x1, y0, z1), scratchCorner2.setScalar(x1, y1, z1), scratchCorner3.setScalar(x0, y1, z1), scratchUvMin.setScalar(uf0, 0), scratchUvMax.setScalar(uf1, 1));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(x1, y0, z0), scratchCorner1.setScalar(x0, y0, z0), scratchCorner2.setScalar(x0, y1, z0), scratchCorner3.setScalar(x1, y1, z0), scratchUvMin.setScalar(uf0, 0), scratchUvMax.setScalar(uf1, 1));
   // Right (+X) and Left (-X)
-  pushQuad(vertices, uvs, [x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], us0, 0, us1, 1);
-  pushQuad(vertices, uvs, [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], us0, 0, us1, 1);
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(x1, y0, z1), scratchCorner1.setScalar(x1, y0, z0), scratchCorner2.setScalar(x1, y1, z0), scratchCorner3.setScalar(x1, y1, z1), scratchUvMin.setScalar(us0, 0), scratchUvMax.setScalar(us1, 1));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(x0, y0, z0), scratchCorner1.setScalar(x0, y0, z1), scratchCorner2.setScalar(x0, y1, z1), scratchCorner3.setScalar(x0, y1, z0), scratchUvMin.setScalar(us0, 0), scratchUvMax.setScalar(us1, 1));
   // Top (+Y) and Bottom (-Y)
-  pushQuad(vertices, uvs, [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], ut0, 0, ut1, 1);
-  pushQuad(vertices, uvs, [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], ut0, 0, ut1, 1);
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(x0, y1, z1), scratchCorner1.setScalar(x1, y1, z1), scratchCorner2.setScalar(x1, y1, z0), scratchCorner3.setScalar(x0, y1, z0), scratchUvMin.setScalar(ut0, 0), scratchUvMax.setScalar(ut1, 1));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(x0, y0, z0), scratchCorner1.setScalar(x1, y0, z0), scratchCorner2.setScalar(x1, y0, z1), scratchCorner3.setScalar(x0, y0, z1), scratchUvMin.setScalar(ut0, 0), scratchUvMax.setScalar(ut1, 1));
 }
 
 /**
@@ -233,13 +243,13 @@ export function keycardMesh() {
   const uvs = [];
 
   // Main keycard pass body
-  pushBox(vertices, uvs, -5.2, 1.0, -1.1, 5.2, 13.6, 1.1, KEYCARD_CELLS.front, KEYCARD_CELLS.side, KEYCARD_CELLS.top);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-5.2, 1.0, -1.1), scratchBoxMax.setScalar(5.2, 13.6, 1.1), KEYCARD_CELLS.front, KEYCARD_CELLS.side, KEYCARD_CELLS.top);
 
   // Heavy top grip collar & beacon cap
-  pushBox(vertices, uvs, -5.8, 12.6, -1.65, 5.8, 16.4, 1.65, KEYCARD_CELLS.grip, KEYCARD_CELLS.side, KEYCARD_CELLS.top);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-5.8, 12.6, -1.65), scratchBoxMax.setScalar(5.8, 16.4, 1.65), KEYCARD_CELLS.grip, KEYCARD_CELLS.side, KEYCARD_CELLS.top);
 
   // Lower beveled contact bumper
-  pushBox(vertices, uvs, -4.6, 0.0, -1.4, 4.6, 1.6, 1.4, KEYCARD_CELLS.side, KEYCARD_CELLS.side, KEYCARD_CELLS.top);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-4.6, 0.0, -1.4), scratchBoxMax.setScalar(4.6, 1.6, 1.4), KEYCARD_CELLS.side, KEYCARD_CELLS.side, KEYCARD_CELLS.top);
 
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }
