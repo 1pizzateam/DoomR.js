@@ -303,14 +303,29 @@ export class Blood {
     };
     this.holes.push(hole);
     if (door) {
-      const own = this.holes.filter((h) => h.door === door);
-      if (own.length > BLOOD.doorHoles)
-        this.holes.splice(this.holes.indexOf(own[0]), 1);
+      this.evictOldestOf(this.holes, door, BLOOD.doorHoles);
     }
     if (this.holes.length > BLOOD.holes)
       this.holes.shift();
     this.holesVersion++;
     return height;
+  }
+
+  /** Drops the oldest mark of `door` from `list` in place when the door holds more than `cap` of them. */
+  evictOldestOf(list, door, cap) {
+    let count = 0;
+    let first = -1;
+    for (let i = 0; i < list.length; i++)
+      if (list[i].door === door) {
+        if (first < 0)
+          first = i;
+        count++;
+      }
+    if (count <= cap)
+      return;
+    for (let i = first + 1; i < list.length; i++)
+      list[i - 1] = list[i];
+    list.length--;
   }
 
   /**
@@ -506,9 +521,7 @@ export class Blood {
     this.walls.push({ x: px, y: py, z, nx, ny, size, top, door, ...span, seed, age: 0, dripTime: dripTime(seed, size) });
     // blood on a door rides with it, like a hole, and each door keeps only so many
     if (door) {
-      const own = this.walls.filter((w) => w.door === door);
-      if (own.length > BLOOD.doorSplats)
-        this.walls.splice(this.walls.indexOf(own[0]), 1);
+      this.evictOldestOf(this.walls, door, BLOOD.doorSplats);
     }
     if (this.walls.length > BLOOD.walls)
       this.walls.shift();
@@ -948,6 +961,13 @@ export class Blood {
 
     for (const splat of this.splats)
       splat.age += dt;
-    this.splats = this.splats.filter((splat) => splat.age < splat.life);
+    const splats = this.splats;
+    let write = 0;
+    for (let read = 0; read < splats.length; read++) {
+      const splat = splats[read];
+      if (splat.age < splat.life)
+        splats[write++] = splat;
+    }
+    splats.length = write;
   }
 }
