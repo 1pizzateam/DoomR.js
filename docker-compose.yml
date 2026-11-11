@@ -13,6 +13,8 @@ services:
       # the groovr file: dependency resolves to this folder; build it first (dist/)
       - ../GroovR.js:/usr/src/GroovR.js:ro
       - ../RoostR.js:/usr/src/RoostR.js:ro
+      # the facer file: dependency (the 3D HUD head) resolves to this folder; build it first (dist/)
+      - ../FaceR.js:/usr/src/FaceR.js:ro
       - doomr_node_modules:/usr/src/doomr/node_modules
     command: sh -c "npm i --no-package-lock --loglevel=error --ignore-scripts --no-fund && npm run dev"
 

@@ -29,7 +29,7 @@ export function marsFogNearFar(level, pos, target = new Vec2(), nightVision = fa
   let airlockOpen = 0;
   for (let i = 0; i < level.doorsList.length; i++) {
     const door = level.doorsList[i];
-    if (door.open > airlockOpen && level.doorTouchesIndoor(door.idx))
+    if (!door.elevator && door.open > airlockOpen && level.doorTouchesIndoor(door.idx))
       airlockOpen = door.open;
   }
   const mix = Utils.clamp(airlockOpen * 0.65, 0, 0.65);

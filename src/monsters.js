@@ -1698,6 +1698,7 @@ function dieMonster(view, enemy) {
   const postGibMax = Math.max(0, enemy.postGibTime1 ?? 0, enemy.postGibTime2 ?? 0);
   const settled = !enemy.inSlime && enemy.deadTime >= 1.9 && enemy.deadTime - postGibMax >= duration;
   const hits = enemy.postGibHits ?? 0;
+  const z = enemy.z ?? 0;
   if (
     settled &&
     view.deadSettled &&
@@ -1705,6 +1706,7 @@ function dieMonster(view, enemy) {
     view.settledHits === hits &&
     view.settledX === enemy.pos.x &&
     view.settledY === enemy.pos.y &&
+    view.settledZ === z &&
     view.settledYaw === view.yaw
   )
     return;
@@ -1714,6 +1716,7 @@ function dieMonster(view, enemy) {
     view.settledHits = hits;
     view.settledX = enemy.pos.x;
     view.settledY = enemy.pos.y;
+    view.settledZ = z;
     view.settledYaw = view.yaw;
   }
 
@@ -1737,7 +1740,7 @@ function dieMonster(view, enemy) {
     return;
   }
 
-  view.root.setPosition(scratchPos.setScalar(enemy.pos.x, -(1 - dissolve) * 6, enemy.pos.y));
+  view.root.setPosition(scratchPos.setScalar(enemy.pos.x, z - (1 - dissolve) * 6, enemy.pos.y));
   view.root.setRotation(scratchRot.setScalar(0, view.yaw, 0));
   view.root.setScale(scratchScale.setScalar(s, s, s));
 

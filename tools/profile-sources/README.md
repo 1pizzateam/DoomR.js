@@ -1,0 +1,1 @@
+Archived FaceR sources from before the face profile (emotions, default look, material, damage shaping) became the DoomR asset `src/face/doomr.facerprofile.json`. `tools/bake-profile.mjs` produced it from these. Not part of any build.

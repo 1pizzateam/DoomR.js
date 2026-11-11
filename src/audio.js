@@ -8,7 +8,7 @@
  * of it should go to the room reverb. They also run in an OfflineAudioContext, which is
  * how they are checked for silence, clipping and clicks.
  */
-import { createImpulse, createNoise, softClip, spatial2D } from '@1pizzateam/groovr';
+import { createImpulse, createNoise, softClip, spatial2D, speak } from '@1pizzateam/groovr';
 import { Rand, Utils, Vec2 } from '@1pizzateam/spock';
 import { Music } from './music.js';
 import { SHOTGUN_PUMP, WEAPONS } from './weapon.js';
@@ -158,7 +158,10 @@ export const RECIPES = {
     tone(ctx, out, t, { from: 150, to: 38, duration: 0.36, gain: 0.45 });
     tone(ctx, out, t, { type: 'triangle', from: 72, to: 30, duration: 0.42, gain: 0.3 });
     tone(ctx, out, t, { from: 60, to: 28, duration: 0.5, gain: 0.3 });
-    return { duration: 0.8, wet: 0.55 };
+    // chest thump: a short, hard 52 Hz drop under the report, then a long sub tail you feel more than hear
+    tone(ctx, out, t, { from: 52, to: 30, duration: 0.2, gain: 0.55 });
+    tone(ctx, out, t + 0.02, { from: 38, to: 24, duration: 0.65, gain: 0.3 });
+    return { duration: 0.8, wet: 0.65 };
   },
   // the pump: a back stroke, then a forward stroke with a heavier clunk
   pump(ctx, out, t) {
@@ -398,6 +401,15 @@ export const RECIPES = {
     tone(ctx, out, t + 0.22, { from: 55, to: 35, duration: 0.14, gain: 0.4 });
     return { duration: 0.4, wet: 0 };
   },
+  lowHealth(ctx, out, t, { gender = 'female' } = {}) {
+    const voice = speak(ctx, out, t + 0.14, 'I think you are going to die', {
+      gender,
+      speed: 1.25,
+      gain: 0.18,
+      noise: noiseBuffer(ctx),
+    });
+    return { duration: Utils.round(0.14 + voice.duration, 2), wet: 0.42 };
+  },
 
   pickupHealth(ctx, out, t) {
     arpeggio(ctx, out, t, [659, 880, 1320], { spacing: 0.09, length: 0.16, gain: 0.22 });
@@ -412,17 +424,91 @@ export const RECIPES = {
   },
 
   doorOpen(ctx, out, t) {
-    tone(ctx, out, t, { from: 180, to: 90, duration: 0.1, gain: 0.3 });
-    noise(ctx, out, t, { duration: 0.75, gain: 0.3, filter: 'bandpass', from: 180, q: 2, attack: 0.08 });
-    tone(ctx, out, t, { type: 'sawtooth', from: 55, to: 48, duration: 0.75, gain: 0.1, filter: { freq: 200 } });
-    return { duration: 0.85, wet: 0.3 };
+    // Magnetic bolt unlatch click + heavy floor-seal break thud
+    noise(ctx, out, t, { duration: 0.045, gain: 0.34, filter: 'bandpass', from: 2800, to: 1350, q: 3.2 });
+    tone(ctx, out, t, { type: 'square', from: 680, to: 220, duration: 0.042, gain: 0.2 });
+    tone(ctx, out, t, { type: 'triangle', from: 165, to: 52, duration: 0.11, gain: 0.38 });
+    // Pneumatic seal vent hiss
+    noise(ctx, out, t + 0.04, { duration: 0.22, gain: 0.28, filter: 'bandpass', from: 3200, to: 1100, q: 2, attack: 0.015 });
+    // Rising hydraulic servo drive + counterweight rumble + steel guide-rail scrape
+    tone(ctx, out, t + 0.06, {
+      type: 'sawtooth',
+      from: 68,
+      to: 148,
+      duration: 0.62,
+      gain: 0.22,
+      attack: 0.04,
+      drive: 3,
+      filter: { from: 260, to: 680, q: 1.8 },
+      vibrato: { rate: 28, depth: 3.5 },
+    });
+    tone(ctx, out, t + 0.05, { type: 'triangle', from: 44, to: 64, duration: 0.62, gain: 0.26, attack: 0.04 });
+    noise(ctx, out, t + 0.06, { duration: 0.6, gain: 0.26, filter: 'bandpass', from: 240, to: 580, q: 2.4, attack: 0.05 });
+    // Upper lintel recess stop thud + latch lock
+    tone(ctx, out, t + 0.64, { type: 'triangle', from: 140, to: 42, duration: 0.15, gain: 0.42 });
+    noise(ctx, out, t + 0.64, { duration: 0.07, gain: 0.26, filter: 'bandpass', from: 1850, to: 620, q: 2.6 });
+    return { duration: 0.85, wet: 0.32 };
   },
   doorClose(ctx, out, t) {
-    noise(ctx, out, t, { duration: 0.55, gain: 0.3, filter: 'bandpass', from: 180, q: 2, attack: 0.08 });
-    tone(ctx, out, t, { type: 'sawtooth', from: 48, to: 55, duration: 0.55, gain: 0.1, filter: { freq: 200 } });
-    tone(ctx, out, t + 0.5, { from: 120, to: 45, duration: 0.18, gain: 0.5 });
-    noise(ctx, out, t + 0.5, { duration: 0.1, gain: 0.25, from: 600, to: 200 });
+    // Release click + descending hydraulic servo whine + guide-rail scrape + heavy floor-slam thud
+    noise(ctx, out, t, { duration: 0.04, gain: 0.24, filter: 'bandpass', from: 2200, to: 1100, q: 3 });
+    tone(ctx, out, t + 0.02, {
+      type: 'sawtooth',
+      from: 142,
+      to: 62,
+      duration: 0.5,
+      gain: 0.2,
+      attack: 0.03,
+      drive: 3,
+      filter: { from: 620, to: 220, q: 1.8 },
+      vibrato: { rate: 26, depth: 3 },
+    });
+    tone(ctx, out, t + 0.02, { type: 'triangle', from: 62, to: 42, duration: 0.5, gain: 0.24, attack: 0.03 });
+    noise(ctx, out, t + 0.02, { duration: 0.5, gain: 0.25, filter: 'bandpass', from: 540, to: 210, q: 2.2, attack: 0.04 });
+    tone(ctx, out, t + 0.5, { type: 'triangle', from: 135, to: 38, duration: 0.18, gain: 0.5 });
+    noise(ctx, out, t + 0.5, { duration: 0.1, gain: 0.28, from: 750, to: 180 });
     return { duration: 0.75, wet: 0.3 };
+  },
+  whoAreYou(ctx, out, t, { gender = 'female' } = {}) {
+    const voice = speak(ctx, out, t + 0.18, 'who are you ?', { gender, gain: 0.18, noise: noiseBuffer(ctx) });
+    return { duration: Utils.round(0.18 + voice.duration, 2), wet: 0.42 };
+  },
+  elevator(ctx, out, t) {
+    // Heavy industrial freight elevator hoist motor + cable vibration + shaft guide-rail clanks
+    tone(ctx, out, t, { type: 'sawtooth', from: 48, to: 52, duration: 0.72, gain: 0.2, attack: 0.05, drive: 3.5, filter: { freq: 190 }, vibrato: { rate: 7, depth: 4 } });
+    tone(ctx, out, t, { type: 'triangle', from: 32, to: 30, duration: 0.72, gain: 0.28, attack: 0.05 });
+    noise(ctx, out, t, { duration: 0.68, gain: 0.18, filter: 'bandpass', from: 360, to: 240, q: 2.2, attack: 0.06 });
+    tone(ctx, out, t + 0.12, { type: 'square', from: 190, to: 88, duration: 0.09, gain: 0.14, filter: { freq: 820 } });
+    noise(ctx, out, t + 0.12, { duration: 0.08, gain: 0.2, filter: 'bandpass', from: 1350, to: 620, q: 3 });
+    return { duration: 0.75, wet: 0.38 };
+  },
+  elevatorAlert(ctx, out, t, { gender = 'female' } = {}) {
+    // Cascading Nostromo / Hadley's Hope style telemetry alerts: "system failure in sector 1, 2, 3"
+    const noise = noiseBuffer(ctx);
+    let cursor = t;
+    for (let s = 1; s <= 3; s++) {
+      tone(ctx, out, cursor, { type: 'triangle', from: 880, to: 880, duration: 0.06, gain: 0.08 });
+      tone(ctx, out, cursor + 0.07, { type: 'triangle', from: 660, to: 660, duration: 0.08, gain: 0.08 });
+      const voice = speak(ctx, out, cursor + 0.16, `system failure in sector ${s}`, {
+        gender,
+        speed: 1.42,
+        gain: 0.18,
+        noise,
+      });
+      cursor += 0.16 + voice.duration + (s < 3 ? 0.16 : 0);
+    }
+    return { duration: Utils.round(cursor - t, 2), wet: 0.42 };
+  },
+  elevatorStop(ctx, out, t, { gender = 'female' } = {}) {
+    // Heavy hydraulic brake lock + landing thud + pneumatic pressure hiss + arrival chime + robotic "welcome"
+    tone(ctx, out, t, { type: 'triangle', from: 135, to: 32, duration: 0.28, gain: 0.48 });
+    tone(ctx, out, t, { type: 'sine', from: 68, to: 25, duration: 0.34, gain: 0.42 });
+    noise(ctx, out, t, { duration: 0.18, gain: 0.34, filter: 'lowpass', from: 1100, to: 180 });
+    noise(ctx, out, t + 0.06, { duration: 0.24, gain: 0.22, filter: 'bandpass', from: 2400, to: 900, q: 2.4, attack: 0.02 });
+    tone(ctx, out, t + 0.12, { type: 'triangle', from: 784, to: 784, duration: 0.26, gain: 0.16 });
+    tone(ctx, out, t + 0.2, { type: 'sine', from: 1175, to: 1175, duration: 0.3, gain: 0.14 });
+    const voice = speak(ctx, out, t + 0.42, 'welcome', { gender, gain: 0.18, noise: noiseBuffer(ctx) });
+    return { duration: Utils.round(0.42 + voice.duration, 2), wet: 0.42 };
   },
 
   step(ctx, out, t, { pitch = 1 } = {}) {
@@ -672,12 +758,43 @@ export const RECIPES = {
     return { duration: 0.36, wet: 0.25 };
   },
   cacheOpen(ctx, out, t) {
-    noise(ctx, out, t, { duration: 0.04, gain: 0.3, filter: 'bandpass', from: 2200, to: 1200, q: 3 });
-    tone(ctx, out, t, { type: 'square', from: 520, to: 260, duration: 0.03, gain: 0.14 });
-    noise(ctx, out, t + 0.05, { duration: 0.25, gain: 0.14, filter: 'highpass', from: 5000, to: 2500, attack: 0.03 });
-    tone(ctx, out, t + 0.3, { type: 'triangle', from: 110, to: 50, duration: 0.14, gain: 0.3 });
-    noise(ctx, out, t + 0.3, { duration: 0.12, gain: 0.2, filter: 'lowpass', from: 700, to: 200 });
-    return { duration: 0.5, wet: 0.25 };
+    // Twin metallic latch release clicks + chamber thud
+    noise(ctx, out, t, { duration: 0.045, gain: 0.36, filter: 'bandpass', from: 2600, to: 1400, q: 3.2 });
+    tone(ctx, out, t, { type: 'square', from: 760, to: 280, duration: 0.04, gain: 0.22 });
+    tone(ctx, out, t, { type: 'triangle', from: 170, to: 62, duration: 0.09, gain: 0.34 });
+    noise(ctx, out, t + 0.05, { duration: 0.04, gain: 0.32, filter: 'bandpass', from: 3200, to: 1700, q: 3.4 });
+    tone(ctx, out, t + 0.05, { type: 'square', from: 980, to: 360, duration: 0.038, gain: 0.2 });
+    // Pneumatic seal hiss + rising motorized lid hinge sweep
+    noise(ctx, out, t + 0.07, { duration: 0.24, gain: 0.26, filter: 'bandpass', from: 1100, to: 3400, q: 2.2, attack: 0.025 });
+    tone(ctx, out, t + 0.07, { type: 'sawtooth', from: 120, to: 280, duration: 0.22, gain: 0.16, filter: { freq: 820 } });
+    tone(ctx, out, t + 0.08, { type: 'triangle', from: 240, to: 520, duration: 0.2, gain: 0.18 });
+    // Heavy lid-open stop clunk
+    tone(ctx, out, t + 0.29, { type: 'triangle', from: 150, to: 48, duration: 0.14, gain: 0.38 });
+    noise(ctx, out, t + 0.29, { duration: 0.1, gain: 0.26, filter: 'lowpass', from: 950, to: 220 });
+    return { duration: 0.46, wet: 0.3 };
+  },
+  cacheItem(ctx, out, t, { kind = 'ammo', slot = 0 } = {}) {
+    const step = 1 + Math.min(slot, 4) * 0.12;
+    // Rising magnetic pull whoosh as the item lifts out of the chest toward the player
+    noise(ctx, out, t, { duration: 0.12, gain: 0.24, filter: 'bandpass', from: 950 * step, to: 2800 * step, q: 2.4, attack: 0.015 });
+    tone(ctx, out, t, { type: 'sine', from: 260 * step, to: 520 * step, duration: 0.11, gain: 0.2 });
+    if (kind === 'shotgun' || kind === 'chaingun' || kind === 'rocket' || kind === 'chainsaw') {
+      noise(ctx, out, t + 0.05, { duration: 0.06, gain: 0.28, filter: 'bandpass', from: 2200, to: 1100, q: 3 });
+      arpeggio(ctx, out, t + 0.04, [392 * step, 587 * step, 784 * step], { spacing: 0.05, length: 0.15, gain: 0.24, type: 'triangle' });
+      return { duration: 0.34, wet: 0.28 };
+    }
+    if (kind === 'health') {
+      arpeggio(ctx, out, t + 0.03, [523 * step, 659 * step, 988 * step], { spacing: 0.055, length: 0.14, gain: 0.24, type: 'triangle' });
+      return { duration: 0.32, wet: 0.28 };
+    }
+    if (kind === 'greenArmor' || kind === 'blueArmor') {
+      noise(ctx, out, t + 0.04, { duration: 0.07, gain: 0.28, filter: 'bandpass', from: 1900, to: 850, q: 2.2 });
+      arpeggio(ctx, out, t + 0.04, [392 * step, 523 * step, 784 * step], { spacing: 0.055, length: 0.16, gain: 0.23, type: 'triangle' });
+      return { duration: 0.34, wet: 0.26 };
+    }
+    noise(ctx, out, t + 0.03, { duration: 0.035, gain: 0.22, filter: 'highpass', from: 2600 });
+    arpeggio(ctx, out, t + 0.03, [587 * step, 880 * step], { spacing: 0.055, length: 0.13, gain: 0.22, type: 'triangle' });
+    return { duration: 0.28, wet: 0.22 };
   },
   weaponSwitch(ctx, out, t) {
     noise(ctx, out, t, { duration: 0.05, gain: 0.22, filter: 'bandpass', from: 2100, to: 900, q: 3.5 });
@@ -729,6 +846,7 @@ const MIN_INTERVAL = {
   painImp: 0.15,
   painBrute: 0.15,
   hurt: 0.1,
+  lowHealth: 0.2,
   alertImp: 0.2,
   alertBrute: 0.3,
   alertSwarmer: 0.25,
@@ -749,6 +867,10 @@ const MIN_INTERVAL = {
   clang: 0.04,
   doorOpen: 0.2,
   doorClose: 0.2,
+  whoAreYou: 0.2,
+  elevator: 0.25,
+  elevatorAlert: 0.2,
+  elevatorStop: 0.2,
   tallyTick: 0.04,
   tallyBoom: 0.08,
   acid: 0.18,
@@ -763,6 +885,7 @@ const MIN_INTERVAL = {
   rocketFire: 0.12,
   weaponPickup: 0.08,
   cacheOpen: 0.1,
+  cacheItem: 0.06,
   weaponSwitch: 0.06,
   armor: 0.08,
   powerup: 0.08,
@@ -793,6 +916,8 @@ const R_CHAINGUN_SPIN = def('chaingunSpin', true, false, 0, 0, { heat: 0 });
 const ROUTE_CHAINGUN_SPIN = [R_CHAINGUN_SPIN];
 const R_STOMP = def('stomp', false, false, 0, 0, { power: undefined });
 const ROUTE_STOMP = [R_STOMP];
+const R_CACHE_ITEM = def('cacheItem', true, false, 0, 0, { kind: 'ammo', slot: 0 });
+const ROUTE_CACHE_ITEM = [R_CACHE_ITEM];
 const R_WEAPON_SWITCH = def('weaponSwitch', true, false, 0, 0, EMPTY_PARAMS);
 const R_CHAINSAW_UP = def('chainsawUp', true, true, 0, 0, EMPTY_PARAMS);
 const ROUTE_SWITCH_SAW = [R_WEAPON_SWITCH, R_CHAINSAW_UP];
@@ -808,7 +933,7 @@ addStatic('knife', 'knife', true, true);
 addStatic('chainsawIdle', 'chainsawIdle', true, true);
 addStatic('chainsawUp', 'chainsawUp', true, true);
 addStatic('rocketFire', 'rocketFire', true, false, WEAPONS.rocket.feel.duck);
-for (const name of ['weaponPickup', 'armor', 'powerup', 'automap', 'dry', 'hurt', 'death', 'heartbeat', 'clear', 'secret', 'tallyBoom', 'acid', 'keycard'])
+for (const name of ['weaponPickup', 'armor', 'powerup', 'automap', 'dry', 'hurt', 'death', 'heartbeat', 'lowHealth', 'clear', 'secret', 'tallyBoom', 'acid', 'keycard', 'elevator', 'elevatorAlert', 'elevatorStop', 'whoAreYou'])
   addStatic(name, name, true);
 addStatic('wind', 'wind', true, true);
 addStatic('tallyTick', 'tallyTick', true, true);
@@ -855,6 +980,10 @@ function route(event) {
     case 'stomp':
       R_STOMP.params.power = event.power;
       return ROUTE_STOMP;
+    case 'cacheItem':
+      R_CACHE_ITEM.params.kind = event.kind ?? 'ammo';
+      R_CACHE_ITEM.params.slot = event.slot ?? 0;
+      return ROUTE_CACHE_ITEM;
     case 'pickup': return STATIC_ROUTES.get(event.kind === 'health' ? 'pickupHealth' : 'pickupAmmo');
     case 'step': return STATIC_ROUTES.get(event.wet ? 'stepWet' : 'step');
     default: return STATIC_ROUTES.get(event.type) ?? ROUTE_NONE;
@@ -1050,6 +1179,8 @@ export class Sound {
   }
 
   handle(event) {
+    if (event.fromCache)
+      return;
     const routes = route(event);
     const visible = event.visible !== false;
     for (let i = 0; i < routes.length; i++) {

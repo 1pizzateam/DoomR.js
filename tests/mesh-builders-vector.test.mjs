@@ -87,7 +87,8 @@ const checks = [
         for (const span of callSpans(src, helper))
           assert.doesNotMatch(span, ARRAY_ARG, `${name} ${helper} call receives an array literal`);
     }
-    for (const name of ['cache', 'medikit', 'powerups'])
+    assert.match(BOX_SOURCES.find(([n]) => n === 'cache')[1], /function pushBox\(vertices, normals, uvs, min, max, faces\)/);
+    for (const name of ['medikit', 'powerups'])
       assert.match(BOX_SOURCES.find(([n]) => n === name)[1], /function pushBox\(vertices, uvs, min, max, faces\)/);
     const ammo = BOX_SOURCES.find(([n]) => n === 'ammo')[1];
     assert.match(ammo, /function pushCrateTray\(vertices, uvs, halfExtents\)/);

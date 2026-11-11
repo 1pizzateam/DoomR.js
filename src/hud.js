@@ -2,8 +2,9 @@ import { Circ, Rect, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { CEILING, DOOR, EXIT, PILLAR, TILE } from './level.js';
 import { LEVELS } from './levels.js';
 import { createQuadTarget, screenSplatQuads } from './bloodsprites.js';
-import { faceCellUv, faceFrame, facePlacement } from './face.js';
-import { AMMO_FLASH_DURATION, DIFFICULTIES, DIFFICULTY_ORDER } from './game.js';
+import { facePlacement, portraitBackdrop } from './face.js';
+import { WALL_CELLS, wallCellUv } from './wall.js';
+import { AMMO_FLASH_DURATION, CHEST_LOCK_GAP_HALF, CHEST_LOCK_RINGS, DIFFICULTIES, DIFFICULTY_ORDER } from './game.js';
 import { AMMO_TYPES } from './ammo.js';
 import { DEFAULT_HINT_LINES, DEFAULT_SELECT_HINT, defaultActionLabel } from './keymap.js';
 import { MAIN_MENU_ITEMS } from './menu.js';
@@ -26,6 +27,8 @@ const FLOOR_SEEN = dimmed(RGB[BLUE], 0.25);
 const FLOOR_VISIBLE = dimmed(RGB[BLUE], 0.6);
 const SLIME_SEEN = dimmed(RGB[GREEN], 0.38);
 const SLIME_VISIBLE = dimmed(RGB[GREEN], 0.82);
+const PIT_SEEN = dimmed(RGB[RED], 0.38);
+const PIT_VISIBLE = dimmed(RGB[RED], 0.82);
 const EMPTY_CACHES = Object.freeze([]);
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -42,7 +45,10 @@ const USE_PROMPT_FRAME_ALPHA = 0.5;
 const USE_PROMPT_EPSILON = 1e-3;
 const USE_LABEL_STYLE = { size: 11, align: 'center', alpha: 0, glow: 0 };
 const USE_VERB_STYLE = { size: 9, align: 'center', alpha: 0, glow: 0 };
-const USE_LOCK_COLOR = { red: RED, yellow: ORANGE, blue: BLUE };
+const USE_LOCK_COLOR = { red: RED, yellow: ORANGE, blue: BLUE, switch: ORANGE };
+const LOCK_RADII = Object.freeze([98, 72, 46]);
+const LOCK_TITLE_STYLE = Object.freeze({ size: 14, align: 'center', weight: 800, alpha: 0.95, glow: 6 });
+const LOCK_HINT_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.8, glow: 3 });
 
 export const SCREEN_BLOOD_ALPHA = 0.72;
 
@@ -84,7 +90,9 @@ const WEAPON_RECT = { rect: new Rect(), pixel: 0 };
 const scratchViewport = new Vec2();
 const FACE_VIEWPORT = new Vec2();
 const FACE_PLACEMENT = { rect: new Rect(), pixel: 0 };
-const FACE_FRAME_OPTS = { health: 100, hurt: 0, shotElapsed: -1, time: 0 };
+const WALL_LOWER = new Rect();
+const WALL_UPPER = new Rect();
+const WALL_ALPHA = 0.4;
 
 const SCRATCH_SIZE = new Vec2();
 const SCRATCH_POS = new Vec2();
@@ -284,6 +292,7 @@ export class Hud {
     this.automap = false;
     this.useKeyLabel = defaultActionLabel('use');
     this.jumpKeyLabel = defaultActionLabel('jump');
+    this.fireKeyLabel = `CLICK / ${defaultActionLabel('fire')}`;
     this.automapZoom = 1;
     this.automapFollow = true;
     this.automapGrid = true;
@@ -400,7 +409,7 @@ export class Hud {
   }
 
   computeHudTextKey(game, showAutomap) {
-    if (game.state !== 'play' || showAutomap)
+    if (game.state !== 'play' || showAutomap || game.chestLock?.active)
       return '';
     if (game.message && game.message.age < game.message.life)
       return '';
@@ -583,19 +592,112 @@ export class Hud {
   /** Discreet keycap under the crosshair telling the player which key uses the door or chest in reach. */
   drawUsePrompt(game, cx, cy) {
     const prompt = game.usePrompt;
-    if (!prompt || game.state !== 'play' || game.automap || this.controlsView?.open || prompt.fade <= USE_PROMPT_EPSILON)
+    if (!prompt || game.state !== 'play' || game.automap || this.controlsView?.open || game.chestLock?.active || prompt.fade <= USE_PROMPT_EPSILON)
       return;
     const label = prompt.key === 'jump' ? this.jumpKeyLabel : this.useKeyLabel;
     const w = Math.max(USE_PROMPT_H, label.length * USE_PROMPT_CHAR_W + USE_PROMPT_PAD * 2);
     const x0 = cx - w / 2;
     const y0 = cy + USE_PROMPT_TOP;
     const locked = prompt.verb === 'LOCKED' && USE_LOCK_COLOR[prompt.lock] !== undefined;
-    const color = locked ? USE_LOCK_COLOR[prompt.lock] : GREEN;
+    const color = locked ? USE_LOCK_COLOR[prompt.lock] : prompt.verb === 'UNLOCK' ? ORANGE : GREEN;
     this.overlay.crisp.rectLine(setRect(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(w), USE_PROMPT_H), RGB[color], USE_PROMPT_FRAME_ALPHA * prompt.fade);
     USE_LABEL_STYLE.alpha = USE_PROMPT_LABEL_ALPHA * prompt.fade;
     USE_VERB_STYLE.alpha = USE_PROMPT_VERB_ALPHA * prompt.fade;
     this.text(label, cx, y0 + USE_PROMPT_H / 2 + 4, color, USE_LABEL_STYLE);
     this.text(prompt.verb, cx, y0 + USE_PROMPT_H + 12, color, USE_VERB_STYLE);
+  }
+
+  /** Line-art chest lock mini-game centered on the HUD when unlocking a supply chest. */
+  drawChestLock(game, cx, cy) {
+    const lock = game.chestLock;
+    if (!lock?.active || game.state !== 'play' || game.automap || this.controlsView?.open)
+      return;
+    const layer = this.overlay?.crisp ?? this.overlay?.glow;
+    if (!layer)
+      return;
+    const boxW = 280;
+    const boxH = 316;
+    const x0 = Math.round(cx - boxW * 0.5);
+    const y0 = Math.round(cy - boxH * 0.5);
+    layer.fillRect?.(setRect(x0, y0, boxW, boxH), BACKGROUND_RGB);
+    layer.rectLine?.(setRect(x0 + 0.5, y0 + 0.5, boxW - 1, boxH - 1), RGB[lock.missFlash > 0 ? RED : BLUE], 0.75);
+    layerDiamond(layer, cx, cy, 7, RGB[BLUE], 0.75);
+    const segs = 36;
+    for (let r = 0; r < CHEST_LOCK_RINGS; r++) {
+      const radius = LOCK_RADII[r];
+      const target = lock.targets[r];
+      const gapHalf = CHEST_LOCK_GAP_HALF[r];
+      const isDone = r < lock.stage;
+      const isActive = r === lock.stage;
+      for (let s = 0; s < segs; s++) {
+        const a0 = (s / segs) * Trigo.twopi;
+        const a1 = ((s + 1) / segs) * Trigo.twopi;
+        const mid = (a0 + a1) * 0.5;
+        const d = Math.abs(Trigo.deltaRadian(mid, target));
+        const inGap = d <= gapHalf;
+        const col = isDone
+          ? GREEN
+          : isActive
+            ? (inGap ? GREEN : (lock.missFlash > 0 ? RED : BLUE))
+            : (inGap ? GREEN : BLUE);
+        const alpha = isDone
+          ? (inGap ? 1 : 0.6)
+          : isActive
+            ? (inGap ? 1 : 0.65)
+            : (inGap ? 0.55 : 0.32);
+        const c0 = Math.cos(a0);
+        const s0 = Math.sin(a0);
+        const c1 = Math.cos(a1);
+        const s1 = Math.sin(a1);
+        layerSegment(
+          layer,
+          cx + c0 * radius,
+          cy + s0 * radius,
+          cx + c1 * radius,
+          cy + s1 * radius,
+          RGB[col],
+          alpha
+        );
+        if (inGap && (isActive || isDone)) {
+          const innerR = radius - 3;
+          const outerR = radius + 3;
+          layerSegment(layer, cx + c0 * innerR, cy + s0 * innerR, cx + c1 * innerR, cy + s1 * innerR, RGB[GREEN], alpha * 0.85);
+          layerSegment(layer, cx + c0 * outerR, cy + s0 * outerR, cx + c1 * outerR, cy + s1 * outerR, RGB[GREEN], alpha * 0.85);
+        }
+      }
+      const tickAlpha = isActive ? 1 : isDone ? 0.85 : 0.45;
+      for (let sign = -1; sign <= 1; sign += 2) {
+        const ga = target + sign * gapHalf;
+        const c = Math.cos(ga);
+        const s = Math.sin(ga);
+        layerSegment(layer, cx + c * (radius - 8), cy + s * (radius - 8), cx + c * (radius + 8), cy + s * (radius + 8), RGB[GREEN], tickAlpha);
+      }
+      if (isDone) {
+        const la = lock.lockedAngles[r];
+        const lc = Math.cos(la);
+        const ls = Math.sin(la);
+        layerSegment(layer, cx + lc * (radius - 10), cy + ls * (radius - 10), cx + lc * (radius + 7), cy + ls * (radius + 7), RGB[GREEN], 1);
+      } else if (isActive) {
+        const nd = Math.abs(Trigo.deltaRadian(lock.needle, target));
+        const aligned = nd <= gapHalf;
+        const needleCol = lock.missFlash > 0 ? RED : aligned ? GREEN : ORANGE;
+        const nc = Math.cos(lock.needle);
+        const ns = Math.sin(lock.needle);
+        const px = -ns;
+        const py = nc;
+        layerSegment(layer, cx + nc * 8, cy + ns * 8, cx + nc * (radius + 10), cy + ns * (radius + 10), RGB[needleCol], 1);
+        layerSegment(layer, cx + nc * (radius - 5) + px * 4, cy + ns * (radius - 5) + py * 4, cx + nc * (radius + 10), cy + ns * (radius + 10), RGB[needleCol], 0.9);
+        layerSegment(layer, cx + nc * (radius - 5) - px * 4, cy + ns * (radius - 5) - py * 4, cx + nc * (radius + 10), cy + ns * (radius + 10), RGB[needleCol], 0.9);
+      }
+    }
+    this.text(
+      lock.missFlash > 0 ? 'LOCK SLIPPED' : `CHEST LOCK ${lock.stage + 1}/${CHEST_LOCK_RINGS}`,
+      cx,
+      cy - 126,
+      lock.missFlash > 0 ? RED : GREEN,
+      LOCK_TITLE_STYLE
+    );
+    this.text(`[${this.fireKeyLabel}] UNLOCK`, cx, cy + 138, BLUE, LOCK_HINT_STYLE);
   }
 
   drawHud(game) {
@@ -607,12 +709,14 @@ export class Hud {
     // crosshair and hit marker
     const cx = width / 2;
     const cy = height / 2;
-    this.segment(cx - 10, cy, cx - 4, cy, GREEN, 0.9);
-    this.segment(cx + 4, cy, cx + 10, cy, GREEN, 0.9);
-    this.segment(cx, cy - 10, cx, cy - 4, GREEN, 0.9);
-    this.segment(cx, cy + 4, cx, cy + 10, GREEN, 0.9);
+    if (!game.chestLock?.active) {
+      this.segment(cx - 10, cy, cx - 4, cy, GREEN, 0.9);
+      this.segment(cx + 4, cy, cx + 10, cy, GREEN, 0.9);
+      this.segment(cx, cy - 10, cx, cy - 4, GREEN, 0.9);
+      this.segment(cx, cy + 4, cx, cy + 10, GREEN, 0.9);
+    }
     if (player.hitMarker > 0) {
-      const m = 8 + (0.15 - player.hitMarker) * 40;
+      const m = 12 + (0.15 - player.hitMarker) * 70;
       this.segment(cx - m, cy - m, cx - m / 2, cy - m / 2, ORANGE);
       this.segment(cx + m, cy - m, cx + m / 2, cy - m / 2, ORANGE);
       this.segment(cx - m, cy + m, cx - m / 2, cy + m / 2, ORANGE);
@@ -620,39 +724,32 @@ export class Hud {
     }
 
     this.drawUsePrompt(game, cx, cy);
+    this.drawChestLock(game, cx, cy);
 
     FACE_VIEWPORT.setScalar(width, height);
     const faceRect = facePlacement(FACE_VIEWPORT, player.hurt, FACE_PLACEMENT).rect;
     const faceTL = faceRect.topLeftCorner;
     const faceBR = faceRect.bottomRightCorner;
     const weaponDef = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
-    const shotElapsed =
-      (player.soulFlash ?? 0) > 0 || (player.berserkTimer ?? 0) > 18.5
-        ? 0.1
-        : (player.shootFace ?? 0) > 0
-          ? 0.42 - player.shootFace
-          : !player.dryFire && player.cooldown > 0 && (player.switchTimer ?? 0) <= 0
-            ? Math.max(0, weaponDef.cooldown - player.cooldown)
-            : -1;
-    FACE_FRAME_OPTS.health = player.health;
-    FACE_FRAME_OPTS.hurt = player.hurt;
-    FACE_FRAME_OPTS.shotElapsed = shotElapsed;
-    FACE_FRAME_OPTS.time = game.time;
-    const frameIdx = faceFrame(FACE_FRAME_OPTS);
-    const crisp = this.overlay.crisp;
-    const borderCol =
-      (player.teleFlash ?? 0) > 0
-        ? RGB[GREEN]
-        : (player.soulFlash ?? 0) > 0
-          ? RGB[BLUE]
-          : (player.berserkTimer ?? 0) > 0
-            ? RGB[RED]
-            : player.hurt > 0 || player.health < 30
-              ? RGB[ORANGE]
-              : RGB[BLUE];
-    crisp.fillRect(setRect(faceTL.x - 4, faceTL.y - 4, faceBR.x - faceTL.x + 8, faceBR.y - faceTL.y + 8), BACKGROUND_RGB);
-    crisp.rectLine(setRect(faceTL.x - 4.5, faceTL.y - 4.5, faceBR.x - faceTL.x + 9, faceBR.y - faceTL.y + 9), borderCol, player.hurt > 0 || (player.berserkTimer ?? 0) > 0 || (player.soulFlash ?? 0) > 0 || (player.teleFlash ?? 0) > 0 ? 0.85 : 0.45);
-    crisp.face?.quad(faceRect, faceCellUv(frameIdx), 1);
+    if (this.overlay.head) {
+      const crisp = this.overlay.crisp;
+      const borderCol =
+        (player.teleFlash ?? 0) > 0
+          ? RGB[GREEN]
+          : (player.soulFlash ?? 0) > 0
+            ? RGB[BLUE]
+            : (player.berserkTimer ?? 0) > 0
+              ? RGB[RED]
+              : player.hurt > 0 || player.health < 30
+                ? RGB[ORANGE]
+                : RGB[BLUE];
+      crisp.fillRect(setRect(faceTL.x - 4, faceTL.y - 4, faceBR.x - faceTL.x + 8, faceBR.y - faceTL.y + 8), portraitBackdrop(player));
+      crisp.rectLine(setRect(faceTL.x - 4.5, faceTL.y - 4.5, faceBR.x - faceTL.x + 9, faceBR.y - faceTL.y + 9), borderCol, player.hurt > 0 || (player.berserkTimer ?? 0) > 0 || (player.soulFlash ?? 0) > 0 || (player.teleFlash ?? 0) > 0 ? 0.85 : 0.45);
+      this.drawPortraitWall(faceRect);
+      if (game.state !== 'paused')
+        this.overlay.head.update(player, game.time);
+      this.overlay.head.place(faceRect);
+    }
 
     const base = height - 28;
     const hx = faceBR.x + 18;
@@ -846,6 +943,26 @@ export class Hud {
   }
 
   /** Active weapon ammo readout and classic Doom 3-pool tally (Bullets, Shells, Rockets). */
+  /**
+   * The wall behind the portrait: a plain bulkhead panel at the foot, a pipe run above it, at the texels' true proportions,
+   * drawn see-through so the state's backdrop colour tints it.
+   */
+  drawPortraitWall(faceRect) {
+    const wall = this.overlay.crisp.wall;
+    if (!wall)
+      return;
+    const tl = faceRect.topLeftCorner;
+    const br = faceRect.bottomRightCorner;
+    const w = br.x - tl.x;
+    const pieceH = Math.min(w, br.y - tl.y);
+    const topH = br.y - tl.y - pieceH;
+    wall.quad(setRectEdges(WALL_LOWER, tl.x, br.y - pieceH, br.x, br.y), wallCellUv(WALL_CELLS.plain), WALL_ALPHA);
+    if (topH > 0.5) {
+      // the top part of a pipe panel, as much of it as fits
+      wall.quad(setRectEdges(WALL_UPPER, tl.x, tl.y, br.x, tl.y + topH), wallCellUv(WALL_CELLS.pipes, 1 - topH / w, 1), WALL_ALPHA);
+    }
+  }
+
   drawAmmo(rightX, base, player, weaponDef) {
     const ammoType = weaponDef?.ammoType ?? null;
     const ammoDef = ammoType ? AMMO_TYPES[ammoType] : null;
@@ -967,9 +1084,14 @@ export class Hud {
             layer.rectLine(setRect(colX + 0.5, rowY + 0.5, boxS, boxS), RGB[GREEN], visible ? 0.95 : 0.65);
             continue;
           }
-          const isSlime = level.slime?.[idx] === 1;
-          const col = isSlime ? (visible ? SLIME_VISIBLE : SLIME_SEEN) : (visible ? FLOOR_VISIBLE : FLOOR_SEEN);
-          layer.fillRect(setRect(colX + halfS, rowY + halfS, isSlime ? 1.5 : 1, isSlime ? 1.5 : 1), col);
+          const isEmptyPit = level.emptyPit?.[idx] === 1;
+          const isSlime = level.slime?.[idx] === 1 || level.acidSplash?.[idx] === 1;
+          const col = isEmptyPit
+            ? (visible ? PIT_VISIBLE : PIT_SEEN)
+            : isSlime
+              ? (visible ? SLIME_VISIBLE : SLIME_SEEN)
+              : (visible ? FLOOR_VISIBLE : FLOOR_SEEN);
+          layer.fillRect(setRect(colX + halfS, rowY + halfS, (isSlime || isEmptyPit) ? 1.5 : 1, (isSlime || isEmptyPit) ? 1.5 : 1), col);
           continue;
         }
         const doorObj = k === DOOR ? level.doors.get(idx) : null;
@@ -1100,13 +1222,25 @@ export class Hud {
         if (!kind || hVal <= 0) {
           const isTeleporter = level.teleporter?.[idx] === 1;
           const isSlime = level.slime?.[idx] === 1;
+          const isAcidSplash = level.acidSplash?.[idx] === 1;
+          const isEmptyPit = level.emptyPit?.[idx] === 1;
           if (isTeleporter) {
             layer.rectLine(setRect(tx + 1.5, ty + 1.5, Math.max(2, s - 3), Math.max(2, s - 3)), RGB[GREEN], visible ? 0.95 : 0.72);
             layer.circleLine(setCirc(tx + s * 0.5, ty + s * 0.5, Math.max(1.5, s * 0.28)), RGB[BLUE], visible ? 0.85 : 0.55);
             this.text('T', tx + s * 0.5, ty + s * 0.5 + 3, GREEN, { size: Utils.clamp(Math.floor(s * 0.55), 8, 11), align: 'center', weight: 800, glow: 5 });
+          } else if (isEmptyPit) {
+            layer.rectLine(setRect(tx + 1.5, ty + 1.5, Math.max(2, s - 3), Math.max(2, s - 3)), RGB[RED], visible ? 0.85 : 0.45);
+            layer.rectLine(setRect(tx + 3.5, ty + 3.5, Math.max(1, s - 7), Math.max(1, s - 7)), RGB[RED], visible ? 0.55 : 0.28);
           } else if (isSlime) {
             layer.fillRect(setRect(tx + 1.5, ty + 1.5, Math.max(1, s - 3), Math.max(1, s - 3)), visible ? SLIME_VISIBLE : SLIME_SEEN);
             layerSegment(layer, tx + 2, ty + s - 2, tx + s - 2, ty + 2, RGB[GREEN], visible ? 0.55 : 0.3);
+          } else if (isAcidSplash) {
+            const splashCol = visible ? SLIME_VISIBLE : SLIME_SEEN;
+            const d0 = Math.max(1.5, s * 0.32);
+            const d1 = Math.max(1, s * 0.18);
+            layer.fillRect(setRect(tx + s * 0.48 - d0 * 0.5, ty + s * 0.46 - d0 * 0.5, d0, d0), splashCol);
+            layer.fillRect(setRect(tx + s * 0.24, ty + s * 0.68, d1, d1), splashCol);
+            layer.fillRect(setRect(tx + s * 0.68, ty + s * 0.22, d1, d1), splashCol);
           } else
             layer.fillRect(setRect(tx + s * 0.5 - 0.5, ty + s * 0.5 - 0.5, 1.5, 1.5), visible ? FLOOR_VISIBLE : FLOOR_SEEN);
           if (game.discoveredSecrets?.has(idx)) {

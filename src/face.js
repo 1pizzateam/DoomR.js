@@ -172,6 +172,28 @@ export function faceFrame({ health = 100, hurt = 0, shotElapsed = -1, time = 0 }
   return tier * FACE_POSE_COUNT + pose;
 }
 
+const BACKDROPS = {
+  idle: [0.035, 0.06, 0.1],
+  low: [0.1, 0.055, 0.035],
+  hurt: [0.22, 0.03, 0.025],
+  berserk: [0.17, 0.025, 0.025],
+  soul: [0.04, 0.13, 0.26],
+  teleport: [0.04, 0.18, 0.08]
+};
+
+/** The colour behind the portrait's wall texture: steel blue, red when hurt or berserk, blue on a soul sphere, green on a teleport. */
+export function portraitBackdrop(player) {
+  if ((player.teleFlash ?? 0) > 0)
+    return BACKDROPS.teleport;
+  if ((player.soulFlash ?? 0) > 0)
+    return BACKDROPS.soul;
+  if ((player.berserkTimer ?? 0) > 0)
+    return BACKDROPS.berserk;
+  if ((player.hurt ?? 0) > 0)
+    return BACKDROPS.hurt;
+  return player.health < 30 ? BACKDROPS.low : BACKDROPS.idle;
+}
+
 const scratchPlaceSize = new Vec2();
 const scratchPlacePos = new Vec2();
 const defaultPlacement = { rect: new Rect(), pixel: 0 };

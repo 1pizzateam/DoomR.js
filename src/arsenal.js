@@ -2691,7 +2691,7 @@ export function shotgunMesh() {
  * - `shellPos` (`Vec3`), `shellRot` (`Vec3`): local position and tumbling Euler rotation of the ejected 12-gauge shell
  */
 export function shotgunPose(
-  { time = 0, bob = 0, moving = 0, recoil = 0, switchOffset = 0, elapsed = -1, hasAmmo = true } = {},
+  { time = 0, bob = 0, moving = 0, recoil = 0, switchOffset = 0, elapsed = -1, hasAmmo = true, jolt = 0 } = {},
   target = null
 ) {
   const out = target ?? {
@@ -2711,6 +2711,8 @@ export function shotgunPose(
     elapsed >= 0 && elapsed < 0.24
       ? Math.sin(Utils.clamp(1 - elapsed / 0.24, 0, 1) * Trigo.halfpi)
       : Math.min(1, recoil * 0.75);
+  // the gun slams back, then rebounds slightly past rest (0.08..0.26 s) before the pump begins
+  const rebound = elapsed >= 0.08 && elapsed < 0.26 ? Math.sin(((elapsed - 0.08) / 0.18) * Trigo.pi) : 0;
 
   // Deliberate pump-action reload cycle (elapsed 0.16..0.96 when shells remain):
   // Contact times come from SHOTGUN_PUMP (shared with the pump sound).
@@ -2756,11 +2758,11 @@ export function shotgunPose(
   const idleBreathe = Math.sin(time * 2.2) * 0.04;
 
   const right = 0.52 - raise * 0.22 + walkSway * 0.78;
-  const up = -6.85 + blastKick * 0.28 + raise * 0.72 - rack * 0.16 - walkBob + idleBreathe - clampedSwitch * 5.4;
-  const forward = 12.4 - blastKick * 2.15 - raise * 0.55 + rackJolt - clampedSwitch * 1.4;
+  const up = -6.85 + blastKick * 0.4 - rebound * 0.18 + raise * 0.72 - rack * 0.16 - walkBob + idleBreathe - clampedSwitch * 5.4;
+  const forward = 12.4 - blastKick * 3.2 + rebound * 0.6 - jolt * 0.5 - raise * 0.55 + rackJolt - clampedSwitch * 1.4;
   out.offset.setScalar(right, up, forward);
 
-  const pitch = 0.088 - blastKick * 0.09 - raise * 0.025 + rack * 0.025 - rackJolt * 0.04 + clampedSwitch * 0.46;
+  const pitch = 0.088 - blastKick * 0.14 + rebound * 0.025 - jolt * 0.03 - raise * 0.025 + rack * 0.025 - rackJolt * 0.04 + clampedSwitch * 0.46;
   const yaw = 0.035 + raise * 0.11 + rack * 0.035 - walkSway * 0.05;
   const roll = raise * 0.12 + rack * 0.045 - walkSway * 0.07;
   out.rotation.setScalar(pitch, yaw, roll);

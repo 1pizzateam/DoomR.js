@@ -3,7 +3,8 @@ import { Physics, Raycast, Scene } from '@1pizzateam/bumpr';
 import { Blood, makeFeet } from './blood.js';
 import { Rubble, severityOf } from './rubble.js';
 import { CONE_RANGE, Fog, marsFogNearFar } from './fog.js';
-import { CEILING, CROUCH_EYE, DOOR, EXIT, EYE, FLOOR, Level, TILE, WALL } from './level.js';
+import { BASE_FLOOR_LEVEL, CACHE_WALL_OFFSET, CEILING, CROUCH_EYE, DOOR, EXIT, EYE, FLOOR, Level, TILE, WALL } from './level.js';
+export { CACHE_WALL_OFFSET };
 import { LEVELS } from './levels.js';
 import { WEAPON_SLOTS, WEAPONS } from './weapon.js';
 import { AMMO_TYPES } from './ammo.js';
@@ -12,9 +13,11 @@ import { KNIFE_ATTACKS } from './arsenal.js';
 import { POWERUP_TYPES } from './powerups.js';
 import { defaultActionLabel } from './keymap.js';
 import { GRENADE_SCALE, GRENADE_START } from './grenade.js';
+import { DESK_HP, DESK_RADIUS, DISPENSER_HP, DISPENSER_RADIUS } from './furniture.js';
 
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
+export const ELEVATOR_RIDE_TIME = 6.6;
 
 // shared read-only query options: BumpR only reads them
 const QUERY_WALL = Object.freeze({ mask: CAT.WALL });
@@ -102,7 +105,9 @@ const PLAYER_RUN = 235;
 const CROUCH_SPEED = 10;
 const JUMP_VELOCITY = 135;
 const JUMP_GRAVITY = 460;
-export const ACID_PIT_DEPTH = 12;
+export const ACID_SURFACE_DEPTH = 12;
+export const ACID_PIT_DEPTH = 24;
+export const EMPTY_PIT_DEPTH = 64;
 // the head bob advances 9 rad/s at walking pace and the camera dips twice per 2π of it, so one stride is π of bob
 const PLAYER_STRIDE = (PLAYER_WALK * Trigo.pi) / 9;
 const FOOTFALL = (3 * Trigo.pi) / 4; // bob phase where sin(2 * bob), the camera height, is at its lowest
@@ -118,25 +123,22 @@ export const AMMO_FLASH_DURATION = 0.65;
 // the ammo crates and the pool each one fills, whatever weapon is in hand
 const AMMO_CRATES = { ammo: 'shells', bullets: 'bullets', rockets: 'rockets' };
 const MAX_HEALTH = 100;
-// authored supplies live in openable caches; only enemy drops and keys/armor/powerups lie on the floor
+// supply item types that can be configured inside openable chests (`=`) or placed as floor pickups
 export const CACHE_TYPES = Object.freeze(['health', 'ammo', 'bullets', 'rockets', 'chainsaw', 'shotgun', 'chaingun', 'rocket']);
-const CACHE_TYPE_SET = new Set(CACHE_TYPES);
 const CACHE_WEAPONS = new Set(['chainsaw', 'shotgun', 'chaingun', 'rocket']);
 const USE_RANGE = 96;
 const USE_DOT = 0.35;
 const CACHE_TOUCH_RANGE = TILE * 0.5;
-const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', take: 'TAKE', locked: 'LOCKED', jump: 'JUMP' });
+const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', unlock: 'UNLOCK', take: 'TAKE', locked: 'LOCKED', jump: 'JUMP', activate: 'ACTIVATE' });
 // seconds for a full 0 to 1 (in) or 1 to 0 (out) ramp of the use prompt
 const USE_PROMPT_FADE_IN = 0.12;
 const USE_PROMPT_FADE_OUT = 0.2;
 export const CACHE_LID_TIME = 0.35;
-// supplies in one outdoor room share a chest when at most this many walking tiles apart
-export const CACHE_OUTDOOR_LINK = 6;
-// distance from the tile centre toward the wall the chest backs onto
-export const CACHE_WALL_OFFSET = 14;
-// wall sides indexed E, S, W, N
-const WALL_DX = [1, 0, -1, 0];
-const WALL_DY = [0, 1, 0, -1];
+export const CACHE_LOOT_TIME = 0.68;
+export const CACHE_LOOT_STAGGER = CACHE_LOOT_TIME * 0.5;
+export const CHEST_LOCK_RINGS = 3;
+export const CHEST_LOCK_SPEEDS = Object.freeze([1.85, -2.35, 2.9]);
+export const CHEST_LOCK_GAP_HALF = Object.freeze([0.42, 0.36, 0.30]);
 
 function makeBody(pos, radius, { type = 'dynamic', mass = 1, sensor = false, category, mask, velocity, heading = null, speed = 0 }) {
   const size = new Vec2(radius * 2, radius * 2);
@@ -207,8 +209,28 @@ export class Game {
     for (let i = 0; i < EVENT_CAPACITY; i++)
       this.eventPool.push({ type: '', pos: new Vec2(), x: 0, y: 0, visible: true });
     this.eventCursor = 0;
-    this.useTarget = { kind: null, door: null, cache: null, verb: '', lock: null, promptable: false };
+    this.useTarget = { kind: null, door: null, cache: null, switch: null, verb: '', lock: null, promptable: false };
     this.usePrompt = { fade: 0, verb: '', lock: null, key: 'use' };
+    this.chestLock = {
+      active: false,
+      cache: null,
+      stage: 0,
+      needle: 0,
+      targets: [0.8, 2.9, 4.7],
+      lockedAngles: [0, 0, 0],
+      missFlash: 0,
+      hitFlash: 0,
+    };
+    this.elevator = {
+      active: false,
+      phase: 'none',
+      timer: 0,
+      duration: ELEVATOR_RIDE_TIME,
+      pulseTimer: 0,
+      announced: false,
+      cabIdx: -1,
+      door: null,
+    };
     this.load(0);
   }
 
@@ -322,8 +344,11 @@ export class Game {
     this.usePrompt.lock = null;
     this.usePrompt.key = 'use';
     this.clearUseTarget();
+    this.cancelChestLock();
     const seedIndex = this.levelIndex;
-    this.level = def instanceof Level ? def : new Level(def);
+    this.level = def instanceof Level
+      ? def
+      : new Level({ ...def, floorLevel: def.floorLevel ?? (BASE_FLOOR_LEVEL + seedIndex) });
     // the grid lets BumpR test only bodies that share a cell instead of every pair; two tiles per cell
     // is wider than any body, so each one touches at most four cells
     this.scene = new Scene(new Grid(new Vec2(this.level.width * TILE, this.level.rowCount * TILE), GRID_CELL));
@@ -336,12 +361,21 @@ export class Game {
     this.rubble.reset(this.level);
     this.events.length = 0;
     this.heartbeat = 0;
+    this.lowHealthWarned = false;
     this.windTimer = 0;
     this.dust = [];
     this.dustFree.length = 0;
     this.enemies = [];
     this.pickups = [];
     this.caches = [];
+    this.furnitures = [];
+    this.switches = this.level.switches ?? [];
+    for (let i = 0; i < this.switches.length; i++) {
+      const sw = this.switches[i];
+      sw.activated = false;
+      for (let j = 0; j < sw.doors.length; j++)
+        sw.doors[j].switchLocked = true;
+    }
     this.barrels = [];
     this.shots = [];
     this.effects = [];
@@ -350,6 +384,7 @@ export class Game {
     this.secretsFound = 0;
     this.discoveredSecrets = new Set();
     this.chimedSecrets = new Set();
+    this.firstDoorOpened = false;
     this.intermission = null;
     this.flowTile = -1;
     this.flow = new Int16Array(this.level.width * this.level.rowCount);
@@ -357,6 +392,27 @@ export class Game {
 
     this.addWalls();
     this.addPlayer(carry);
+    const elev = this.level.elevator;
+    if (elev) {
+      this.elevator.active = true;
+      this.elevator.phase = 'arriving';
+      this.elevator.timer = 0;
+      this.elevator.duration = ELEVATOR_RIDE_TIME;
+      this.elevator.pulseTimer = 0;
+      this.elevator.announced = false;
+      this.elevator.cabIdx = elev.tileIdx;
+      this.elevator.door = elev.door;
+      elev.door.elevatorLocked = false;
+      elev.door.body.setActive(true);
+    } else {
+      this.elevator.active = false;
+      this.elevator.phase = 'none';
+      this.elevator.timer = 0;
+      this.elevator.pulseTimer = 0;
+      this.elevator.announced = false;
+      this.elevator.cabIdx = -1;
+      this.elevator.door = null;
+    }
     this.fog = new Fog(this.level);
     this.fog.update(this.player.pos, this.player.angle, this.fogConeRange());
     const diff = this.difficultyDef;
@@ -380,12 +436,15 @@ export class Game {
       }
     }
     for (const spawn of this.level.barrels)
-      this.addBarrel(spawn.pos);
+      this.addBarrel(spawn.pos, spawn.horizontal, spawn.angle);
+    for (const spawn of this.level.pickups)
+      this.addPickup(spawn.type, spawn.pos, true);
     this.buildCaches();
+    this.buildFurnitures();
     this.totalEnemies = this.enemies.length;
     if (this.level.planet === 'mars')
       this.seedMarsDust();
-    this.totalItems = this.level.pickups.length;
+    this.totalItems = this.level.pickups.length + this.caches.reduce((sum, c) => sum + c.contents.length, 0);
     this.totalSecrets = this.level.secrets.length;
     this.say(this.level.name, 3);
   }
@@ -545,6 +604,8 @@ export class Game {
     ev.x = at.x;
     ev.y = at.y;
     ev.visible = this.fog ? this.fog.canSee(at) : true;
+    if (this.inCacheOpen)
+      ev.fromCache = true;
     for (const key in extra)
       ev[key] = extra[key];
     if (this.events.length >= EVENT_CAPACITY) {
@@ -608,7 +669,10 @@ export class Game {
     }
     for (let i = 0; i < level.doorsList.length; i++) {
       const door = level.doorsList[i];
-      door.body = this.addStaticBox(door.center, new Vec2(TILE, TILE));
+      const size = door.thin
+        ? new Vec2(door.alongY ? TILE : door.thickness, door.alongY ? door.thickness : TILE)
+        : new Vec2(TILE, TILE);
+      door.body = this.addStaticBox(door.center, size);
     }
   }
 
@@ -671,7 +735,7 @@ export class Game {
       dryFire: false,
       triggerHeld: false,
       spinDown: 0,
-      kick: { pitch: 0, yaw: 0, roll: 0, fov: 0, heat: 0, shots: 0, burst: 0 },
+      kick: { pitch: 0, yaw: 0, roll: 0, fov: 0, settle: 0, push: 0, heat: 0, shots: 0, burst: 0 },
       shootFace: 0,
       flash: 0,
       recoil: 0,
@@ -732,6 +796,10 @@ export class Game {
       strafeTimer: 0,
       bleed: 0,
       deadTime: 0,
+      z: 0,
+      vz: 0,
+      inSlime: false,
+      pitStart: new Vec2(),
       feet: makeFeet(),
       phase: this.rand.float(0, Trigo.twopi),
       mode: '',
@@ -768,195 +836,124 @@ export class Game {
     return pickup;
   }
 
-  roomDistances(room, src) {
-    const { level } = this;
-    const { width, rowCount, kind, roomByTile } = level;
-    const dist = new Int32Array(width * rowCount).fill(-1);
-    const queue = [src];
-    dist[src] = 0;
-    for (let head = 0; head < queue.length; head++) {
-      const idx = queue[head];
-      const x = idx % width;
-      const y = (idx - x) / width;
-      for (let d = 0; d < 4; d++) {
-        const nx = x + WALL_DX[d];
-        const ny = y + WALL_DY[d];
-        if (!level.inBounds(nx, ny))
-          continue;
-        const j = ny * width + nx;
-        if (dist[j] >= 0 || roomByTile[j] !== room || kind[j] !== FLOOR)
-          continue;
-        dist[j] = dist[idx] + 1;
-        queue.push(j);
-      }
-    }
-    return dist;
-  }
-
   buildCaches() {
-    const { level } = this;
-    const supplyTiles = new Set();
-    for (const spawn of level.pickups) {
-      if (!CACHE_TYPE_SET.has(spawn.type)) {
-        this.addPickup(spawn.type, spawn.pos, true);
-        continue;
-      }
-      supplyTiles.add(level.grid.getCell(spawn.pos));
-    }
-    const tiles = [...supplyTiles].sort((a, b) => a - b);
-    const parent = new Map(tiles.map((t) => [t, t]));
-    const find = (t) => {
-      while (parent.get(t) !== t)
-        t = parent.get(t);
-      return t;
+    for (const chest of this.level.chests)
+      this.addCache(chest);
+  }
+
+  buildFurnitures() {
+    if (!this.level.furnitures)
+      return;
+    for (const entry of this.level.furnitures)
+      this.addFurniture(entry);
+  }
+
+  addFurniture(entry) {
+    const type = entry.type ?? 'dispenser';
+    const radius = type === 'desk' ? DESK_RADIUS : DISPENSER_RADIUS;
+    const hp = type === 'desk' ? DESK_HP : DISPENSER_HP;
+    const body = makeBody(entry.pos, radius, {
+      type: 'static',
+      category: CAT.BARREL,
+      mask: CAT.PLAYER | CAT.ENEMY | CAT.SHOT,
+    });
+    const furniture = {
+      kind: 'furniture',
+      type,
+      idx: entry.idx,
+      x: entry.x,
+      y: entry.y,
+      room: entry.room,
+      wallSide: entry.wallSide,
+      body,
+      pos: body.position,
+      angle: entry.angle ?? 0,
+      hp,
+      hurt: 0,
+      gone: false,
+      deadTime: 0,
+      phase: ((entry.x * 13 + entry.y * 7) & 31) * 0.2,
     };
-    for (let i = 0; i < tiles.length; i++) {
-      const a = tiles[i];
-      const room = level.roomByTile[a];
-      const outdoor = !!level.outdoor?.has(a) && level.secretByTile[a] < 0;
-      const dist = outdoor ? this.roomDistances(room, a) : null;
-      for (let k = i + 1; k < tiles.length; k++) {
-        const b = tiles[k];
-        if (level.roomByTile[b] !== room)
-          continue;
-        if (outdoor && (dist[b] < 0 || dist[b] > CACHE_OUTDOOR_LINK))
-          continue;
-        const ra = find(a);
-        const rb = find(b);
-        if (ra !== rb)
-          parent.set(Math.max(ra, rb), Math.min(ra, rb));
-      }
+    body.ref = furniture;
+    this.scene.addBody(body);
+    this.furnitures.push(furniture);
+    return furniture;
+  }
+
+  /** Whether a 2D world point (`Vec2`) lies inside the spilled water puddle around a destroyed Water Dispenser. */
+  inDispenserWater(pos) {
+    for (let i = 0; i < this.furnitures.length; i++) {
+      const furniture = this.furnitures[i];
+      if (!furniture.gone || furniture.type !== 'dispenser')
+        continue;
+      if (pos.getDistance(furniture.pos, true) <= 22 * 22)
+        return true;
     }
-    const groups = new Map();
-    for (const t of tiles) {
-      const root = find(t);
-      if (!groups.has(root))
-        groups.set(root, { tiles: [], contents: [] });
-      groups.get(root).tiles.push(t);
-    }
-    for (const spawn of level.pickups) {
-      if (CACHE_TYPE_SET.has(spawn.type))
-        groups.get(find(level.grid.getCell(spawn.pos))).contents.push(spawn.type);
-    }
-    for (const root of [...groups.keys()].sort((a, b) => a - b)) {
-      const group = groups.get(root);
-      this.addCache(group.tiles, group.contents);
+    return false;
+  }
+
+  /** Damage a piece of facility furniture; when its HP reaches zero, it shatters and its collision body is removed. */
+  hitFurniture(furniture, amount) {
+    if (!furniture || furniture.gone)
+      return;
+    furniture.hp -= amount;
+    furniture.hurt = 0.16;
+    if (this.player)
+      this.player.hitMarker = 0.15;
+    if (furniture.hp > 0)
+      return;
+    furniture.hp = 0;
+    furniture.gone = true;
+    furniture.deadTime = 0;
+    this.scene.removeBody(furniture.body);
+    this.burst(furniture.pos.x, furniture.pos.y, 18, 'spark');
+    this.burst(furniture.pos.x, furniture.pos.y, 34, 'spark');
+    this.emit('clang', furniture.pos);
+    const away = this.player ? this.player.pos.getDistance(furniture.pos) : Infinity;
+    if (away < 260)
+      this.shake = Math.max(this.shake, Utils.clamp(1 - away / 260, 0, 1) * 0.28);
+  }
+
+  updateFurnitures(dt) {
+    for (const furniture of this.furnitures) {
+      if (furniture.hurt > 0)
+        furniture.hurt = Math.max(0, furniture.hurt - dt);
+      if (furniture.gone)
+        furniture.deadTime = (furniture.deadTime ?? 0) + dt;
     }
   }
 
-  addCache(tiles, contents) {
-    const { level } = this;
-    const { width, rowCount, kind, diag } = level;
-    const room = level.roomByTile[tiles[0]];
-    const dists = tiles.map((t) => this.roomDistances(room, t));
-    const blocked = new Set();
-    blocked.add(level.grid.getCell(level.playerStart));
-    for (const enemy of level.enemies)
-      blocked.add(level.grid.getCell(enemy.pos));
-    for (const barrel of level.barrels)
-      blocked.add(level.grid.getCell(barrel.pos));
-    for (const pickup of level.pickups) {
-      if (!CACHE_TYPE_SET.has(pickup.type))
-        blocked.add(level.grid.getCell(pickup.pos));
+  addCache(chestOrTiles, contents, locked = false) {
+    let chest = chestOrTiles;
+    if (typeof chestOrTiles === 'number' || Array.isArray(chestOrTiles)) {
+      const idx = Array.isArray(chestOrTiles) ? chestOrTiles[0] : chestOrTiles;
+      const x = idx % this.level.width;
+      const y = (idx - x) / this.level.width;
+      chest = this.level.createChest(x, y, contents, null, null, locked);
     }
-    for (const crusher of level.crushers)
-      blocked.add(crusher.idx);
-    for (const cache of this.caches)
-      blocked.add(cache.idx);
-    const isWall = (x, y) => level.inBounds(x, y) && kind[y * width + x] === WALL && diag[y * width + x] === 0;
-    const wallSideOf = (x, y, allowDoors) => {
-      if (!allowDoors) {
-        for (let d = 0; d < 4; d++) {
-          const nx = x + WALL_DX[d];
-          const ny = y + WALL_DY[d];
-          if (level.inBounds(nx, ny) && (kind[ny * width + nx] === DOOR || kind[ny * width + nx] === EXIT))
-            return -1;
-        }
-      }
-      let side = -1;
-      let sideScore = -1;
-      for (let d = 0; d < 4; d++) {
-        const ox = x - WALL_DX[d];
-        const oy = y - WALL_DY[d];
-        if (!isWall(x + WALL_DX[d], y + WALL_DY[d]) || !level.isWalkable(ox, oy))
-          continue;
-        let score = 0;
-        for (let e = 0; e < 4; e++) {
-          if (level.isWalkable(ox + WALL_DX[e], oy + WALL_DY[e]))
-            score++;
-        }
-        if (score > sideScore) {
-          sideScore = score;
-          side = d;
-        }
-      }
-      return side;
-    };
-    let anchor = -1;
-    let wallSide = -1;
-    for (let tier = 1; tier <= 3 && anchor < 0; tier++) {
-      let best = Infinity;
-      for (let i = 0; i < width * rowCount; i++) {
-        if (level.roomByTile[i] !== room || kind[i] !== FLOOR || diag[i] !== 0 || level.slime[i] || level.teleporter[i] || blocked.has(i))
-          continue;
-        let score = 0;
-        for (const dist of dists) {
-          if (dist[i] < 0) {
-            score = -1;
-            break;
-          }
-          score += dist[i];
-        }
-        if (score < 0 || score >= best)
-          continue;
-        const x = i % width;
-        const y = (i - x) / width;
-        const side = tier < 3 ? wallSideOf(x, y, tier === 2) : -1;
-        if (tier < 3 && side < 0)
-          continue;
-        best = score;
-        anchor = i;
-        wallSide = side;
-      }
-    }
-    if (anchor < 0)
-      anchor = tiles[0];
-    const ax = anchor % width;
-    const ay = (anchor - ax) / width;
-    const pos = level.center(ax, ay);
-    let angle = 0;
-    if (wallSide >= 0) {
-      pos.x += WALL_DX[wallSide] * CACHE_WALL_OFFSET;
-      pos.y += WALL_DY[wallSide] * CACHE_WALL_OFFSET;
-      angle = Math.atan2(-WALL_DY[wallSide], -WALL_DX[wallSide]);
-    } else {
-      let bestScore = -1;
-      for (let d = 0; d < 4; d++) {
-        const nx = ax + WALL_DX[d];
-        const ny = ay + WALL_DY[d];
-        if (!level.isWalkable(nx, ny))
-          continue;
-        let score = 0;
-        for (let e = 0; e < 4; e++) {
-          if (level.isWalkable(nx + WALL_DX[e], ny + WALL_DY[e]))
-            score++;
-        }
-        if (score > bestScore) {
-          bestScore = score;
-          angle = Math.atan2(WALL_DY[d], WALL_DX[d]);
-        }
-      }
-    }
+    const list = [...(chest.contents ?? contents ?? [])];
+    const items = list.map((type, slot) => ({
+      type,
+      slot,
+      total: list.length,
+      state: 'stored',
+      progress: 0,
+      delay: 0,
+    }));
     const cache = {
       kind: 'cache',
-      idx: anchor,
-      room,
-      wallSide,
-      tiles,
-      pos,
-      angle,
-      contents,
-      hasWeapon: contents.some((type) => CACHE_WEAPONS.has(type)),
+      idx: chest.idx,
+      x: chest.x,
+      y: chest.y,
+      room: chest.room ?? this.level.roomByTile[chest.idx],
+      wallSide: chest.wallSide,
+      tiles: [chest.idx],
+      pos: chest.pos.clone(),
+      angle: chest.angle,
+      contents: list,
+      items,
+      hasWeapon: list.some((type) => CACHE_WEAPONS.has(type)),
+      locked: Boolean(chest.locked ?? locked),
       state: 'closed',
       lid: 0,
     };
@@ -964,34 +961,133 @@ export class Game {
     return cache;
   }
 
+  startChestLock(cache) {
+    const lock = this.chestLock;
+    lock.active = true;
+    lock.cache = cache;
+    lock.stage = 0;
+    lock.needle = 0;
+    lock.missFlash = 0;
+    lock.hitFlash = 0;
+    const base = ((cache.idx * 73) % 100) / 100 * Trigo.twopi;
+    lock.targets[0] = (base + 1.15) % Trigo.twopi;
+    lock.targets[1] = (base + 3.25) % Trigo.twopi;
+    lock.targets[2] = (base + 5.15) % Trigo.twopi;
+    lock.lockedAngles[0] = 0;
+    lock.lockedAngles[1] = 0;
+    lock.lockedAngles[2] = 0;
+    this.emit('pickup', cache.pos);
+  }
+
+  cancelChestLock() {
+    const lock = this.chestLock;
+    if (!lock)
+      return;
+    lock.active = false;
+    lock.cache = null;
+    lock.stage = 0;
+    lock.missFlash = 0;
+    lock.hitFlash = 0;
+  }
+
+  tryChestLock() {
+    const lock = this.chestLock;
+    if (!lock?.active || !lock.cache)
+      return false;
+    const stage = lock.stage;
+    const target = lock.targets[stage];
+    const diff = Math.abs(Trigo.deltaRadian(lock.needle, target));
+    if (diff <= CHEST_LOCK_GAP_HALF[stage]) {
+      lock.lockedAngles[stage] = lock.needle;
+      lock.stage = stage + 1;
+      lock.hitFlash = 0.25;
+      lock.missFlash = 0;
+      if (lock.stage >= CHEST_LOCK_RINGS) {
+        const cache = lock.cache;
+        this.cancelChestLock();
+        cache.locked = false;
+        this.openCache(cache);
+      } else
+        this.emit('pickup', lock.cache.pos);
+      return true;
+    }
+    lock.stage = Math.max(0, stage - 1);
+    lock.missFlash = 0.35;
+    lock.hitFlash = 0;
+    this.emit('locked', lock.cache.pos);
+    return false;
+  }
+
+  updateChestLock(dt) {
+    const lock = this.chestLock;
+    if (!lock?.active)
+      return;
+    const cache = lock.cache;
+    if (
+      this.state !== 'play' ||
+      !cache ||
+      cache.state !== 'closed' ||
+      !cache.locked ||
+      this.player.pos.getDistance(cache.pos) > USE_RANGE + 12
+    ) {
+      this.cancelChestLock();
+      return;
+    }
+    const speed = CHEST_LOCK_SPEEDS[lock.stage] ?? CHEST_LOCK_SPEEDS[0];
+    lock.needle = (((lock.needle + speed * dt) % Trigo.twopi) + Trigo.twopi) % Trigo.twopi;
+    lock.missFlash = Math.max(0, lock.missFlash - dt);
+    lock.hitFlash = Math.max(0, lock.hitFlash - dt);
+  }
+
   openCache(cache) {
+    cache.locked = false;
+    if (this.chestLock?.cache === cache)
+      this.cancelChestLock();
     if (cache.state === 'closed') {
       cache.state = 'opening';
       cache.lid = 0;
       this.emit('cacheOpen', cache.pos);
     }
     const { contents } = cache;
+    const items = cache.items;
     const { player } = this;
     const health = player.health;
     const shells = player.shells;
     const bullets = player.bullets;
     const rockets = player.rockets;
     let write = 0;
+    let grantedOrder = 0;
     let line = '';
     let granted = false;
     let refused = null;
+    this.inCacheOpen = true;
     for (let read = 0; read < contents.length; read++) {
       const type = contents[read];
       const isNew = CACHE_WEAPONS.has(type) && !player.weapons[type];
       if (this.award(type, true)) {
         granted = true;
-        if (isNew)
+        if (items) {
+          for (let k = 0; k < items.length; k++) {
+            const entry = items[k];
+            if (entry.state === 'stored' && entry.type === type) {
+              entry.state = 'flying';
+              entry.progress = 0;
+              entry.delay = grantedOrder * CACHE_LOOT_STAGGER;
+              entry.order = grantedOrder;
+              entry.sfxPlayed = false;
+              grantedOrder++;
+              break;
+            }
+          }
+        }
+        if (isNew || type === 'greenArmor' || type === 'blueArmor')
           line = line ? `${line} · ${this.message.text}` : this.message.text;
       } else {
         contents[write++] = type;
         refused = type;
       }
     }
+    this.inCacheOpen = false;
     contents.length = write;
     if (granted) {
       if (player.health > health)
@@ -1007,9 +1103,11 @@ export class Game {
     } else if (refused) {
       const label = refused === 'health'
         ? 'Health'
-        : refused === 'chainsaw'
-          ? null
-          : AMMO_TYPES[AMMO_CRATES[refused] ?? WEAPONS[refused].ammoType].label;
+        : refused === 'greenArmor' || refused === 'blueArmor'
+          ? 'Armor'
+          : refused === 'chainsaw'
+            ? null
+            : AMMO_TYPES[AMMO_CRATES[refused] ?? WEAPONS[refused]?.ammoType]?.label;
       this.say(label ? `${label} full` : 'Chainsaw already owned', 2);
     }
     cache.hasWeapon = false;
@@ -1027,12 +1125,38 @@ export class Game {
   updateCaches(dt) {
     for (let i = 0; i < this.caches.length; i++) {
       const cache = this.caches[i];
-      if (cache.state !== 'opening')
+      if (cache.state === 'opening') {
+        cache.lid = Math.min(1, cache.lid + dt / CACHE_LID_TIME);
+        if (cache.lid >= 1 - 1e-6) {
+          cache.lid = 1;
+          cache.state = cache.contents.length ? 'open' : 'emptied';
+        }
+      }
+      const items = cache.items;
+      if (!items)
         continue;
-      cache.lid = Math.min(1, cache.lid + dt / CACHE_LID_TIME);
-      if (cache.lid >= 1 - 1e-6) {
-        cache.lid = 1;
-        cache.state = cache.contents.length ? 'open' : 'emptied';
+      for (let j = 0; j < items.length; j++) {
+        const item = items[j];
+        if (item.state !== 'flying')
+          continue;
+        let step = dt;
+        if (item.delay > 0) {
+          if (dt <= item.delay) {
+            item.delay -= dt;
+            continue;
+          }
+          step = dt - item.delay;
+          item.delay = 0;
+        }
+        item.progress = Math.min(1, item.progress + step / CACHE_LOOT_TIME);
+        if (!item.sfxPlayed && item.progress >= 0.45) {
+          item.sfxPlayed = true;
+          this.emit('cacheItem', cache.pos, { kind: item.type, slot: item.order ?? item.slot });
+        }
+        if (item.progress >= 1 - 1e-6) {
+          item.progress = 1;
+          item.state = 'taken';
+        }
       }
     }
   }
@@ -1058,6 +1182,8 @@ export class Game {
         this.hurtPlayer(shot.damage);
       else if (other.ref?.kind === 'barrel')
         this.hitBarrel(other.ref, BARREL.hp);
+      else if (other.ref?.kind === 'furniture')
+        this.hitFurniture(other.ref, DISPENSER_HP);
       this.burst(shot.pos.x, shot.pos.y, EYE - 4, 'blast');
       this.emit('explode', shot.pos);
       this.blastSurfaces(shot.pos, FIREBALL_BLAST.radius, FIREBALL_BLAST.power);
@@ -1182,7 +1308,7 @@ export class Game {
         continue;
       const severity = severityOf(reach, radius, power);
       blastMark.setScalar(blastCheck.x, blastCheck.y, 0);
-      if (level.slime[cell] !== 1)
+      if (level.slime[cell] !== 1 && level.emptyPit?.[cell] !== 1)
         rubble.addFloor(blastMark, severity);
       if (!level.isOutdoor(blastCheck))
         rubble.addCeiling(blastMark, severity);
@@ -1201,6 +1327,8 @@ export class Game {
       this.damageEnemy(directRef, shot.damage);
     } else if (directRef?.kind === 'barrel')
       this.hitBarrel(directRef, BARREL.hp, 0.02);
+    else if (directRef?.kind === 'furniture')
+      this.hitFurniture(directRef, DISPENSER_HP);
     else if ((!directRef || directRef.kind === 'wall') && shot.dir) {
       const from = this.rocketFrom.copy(pos).addScaledVector(shot.dir, -16);
       const to = this.rocketTo.copy(pos).addScaledVector(shot.dir, 16);
@@ -1239,20 +1367,80 @@ export class Game {
     }
     this.blastSurfaces(pos, shot.radius, 1);
     for (const body of this.scene.queryCircle(pos, shot.radius, QUERY_BARREL, this.queryScratch)) {
-      const barrel = body.ref;
-      const d = barrel.pos.getDistance(pos);
-      if (!barrel.gone && d < shot.radius && this.canReach(pos, barrel.pos))
-        this.hitBarrel(barrel, BARREL.hp, 0.08 + 0.2 * (d / shot.radius));
+      const prop = body.ref;
+      const d = prop.pos.getDistance(pos);
+      if (prop.gone || d >= shot.radius || !this.canReach(pos, prop.pos))
+        continue;
+      if (prop.kind === 'furniture')
+        this.hitFurniture(prop, DISPENSER_HP);
+      else
+        this.hitBarrel(prop, BARREL.hp, 0.08 + 0.2 * (d / shot.radius));
     }
     this.resolveGibs();
   }
 
-  addBarrel(pos) {
-    const body = makeBody(pos, BARREL.radius, { type: 'static', category: CAT.BARREL, mask: CAT.PLAYER | CAT.ENEMY | CAT.SHOT });
-    const barrel = { kind: 'barrel', body, pos: body.position, hp: BARREL.hp, fuse: -1, gone: false, deadTime: 0, phase: this.rand.float(0, 6) };
+  addBarrel(pos, horizontal = false, angle = null) {
+    const isHorizontal = Boolean(horizontal);
+    const body = makeBody(pos, BARREL.radius, {
+      type: isHorizontal ? 'dynamic' : 'static',
+      mass: 0.75,
+      category: CAT.BARREL,
+      mask: isHorizontal
+        ? CAT.WALL | CAT.PLAYER | CAT.ENEMY | CAT.BARREL | CAT.SHOT
+        : CAT.PLAYER | CAT.ENEMY | CAT.BARREL | CAT.SHOT,
+    });
+    const resolvedAngle = typeof angle === 'number' && Number.isFinite(angle)
+      ? angle
+      : isHorizontal
+        ? (((Math.floor(pos.x / TILE) * 13 + Math.floor(pos.y / TILE) * 7) & 3) * Trigo.halfpi)
+        : 0;
+    const puddlePos = isHorizontal
+      ? new Vec2(pos.x + Math.cos(resolvedAngle) * 10, pos.y + Math.sin(resolvedAngle) * 10)
+      : null;
+    const barrel = {
+      kind: 'barrel',
+      body,
+      pos: body.position,
+      horizontal: isHorizontal,
+      leaking: isHorizontal,
+      angle: resolvedAngle,
+      spawnPos: pos.clone(),
+      spawnAngle: resolvedAngle,
+      roll: 0,
+      rolled: 0,
+      z: 0,
+      vz: 0,
+      pitStart: new Vec2(pos.x, pos.y),
+      puddlePos,
+      puddleRadius: isHorizontal ? 22 : 0,
+      hp: BARREL.hp,
+      fuse: -1,
+      gone: false,
+      deadTime: 0,
+      phase: this.rand.float(0, 6),
+    };
     body.ref = barrel;
     this.scene.addBody(body);
     this.barrels.push(barrel);
+    return barrel;
+  }
+
+  /** Whether a 2D world point (`Vec2`) lies inside a horizontal barrel's leaking green acid puddle. */
+  inBarrelAcid(pos) {
+    for (let i = 0; i < this.barrels.length; i++) {
+      const barrel = this.barrels[i];
+      if (!barrel.horizontal || !barrel.puddlePos)
+        continue;
+      const r = barrel.puddleRadius;
+      if (pos.getDistance(barrel.puddlePos, true) <= r * r)
+        return true;
+      if ((barrel.rolled ?? 0) < 3) {
+        const baseR = BARREL.radius + 7;
+        if (pos.getDistance(barrel.pos, true) <= baseR * baseR)
+          return true;
+      }
+    }
+    return false;
   }
 
   /** Damage a barrel. Once it is spent it burns for a moment (the longer the further it was from the first blast). */
@@ -1265,10 +1453,59 @@ export class Game {
   }
 
   updateBarrels(dt) {
+    const player = this.player;
+    const canPush = this.state === 'play' && player && player.health > 0;
+    const contactRange = PLAYER_RADIUS + BARREL.radius + 4;
+    const contactRangeSq = contactRange * contactRange;
     for (const barrel of this.barrels) {
       if (barrel.gone) {
         barrel.deadTime = (barrel.deadTime ?? 0) + dt;
         continue;
+      }
+      if (barrel.horizontal) {
+        const floor = this.actorFloorHeight(barrel.body, BARREL.radius);
+        if (barrel.z < floor) {
+          barrel.z = floor;
+          barrel.vz = 0;
+        } else if (barrel.z > floor) {
+          barrel.vz -= JUMP_GRAVITY * dt;
+          barrel.z = Math.max(floor, barrel.z + barrel.vz * dt);
+          if (barrel.z === floor)
+            barrel.vz = 0;
+        }
+        if (canPush && Math.abs((player.z ?? 0) - barrel.z) < 18) {
+          const dx = barrel.pos.x - player.pos.x;
+          const dy = barrel.pos.y - player.pos.y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq > 1e-6 && distSq <= contactRangeSq) {
+            const dist = Math.sqrt(distSq);
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const pvx = player.body.velocity.x;
+            const pvy = player.body.velocity.y;
+            const pushSpeed = pvx * nx + pvy * ny;
+            if (pushSpeed > 0) {
+              const bvx = barrel.body.velocity.x;
+              const bvy = barrel.body.velocity.y;
+              const curAlong = bvx * nx + bvy * ny;
+              const targetAlong = pushSpeed * 1.2 + 30;
+              if (targetAlong > curAlong) {
+                const add = targetAlong - curAlong;
+                barrel.body.velocity.setScalar(bvx + nx * add, bvy + ny * add);
+              }
+            }
+          }
+        }
+        const vx = barrel.body.velocity.x;
+        const vy = barrel.body.velocity.y;
+        const speed = Math.hypot(vx, vy);
+        if (speed > 0) {
+          const damping = Math.exp(-dt * 3.0);
+          if (speed * damping < 1.0)
+            barrel.body.velocity.setScalar(0, 0);
+          else
+            barrel.body.velocity.scale(damping);
+        }
       }
       if (barrel.fuse < 0)
         continue;
@@ -1316,7 +1553,11 @@ export class Game {
     for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_BARREL, this.queryScratch)) {
       const other = body.ref;
       const d = other.pos.getDistance(barrel.pos);
-      if (!other.gone && d < BARREL.blast && this.canReach(barrel.pos, other.pos))
+      if (other.gone || d >= BARREL.blast || !this.canReach(barrel.pos, other.pos))
+        continue;
+      if (other.kind === 'furniture')
+        this.hitFurniture(other, DISPENSER_HP);
+      else
         this.hitBarrel(other, BARREL.hp, 0.12 + 0.25 * (d / BARREL.blast));
     }
     this.resolveGibs();
@@ -1533,6 +1774,8 @@ export class Game {
     }
     player.health = Math.max(0, player.health - healthLoss);
     player.hurt = 0.4;
+    if (this.chestLock?.active)
+      this.cancelChestLock();
     this.emit('hurt');
     this.blood.splat(Math.ceil(amount / 5) + 1);
     this.bloodAt.setScalar(player.pos.x + this.rand.float(-18, 18), player.pos.y + this.rand.float(-18, 18));
@@ -1551,6 +1794,9 @@ export class Game {
       }
       this.blood.splat(12, 1.5);
       this.emit('death');
+    } else if (player.health <= 30 && !this.lowHealthWarned) {
+      this.lowHealthWarned = true;
+      this.emit('lowHealth');
     }
   }
 
@@ -1829,6 +2075,12 @@ export class Game {
       this.hitBarrel(hit.body.ref, dmg);
       return;
     }
+    if (hit.body.ref?.kind === 'furniture') {
+      this.burst(hit.point.x, hit.point.y, 22, 'spark');
+      this.emit('clang', hit.point);
+      this.hitFurniture(hit.body.ref, dmg);
+      return;
+    }
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
     if (!enemy) {
       const height = Utils.clamp(player.eye - 2 + this.rand.float(-5, 5), 4, 62);
@@ -1882,6 +2134,12 @@ export class Game {
       this.hitBarrel(hit.body.ref, dmg);
       return;
     }
+    if (hit.body.ref?.kind === 'furniture') {
+      this.burst(hit.point.x, hit.point.y, 22, 'spark');
+      this.emit('clang', hit.point);
+      this.hitFurniture(hit.body.ref, dmg);
+      return;
+    }
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
     if (!enemy) {
       const height = player.eye - 2 + this.rand.float(-5, 5);
@@ -1916,6 +2174,8 @@ export class Game {
     kick.yaw = 0;
     kick.roll = 0;
     kick.fov = 0;
+    kick.settle = 0;
+    kick.push = 0;
     kick.heat = 0;
     kick.shots = 0;
     kick.burst = 0;
@@ -1931,6 +2191,8 @@ export class Game {
     kick.yaw = Utils.clamp(kick.yaw + feel.yaw * side, -feel.cap, feel.cap);
     kick.roll = Utils.clamp(kick.roll + feel.roll * (feel.yaw > 0 ? side : 1), -feel.cap, feel.cap);
     kick.fov = Math.max(kick.fov, feel.fov);
+    kick.settle = Math.min(feel.cap, kick.settle + feel.settle);
+    kick.push = Math.min(feel.push * 1.5, kick.push + feel.push);
     kick.heat = Math.min(1, kick.heat + feel.heatGain);
   }
 
@@ -1944,6 +2206,8 @@ export class Game {
     kick.yaw *= k;
     kick.roll *= k;
     kick.fov *= k;
+    kick.settle *= Math.exp((-dt * Math.LN2) / (feel ? feel.settleHalfLife : KICK_FALLBACK_HALF_LIFE));
+    kick.push *= Math.exp((-dt * Math.LN2) / (feel ? feel.pushHalfLife : KICK_FALLBACK_HALF_LIFE));
     kick.heat *= h;
     if (Math.abs(kick.pitch) < KICK_EPSILON)
       kick.pitch = 0;
@@ -1953,6 +2217,10 @@ export class Game {
       kick.roll = 0;
     if (Math.abs(kick.fov) < KICK_EPSILON)
       kick.fov = 0;
+    if (Math.abs(kick.settle) < KICK_EPSILON)
+      kick.settle = 0;
+    if (Math.abs(kick.push) < KICK_EPSILON)
+      kick.push = 0;
     if (Math.abs(kick.heat) < KICK_EPSILON)
       kick.heat = 0;
   }
@@ -1998,6 +2266,12 @@ export class Game {
         this.burst(hit.point.x, hit.point.y, 14, 'spark');
         this.emit('clang', hit.point);
         this.hitBarrel(hit.body.ref, pelletDmg);
+        continue;
+      }
+      if (hit.body.ref?.kind === 'furniture') {
+        this.burst(hit.point.x, hit.point.y, 24, 'spark');
+        this.emit('clang', hit.point);
+        this.hitFurniture(hit.body.ref, pelletDmg);
         continue;
       }
       const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
@@ -2057,6 +2331,12 @@ export class Game {
       this.hitBarrel(hit.body.ref, def.damage);
       return;
     }
+    if (hit.body.ref?.kind === 'furniture') {
+      this.burst(hit.point.x, hit.point.y, 24, 'spark');
+      this.emit('clang', hit.point);
+      this.hitFurniture(hit.body.ref, def.damage);
+      return;
+    }
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
     if (!enemy) {
       const height = player.eye + this.rand.float(-0.02, 0.02) * maxDist;
@@ -2111,6 +2391,7 @@ export class Game {
     target.kind = null;
     target.door = null;
     target.cache = null;
+    target.switch = null;
     target.verb = '';
     target.lock = null;
     target.promptable = false;
@@ -2130,10 +2411,13 @@ export class Game {
     const facing = this.scratch.setScalar(1, 0).setRadian(player.angle);
     let best = null;
     let bestCache = null;
+    let bestSwitch = null;
     let bestDistance = USE_RANGE;
     const { doorsList } = this.level;
     for (let i = 0; i < doorsList.length; i++) {
       const door = doorsList[i];
+      if (door.elevator)
+        continue;
       const toDoor = this.toPlayer.subVectors(door.center, player.pos);
       const distance = toDoor.getMagnitude();
       if (distance > 0 && distance < bestDistance && toDoor.dotProduct(facing) / distance > USE_DOT) {
@@ -2155,22 +2439,67 @@ export class Game {
         bestDistance = distance;
       }
     }
-    if (bestCache) {
+    for (let i = 0; i < this.switches.length; i++) {
+      const sw = this.switches[i];
+      if (sw.activated)
+        continue;
+      const toSwitch = this.toPlayer.subVectors(sw.pos, player.pos);
+      const distance = toSwitch.getMagnitude();
+      if (distance > 0 && distance < bestDistance && toSwitch.dotProduct(facing) / distance > USE_DOT) {
+        bestSwitch = sw;
+        bestCache = null;
+        best = null;
+        bestDistance = distance;
+      }
+    }
+    if (bestSwitch) {
+      target.kind = 'switch';
+      target.switch = bestSwitch;
+      target.verb = USE_VERBS.activate;
+      target.promptable = !this.chestLock?.active;
+    } else if (bestCache) {
       target.kind = 'cache';
       target.cache = bestCache;
-      target.verb = bestCache.state === 'closed' ? USE_VERBS.loot : USE_VERBS.take;
-      target.promptable = true;
+      target.verb = bestCache.state === 'closed'
+        ? (bestCache.locked ? USE_VERBS.unlock : USE_VERBS.loot)
+        : USE_VERBS.take;
+      target.promptable = !this.chestLock?.active;
     } else if (best) {
       target.kind = 'door';
       target.door = best;
       if (best.lock && !player.keys?.[best.lock]) {
         target.verb = USE_VERBS.locked;
         target.lock = best.lock;
+      } else if (best.switchLocked) {
+        target.verb = USE_VERBS.locked;
+        target.lock = 'switch';
       } else
         target.verb = best.target ? USE_VERBS.close : USE_VERBS.open;
       target.promptable = !(best.secret && !best.revealed);
+    } else if (this.hasHazardAhead(facing)) {
+      target.kind = 'pit';
+      target.verb = USE_VERBS.jump;
+      target.promptable = true;
     }
     return target.promptable;
+  }
+
+  /** Whether the player is on the ground just in front of a slime pit ('~'), empty pit ('_'), or acid splash (',' / barrel puddle). */
+  hasHazardAhead(facing) {
+    const { player, level, toPlayer } = this;
+    if ((player.z ?? 0) > 0 || level.slimeAt(player.pos) || Boolean(level.emptyPitAt?.(player.pos)))
+      return false;
+    if (level.acidSplashAt?.(player.pos) || this.inBarrelAcid(player.pos))
+      return true;
+    for (let step = 1; step <= 3; step++) {
+      const dist = step * 20;
+      toPlayer.setScalar(player.pos.x + facing.x * dist, player.pos.y + facing.y * dist);
+      if (level.heightAtPoint(toPlayer) > 0)
+        return false;
+      if (level.slimeAt(toPlayer) || Boolean(level.emptyPitAt?.(toPlayer)) || level.acidSplashAt?.(toPlayer) || this.inBarrelAcid(toPlayer))
+        return true;
+    }
+    return false;
   }
 
   updateUsePrompt(dt) {
@@ -2190,17 +2519,26 @@ export class Game {
   }
 
   use() {
+    if (this.chestLock?.active) {
+      this.cancelChestLock();
+      return;
+    }
     this.findUseTarget();
     const target = this.useTarget;
+    if (target.kind === 'switch') {
+      this.activateSwitch(target.switch);
+      return;
+    }
     if (target.kind === 'cache') {
-      this.openCache(target.cache);
+      if (target.cache.state === 'closed' && target.cache.locked)
+        this.startChestLock(target.cache);
+      else
+        this.openCache(target.cache);
       return;
     }
     if (target.kind === 'door') {
       const best = target.door;
-      if (best.lock && !this.player.keys?.[best.lock]) {
-        const label = best.lock === 'red' ? 'Red' : best.lock === 'yellow' ? 'Yellow' : 'Blue';
-        this.say(`You need a ${label} keycard to open this door.`);
+      if ((best.lock && !this.player.keys?.[best.lock]) || best.switchLocked) {
         this.emit('locked', best.center);
         return;
       }
@@ -2208,6 +2546,17 @@ export class Game {
       if (best.secret)
         best.revealed = true;
     }
+  }
+
+  activateSwitch(sw) {
+    if (!sw || sw.activated)
+      return false;
+    sw.activated = true;
+    sw.pull = sw.pull ?? 0;
+    for (let i = 0; i < sw.doors.length; i++)
+      sw.doors[i].switchLocked = false;
+    this.emit('cacheOpen', sw.pos);
+    return true;
   }
 
   actorNear(point, distance, enemyDistance = distance) {
@@ -2218,18 +2567,83 @@ export class Game {
     return Boolean(this.scene.queryCircleFirst(point, enemyDistance, this.actorQuery));
   }
 
+  updateElevator(dt) {
+    const elev = this.elevator;
+    if (!elev.active || this.state !== 'play')
+      return;
+    const door = elev.door;
+    const playerTile = this.level.grid.getCell(this.player.pos);
+    const inCabOrDoorway =
+      playerTile === elev.cabIdx ||
+      (!door.thin && playerTile === door.idx) ||
+      this.actorNear(door.center, door.thin ? 24 : 56, 24);
+    if (elev.phase === 'arriving') {
+      if (!inCabOrDoorway) {
+        elev.phase = 'locked';
+        door.elevatorLocked = true;
+        door.target = 0;
+        door.timer = 0;
+        return;
+      }
+      door.target = 0;
+      door.timer = 0;
+      if (elev.pulseTimer <= 0) {
+        this.emit('elevator', door.center);
+        elev.pulseTimer += 0.68;
+      }
+      elev.pulseTimer -= dt;
+      elev.timer += dt;
+      if (elev.timer < elev.duration) {
+        if (!elev.announced && elev.timer >= 0.25) {
+          elev.announced = true;
+          this.emit('elevatorAlert', door.center);
+        }
+        const u = elev.timer / elev.duration;
+        const railJolt = Math.pow(Math.max(0, Math.sin(elev.timer * 4.6)), 6) * 0.12;
+        const hum = 0.08 + 0.03 * Math.sin(elev.timer * 8.5);
+        this.shake = Math.max(this.shake, (hum + railJolt) * (0.75 + 0.25 * (1 - u * 0.35)));
+      } else {
+        elev.phase = 'open';
+        this.shake = Math.max(this.shake, 0.28);
+        this.emit('elevatorStop', door.center);
+        door.target = 1;
+        door.timer = 0;
+      }
+    } else if (elev.phase === 'open') {
+      if (inCabOrDoorway) {
+        door.target = 1;
+        door.timer = 0;
+      } else {
+        elev.phase = 'locked';
+        door.elevatorLocked = true;
+        door.target = 0;
+        door.timer = 0;
+      }
+    } else if (elev.phase === 'locked') {
+      door.target = 0;
+      door.timer = 0;
+    }
+  }
+
   updateDoors(dt) {
+    if (this.switches)
+      for (let i = 0; i < this.switches.length; i++) {
+        const sw = this.switches[i];
+        if (sw.activated && (sw.pull ?? 0) < 1)
+          sw.pull = Math.min(1, (sw.pull ?? 0) + dt / 0.18);
+      }
     const { doorsList } = this.level;
     for (let i = 0; i < doorsList.length; i++) {
       const door = doorsList[i];
+      const doorTime = door.elevator ? 1.4 : 0.7;
       if (door.target && door.open < 1)
-        this.level.setDoorOpen(door, Math.min(1, door.open + dt / 0.7));
+        this.level.setDoorOpen(door, Math.min(1, door.open + dt / doorTime));
       else if (!door.target && door.open > 0) {
         // only the player opens doors; a closing one just waits for whatever stands in its way
-        if (this.actorNear(door.center, 52, 36))
+        if (!door.elevatorLocked && this.actorNear(door.center, 52, 36))
           door.target = 1;
         else
-          this.level.setDoorOpen(door, Math.max(0, door.open - dt / 0.7));
+          this.level.setDoorOpen(door, Math.max(0, door.open - dt / doorTime));
       }
       door.body.setActive(door.open < 0.55);
       if (door.open >= 1) {
@@ -2245,6 +2659,10 @@ export class Game {
         door.lastTarget = door.target;
         this.emit(door.target ? 'doorOpen' : 'doorClose', door.center);
         if (door.target) {
+          if (!door.elevator && !this.firstDoorOpened) {
+            this.firstDoorOpened = true;
+            this.emit('whoAreYou', door.center);
+          }
           const secretIndex = this.level.secretRoomByDoor.get(door.idx);
           if (secretIndex !== undefined && !this.chimedSecrets.has(secretIndex)) {
             this.chimedSecrets.add(secretIndex);
@@ -2338,13 +2756,27 @@ export class Game {
   }
 
   updateEnemy(enemy, dt) {
+    const floor = this.enemyFloorHeight(enemy);
+    if (enemy.z < floor) {
+      enemy.z = floor;
+      enemy.vz = 0;
+    } else if (enemy.z > floor || (enemy.vz ?? 0) > 0) {
+      enemy.z = (enemy.z ?? 0) + (enemy.vz ?? 0) * dt;
+      enemy.vz = (enemy.vz ?? 0) - JUMP_GRAVITY * dt;
+      if (enemy.z <= floor) {
+        enemy.z = floor;
+        enemy.vz = 0;
+      }
+    }
+    enemy.inSlime = (enemy.state === 'dead' || enemy.z <= -ACID_PIT_DEPTH) && Boolean(this.level.slimeAt(enemy.pos));
+    if (!enemy.def.flying && enemy.state !== 'dead' && enemy.z <= -ACID_PIT_DEPTH && Boolean(this.level.emptyPitAt?.(enemy.pos)))
+      this.damageEnemy(enemy, 999);
     enemy.hurt = Math.max(0, enemy.hurt - dt);
     enemy.bleed -= dt;
     const gore = enemy.def.gore;
     if (enemy.state === 'dead') {
       enemy.pain = 0;
       enemy.deadTime += dt;
-      enemy.inSlime = Boolean(this.level.slimeAt(enemy.pos));
       if (enemy.type !== 'wraith' && enemy.deadTime <= 0.72) {
         enemy.deathFountain = (enemy.deathFountain ?? 0.08) - dt;
         if (enemy.deathFountain <= 0) {
@@ -2660,38 +3092,102 @@ export class Game {
       enemy.windup = 0.3;
   }
 
-  playerFloorHeight() {
-    const { player, level, pitMin, pitMax } = this;
-    const x0 = Math.floor((player.pos.x - PLAYER_RADIUS) / TILE);
-    const x1 = Math.floor((player.pos.x + PLAYER_RADIUS) / TILE);
-    const y0 = Math.floor((player.pos.y - PLAYER_RADIUS) / TILE);
-    const y1 = Math.floor((player.pos.y + PLAYER_RADIUS) / TILE);
+  actorFloorHeight(body, radius) {
+    const { level, pitMin, pitMax } = this;
+    const pos = body.position;
+    const x0 = Math.floor((pos.x - radius) / TILE);
+    const x1 = Math.floor((pos.x + radius) / TILE);
+    const y0 = Math.floor((pos.y - radius) / TILE);
+    const y1 = Math.floor((pos.y + radius) / TILE);
+    let inEmptyPit = false;
     for (let ty = y0; ty <= y1; ty++)
       for (let tx = x0; tx <= x1; tx++) {
-        if (level.inBounds(tx, ty) && level.slime[ty * level.width + tx])
-          continue;
+        if (level.inBounds(tx, ty)) {
+          const idx = ty * level.width + tx;
+          if (level.slime[idx])
+            continue;
+          if (level.emptyPit?.[idx]) {
+            inEmptyPit = true;
+            continue;
+          }
+        }
         pitMin.setScalar(tx * TILE, ty * TILE);
         pitMax.setScalar((tx + 1) * TILE, (ty + 1) * TILE);
-        if (player.body.overlapsAabb(pitMin, pitMax))
+        if (body.overlapsAabb(pitMin, pitMax))
           return 0;
       }
-    return -ACID_PIT_DEPTH;
+    return inEmptyPit ? -EMPTY_PIT_DEPTH : -ACID_PIT_DEPTH;
+  }
+
+  playerFloorHeight() {
+    return this.actorFloorHeight(this.player.body, PLAYER_RADIUS);
+  }
+
+  enemyFloorHeight(enemy) {
+    return this.actorFloorHeight(enemy.body, enemy.def.radius);
   }
 
   constrainPitMovement() {
     const { player, pitStepStart, pitStepTarget } = this;
-    if (player.z >= 0)
-      return;
-    pitStepTarget.copy(player.pos);
-    this.scratch.setScalar(pitStepTarget.x, pitStepStart.y);
-    player.body.setPosition(this.scratch);
-    if (this.playerFloorHeight() === 0)
-      player.body.setPosition(pitStepStart);
-    this.scratch.setScalar(player.pos.x, pitStepTarget.y);
-    pitStepTarget.copy(player.pos);
-    player.body.setPosition(this.scratch);
-    if (this.playerFloorHeight() === 0)
-      player.body.setPosition(pitStepTarget);
+    if (player.z < 0) {
+      pitStepTarget.copy(player.pos);
+      this.scratch.setScalar(pitStepTarget.x, pitStepStart.y);
+      player.body.setPosition(this.scratch);
+      if (this.playerFloorHeight() === 0)
+        player.body.setPosition(pitStepStart);
+      this.scratch.setScalar(player.pos.x, pitStepTarget.y);
+      pitStepTarget.copy(player.pos);
+      player.body.setPosition(this.scratch);
+      if (this.playerFloorHeight() === 0)
+        player.body.setPosition(pitStepTarget);
+    }
+    for (const enemy of this.enemies) {
+      if (enemy.state === 'dead' || !(enemy.z < 0))
+        continue;
+      const start = enemy.pitStart;
+      pitStepTarget.copy(enemy.pos);
+      this.scratch.setScalar(pitStepTarget.x, start.y);
+      enemy.body.setPosition(this.scratch);
+      if (this.enemyFloorHeight(enemy) === 0)
+        enemy.body.setPosition(start);
+      this.scratch.setScalar(enemy.pos.x, pitStepTarget.y);
+      pitStepTarget.copy(enemy.pos);
+      enemy.body.setPosition(this.scratch);
+      if (this.enemyFloorHeight(enemy) === 0)
+        enemy.body.setPosition(pitStepTarget);
+    }
+    for (const barrel of this.barrels) {
+      if (barrel.gone || !barrel.horizontal)
+        continue;
+      const start = barrel.pitStart;
+      if (barrel.z < 0) {
+        pitStepTarget.copy(barrel.pos);
+        this.scratch.setScalar(pitStepTarget.x, start.y);
+        barrel.body.setPosition(this.scratch);
+        if (this.actorFloorHeight(barrel.body, BARREL.radius) === 0)
+          barrel.body.setPosition(start);
+        this.scratch.setScalar(barrel.pos.x, pitStepTarget.y);
+        pitStepTarget.copy(barrel.pos);
+        barrel.body.setPosition(this.scratch);
+        if (this.actorFloorHeight(barrel.body, BARREL.radius) === 0)
+          barrel.body.setPosition(pitStepTarget);
+      }
+      const dx = barrel.pos.x - start.x;
+      const dy = barrel.pos.y - start.y;
+      const stepDist = Math.hypot(dx, dy);
+      if (stepDist > 1e-4) {
+        barrel.rolled = (barrel.rolled ?? 0) + stepDist;
+        const moveAngle = Math.atan2(dy, dx);
+        const sinDiff = Math.sin(moveAngle - barrel.angle);
+        const sign = sinDiff >= 0 ? 1 : -1;
+        barrel.roll = (barrel.roll ?? 0) + sign * (stepDist / BARREL.radius);
+        const targetAngle = moveAngle - sign * Trigo.halfpi;
+        const turnDelta = Math.atan2(Math.sin(targetAngle - barrel.angle), Math.cos(targetAngle - barrel.angle));
+        barrel.angle += turnDelta * Math.min(1, stepDist * 0.08);
+        if (barrel.rolled >= 3)
+          barrel.leaking = false;
+      }
+    }
   }
 
   updatePlayer(dt, input) {
@@ -2714,9 +3210,10 @@ export class Game {
       player.z = floor;
       player.vz = 0;
     }
+    const wasPickingLock = Boolean(this.chestLock?.active);
     const wasAirborne = player.z > floor;
     if (input.jump && !wasAirborne) {
-      player.vz = JUMP_VELOCITY;
+      player.vz = floor < 0 ? 180 : JUMP_VELOCITY;
       player.crouch = 0;
     }
     if (wasAirborne || (player.vz ?? 0) > 0) {
@@ -2752,14 +3249,24 @@ export class Game {
     // the head is lowest once per stride; that is when the foot lands
     const landed = (bob) => Math.floor((bob - FOOTFALL) / Trigo.pi);
     if (this.state === 'play' && ((wasAirborne && !airborne) || (!airborne && landed(player.bob) > landed(before))))
-      this.emit('step', null, { wet: player.feet.blood > 0.08, who: 'player' });
+      this.emit('step', null, { wet: player.feet.blood > 0.08 || Boolean(this.level.acidSplashAt?.(player.pos)) || this.inBarrelAcid(player.pos) || this.inDispenserWater(player.pos), who: 'player' });
 
+    this.updateChestLock(dt);
     if (input.weapon)
       this.selectWeapon(input.weapon);
     if (input.nightVision)
       this.toggleNightVision();
     if (input.use)
       this.use();
+    const wasHoldingTrigger = Boolean(player.triggerHeld);
+    player.triggerHeld = Boolean(input.fire);
+    if (wasPickingLock || this.chestLock?.active) {
+      if (player.kick.burst > 0)
+        this.endBurst();
+      if (this.chestLock?.active && input.fire && !wasHoldingTrigger)
+        this.tryChestLock();
+      return;
+    }
     if (input.grenade)
       if (player.grenades > 0) {
         player.grenades--;
@@ -2770,7 +3277,6 @@ export class Game {
       }
     if (player.kick.burst > 0 && !input.fire)
       this.endBurst();
-    player.triggerHeld = Boolean(input.fire);
     if (input.fire && player.cooldown <= 0) {
       const def = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
       const pool = def.ammoType ? AMMO_TYPES[def.ammoType] : null;
@@ -2886,7 +3392,15 @@ export class Game {
       player.ammoFlash.bullets = Math.max(0, (player.ammoFlash.bullets ?? 0) - dt);
       player.ammoFlash.rockets = Math.max(0, (player.ammoFlash.rockets ?? 0) - dt);
     }
-    if (this.state === 'play' && player.z <= -ACID_PIT_DEPTH && this.level.slimeAt(player.pos)) {
+    const inEmptyPit = player.z <= -ACID_PIT_DEPTH && Boolean(this.level.emptyPitAt?.(player.pos));
+    if (this.state === 'play' && inEmptyPit && !player.godMode) {
+      player.armor = 0;
+      player.armorType = null;
+      this.hurtPlayer(Math.max(1, player.health));
+    }
+    const inSlimePit = player.z <= -ACID_PIT_DEPTH && this.level.slimeAt(player.pos);
+    const inAcidPuddle = player.z <= 0.5 && (Boolean(this.level.acidSplashAt?.(player.pos)) || this.inBarrelAcid(player.pos));
+    if (this.state === 'play' && (inSlimePit || inAcidPuddle)) {
       if ((player.radSuit ?? 0) > 0)
         player.slimeTimer = 0;
       else {
@@ -3085,11 +3599,13 @@ export class Game {
       this.dust.push(particle);
     }
     let airlockOpen = false;
-    for (let i = 0; i < level.doorsList.length; i++)
-      if (level.doorsList[i].open > 0.05 && level.doorTouchesIndoor(level.doorsList[i].idx)) {
+    for (let i = 0; i < level.doorsList.length; i++) {
+      const door = level.doorsList[i];
+      if (!door.elevator && door.open > 0.05 && level.doorTouchesIndoor(door.idx)) {
         airlockOpen = true;
         break;
       }
+    }
     if (this.state === 'play' && (level.isOutdoor(player.pos) || airlockOpen)) {
       this.windTimer -= dt;
       if (this.windTimer <= 0) {
@@ -3100,11 +3616,13 @@ export class Game {
   }
 
   update(dt, input) {
+    if (this.state !== 'play')
+      this.usePrompt.fade = 0;
+    if (this.state === 'paused')
+      return;
     this.time += dt;
     this.shake = Math.max(0, this.shake - dt * 1.6);
     this.message.age += dt;
-    if (this.state !== 'play')
-      this.usePrompt.fade = 0;
     this.blood.update(dt);
     this.updateMarsWeather(dt);
     const effects = this.effects;
@@ -3132,10 +3650,12 @@ export class Game {
     } else
       this.player.body.setVelocity(this.zero);
 
+    this.updateElevator(dt);
     this.updateFlow();
     this.updateDoors(dt);
     this.updateCaches(dt);
     this.updateBarrels(dt);
+    this.updateFurnitures(dt);
     this.updateHazards(dt);
     for (const enemy of this.enemies)
       this.updateEnemy(enemy, dt);
@@ -3153,6 +3673,11 @@ export class Game {
     }
 
     this.pitStepStart.copy(this.player.pos);
+    for (const enemy of this.enemies)
+      enemy.pitStart.copy(enemy.pos);
+    for (const barrel of this.barrels)
+      if (barrel.horizontal)
+        barrel.pitStart.copy(barrel.pos);
     this.scene.step(dt);
     this.constrainPitMovement();
     this.updateTeleporters(dt);
@@ -3172,7 +3697,9 @@ export class Game {
       }
       // a failing heart: faster the lower the health
       const { health } = this.player;
-      if (health > 0 && health < 30) {
+      if (health > 30)
+        this.lowHealthWarned = false;
+      else if (health > 0 && health < 30) {
         this.heartbeat -= dt;
         if (this.heartbeat <= 0) {
           this.emit('heartbeat');

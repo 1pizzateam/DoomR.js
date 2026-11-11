@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { softClip } from '@1pizzateam/groovr';
 import { Vec2 } from '@1pizzateam/spock';
 import { RECIPES, Sound, spatial } from '../src/audio.js';
+import { Game } from '../src/game.js';
 
 let failed = 0;
 function test(name, fn) {
@@ -120,11 +121,11 @@ test('AC-1 spatial delegates to spatial2D', () => {
   assert.doesNotMatch(spatialBody, /scratchRight|halfpi|\*\* 2/);
 });
 
-test('AC-2 groovr pinned to 0.1.0-alpha.4', () => {
+test('AC-2 groovr pinned to 0.1.0', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const installed = JSON.parse(readFileSync(new URL('../node_modules/@1pizzateam/groovr/package.json', import.meta.url), 'utf8'));
-  assert.equal(pkg.dependencies['@1pizzateam/groovr'], '0.1.0-alpha.4');
-  assert.equal(installed.version, '0.1.0-alpha.4');
+  assert.equal(pkg.dependencies['@1pizzateam/groovr'], '0.1.0');
+  assert.equal(installed.version, '0.1.0');
 });
 
 test('AC-3 pan follows side and facing', () => {
@@ -164,6 +165,92 @@ test('AC-6 spatial takes Vec2s without mutation', () => {
 test('AC-7 main.js passes no scalar coordinates to spatial', () => {
   assert.ok(!mainSource.includes('spatial('));
   assert.match(source, /spatial\(this\.listener\.pos, pos, this\.listener\)/);
+});
+
+test('AC-8 elevatorStop delegates female robotic welcome voice to speak', () => {
+  assert.match(importLine, /speak/);
+  assert.match(source, /elevatorStop\(ctx,\s*out,\s*t,\s*\{\s*gender\s*=\s*'female'\s*\}/);
+  assert.match(source, /speak\(ctx,\s*out,\s*t\s*\+\s*0\.42,\s*'welcome',\s*\{\s*gender,\s*gain:\s*0\.18/);
+  const { ctx, created } = mockContext();
+  const info = RECIPES.elevatorStop(ctx, node(), 0);
+  assert.ok(info.duration > 1, 'elevatorStop duration includes the welcome speech');
+  assert.ok(created.shapers.length >= 1, 'elevatorStop creates vocal-cord waveshaper for robotic voice');
+});
+
+test('AC-9 whoAreYou synthesizes "who are you ?" and triggers once when opening the first non-elevator door', () => {
+  assert.match(source, /whoAreYou\(ctx,\s*out,\s*t,\s*\{\s*gender\s*=\s*'female'\s*\}/);
+  assert.match(source, /speak\(ctx,\s*out,\s*t\s*\+\s*0\.18,\s*'who are you \?',\s*\{\s*gender,\s*gain:\s*0\.18/);
+  const { ctx, created } = mockContext();
+  const info = RECIPES.whoAreYou(ctx, node(), 0);
+  assert.ok(info.duration > 0.8, 'whoAreYou duration covers the full sentence');
+  assert.ok(created.shapers.length >= 1, 'whoAreYou creates vocal-cord waveshaper');
+
+  const game = new Game();
+  const doors = [...game.level.doors.values()].filter((d) => !d.elevator);
+  assert.ok(doors.length >= 2);
+  // Elevator door opening does not trigger whoAreYou
+  if (game.level.elevator?.door) {
+    game.level.elevator.door.target = 1;
+    game.events.length = 0;
+    game.updateDoors(1 / 60);
+    assert.equal(game.events.some((e) => e.type === 'whoAreYou'), false);
+  }
+  // First non-elevator door opening emits whoAreYou once
+  doors[0].target = 1;
+  game.events.length = 0;
+  game.updateDoors(1 / 60);
+  assert.equal(game.events.filter((e) => e.type === 'whoAreYou').length, 1);
+  // Second non-elevator door opening does not emit whoAreYou again
+  doors[1].target = 1;
+  game.events.length = 0;
+  game.updateDoors(1 / 60);
+  assert.equal(game.events.filter((e) => e.type === 'whoAreYou').length, 0);
+});
+
+test('AC-10 elevatorAlert synthesizes cascading "system failure in sector 1..3" announcements during the elevator ride', () => {
+  assert.match(source, /elevatorAlert\(ctx,\s*out,\s*t,\s*\{\s*gender\s*=\s*'female'\s*\}/);
+  assert.match(source, /speak\(ctx,\s*out,\s*cursor\s*\+\s*0\.16,\s*`system failure in sector \$\{s\}`/);
+  const { ctx, created } = mockContext();
+  const info = RECIPES.elevatorAlert(ctx, node(), 0);
+  assert.ok(info.duration > 5, 'elevatorAlert duration covers all three sector failure sentences');
+  assert.equal(created.shapers.length, 3, 'elevatorAlert creates one vocal-cord waveshaper per sector announcement');
+
+  const game = new Game();
+  game.state = 'play';
+  const emitted = [];
+  for (let i = 0; i < 180; i++) {
+    game.events.length = 0;
+    game.updateElevator(1 / 60);
+    for (const e of game.events)
+      emitted.push(e.type);
+  }
+  assert.equal(emitted.filter((t) => t === 'elevatorAlert').length, 1);
+});
+
+test('AC-11 lowHealth synthesizes "I think you are going to die" when player reaches 30% health or less', () => {
+  assert.match(source, /lowHealth\(ctx,\s*out,\s*t,\s*\{\s*gender\s*=\s*'female'\s*\}/);
+  assert.match(source, /speak\(ctx,\s*out,\s*t\s*\+\s*0\.14,\s*'I think you are going to die'/);
+  const { ctx, created } = mockContext();
+  const info = RECIPES.lowHealth(ctx, node(), 0);
+  assert.ok(info.duration > 1.8, 'lowHealth duration covers the full sentence');
+  assert.equal(created.shapers.length, 1, 'lowHealth creates vocal-cord waveshaper');
+
+  const game = new Game();
+  game.state = 'play';
+  game.player.armor = 0;
+  // Dropping from 100 to 50 HP (> 30%) does not emit lowHealth
+  game.events.length = 0;
+  game.hurtPlayer(50);
+  assert.equal(game.events.some((e) => e.type === 'lowHealth'), false);
+  // Dropping from 50 to 30 HP (<= 30%) emits lowHealth once
+  game.events.length = 0;
+  game.hurtPlayer(20);
+  assert.equal(game.player.health, 30);
+  assert.equal(game.events.filter((e) => e.type === 'lowHealth').length, 1);
+  // Further damage while still <= 30% does not repeat lowHealth
+  game.events.length = 0;
+  game.hurtPlayer(10);
+  assert.equal(game.events.some((e) => e.type === 'lowHealth'), false);
 });
 
 process.exit(failed ? 1 : 0);

@@ -9,6 +9,7 @@ import { CONTROLS_STORAGE_KEY } from './keymap.js';
 import { MainMenu, MENU_OPTIONS, MENU_PLAY } from './menu.js';
 import { TitleDirector } from './title.js';
 import { World } from './world.js';
+import { loadHeadAssets } from './head.js';
 
 const worldCanvas = document.getElementById('world');
 const hudCanvas = document.getElementById('hud');
@@ -40,6 +41,9 @@ const sound = new Sound();
 const quality = new Quality();
 const title = new TitleDirector(game);
 let showDiagnostics = false;
+
+// the HUD portrait's head is a static asset (FaceR bundles none; it lives in src/heads), so fetch it before the world builds the overlay
+await loadHeadAssets();
 
 // if the browser drops the GPU context, the world rebuilds itself when it comes back (see World.restoreGpu)
 const world = new World(worldCanvas);
@@ -74,6 +78,7 @@ resize();
 function start() {
   game.selectingDifficulty = false;
   game.state = 'play';
+  input.releaseAll();
   input.lock();
 }
 
@@ -94,6 +99,7 @@ function control(dt) {
     hud.setControlsStatus(keymap.actionLabel('controls'), keymap.unboundActions().length);
     hud.useKeyLabel = keymap.actionLabel('use');
     hud.jumpKeyLabel = keymap.actionLabel('jump');
+    hud.fireKeyLabel = keymap.isCustom('fire') ? keymap.actionLabel('fire') : `CLICK / ${keymap.actionLabel('fire')}`;
     hud.setPauseKeyLabel(keymap.actionLabel('pause'));
     hintVersion = keymap.version;
   }
@@ -213,6 +219,7 @@ function control(dt) {
     case 'dead':
       if (game.player.deadTime > 1 && confirmed()) {
         game.restart();
+        input.releaseAll();
         input.lock();
       }
       break;
@@ -220,6 +227,7 @@ function control(dt) {
       hud.automap = false;
       if (confirmed() && !game.skipIntermission()) {
         game.nextLevel();
+        input.releaseAll();
         if (game.state === 'play')
           input.lock();
       }

@@ -96,9 +96,9 @@ export class QuadBatch extends RoostrQuadBatch {
  * A mesh of any geometry with a texture on it, drawn like the batches above: the picture times the material colour,
  * clear pixels dropped, fog applied. The geometry needs texture coordinates.
  */
-export function texturedMesh(gl, geometry, { atlas, sharedTexture = null, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, fragment = SOLID_TEXTURED_FRAGMENT }) {
+export function texturedMesh(gl, geometry, { atlas, sharedTexture = null, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, vertex = TEXTURED_VERTEX, fragment = SOLID_TEXTURED_FRAGMENT }) {
   const mesh = new Mesh(gl, geometry);
-  mesh.addProgram(TEXTURED_VERTEX, fragment, material);
+  mesh.addProgram(vertex, fragment, material);
   if (sharedTexture && typeof mesh.setSharedTexture === 'function')
     mesh.setSharedTexture(sharedTexture);
   else

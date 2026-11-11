@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Circ, Mat4, Rect } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
-import { ACID_PIT_DEPTH, CACHE_LID_TIME, CACHE_OUTDOOR_LINK, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, DIFFICULTIES, DIFFICULTY_ORDER, ENEMY_TYPES, Game } from '../src/game.js';
+import { ACID_PIT_DEPTH, ACID_SURFACE_DEPTH, CACHE_LID_TIME, CACHE_LOOT_STAGGER, CACHE_LOOT_TIME, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, CHEST_LOCK_GAP_HALF, CHEST_LOCK_RINGS, DIFFICULTIES, DIFFICULTY_ORDER, ELEVATOR_RIDE_TIME, EMPTY_PIT_DEPTH, ENEMY_TYPES, Game } from '../src/game.js';
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
 import { BLOOD, Blood, makeFeet } from '../src/blood.js';
 import { DUCK_FLOOR, RECIPES, Sound, spatial } from '../src/audio.js';
@@ -34,15 +34,15 @@ import { FACE_CELL_H, FACE_CELL_W, FACE_DEAD_FRAME, FACE_FRAME_COUNT, FACE_POSE_
 import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON_ORDER, WEAPON_SLOTS, WEAPON_TIMES, WEAPONS, SHOTGUN_PUMP, arsenalAtlas, weaponAtlas, weaponCellUv, weaponFrame, weaponPlacement } from '../src/weapon.js';
 import { ARSENAL_CELL, ARSENAL_FRAMES, CHAINSAW_TOOTH_PITCH, chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, KNIFE_ATTACKS, knifeAtlas, knifeMesh, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from '../src/arsenal.js';
 import { AMMO_FLASH_DURATION, FIRE_COOLDOWN } from '../src/game.js';
-import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DYNAMIC_LIGHT_ATTENUATION, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
-import { diagWallFaceQuads, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallCellUv, wallFaceQuads } from '../src/wall.js';
-import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
-import { BARREL_ATLAS, BARREL_STAVE_COUNT, barrelAtlas, barrelExplosionPose, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
+import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DOOR_CEILING_CELL_COUNT, DOOR_CEILING_CELLS, doorCeilingAtlas, doorCeilingCellFor, doorCeilingCellUv, DYNAMIC_LIGHT_ATTENUATION, elevatorLightFactor, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
+import { diagWallFaceQuads, DOOR_WALL_CELL_COUNT, DOOR_WALL_CELLS, doorWallAtlas, doorWallCellFor, doorWallCellUv, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallCellUv, wallFaceQuads } from '../src/wall.js';
+import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorAtlas, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
+import { BARREL_ATLAS, BARREL_FIRE_FRAGMENT, BARREL_FIRE_VERTEX, BARREL_STAVE_COUNT, barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelFireMesh, barrelShrapnelFireMesh, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
 import { ACID_MIST_FRAGMENT, CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
 import { LIGHT_GLSL, PARTICLE_FRAGMENT, QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, TEXTURED_VERTEX, texturedMesh } from '../src/quads.js';
 import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads as wallDripQuadsVec, screenSplatQuads as screenSplatQuadsVec, createQuadTarget, bloodAtlas, CELL, cellUv, floorGibQuad as floorGibQuadVec, floorSplatQuad as floorSplatQuadVec, particleQuad, printQuad as printQuadVec, wallSplatQuad as wallSplatQuadVec } from '../src/bloodsprites.js';
-import { CEILING, CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
+import { BASE_FLOOR_LEVEL, CEILING, CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { Fog } from '../src/fog.js';
 import { MONSTER_SKIN_CELL, MONSTER_SKIN_CELLS, MONSTER_SKIN_FRAMES, MONSTERS, monsterGoreSkinAtlas, monsterMesh, monsterParts, monsterSkinAtlas } from '../src/monsters.js';
 import { SHOTS, TitleDirector } from '../src/title.js';
@@ -56,6 +56,17 @@ import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.j
 import { GRENADE_CELL, GRENADE_FRAMES, GRENADE_SCALE, GRENADE_START, grenadeAtlas, grenadeParts, skinGrenadeCylinder } from '../src/grenade.js';
 import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
+import { registerBaseHead, deserializeBaseHead, registerHairStyle, deserializeHairStyle, registerAtlasPainter, registerFaceProfile, deserializeFaceProfile } from '@1pizzateam/facer';
+import { paintFaceAtlas } from '../src/skin/atlas.js';
+import '../src/head.js';
+registerAtlasPainter(paintFaceAtlas);
+// FaceR bundles no heads: register the marine's head asset from src/heads before any HeadView is built
+registerFaceProfile(deserializeFaceProfile(JSON.parse(
+  readFileSync(new URL('../src/face/doomr.facerprofile.json', import.meta.url), 'utf8'))));
+registerBaseHead('african_sculpt', deserializeBaseHead(JSON.parse(
+  readFileSync(new URL('../src/heads/african_sculpt.facerhead.json', import.meta.url), 'utf8'))));
+registerHairStyle(deserializeHairStyle(JSON.parse(
+  readFileSync(new URL('../src/hair/buzz_fade.facerhair.json', import.meta.url), 'utf8'))));
 import { Overlay } from '../src/overlay.js';
 import { ACTIONS, CONTROLS_STORAGE_KEY, CONTROLS_VERSION, CONTROL_GROUPS, DEFAULT_HINT_LINES, Keymap, LAYOUT_STORAGE_KEY, MAX_SLOTS, PRESETS, RESERVED_CODES } from '../src/keymap.js';
 import { ControlsMenu, HIT_BACK, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP, TONE_RED } from '../src/controls.js';
@@ -82,7 +93,7 @@ function run(game, seconds, controls = idle) {
 
 function pitGame() {
   const game = new Game();
-  game.load({ name: 'Pit prompt', rows: ['###########', '#.........#', '#P.D.~~~a.#', '#...~~~...#', '#.........#', '###########'] });
+  game.load({ name: 'Pit prompt', rows: ['###########', '#.........#', '#P.D.~~~=.#', '#...~~~...#', '#.........#', '###########'] });
   game.state = 'play';
   const door = [...game.level.doors.values()][0];
   let slime = null;
@@ -215,6 +226,8 @@ function withWallWorld(check) {
     floorBatch: stub,
     marsDirtBatch: stub,
     slimeBatch: stub,
+    acidSplashBatch: stub,
+    emptyPitBatch: stub,
     acidMistBatch: stub,
     teleporterBatch: stub,
     crateBatch: stub,
@@ -594,7 +607,7 @@ const tests = {
       document.onkeyup(press);
       for (const code of ['KeyX', 'Enter']) {
         document.onkeydown({ code, repeat: false, preventDefault() {} });
-        assert.equal(controls.poll().fire, true, `${code} still fires`);
+        assert.equal(controls.poll().fire, code === 'KeyX', `${code} fire check`);
         assert.equal(controls.poll().grenade, false);
         document.onkeyup({ code });
         controls.endFrame();
@@ -1011,6 +1024,7 @@ const tests = {
       enemyViews: new Map(),
       pickupViews: new Map(),
       cacheViews: new Map(),
+      furnitureViews: new Map(),
       barrelViews: new Map(),
       shotViews: new Map(),
       effectViews: new Map(),
@@ -1394,6 +1408,7 @@ const tests = {
     assert.ok(wraith, 'wraith enemy created');
     game.update(1 / 60, idle);
     game.events.length = 0;
+    wraith.state = 'idle';
     game.wake(wraith);
     assert.ok(game.events.some((e) => e.type === 'alert' && e.kind === 'wraith'), 'it should wail when it wakes');
     assert.ok(wraith.roar > 0, 'and stop to do it');
@@ -1658,6 +1673,7 @@ const tests = {
   'closed doors block and open doors let the player through'() {
     const game = fresh();
     clearEnemies(game);
+    game.activateSwitch(game.switches[0]);
     game.player.angle = 0;
     game.player.body.setPosition(new Vec2(3 * 64 + 32, 3 * 64 + 32));
     run(game, 2, input({ forward: 1 }));
@@ -1709,6 +1725,7 @@ const tests = {
           }
           const cache = g.caches.find((c) => c.contents.includes(type));
           assert.ok(cache, `level ${level} has a cache holding ${type}`);
+          cache.locked = false;
           g.player.body.setPosition(cache.pos.clone());
           g.use();
           return { g, cache };
@@ -2434,6 +2451,11 @@ const tests = {
   'every pellet that stops on a half-height pillar marks its face, inside its height'() {
     const game = fresh();
     clearEnemies(game);
+    // furniture standing in the line of fire along row 2 would take the pellets, so clear it first
+    for (const f of game.furnitures)
+      if (f.y === 2)
+        game.hitFurniture(f, 1);
+    game.effects.length = 0;
     game.blood.reset(game.level, game.rand);
     // the pillar at tile (9, 2) is 26 high, below the 32 eye height: its west face is the plane x = 576
     assert.equal(game.level.heights[2 * game.level.width + 9], 26);
@@ -3165,6 +3187,7 @@ const tests = {
   'doors, pickups and the exit have sounds, and doors announce each direction once'() {
     const game = fresh();
     clearEnemies(game);
+    game.activateSwitch(game.switches[0]);
     const door = [...game.level.doors.values()].find((d) => d.x === 5 && d.y === 3);
     game.player.body.setPosition(new Vec2(4 * 64 + 40, 3 * 64 + 32));
     game.player.angle = 0;
@@ -3447,9 +3470,9 @@ const tests = {
       let r = 0;
       let b = 0;
       let hash = 0;
-      for (let y = 0; y < 64; y++) {
-        for (let x = 0; x < 64; x++) {
-          const o = (y * atlas.width + cell * 64 + x) * 4;
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const o = (y * atlas.width + cell * TILE_PIXELS + x) * 4;
           assert.equal(atlas.data[o + 3], 255);
           r += atlas.data[o];
           b += atlas.data[o + 2];
@@ -3460,8 +3483,9 @@ const tests = {
       signatures.add(hash);
     }
     assert.equal(signatures.size, CEILING_CELL_COUNT, 'every ceiling cell has a unique pixel-art pattern');
-    const light = (y, x) => atlas.data[(y * atlas.width + CEILING_CELLS.light * 64 + x) * 4 + 2];
-    assert.ok(light(32, 30) > 150, 'a light fixture is bright');
+    const light = (y, x) => atlas.data[(y * atlas.width + CEILING_CELLS.light * TILE_PIXELS + x) * 4 + 2];
+    const s = TILE_PIXELS / 64;
+    assert.ok(light(32 * s, 30 * s) > 150, 'a light fixture is bright');
     assert.equal(ceilingCellFor(new Vec2(2, 3)), CEILING_CELLS.light);
     assert.equal(ceilingCellFor(new Vec2(7, 3)), CEILING_CELLS.light, 'fixtures repeat every five by four tiles');
     assert.notEqual(ceilingCellFor(new Vec2(2, 2)), CEILING_CELLS.light, 'adjacent rows are not crowded with light fixtures');
@@ -3482,13 +3506,13 @@ const tests = {
     const atlas = wallAtlas();
     const pow2 = (n) => (n & (n - 1)) === 0;
     assert.ok(pow2(atlas.width) && pow2(atlas.height), 'a power-of-two atlas can have mipmaps');
-    assert.equal(atlas.width, 64 * WALL_CELL_COUNT);
+    assert.equal(atlas.width, TILE_PIXELS * WALL_CELL_COUNT);
     for (let cell = 0; cell < WALL_CELL_COUNT; cell++) {
       let r = 0;
       let b = 0;
-      for (let y = 0; y < 64; y++) {
-        for (let x = 0; x < 64; x++) {
-          const o = (y * atlas.width + cell * 64 + x) * 4;
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const o = (y * atlas.width + cell * TILE_PIXELS + x) * 4;
           assert.equal(atlas.data[o + 3], 255);
           r += atlas.data[o];
           b += atlas.data[o + 2];
@@ -3609,11 +3633,11 @@ const tests = {
     const atlas = doorAtlas();
     const pow2 = (n) => (n & (n - 1)) === 0;
     assert.ok(pow2(atlas.width) && pow2(atlas.height), 'a power-of-two atlas can have mipmaps');
-    assert.equal(atlas.width, 64 * DOOR_CELLS);
+    assert.equal(atlas.width, TILE_PIXELS * DOOR_CELLS);
     let green = 0;
     let rusty = 0;
-    for (let y = 0; y < 64; y++) {
-      for (let x = 0; x < 64; x++) {
+    for (let y = 0; y < TILE_PIXELS; y++) {
+      for (let x = 0; x < TILE_PIXELS; x++) {
         const o = (y * atlas.width + x) * 4;
         assert.equal(atlas.data[o + 3], 255, 'a door has no holes in it');
         if (atlas.data[o + 1] > atlas.data[o] * 1.6 && atlas.data[o + 1] > atlas.data[o + 2] * 1.2)
@@ -3663,7 +3687,7 @@ const tests = {
   'AC-4 doorBox preserves legacy vertex positions and UVs'() {
     const { vertices, uvs } = doorBox(new Vec2(64, 64));
     assert.deepEqual(vertices.slice(0, 3), [-32, 0, 32]);
-    const inset = 0.25 / (64 * DOOR_CELLS);
+    const inset = 0.25 / (TILE_PIXELS * DOOR_CELLS);
     assert.ok(Math.abs(uvs[0] - inset) < 1e-9);
     assert.equal(uvs[1], 0);
     assert.ok(Math.abs(uvs[2] - (1 / DOOR_CELLS - inset)) < 1e-9);
@@ -4336,6 +4360,7 @@ const tests = {
       run(game, 0.7, input({ forward: 1 }));
       assert.equal(game.player.z, -ACID_PIT_DEPTH, 'walking off the deck falls onto the pit floor');
       assert.equal(game.player.eye, EYE - ACID_PIT_DEPTH, 'camera follows the descent');
+      assert.ok(ACID_PIT_DEPTH >= 24 && game.player.eye <= 8, 'acid pit is deep enough to drop eye near deck level');
       const entered = game.player.pos.clone();
       run(game, 1, input({ forward: 1, run: true }));
       assert.ok(game.player.pos.getDistance(entered) > 20, 'movement continues between adjacent acid tiles');
@@ -4435,18 +4460,67 @@ const tests = {
       assert.equal(acid.mesh.used, 9, 'one recessed surface per acid tile, with no gaps inside the pool');
       assert.equal(acid.vertex, FLOOR_VERTEX);
       for (let i = 1; i < acid.mesh.used * 18; i += 3)
-        assert.ok(Math.abs(acid.mesh.vertices[i] + ACID_PIT_DEPTH + 0.35) < 1e-5, 'surface matches the gameplay pit depth');
+        assert.ok(Math.abs(acid.mesh.vertices[i] + ACID_SURFACE_DEPTH + 0.35) < 1e-5, 'surface stays at acid surface depth');
       for (const { mesh } of floors)
         for (let i = 1; i < mesh.used * 18; i += 3)
           assert.ok(Math.abs(mesh.vertices[i] + 0.2) < 1e-5, 'ordinary floor stays at deck height');
       const sides = programs.filter(({ fragment }) => fragment === LINE_FRAGMENT);
-      assert.ok(sides.some(({ mesh }) => Array.from(mesh.vertices).some((value, i) => i % 3 === 1 && value < -ACID_PIT_DEPTH)), 'pit edges are closed below the deck');
+      assert.ok(sides.some(({ mesh }) => Array.from(mesh.vertices).some((value, i) => i % 3 === 1 && value < -ACID_SURFACE_DEPTH)), 'pit edges are closed below the deck');
       assert.match(acid.fragment, /uniform float uTime;/);
       assert.match(acid.fragment, /sin\([^;]*uTime/);
       assert.equal(acid.mesh.customUniforms.time.value, 0, 'animation time is registered');
       acid.mesh.setCustomUniform('time', 2);
       assert.equal(acid.mesh.customUniforms.time.value, 2, 'animation time remains updateable');
     });
+  },
+
+  'enemies fall into acid pits instead of walking above them and render at pit depth'() {
+    const game = acidPitGame();
+    game.player.body.setPosition(new Vec2(416, 224));
+    const enemy = game.addEnemy('brute', new Vec2(160, 224));
+    enemy.state = 'chase';
+    enemy.los = true;
+    assert.equal(enemy.z, 0);
+
+    // Enemy walks east off the deck (x=160) into the 3x3 acid pit (x in [192, 384])
+    run(game, 0.5);
+    assert.ok(enemy.pos.x > 192 + enemy.def.radius, 'enemy crosses the pit edge into the acid pool');
+    assert.ok(enemy.z < 0, 'enemy begins falling into the acid pit');
+    run(game, 0.5);
+    assert.equal(enemy.z, -ACID_PIT_DEPTH, 'enemy lands on the recessed acid pit floor');
+    assert.equal(enemy.inSlime, true, 'enemy in the acid pit is marked inSlime');
+
+    // Once down in the pit, the enemy cannot climb back out across the east pit ledge (x = 384)
+    run(game, 1.5);
+    assert.ok(enemy.pos.x <= 384 - enemy.def.radius, 'enemy in acid pit cannot walk up the vertical pit wall onto the deck');
+    assert.equal(enemy.z, -ACID_PIT_DEPTH);
+
+    // 3D view root follows enemy.z both while alive and while dying/dissolving in acid
+    const mockWorld = {
+      gl: null,
+      scene: { addMesh() {} },
+      material() { return new Material({ red: 1, green: 0.5, blue: 0 }); },
+      monsterPartMesh(geo, _atlas, material) {
+        const m = new Mesh(null, geo, material);
+        m.setCustomUniform = () => {};
+        return m;
+      },
+      sharedTexture() { return null; },
+    };
+    const view = MONSTERS.brute.build(mockWorld, enemy);
+    World.prototype.updateEnemy.call(mockWorld, enemy, view, game.player, 1.0, game);
+    assert.ok(
+      Math.abs(view.root.position.y - (enemy.z + view.lift * view.scale)) < 1e-5,
+      'living enemy 3D root position includes enemy.z in the acid pit'
+    );
+
+    enemy.state = 'dead';
+    enemy.deadTime = 0.25;
+    World.prototype.updateEnemy.call(mockWorld, enemy, view, game.player, 1.25, game);
+    assert.ok(
+      Math.abs(view.root.position.y - enemy.z) < 1e-5,
+      'dying enemy 3D root position stays at enemy.z in the acid pit'
+    );
   },
 
   'issue-181 AC-1 acid mist batch layers cover every acid tile'() {
@@ -4456,19 +4530,35 @@ const tests = {
       const acid = programs.find(({ fragment }) => fragment === SLIME_FRAGMENT);
       assert.ok(mist, 'mist batch is built');
       assert.equal(mist.vertex, FLOOR_VERTEX);
-      assert.ok(mist.mesh.used >= 27, '3 layers x 9 tiles plus rim curtains');
+      assert.ok(mist.mesh.used >= 45, '3 horizontal layers + 2 crossed fume plumes x 9 tiles plus rim curtains');
       assert.equal(acid.mesh.used, 9, 'acid surface batch is unchanged');
+      const quadSeeds = new Set();
+      for (let q = 0; q < mist.mesh.used; q++) {
+        const u0 = Math.floor(mist.mesh.uvs[q * 12]);
+        const v0 = Math.floor(mist.mesh.uvs[q * 12 + 1]);
+        quadSeeds.add(`${u0}:${v0}`);
+      }
+      assert.ok(quadSeeds.size > 30, 'acid mist quads carry distinct randomized UV seeds across tiles and plumes');
     });
   },
 
-  'issue-181 AC-2 acid mist stays below the deck and above the acid'() {
+  'issue-181 AC-2 acid mist stays above the acid and rises slightly above the deck'() {
     const game = acidPitGame();
     withMistWorld(game, (world, programs) => {
       const mist = programs.find(({ fragment }) => fragment === ACID_MIST_FRAGMENT);
+      let hasBelowDeck = false;
+      let hasAboveDeck = false;
       for (let i = 1; i < mist.mesh.used * 18; i += 3) {
-        assert.ok(mist.mesh.vertices[i] < -0.2 - 1e-3, 'below the deck plane');
-        assert.ok(mist.mesh.vertices[i] > -ACID_PIT_DEPTH - 0.35, 'above the acid surface');
+        const y = mist.mesh.vertices[i];
+        assert.ok(y <= 6.0, 'fumes stay slightly above the deck plane');
+        assert.ok(y > -ACID_SURFACE_DEPTH - 0.35, 'above the acid surface');
+        if (y < -0.2 - 1e-3)
+          hasBelowDeck = true;
+        if (y > 0)
+          hasAboveDeck = true;
       }
+      assert.ok(hasBelowDeck, 'recessed horizontal mist layers sit below the deck');
+      assert.ok(hasAboveDeck, 'upward fume plumes and rim curtains rise slightly above the deck');
     });
   },
 
@@ -4478,6 +4568,7 @@ const tests = {
       const mist = programs.find(({ fragment }) => fragment === ACID_MIST_FRAGMENT);
       assert.match(mist.fragment, /uniform float uTime;/);
       assert.match(mist.fragment, /uTime\s*\*/);
+      assert.ok(mist.fragment.includes('floor(vTextureCoord)') && mist.fragment.includes('fract(vTextureCoord)'));
       assert.ok(mist.fragment.includes('uHasFog') && mist.fragment.includes('uFogColor'));
       assert.ok(mist.fragment.includes('uFogNear') && mist.fragment.includes('uFogFar'));
       assert.ok(mist.fragment.includes('surfaceLight('));
@@ -4519,6 +4610,7 @@ const tests = {
   'crouching lowers the player eye below low pillars, slows movement, and stands back up when released'() {
     const game = fresh();
     clearEnemies(game);
+    game.player.body.setPosition(new Vec2(2 * 64 + 32, 1 * 64 + 32));
     assert.equal(game.player.eye, EYE);
     assert.equal(game.player.crouch, 0);
 
@@ -4530,6 +4622,7 @@ const tests = {
 
     const gameWalk = fresh();
     clearEnemies(gameWalk);
+    gameWalk.player.body.setPosition(new Vec2(2 * 64 + 32, 1 * 64 + 32));
     run(gameWalk, 0.25, input({ forward: 1 }));
     const walkDist = gameWalk.player.pos.x - startX;
     assert.ok(crouchedDist > 0 && crouchedDist < walkDist * 0.75, 'crouching moves slower than walking');
@@ -4924,7 +5017,7 @@ const tests = {
       const secretDoors = [...g.level.doors.values()].filter((d) => d.secret);
       assert.ok(slimeTiles >= 6, `level ${i} has radioactive slime tiles (${slimeTiles})`);
       if (g.level.planet === 'mars')
-        assert.equal(g.level.doors.size, 1, 'Mars surface level has only the single starting-room door and zero exterior doors');
+        assert.equal(g.level.doors.size, 2, 'Mars surface level has only the starting elevator and airlock doors and zero exterior doors');
       else
         assert.ok(secretDoors.length >= 2, `level ${i} has secret push-wall doors (${secretDoors.length})`);
       assert.ok(g.level.crushers.length >= 1, `level ${i} has crushing ceiling traps (${g.level.crushers.length})`);
@@ -4994,12 +5087,13 @@ const tests = {
       assert.ok(pow2(ka.width) && pow2(ka.height), `${color} keycard atlas is power-of-two`);
 
       const da = lockedDoorAtlas(color);
-      assert.equal(da.width, 64 * DOOR_CELLS);
-      assert.equal(da.height, 64);
+      assert.equal(da.width, TILE_PIXELS * DOOR_CELLS);
+      assert.equal(da.height, TILE_PIXELS);
       assert.ok(pow2(da.width) && pow2(da.height), `${color} locked door atlas is power-of-two`);
+      const s = TILE_PIXELS / 64;
       let coloredRail = 0;
       for (let y = 14; y < 50; y++) {
-        const o = (y * da.width + 28) * 4;
+        const o = (y * s * da.width + 28 * s) * 4;
         const r = da.data[o];
         const g = da.data[o + 1];
         const b = da.data[o + 2];
@@ -5023,9 +5117,10 @@ const tests = {
     game.player.body.setPosition(new Vec2(blueDoor.center.x, blueDoor.center.y - 48));
     game.player.angle = Math.PI / 2;
     game.events.length = 0;
+    game.message.text = '';
     game.use();
     assert.equal(blueDoor.target, 0, 'blue door refuses to open without Blue keycard');
-    assert.ok(game.message.text.includes('Blue keycard'), 'HUD message tells player which keycard is needed');
+    assert.equal(game.message.text, '', 'no textual hint is shown when a locked door does not open');
     assert.ok(game.events.some((e) => e.type === 'locked'), 'locked door emits locked buzzer sound');
 
     // Touching the blue keycard pickup grants the key, increments itemsPicked, and lets the door open
@@ -5098,7 +5193,7 @@ const tests = {
       const g = fresh(i);
       const { level } = g;
       if (level.planet === 'mars') {
-        assert.equal(level.doors.size, 1, 'Mars surface level has only the starting room door and no exterior locked doors');
+        assert.equal(level.doors.size, 2, 'Mars surface level has only the starting elevator and airlock doors and no exterior locked doors');
         continue;
       }
       const locks = new Set([...level.doors.values()].map((d) => d.lock).filter(Boolean));
@@ -5331,7 +5426,7 @@ const tests = {
     // Chainsaw puts specific vertical slash marks on walls distinct from firearm bullet holes
     const holesBeforeSaw = game.blood.holes.length;
     game.player.cooldown = 0;
-    game.player.body.setPosition(new Vec2(1 * 64 + 28, 3 * 64 + 32));
+    game.player.body.setPosition(new Vec2(2 * 64 + 28, 2 * 64 + 32));
     game.player.angle = Math.PI;
     game.events.length = 0;
     game.fire();
@@ -5583,7 +5678,10 @@ const tests = {
 
     for (let i = 0; i < LEVELS.length; i++) {
       const g = fresh(i);
-      assert.ok(g.pickups.some((p) => p.type === 'greenArmor'), `level ${i + 1} has a green security armor pickup`);
+      assert.ok(
+        g.pickups.some((p) => p.type === 'greenArmor') || g.caches.some((c) => c.contents.includes('greenArmor')),
+        `level ${i + 1} has a green security armor pickup or chest`
+      );
       assert.ok(g.pickups.some((p) => p.type === 'blueArmor'), `level ${i + 1} has a blue megaarmor pickup`);
     }
 
@@ -5593,7 +5691,7 @@ const tests = {
     assert.equal(game.player.armorType, null, 'player starts with no armor type');
 
     // Green Security Armor grants 100 armor and absorbs 33% (1/3) of incoming damage
-    const greenPickup = game.pickups.find((p) => p.type === 'greenArmor');
+    const greenPickup = game.addPickup('greenArmor', game.player.pos.clone(), false);
     game.events.length = 0;
     game.touch(greenPickup.body);
     assert.equal(game.player.armor, ARMOR_TYPES.green.points, 'green armor grants 100 armor points');
@@ -7269,8 +7367,8 @@ const tests = {
     const room1Caches = game.caches.filter((c) => c.pos.x < 7 * 64 && c.pos.y < 5 * 64);
     assert.equal(room1Caches.length, 1, 'the first room holds one chest');
     const [shotgunCache] = room1Caches;
-    assert.deepEqual(shotgunCache.contents, ['shotgun', 'ammo'], 'the first room chest holds the shotgun and a shell pack');
-    assert.equal(game.level.grid.getCell(shotgunCache.pos), 1 * game.level.width + 2, 'the first-room chest backs the north wall on tile (2, 1)');
+    assert.deepEqual(shotgunCache.contents, ['ammo', 'shotgun'], 'the first room chest holds the shotgun and a shell pack');
+    assert.equal(game.level.grid.getCell(shotgunCache.pos), 1 * game.level.width + 4, 'the first-room chest backs the north wall on tile (4, 1)');
     assert.equal(game.caches.some((c) => c !== shotgunCache && c.pos.x < 7 * 64 && c.pos.y < 5 * 64), false, 'no second chest in the first room');
 
     // Open the first-room chest: unlocks and equips the shotgun, the first shotgun adds no ammo of its own
@@ -7289,15 +7387,15 @@ const tests = {
     assert.ok(game.events.some((e) => e.type === 'dry'), 'dry-firing emits dry click');
 
     // The next room's chest holds two shell packs
-    const nextCache = game.caches.find((c) => c.tiles.includes(3 * game.level.width + 6));
+    const nextCache = game.caches.find((c) => c.idx === 2 * game.level.width + 12);
     assert.deepEqual(nextCache.contents, ['ammo', 'ammo'], 'the next room chest holds two shell packs');
     game.openCache(nextCache);
     assert.equal(game.player.shells, AMMO_TYPES.shells.bonus * 2, 'the next chest adds two crates of shotgun shells');
 
-    // 4. Chainsaw is hidden in the center of the top-right secret room of Level 1 (col 52, row 3), directly in the line of sight of secret door S at (49, 3)
+    // 4. Chainsaw is hidden in the top-right secret room of Level 1 (col 52, row 2), guarded by secret door S at (49, 3)
     const secretChainsaw = game.caches.find((c) => c.contents.includes('chainsaw'));
     assert.ok(secretChainsaw, 'chainsaw cache exists in Level 1');
-    assert.ok(secretChainsaw.tiles.includes(3 * game.level.width + 52), 'chainsaw cache covers column 52, row 3');
+    assert.equal(secretChainsaw.idx, 2 * game.level.width + 52, 'chainsaw cache stands at column 52, row 2');
     assert.deepEqual(secretChainsaw.contents, ['health', 'chainsaw'], 'the chainsaw shares its chest with the health pack');
     const secretDoor = game.level.doors.get(3 * game.level.width + 49);
     assert.ok(secretDoor?.secret, 'top-right secret room is guarded by secret push-wall at (49, 3)');
@@ -7973,7 +8071,7 @@ const tests = {
     assert.ok(composition.includes('color = mix(color * uMaterialDiffuse, fogCol, skyFog);'), 'fog remains composited into the final sky color');
     assert.ok(composition.includes(`gl_FragColor = vec4(color, ${SOLID_ALPHA});`), 'the composed sky reaches the fragment output');
     const panorama = marsSkyAtlas({ includeMoons: false });
-    const sunIdx = (60 * panorama.width + 224) * 4;
+    const sunIdx = (120 * panorama.width + 448) * 4;
     assert.ok(panorama.data[sunIdx] > 235 && panorama.data[sunIdx + 1] > 190, 'the moon-free panorama retains its bright hazy sun');
   },
 
@@ -7998,7 +8096,7 @@ const tests = {
     );
 
     // 2. Opening the starting airlock door leads directly outside onto the roofless Martian surface, with ZERO other doors on the planet
-    assert.equal(level.doors.size, 1, 'E1M5 has only 1 door (the first room door) and no doors outside on the planet');
+    assert.equal(level.doors.size, 2, 'E1M5 has only 2 doors (the starting elevator door and first room airlock door) and no doors outside on the planet');
     const airlockDoor = level.doors.get(3 * level.width + 6);
     assert.ok(airlockDoor, 'airlock door exists at (6, 3) on the east wall of the starting room');
     assert.equal(level.doorTouchesIndoor(airlockDoor.idx), true, 'airlock door borders the indoor starting room');
@@ -8015,8 +8113,8 @@ const tests = {
     assert.ok(MARS_DIRT_FRAGMENT.includes('uSampler'), 'MARS_DIRT_FRAGMENT samples the Martian dirt atlas');
 
     const rock = marsRockAtlas();
-    assert.equal(rock.width, 64 * WALL_CELL_COUNT, 'marsRockAtlas is 512 px wide (8 cells)');
-    assert.equal(rock.height, 64, 'marsRockAtlas is 64 px tall');
+    assert.equal(rock.width, TILE_PIXELS * WALL_CELL_COUNT, 'marsRockAtlas is 2048 px wide (8 cells)');
+    assert.equal(rock.height, TILE_PIXELS, 'marsRockAtlas is 256 px tall');
     // Verify warm iron-oxide orange/red dominance in both dirt and rock atlases (avg R > avg G > avg B)
     let dirtR = 0;
     let dirtG = 0;
@@ -8136,11 +8234,11 @@ const tests = {
     assert.equal(sky.data[horizonIdx], 117, 'bottom horizon row matches MARS_SKY_VEC red channel');
     assert.equal(sky.data[horizonIdx + 1], 46, 'bottom horizon row matches MARS_SKY_VEC green channel');
     assert.equal(sky.data[horizonIdx + 2], 15, 'bottom horizon row matches MARS_SKY_VEC blue channel');
-    // Pale hazy sun at (224, 60) and twin moons Phobos (632, 92) & Deimos (836, 104) stand out brightly against the upper sky
-    const sunIdx = (60 * sky.width + 224) * 4;
-    const phobosIdx = ((PHOBOS_CENTER.y - 6) * sky.width + (PHOBOS_CENTER.x - 10)) * 4;
-    const deimosIdx = ((DEIMOS_CENTER.y - 2) * sky.width + (DEIMOS_CENTER.x - 4)) * 4;
-    const ambientUpperIdx = (PHOBOS_CENTER.y * sky.width + 440) * 4;
+    // Pale hazy sun at (448, 120) and twin moons Phobos (1264, 184) & Deimos (1672, 208) stand out brightly against the upper sky
+    const sunIdx = (120 * sky.width + 448) * 4;
+    const phobosIdx = ((PHOBOS_CENTER.y - 12) * sky.width + (PHOBOS_CENTER.x - 20)) * 4;
+    const deimosIdx = ((DEIMOS_CENTER.y - 4) * sky.width + (DEIMOS_CENTER.x - 8)) * 4;
+    const ambientUpperIdx = (PHOBOS_CENTER.y * sky.width + 880) * 4;
     assert.ok(sky.data[sunIdx] > 235 && sky.data[sunIdx + 1] > 190, 'pale hazy Martian sun core is bright butterscotch-white');
     assert.ok(sky.data[phobosIdx] > sky.data[ambientUpperIdx] + 35, 'Phobos moon disc stands out against the rust sky');
     assert.ok(sky.data[deimosIdx] > sky.data[ambientUpperIdx] + 25, 'Deimos moon disc stands out against the rust sky');
@@ -8153,15 +8251,15 @@ const tests = {
     assert.equal(phobosDirTargeted, dirTarget, 'skyPixelDir writes into the provided target Vec3');
     assert.ok(Math.abs(phobosDirDefault.getMagnitude() - 1) < 1e-6, 'skyPixelDir returns a normalized 3D unit vector');
     assert.ok(phobosDirDefault.equals(phobosDirTargeted), 'skyPixelDir default and target-allocated calls match');
-    const phobosWestDir = skyPixelDir(new Vec2(PHOBOS_CENTER.x - 13, PHOBOS_CENTER.y));
-    const phobosNorthDir = skyPixelDir(new Vec2(PHOBOS_CENTER.x, PHOBOS_CENTER.y - 34));
+    const phobosWestDir = skyPixelDir(new Vec2(PHOBOS_CENTER.x - 26, PHOBOS_CENTER.y));
+    const phobosNorthDir = skyPixelDir(new Vec2(PHOBOS_CENTER.x, PHOBOS_CENTER.y - 68));
     assert.ok(phobosWestDir.getAngle(phobosDirDefault) < PHOBOS_ANGULAR_RADIUS, 'Phobos western limb lies within spherical PHOBOS_ANGULAR_RADIUS');
-    assert.ok(phobosNorthDir.getAngle(phobosDirDefault) < PHOBOS_ANGULAR_RADIUS, 'Phobos northern limb (aspect-corrected dy = -34) lies within spherical PHOBOS_ANGULAR_RADIUS');
-    const phobosNorthIdx = ((PHOBOS_CENTER.y - 30) * sky.width + PHOBOS_CENTER.x) * 4;
-    const ambientNorthIdx = ((PHOBOS_CENTER.y - 30) * sky.width + 440) * 4;
+    assert.ok(phobosNorthDir.getAngle(phobosDirDefault) < PHOBOS_ANGULAR_RADIUS, 'Phobos northern limb (aspect-corrected dy = -68) lies within spherical PHOBOS_ANGULAR_RADIUS');
+    const phobosNorthIdx = ((PHOBOS_CENTER.y - 60) * sky.width + PHOBOS_CENTER.x) * 4;
+    const ambientNorthIdx = ((PHOBOS_CENTER.y - 60) * sky.width + 880) * 4;
     assert.ok(sky.data[phobosNorthIdx] > sky.data[ambientNorthIdx] + 25, 'Phobos is aspect-corrected vertically in the atlas so it projects as a 3D sphere rather than a flat ellipse');
     const deimosDir = skyPixelDir(DEIMOS_CENTER);
-    const deimosNorthDir = skyPixelDir(new Vec2(DEIMOS_CENTER.x, DEIMOS_CENTER.y - 15));
+    const deimosNorthDir = skyPixelDir(new Vec2(DEIMOS_CENTER.x, DEIMOS_CENTER.y - 30));
     assert.ok(deimosNorthDir.getAngle(deimosDir) < DEIMOS_ANGULAR_RADIUS, 'Deimos northern limb lies within spherical DEIMOS_ANGULAR_RADIUS');
     assert.ok(MARS_SKY_FRAGMENT.includes('vec4 deimos = evalMoonSphere('), 'MARS_SKY_FRAGMENT evaluates per-fragment 3D ray-sphere shading for Deimos');
     assert.ok(
@@ -8437,6 +8535,61 @@ const tests = {
       assert.ok(bRest.staves[i].pos.y <= 2.5, `stave ${i} settles on the floor`);
       assert.ok(Math.hypot(bRest.staves[i].pos.x, bRest.staves[i].pos.z) > 15, `stave ${i} rests scattered around the barrel wreck`);
     }
+
+    // Post-detonation fire & smoke meshes, dedicated fire/smoke shader, and continuous ambient fire animation inside stump and on shrapnel pieces
+    assert.ok(
+      BARREL_FIRE_VERTEX.includes('uTime') &&
+      BARREL_FIRE_FRAGMENT.includes('isSmoke') &&
+      BARREL_FIRE_FRAGMENT.includes('quadId') &&
+      BARREL_FIRE_FRAGMENT.includes('plumeWave'),
+      'dedicated barrel fire & acid-fog-style smoke shader defined'
+    );
+    const fireGeo = barrelFireMesh(new Vec2(9.5, 26));
+    const shrapnelFireGeo = barrelShrapnelFireMesh(new Vec2(9.5, 26));
+    for (const geo of [fireGeo, shrapnelFireGeo]) {
+      assert.ok(geo.vertices.length > 0 && geo.vertices.length % 9 === 0, 'fire mesh has valid 3D triangles');
+      assert.equal(geo.normals.length, geo.vertices.length, 'fire mesh has matching vertex normals');
+      assert.equal(geo.uvs.length, (geo.vertices.length / 3) * 2, 'fire mesh has matching UVs');
+      let hasBedKind = false;
+      let hasFlameKind = false;
+      let hasSmokeKind = false;
+      for (let i = 0; i < geo.uvs.length; i += 2) {
+        const kind = Math.floor(geo.uvs[i + 1]);
+        if (kind === 0)
+          hasBedKind = true;
+        else if (kind === 1)
+          hasFlameKind = true;
+        else if (kind === 2)
+          hasSmokeKind = true;
+      }
+      assert.ok(hasBedKind && hasFlameKind && hasSmokeKind, 'fire mesh encodes ember bed, crossed flame plumes, and acid-fog-style smoke layers via quadId UVs');
+    }
+    const wf15 = bRest.wreckFire.scale.y;
+    const wfPhase15 = bRest.wreckFire.phase;
+    const lfScale15 = bRest.lidFire.scale.y;
+    const sfScale15 = bRest.staveFires[0].scale.y;
+    assert.equal(bRest.lidFire.active, true, 'lid fire is active shortly after shrapnel settles');
+    assert.ok(bRest.staveFires.every((sf) => sf.active), 'stave fires are active shortly after shrapnel settles');
+    assert.ok(Math.hypot(bRest.lidFire.pos.x - bRest.lid.pos.x, bRest.lidFire.pos.z - bRest.lid.pos.z) < 1e-4, 'lid fire tracks lid resting position');
+    for (let i = 0; i < BARREL_STAVE_COUNT; i++)
+      assert.ok(Math.hypot(bRest.staveFires[i].pos.x - bRest.staves[i].pos.x, bRest.staveFires[i].pos.z - bRest.staves[i].pos.z) < 1e-4, `stave fire ${i} tracks stave resting position`);
+
+    const bFading = barrelExplosionPose(12.5, 7, barrelTarget);
+    assert.equal(bFading.lidFire.active, true, 'lid fire is still reducing at 12.5s');
+    assert.ok(bFading.lidFire.scale.y > 0 && bFading.lidFire.scale.y < lfScale15 * 0.75, 'lid fire shrinks as it burns down');
+    assert.ok(bFading.staveFires[0].scale.y > 0 && bFading.staveFires[0].scale.y < sfScale15 * 0.75, 'stave fire shrinks as it burns down');
+
+    // Individual shrapnel flames have randomized lifetimes above the 11s minimum so they do not extinguish all at once
+    const bStaggered = barrelExplosionPose(15.0, 7, barrelTarget);
+    const activeAt15 = [bStaggered.lidFire, ...bStaggered.staveFires].filter((f) => f.active).length;
+    assert.ok(activeAt15 > 0 && activeAt15 < 1 + BARREL_STAVE_COUNT, 'shrapnel flames extinguish at different random times');
+
+    const bLater = barrelExplosionPose(21.0, 7, barrelTarget);
+    assert.notEqual(bLater.wreckFire.scale.y, wf15, 'stump fire scale continues flickering long after shrapnel settles');
+    assert.notEqual(bLater.wreckFire.phase, wfPhase15, 'stump fire shader phase continues advancing');
+    assert.equal(bLater.lidFire.active, false, 'lid fire disappears after dying down');
+    assert.equal(bLater.lidFire.scale.y, 0, 'lid fire scale reduces to zero when extinguished');
+    assert.ok(bLater.staveFires.every((sf) => !sf.active && sf.scale.y === 0), 'all stave fires reduce and disappear after dying down');
 
     // 5. Detonating a barrel in Game tracks barrel.deadTime while keeping its position for persistent 3D wreck rendering
     const game = fresh();
@@ -9391,30 +9544,30 @@ const tests = {
     assert.ok(log.includes('#21') && log.includes('doomr.keyboardLayout'));
   },
 
-  'AC-1 supply chests hold every authored supply once per level'() {
+  'AC-1 supply chests hold every authored chest once per level'() {
     const expected = [15, 13, 13, 14, 11];
     const supply = new Set(CACHE_TYPES);
     for (let i = 0; i < LEVELS.length; i++) {
       const game = fresh(i);
       assert.equal(game.caches.length, expected[i], `level ${i} has ${expected[i]} caches`);
       const inCaches = game.caches.flatMap((c) => c.contents).sort();
-      const authored = game.level.pickups.filter((p) => supply.has(p.type)).map((p) => p.type).sort();
-      assert.deepEqual(inCaches, authored, `level ${i} caches hold every authored supply exactly once`);
+      const authored = game.level.chests.flatMap((c) => c.contents).sort();
+      assert.deepEqual(inCaches, authored, `level ${i} caches hold every authored chest item`);
       for (const cache of game.caches) {
         assert.equal(game.level.roomByTile[cache.idx], cache.room, 'the chest stands in its room');
         assert.equal(cache.state, 'closed');
         assert.equal(cache.lid, 0);
       }
       assert.equal(game.pickups.some((p) => supply.has(p.type)), false, `level ${i} keeps no supply on the floor`);
-      assert.ok(game.pickups.every((p) => p.initial), 'only authored non-supply pickups start on the floor');
-      assert.equal(game.totalItems, game.level.pickups.length, 'the item tally still counts every authored item');
+      assert.ok(game.pickups.every((p) => p.initial), 'only authored floor pickups start on the floor');
+      assert.equal(game.totalItems, game.level.pickups.length + game.caches.reduce((sum, c) => sum + c.contents.length, 0), 'the item tally counts every floor pickup and chest item');
     }
   },
 
   'AC-2 use opens the targeted chest once and animates the lid'() {
     const level = {
       name: 'Use test',
-      rows: ['##########', '#........#', '#P...a...#', '#........#', '##########'],
+      rows: ['##########', '#........#', '#P...=...#', '#........#', '##########'],
     };
     const place = (game, dx, angle) => {
       game.player.body.setPosition(new Vec2(game.caches[0].pos.x + dx, game.caches[0].pos.y));
@@ -9458,7 +9611,7 @@ const tests = {
     const tie = new Game();
     tie.load({
       name: 'Door tie test',
-      rows: ['#######', '#.....#', '#..D.a#', '#..P..#', '#######'],
+      rows: ['#######', '#.....#', '#..D.=#', '#..P..#', '#######'],
     });
     tie.state = 'play';
     const door = [...tie.level.doors.values()][0];
@@ -9502,7 +9655,14 @@ const tests = {
 
   'AC-4 refused contents stay in the chest until they can be taken'() {
     const game = new Game();
-    game.load({ name: 'Refuse test', rows: ['###########', '#P.ha#.m..#', '#....D....#', '###########'] });
+    game.load({
+      name: 'Refuse test',
+      rows: ['###########', '#P.=.#.=..#', '#....D....#', '###########'],
+      chests: [
+        { x: 3, y: 1, contents: ['health', 'ammo'] },
+        { x: 7, y: 1, contents: ['bullets'] },
+      ],
+    });
     game.state = 'play';
     const player = game.player;
     assert.equal(game.totalItems, 3);
@@ -9550,7 +9710,7 @@ const tests = {
     const game = new Game();
     game.load({
       name: 'Passive test',
-      rows: ['############', '#P...a.....#', '#..........#', '#..........#', '############'],
+      rows: ['############', '#P...=.....#', '#..........#', '#..........#', '############'],
     });
     game.state = 'play';
     game.totalItems = 5;
@@ -9609,7 +9769,15 @@ const tests = {
       assert.ok(lid.vertices[i] >= 0 && lid.vertices[i] <= 27, 'lid z stays within the hinge-to-front span');
 
     const game = new Game();
-    game.load({ name: 'View test', rows: ['#############', '#P.h#..a#..m#', '#...D...D...#', '#...#...#...#', '#############'] });
+    game.load({
+      name: 'View test',
+      rows: ['#############', '#P.=#..=#..=#', '#...D...D...#', '#...#...#...#', '#############'],
+      chests: [
+        { x: 3, y: 1, contents: ['health'] },
+        { x: 7, y: 1, contents: ['ammo'] },
+        { x: 11, y: 1, contents: ['bullets'] },
+      ],
+    });
     game.state = 'play';
     assert.equal(game.caches.length, 3);
     const addProgram = Mesh.prototype.addProgram;
@@ -9626,6 +9794,7 @@ const tests = {
       enemyViews: new Map(),
       pickupViews: new Map(),
       cacheViews: new Map(),
+      furnitureViews: new Map(),
       barrelViews: new Map(),
       shotViews: new Map(),
       effectViews: new Map(),
@@ -9856,8 +10025,8 @@ const tests = {
       const { level } = game;
       assert.equal(game.caches.length, expected[i], `level ${i} chest count`);
       const inCaches = game.caches.flatMap((c) => c.contents).sort();
-      const authored = level.pickups.filter((p) => supply.has(p.type)).map((p) => p.type).sort();
-      assert.deepEqual(inCaches, authored, `level ${i} chests hold the authored supply multiset`);
+      const authored = level.chests.flatMap((c) => c.contents).sort();
+      assert.deepEqual(inCaches, authored, `level ${i} chests hold the authored chest contents`);
       const rooms = new Set();
       for (const cache of game.caches) {
         assert.ok(cache.contents.length <= 4, 'a chest holds at most 4 items');
@@ -9870,20 +10039,25 @@ const tests = {
         }
       }
       assert.equal(game.pickups.some((p) => supply.has(p.type)), false, 'no supply stays on the floor');
-      assert.equal(game.totalItems, level.pickups.length);
+      assert.equal(game.totalItems, level.pickups.length + game.caches.reduce((sum, c) => sum + c.contents.length, 0));
     }
   },
 
-  'AC-2 doors, secret closets, and outdoor pockets split chests'() {
+  'AC-2 schema chests and standalone floor pickups coexist'() {
     const game = new Game();
-    game.load({ name: 'Rooms', rows: ['############', '#P.h.#..a..#', '#....D.....#', '#.a..#..m..#', '#######S####', '#####..h.###', '############'] });
+    game.load({
+      name: 'Rooms',
+      rows: ['############', '#P.=.#..=..#', '#....D.....#', '#.a..#..m..#', '#######S####', '#####..=.###', '############'],
+      chests: [
+        { x: 3, y: 1, contents: ['health', 'ammo'] },
+        { x: 8, y: 1, contents: ['ammo', 'bullets'] },
+        { x: 7, y: 5, contents: ['health'] },
+      ],
+    });
     assert.deepEqual(game.caches.map((c) => c.contents), [['health', 'ammo'], ['ammo', 'bullets'], ['health']]);
     assert.ok(game.level.secretByTile[game.caches[2].idx] >= 0, 'the closet chest stands in the secret area');
-    assert.equal(CACHE_OUTDOOR_LINK, 6);
-    const mars = new Game();
-    mars.load({ name: 'Mars', planet: 'mars', rows: ['####################', '#P.#...............#', '#..D.h.....a......m#', '#..#...............#', '####################'] });
-    assert.equal(mars.caches.length, 2);
-    assert.deepEqual(mars.caches.map((c) => c.contents), [['health', 'ammo'], ['bullets']]);
+    assert.deepEqual(game.pickups.map((p) => p.type), ['ammo', 'bullets'], 'supply glyphs on rows spawn as floor pickups');
+    assert.equal(game.totalItems, 7, 'totalItems sums floor pickups and chest contents');
   },
 
   'AC-7 room partition respects doors, walls, and secrets'() {
@@ -9960,12 +10134,12 @@ const tests = {
       }
     }
     const first = fresh(0).caches.find((c) => c.contents.includes('shotgun'));
-    assert.equal(first.idx, 1 * fresh(0).level.width + 2);
-    assert.equal(first.wallSide, 3);
+    assert.equal(first.idx, 1 * fresh(0).level.width + 4);
+    assert.equal(first.wallSide, 0);
   },
 
   'AC-4 a wall chest opens from its tile and doors still win ties'() {
-    const rows = ['##########', '#........#', '#P...a...#', '#........#', '##########'];
+    const rows = ['##########', '#........#', '#P...=...#', '#........#', '##########'];
     const make = () => {
       const g = new Game();
       g.load({ name: 'Wall chest', rows });
@@ -9998,7 +10172,7 @@ const tests = {
     assert.equal(tryAt(100, false), 0, 'beyond 96 units opens nothing');
 
     const tie = new Game();
-    tie.load({ name: 'Door tie', rows: ['#######', '#.....#', '#..D.a#', '#..P..#', '#######'] });
+    tie.load({ name: 'Door tie', rows: ['#######', '#.....#', '#..D.=#', '#..P..#', '#######'] });
     tie.state = 'play';
     const door = [...tie.level.doors.values()][0];
     tie.player.body.setPosition(new Vec2((door.center.x + tie.caches[0].pos.x) / 2, tie.caches[0].pos.y + 56));
@@ -10284,6 +10458,17 @@ const tests = {
     world.updateCamera(game);
     assert.ok(camera.up.x === 0 && camera.up.y === 1 && camera.up.z === 0, 'AC-7 up restored exactly');
     assert.equal(camera.fov, 60, 'AC-7 fov restored exactly');
+
+    game.state = 'paused';
+    game.shake = 0.38;
+    world.updateCamera(game);
+    const pausedPos = camera.position.clone();
+    world.updateCamera(game);
+    assert.deepEqual(
+      [camera.position.x, camera.position.y, camera.position.z],
+      [pausedPos.x, pausedPos.y, pausedPos.z],
+      'camera shake freezes while paused even when game.shake > 0'
+    );
   },
 
   'AC-7 muzzle light normalizes by weapon flash duration'() {
@@ -10630,7 +10815,7 @@ const tests = {
       }
       for (const code of ['KeyX', 'Enter']) {
         rig.down({ code, key: '' });
-        assert.equal(inp.poll().fire, true, `${code} fires`);
+        assert.equal(inp.poll().fire, code === 'KeyX', `${code} fire check`);
         rig.up({ code, key: '' });
         inp.endFrame();
       }
@@ -11560,7 +11745,7 @@ const tests = {
   },
 
   'AC-2 use prompt: chests prompt LOOT, emptied chests do not, and the door wins ties'() {
-    const level = { name: 'Prompt chest', rows: ['##########', '#........#', '#P...a...#', '#........#', '##########'] };
+    const level = { name: 'Prompt chest', rows: ['##########', '#........#', '#P...=...#', '#........#', '##########'] };
     const make = (dx, angle) => {
       const game = new Game();
       game.load(level);
@@ -11591,7 +11776,7 @@ const tests = {
     assert.equal(empty.usePrompt.fade, 0);
 
     const tie = new Game();
-    tie.load({ name: 'Prompt tie', rows: ['#######', '#.....#', '#..D.a#', '#..P..#', '#######'] });
+    tie.load({ name: 'Prompt tie', rows: ['#######', '#.....#', '#..D.=#', '#..P..#', '#######'] });
     tie.state = 'play';
     const door = [...tie.level.doors.values()][0];
     tie.player.body.setPosition(new Vec2((door.center.x + tie.caches[0].pos.x) / 2, tie.caches[0].pos.y + 56));
@@ -11641,7 +11826,7 @@ const tests = {
     game.update(1 / 60, input({ use: true }));
     assert.equal(door.target, 0);
     assert.equal(game.events.filter((e) => e.type === 'locked').length, 1);
-    assert.equal(game.message.text, 'You need a Red keycard to open this door.');
+    assert.equal(game.message.text, 'Prompt lock');
     game.player.keys.red = true;
     game.update(1 / 60, idle);
     assert.equal(game.useTarget.verb, 'OPEN');
@@ -11969,18 +12154,34 @@ const tests = {
 
   'AC-3 pause toggle: paused freezes the simulation and play resumes it'() {
     const game = fresh(0);
+    const { hud } = pausedHud();
+    const overlay = new Overlay(makeOverlayWorld().world);
+    hud.overlay = overlay;
+    const dt = 1 / 60;
+    game.state = 'play';
+    game.update(dt, idle);
+    hud.render(game);
+    const headBeforePause = Float32Array.from(overlay.head.facer.deformedPositions);
+    const gameTime = game.time;
     game.state = 'paused';
     const x = game.player.pos.x;
     const y = game.player.pos.y;
     const time = game.stats.time;
-    const dt = 1 / 60;
-    game.update(dt, input({ forward: 1 }));
+    for (let i = 0; i < 30; i++) {
+      game.update(dt, input({ forward: 1 }));
+      hud.render(game);
+    }
     assert.equal(game.player.pos.x, x);
     assert.equal(game.player.pos.y, y);
     assert.equal(game.stats.time, time);
+    assert.equal(game.time, gameTime, 'game.time does not advance while paused');
+    assert.deepEqual(overlay.head.facer.deformedPositions, headBeforePause, 'portrait does not move while paused');
+    assert.equal(overlay.head.visible, true, 'portrait stays placed while paused');
     game.state = 'play';
     game.update(dt, input({ forward: 1 }));
+    hud.render(game);
     assert.ok(Math.abs(game.stats.time - (time + dt)) < 1e-9);
+    assert.notDeepEqual(overlay.head.facer.deformedPositions, headBeforePause, 'portrait resumes moving on play');
   },
 
   'AC-4 pause toggle: the pause overlay names the default P key'() {
@@ -12057,7 +12258,7 @@ const tests = {
     assert.equal(sprite.count, 0);
     assert.equal(sprite.capacity, 6);
     assert.equal(overlay.glow.weapon, null);
-    assert.equal(overlay.glow.face, null);
+    assert.ok(overlay.head, 'the marine portrait is a live 3D head');
     assert.equal(overlay.glow.sprites, null);
     assert.equal(overlay.crisp.sprites.capacity, 128 * 6);
   },
@@ -12180,7 +12381,8 @@ const tests = {
     assert.equal(crisp.fills.capacity, 8192);
     assert.equal(crisp.lines.capacity, 8192);
     assert.equal(glow.sprites, null);
-    assert.ok(crisp.weapon && crisp.face && crisp.sprites);
+    assert.ok(crisp.weapon && crisp.sprites && crisp.wall);
+    assert.equal(crisp.face, undefined, 'the portrait is no longer a sprite');
 
     const sizes = [];
     const setCustomUniform = Mesh.prototype.setCustomUniform;
@@ -12204,15 +12406,15 @@ const tests = {
       assert.equal(call.value.y, 600);
     }
     const meshes = new Set(sizes.map((c) => c.mesh));
-    for (const mesh of [glow.fills.mesh, glow.lines.mesh, crisp.fills.mesh, crisp.lines.mesh, crisp.sprites.mesh, crisp.weapon.mesh, crisp.face.mesh])
+    for (const mesh of [glow.fills.mesh, glow.lines.mesh, crisp.fills.mesh, crisp.lines.mesh, crisp.sprites.mesh, crisp.weapon.mesh, crisp.wall.mesh])
       assert.ok(meshes.has(mesh));
 
-    const buffers = [glow.fills, glow.lines, crisp.fills, crisp.lines, crisp.weapon, crisp.face, crisp.sprites];
+    const buffers = [glow.fills, glow.lines, crisp.fills, crisp.lines, crisp.weapon, crisp.wall, crisp.sprites];
     glow.fills.vertex(new Vec2(0, 0), [1, 1, 1]);
     glow.lines.vertex(new Vec2(0, 0), [1, 1, 1]);
     crisp.fills.vertex(new Vec2(0, 0), [1, 1, 1]);
     crisp.lines.vertex(new Vec2(0, 0), [1, 1, 1]);
-    for (const sprite of [crisp.sprites, crisp.weapon, crisp.face])
+    for (const sprite of [crisp.sprites, crisp.weapon, crisp.wall])
       sprite.quad(edgeRect(0, 0, 1, 1), [0, 0, 1, 1], 1);
     for (const buffer of buffers)
       assert.ok(buffer.count > 0);
@@ -12415,8 +12617,8 @@ const tests = {
         circleLine: noop,
         weapon: { quad: (r, ...a) => weaponQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y, ...a]) },
         sprites: { quad: noop },
-        face: { quad: (r, ...a) => faceQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y, ...a]) },
       },
+      head: { update: noop, place: (r) => faceQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y]) },
     };
     const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
     hud.resize(1280, 760, 1);
@@ -12433,15 +12635,14 @@ const tests = {
       const wp = weaponPlacement(new Vec2(1280, 760), { bob: f.bob, moving: f.moving, recoil: f.recoil, switchOffset: 0 }, { rect: new Rect(), pixel: 0 });
       const fp = facePlacement(new Vec2(1280, 760), f.hurt, { rect: new Rect(), pixel: 0 });
       assert.deepEqual(wq.slice(0, 4), [wp.rect.topLeftCorner.x, wp.rect.topLeftCorner.y, wp.rect.bottomRightCorner.x, wp.rect.bottomRightCorner.y]);
-      assert.deepEqual(fq.slice(0, 4), [fp.rect.topLeftCorner.x, fp.rect.topLeftCorner.y, fp.rect.bottomRightCorner.x, fp.rect.bottomRightCorner.y]);
-      assert.ok(Object.isFrozen(wq[4]) && Object.isFrozen(fq[4]), 'UVs are the cached frozen tuples');
-      assert.ok(Array.from({ length: FACE_FRAME_COUNT }, (_, i) => faceCellUv(i)).includes(fq[4]));
+      assert.deepEqual(fq, [fp.rect.topLeftCorner.x, fp.rect.topLeftCorner.y, fp.rect.bottomRightCorner.x, fp.rect.bottomRightCorner.y]);
+      assert.ok(Object.isFrozen(wq[4]), 'UVs are the cached frozen tuples');
       assert.ok(Array.from({ length: WEAPON_FRAME_COUNT }, (_, i) => weaponCellUv(i, 'plasma')).includes(wq[4]));
       weaponRect = wq;
       faceRect = fq;
     }
     assert.notDeepEqual(weaponQuads[0].slice(0, 4), weaponRect.slice(0, 4), 'second frame moved the weapon quad');
-    assert.notDeepEqual(faceQuads[0].slice(0, 4), faceRect.slice(0, 4), 'second frame moved the face quad');
+    assert.notDeepEqual(faceQuads[0], faceRect, 'second frame moved the face box');
   },
 
   'AC-1 QuadBatch defaults pass geometry sizes, default shaders and material to the superclass'() {
@@ -12754,6 +12955,7 @@ const tests = {
   },
 
   'AC-4 drawHud reuses scratch options and rect for face placement and frame'() {
+    const updates = [];
     const faceQuads = [];
     const ctx = new Proxy({}, { get: () => () => {}, set: () => true });
     const noop = () => {};
@@ -12767,7 +12969,10 @@ const tests = {
         circleLine: noop,
         weapon: { quad: noop },
         sprites: { quad: noop },
-        face: { quad: (r, ...a) => faceQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y, ...a]) },
+      },
+      head: {
+        update: (player, time) => updates.push([player.health, player.hurt, time]),
+        place: (r) => faceQuads.push([r.topLeftCorner.x, r.topLeftCorner.y, r.bottomRightCorner.x, r.bottomRightCorner.y]),
       },
     };
     const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
@@ -12784,17 +12989,10 @@ const tests = {
       hud.render(game);
       const quad = faceQuads[faceQuads.length - 1];
       const expectedPlacement = facePlacement(new Vec2(1280, 760), f.hurt, { rect: new Rect(), pixel: 0 }).rect;
-      const expectedFrame = faceFrame({ health: f.health, hurt: f.hurt, shotElapsed: -1, time: f.time });
-      assert.deepEqual(quad.slice(0, 4), [expectedPlacement.topLeftCorner.x, expectedPlacement.topLeftCorner.y, expectedPlacement.bottomRightCorner.x, expectedPlacement.bottomRightCorner.y]);
-      assert.deepEqual(quad[4], faceCellUv(expectedFrame));
+      assert.deepEqual(quad, [expectedPlacement.topLeftCorner.x, expectedPlacement.topLeftCorner.y, expectedPlacement.bottomRightCorner.x, expectedPlacement.bottomRightCorner.y]);
+      assert.deepEqual(updates[updates.length - 1], [f.health, f.hurt, f.time], 'the 3D head is fed the live player state and game clock');
     }
-    assert.notDeepEqual(faceQuads[0].slice(0, 4), faceQuads[1].slice(0, 4));
-    assert.notDeepEqual(faceQuads[0][4], faceQuads[1][4]);
-
-    const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
-    assert.ok(/^const FACE_FRAME_OPTS = /m.test(src));
-    assert.ok(/faceFrame\(FACE_FRAME_OPTS\)/.test(src));
-    assert.ok(!src.includes('faceFrame({'));
+    assert.notDeepEqual(faceQuads[0], faceQuads[1]);
   },
 
   'AC-5 circleLine emits the same ring segments without per-segment arrays'() {
@@ -13326,7 +13524,8 @@ const tests = {
   'AC-1 opened supply chest holding refused items presents TAKE use prompt verb'() {
     const level = {
       name: 'Refused prompt verb test',
-      rows: ['##########', '#........#', '#P...a...#', '#........#', '##########'],
+      rows: ['##########', '#........#', '#P...=...#', '#........#', '##########'],
+      chests: [{ x: 5, y: 2, contents: ['ammo'] }],
     };
     const game = new Game();
     game.load(level);
@@ -14029,8 +14228,8 @@ const tests = {
         circleLine: (c) => circles.push(c instanceof Circ),
         weapon: { quad: (r) => quadArgs.push(r instanceof Rect) },
         sprites: { quad: (r) => quadArgs.push(r instanceof Rect) },
-        face: { quad: (r) => quadArgs.push(r instanceof Rect) },
       },
+      head: { update: noop, place: (r) => quadArgs.push(r instanceof Rect) },
     };
     const hud = new Hud({ width: 0, height: 0, getContext: () => ctx }, overlay);
     hud.resize(1280, 760, 1);
@@ -15409,7 +15608,7 @@ const tests = {
     game.player.shells = 10;
     world.updateShotgun(game);
     assert.equal(world.shotgunView.root.active, true, 'shotgunView active when weapon is shotgun');
-    assert.ok(world.shotgunView.material.diffuse.x > 1.0, 'shotgun diffuse boosted by muzzle flash');
+    assert.equal(world.shotgunView.material.diffuse.x, 1, 'shotgun model is not tinted by the muzzle flash');
 
     game.cam = { x: 0, y: 0, eye: 32, lookX: 0, lookY: 0, lookEye: 0, roll: 0, zoom: 1 };
     world.updateShotgun(game);
@@ -16922,6 +17121,656 @@ const tests = {
     }
   },
 
+  'horizontal leaking acid barrels (z): lie on their side, leak glowing green acid puddles that burn the player unless Rad Suit is active, and detonate when shot'() {
+    // 1. Every campaign level E1M1..E1M5 contains both vertical ('x') and horizontal leaking ('z') barrels
+    for (let i = 0; i < LEVELS.length; i++) {
+      const level = new Level(LEVELS[i]);
+      assert.ok(level.barrels.some((b) => !b.horizontal), `level ${i} has vertical barrels`);
+      assert.ok(level.barrels.some((b) => b.horizontal), `level ${i} has horizontal leaking acid barrels`);
+    }
+
+    // 2. Geometry builders produce valid triangle meshes
+    for (const geo of [barrelAcidPuddleMesh(), barrelAcidStreamMesh()]) {
+      assert.ok(geo.vertices instanceof Float32Array && geo.vertices.length >= 36);
+      assert.equal(geo.vertices.length, geo.normals.length);
+      assert.equal(geo.vertices.length / 3, geo.uvs.length / 2);
+    }
+
+    // 3. Standing in a horizontal barrel's leaking green acid puddle inflicts periodic acid damage & green radFlash unless Rad Suit is active
+    const game = new Game();
+    game.load({
+      name: 'Acid Barrel Lab',
+      rows: [
+        '#########',
+        '#P..z..x#',
+        '#.......#',
+        '#########',
+      ],
+    });
+    game.state = 'play';
+    const horiz = game.barrels.find((b) => b.horizontal);
+    const vert = game.barrels.find((b) => !b.horizontal);
+    assert.ok(horiz && horiz.leaking && horiz.puddlePos instanceof Vec2 && horiz.puddleRadius > 0);
+    assert.ok(vert && !vert.horizontal && !vert.leaking);
+
+    // Stand in the leaked acid puddle just outside the drum's collision radius (26 units from drum center, 16 units from puddle center <= 22 puddleRadius)
+    game.player.body.setPosition(new Vec2(
+      horiz.pos.x + Math.cos(horiz.angle) * 26,
+      horiz.pos.y + Math.sin(horiz.angle) * 26,
+    ));
+    assert.equal(game.inBarrelAcid(game.player.pos), true, 'player standing on puddle is in barrel acid');
+    game.events.length = 0;
+    run(game, 0.9);
+    assert.equal(game.player.health, 95, 'leaking green acid puddle deals 5 damage per tick');
+    assert.ok(game.player.radFlash > 0, 'acid puddle triggers green radFlash');
+    assert.ok(game.events.some((e) => e.type === 'acid'), 'acid puddle emits acid sizzle sound');
+
+    // Radiation Suit protects against horizontal barrel acid puddles
+    game.player.radSuit = 10;
+    const healthBefore = game.player.health;
+    run(game, 1.0);
+    assert.equal(game.player.health, healthBefore, 'active Radiation Suit blocks horizontal barrel acid puddle damage');
+
+    // 4. World builds horizontal barrel view with tilted side-lying drum, acidPuddle, and acidStream; detonation hides acidStream while acidPuddle persists
+    const addProgram = Mesh.prototype.addProgram;
+    Mesh.prototype.addProgram = () => true;
+    const noop = () => {};
+    const world = Object.assign(Object.create(World.prototype), {
+      level: game.level,
+      cutaway: true,
+      syncStamp: 0,
+      frameTime: 2.5,
+      frameCullDistSq: Infinity,
+      frameOccludeFog: null,
+      gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, viewport() {}, UNSIGNED_SHORT: 5123, NEAREST_MIPMAP_NEAREST: 9984, REPEAT: 10497 },
+      sharedTexture: () => ({}),
+      sharedTexturedMeshes: [],
+      scene: { addMesh() {} },
+    });
+    try {
+      const hView = world.buildBarrelView(horiz);
+      const vView = world.buildBarrelView(vert);
+      assert.equal(hView.horizontal, true);
+      assert.ok(hView.acidPuddle && hView.acidStream, 'horizontal barrel view has acidPuddle and acidStream child meshes');
+      assert.equal(vView.acidPuddle, null, 'vertical barrel has no acidPuddle mesh');
+      assert.ok(Math.abs(hView.intact.rotation.x - Trigo.halfpi) < 1e-5, 'horizontal drum lies flat on its side');
+
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.acidStream.active, true, 'acidStream is active while barrel is intact');
+      assert.equal(hView.acidPuddle.active, true, 'acidPuddle is active while barrel is intact');
+
+      // Detonate the horizontal barrel
+      game.player.body.setPosition(new Vec2(horiz.pos.x - 60, horiz.pos.y));
+      game.player.radSuit = 0;
+      game.player.health = 100;
+      game.hitBarrel(horiz, 99, 0);
+      run(game, 0.05);
+      assert.equal(horiz.gone, true, 'horizontal barrel detonates when damaged');
+      assert.ok(game.player.health < 100, 'horizontal barrel blast damages nearby player');
+
+      world.frameTime = 3.0;
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.intact.active, false, 'intact drum hides on detonation');
+      assert.equal(hView.acidStream.active, false, 'acidStream hides once drum ruptures');
+      assert.equal(hView.acidPuddle.active, true, 'acidPuddle remains on the floor after detonation');
+      assert.equal(hView.wreck.active, true, 'ruptured wreck activates on detonation');
+      assert.equal(hView.wreckFire.active, true, 'ruptured stump fire activates on detonation');
+      assert.equal(hView.wreckFire.depthWrite, false, 'wreckFire uses soft alpha blending with depthWrite disabled like acidMistBatch');
+      assert.equal(hView.lidFire.active, true, 'lid shrapnel fire activates on detonation');
+      assert.equal(hView.lidFire.depthWrite, false, 'lidFire disables depthWrite');
+      assert.ok(hView.staveFires.every((sf) => sf.active && sf.depthWrite === false), 'all stave shrapnel fires activate on detonation with depthWrite disabled');
+
+      // Advance past shrapnel settle threshold (1.25s) and verify fire animation keeps updating
+      horiz.deadTime = 2.0;
+      world.frameTime = 5.0;
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.wreckSettled, true, 'metal wreck and shrapnel settle after 1.25s');
+      const fireScaleAt2 = hView.wreckFire.scale.y;
+      const lidFireScaleAt2 = hView.lidFire.scale.y;
+      horiz.deadTime = 7.0;
+      world.frameTime = 10.0;
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.lidFire.active, true, 'lid shrapnel flame is still burning while it shrinks');
+      assert.ok(hView.lidFire.scale.y < lidFireScaleAt2, 'smaller shrapnel flames reduce over time');
+      horiz.deadTime = 12.5;
+      world.frameTime = 15.5;
+      world.updateBarrelView(horiz, hView);
+      assert.notEqual(hView.wreckFire.scale.y, fireScaleAt2, 'wreckFire continues animating after wreckSettled is true');
+
+      horiz.deadTime = 21.0;
+      world.frameTime = 24.0;
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.wreckFire.active, true, 'big stump fire keeps burning');
+      assert.equal(hView.lidFire.active, false, 'lid shrapnel flame disappears after dying down');
+      assert.ok(hView.staveFires.every((sf) => !sf.active), 'stave shrapnel flames disappear after dying down');
+    } finally {
+      Mesh.prototype.addProgram = addProgram;
+    }
+  },
+
+  'acid splash floor tiles (,): stay at floor level without a recessed pit, orient adjacent z barrels, burn the player unless Rad Suit is active, and render 3D splashes'() {
+    const customLevel = {
+      name: 'Acid Splash Test',
+      par: 60,
+      rows: [
+        '########',
+        '#P..z,.#',
+        '#.,....#',
+        '#.....X#',
+        '########',
+      ],
+    };
+    const game = new Game();
+    game.load(customLevel);
+    game.state = 'play';
+
+    assert.equal(game.level.isAcidSplash(5, 1), true, '(5,1) is parsed as an acid splash tile');
+    assert.equal(game.level.isAcidSplash(2, 2), true, '(2,2) is parsed as an acid splash tile');
+    assert.equal(game.level.isSlime(5, 1), false, 'acid splash tile is not a recessed slime pit');
+    assert.equal(game.level.kind[1 * game.level.width + 5], 0, 'acid splash tile remains walkable FLOOR kind');
+
+    // Horizontal barrel at (4,1) points its leaking end east (+X, angle ~ 0) toward the ',' tile at (5,1)
+    const barrel = game.barrels[0];
+    assert.ok(barrel && barrel.horizontal, 'horizontal barrel spawned at (4,1)');
+    assert.ok(Math.cos(barrel.angle) > 0.9, 'horizontal barrel points its leaking end toward adjacent acid splash tile');
+
+    // Move player onto the standalone ',' tile at (2,2) (far from barrel puddle)
+    const splashCenter = game.level.center(2, 2);
+    game.player.body.setPosition(splashCenter);
+    assert.equal(game.level.acidSplashAt(game.player.pos), true, 'acidSplashAt detects player on splash tile');
+    assert.equal(game.playerFloorHeight(), 0, 'acid splash tile keeps normal floor height (z = 0, no pit drop)');
+
+    const startHp = game.player.health;
+    run(game, 0.9);
+    assert.equal(game.player.health, startHp - 5, 'standing on acid splash tile inflicts 5 acid damage after 0.85s');
+    assert.ok(game.player.radFlash > 0, 'acid splash triggers green radiation flash');
+    assert.ok(game.events.some((e) => e.type === 'acid'), 'emits acid sizzle sound');
+    assert.equal(game.player.z, 0, 'player stays at z = 0 floor level on acid splash tile');
+
+    // Radiation suit prevents acid splash damage
+    game.player.radSuit = 10;
+    const hpAfterSuit = game.player.health;
+    run(game, 1.0);
+    assert.equal(game.player.health, hpAfterSuit, 'Radiation Suit blocks acid splash tile damage');
+
+    // 3D world builds floor-level acid splash puddles alongside normal deck floor
+    withWallWorld((world, programs) => {
+      world.floorBatch = World.prototype.floorBatch;
+      world.acidSplashBatch = World.prototype.acidSplashBatch;
+      World.prototype.buildStatic.call(world, game.level);
+      const splash = programs.find(({ fragment }) => fragment === SLIME_FRAGMENT);
+      const floors = programs.filter(({ fragment }) => fragment === FLOOR_FRAGMENT);
+      assert.ok(splash, 'acidSplashBatch builds a SLIME_FRAGMENT mesh');
+      assert.ok(floors.length > 0, 'normal deck floor is still built beneath acid splash tiles');
+      assert.equal(splash.vertex, FLOOR_VERTEX);
+      assert.ok(splash.mesh.used >= 24, 'multi-lobed splash pools and droplets are emitted for the 2 acid splash tiles');
+      for (let i = 1; i < splash.mesh.used * 18; i += 3)
+        assert.ok(splash.mesh.vertices[i] > 0, 'acid splash geometry sits slightly above the floor deck');
+      assert.equal(splash.mesh.customUniforms.time.value, 0);
+      splash.mesh.setCustomUniform('time', 1.75);
+      assert.equal(splash.mesh.customUniforms.time.value, 1.75);
+    });
+  },
+
+  'rolling horizontal barrels (z): player push rolls barrel across the floor, spins 3D drum, anchors initial puddle, stops stream, and detonates at new rolled position'() {
+    const game = new Game();
+    game.load({
+      name: 'Rolling Barrel Corridor',
+      rows: [
+        '#############',
+        '#P.z......i.#',
+        '#..x........#',
+        '#############',
+      ],
+    });
+    game.state = 'play';
+    const horiz = game.barrels.find((b) => b.horizontal);
+    const vert = game.barrels.find((b) => !b.horizontal);
+    const imp = game.enemies[0];
+    assert.ok(horiz && vert && imp);
+    assert.equal(horiz.body.bodyType, 'dynamic', 'horizontal barrel has dynamic physics body');
+    assert.equal(vert.body.bodyType, 'static', 'vertical barrel remains static');
+
+    const startX = horiz.pos.x;
+    const startY = horiz.pos.y;
+    const spawnPuddle = horiz.puddlePos.clone();
+
+    // Enemy starts far outside blast range (175) of the barrel's initial position
+    assert.ok(imp.pos.getDistance(horiz.pos) > 350, 'imp starts far outside barrel blast radius');
+
+    // Player walks east (+X) pushing the horizontal barrel down the corridor toward the imp
+    game.player.angle = 0;
+    for (let i = 0; i < 95; i++)
+      game.update(1 / 60, input({ forward: 1, run: true }));
+
+    // Let barrel coast briefly so it is still actively rolling down the corridor
+    for (let i = 0; i < 6; i++)
+      game.update(1 / 60, input());
+
+    assert.ok(horiz.body.velocity.x > 20, 'horizontal barrel is still actively rolling');
+    assert.ok(horiz.pos.x > startX + 220, `horizontal barrel rolled far down the corridor (from ${startX} to ${horiz.pos.x})`);
+    assert.ok(horiz.rolled > 220, 'barrel tracked total distance rolled');
+    assert.ok(Math.abs(horiz.roll) > 15, 'barrel drum spin angle advanced with distance rolled');
+    assert.equal(horiz.leaking, false, 'barrel stops pouring once rolled away from initial puddle');
+    assert.equal(game.inBarrelAcid(spawnPuddle), true, 'initial leaked puddle remains hazardous on the floor at spawn');
+    assert.equal(game.inBarrelAcid(horiz.pos), false, 'rolled barrel no longer has a puddle underneath its new spot');
+
+    // Verify 3D view updates drum spin, hides pouring stream, and counter-transforms puddle to stay anchored at spawnPos
+    const addProgram = Mesh.prototype.addProgram;
+    Mesh.prototype.addProgram = () => true;
+    const world = Object.assign(Object.create(World.prototype), {
+      level: game.level,
+      cutaway: true,
+      syncStamp: 0,
+      frameTime: 1.5,
+      frameCullDistSq: Infinity,
+      frameOccludeFog: null,
+      gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, viewport() {}, UNSIGNED_SHORT: 5123, NEAREST_MIPMAP_NEAREST: 9984, REPEAT: 10497 },
+      sharedTexture: () => ({}),
+      sharedTexturedMeshes: [],
+      scene: { addMesh() {} },
+    });
+    try {
+      const hView = world.buildBarrelView(horiz);
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.root.position.x, horiz.pos.x, 'barrel root moved to rolled X position');
+      assert.equal(hView.acidStream.active, false, 'pouring stream mesh is hidden after barrel rolls away');
+      assert.equal(hView.acidPuddle.active, true, 'initial puddle mesh stays active');
+      assert.ok(Math.hypot(hView.acidPuddle.position.x, hView.acidPuddle.position.z) > 200, 'puddle local offset compensates for root movement to stay anchored at spawn');
+    } finally {
+      Mesh.prototype.addProgram = addProgram;
+    }
+
+    // Shoot the barrel with the shotgun while it is still rolling and verify it explodes at its rolled position
+    assert.ok(imp.pos.getDistance(horiz.pos) < 175, 'rolled barrel is now within blast range of the imp');
+    game.player.weapons.shotgun = true;
+    game.player.weapon = 'shotgun';
+    game.player.shells = 8;
+    game.player.cooldown = 0;
+    game.player.angle = Math.atan2(horiz.pos.y - game.player.pos.y, horiz.pos.x - game.player.pos.x);
+    game.fire();
+    assert.ok(horiz.fuse >= 0, 'shotgun hitscan pellets struck the rolling barrel and lit its fuse');
+    run(game, 0.12);
+    assert.equal(horiz.gone, true, 'rolling horizontal barrel detonated at its new position');
+    assert.equal(imp.state, 'dead', 'explosion at the rolled barrel position killed the nearby imp');
+  },
+
+  'jump prompt in front of pit or acid splash: displays JUMP when facing ~ pit, , acid splash, or z barrel puddle, and clears when turning away'() {
+    const game = new Game();
+    game.load({
+      name: 'Jump Prompt Hazard Edge',
+      rows: [
+        '#########',
+        '#P.~.,..#',
+        '#....z..#',
+        '#.......#',
+        '#########',
+      ],
+    });
+    game.state = 'play';
+
+    // 1. Standing at (2, 1) facing east (angle = 0) right in front of slime pit '~' at (3, 1)
+    game.player.body.setPosition(game.level.center(2, 1));
+    game.player.angle = 0;
+    game.usePrompt.fade = 0;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'pit', 'facing adjacent slime pit sets pit target');
+    assert.equal(game.useTarget.verb, 'JUMP', 'facing adjacent slime pit prompts JUMP');
+    assert.equal(game.usePrompt.key, 'jump', 'facing adjacent slime pit uses jump key');
+    assert.ok(game.usePrompt.fade > 0, 'jump prompt fades in when facing slime pit');
+
+    // Turning away (facing west toward open floor at (1, 1)) clears the jump target
+    game.player.angle = Math.PI;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, null, 'turning away from pit clears target');
+
+    // 2. Standing at (4, 1) facing east (angle = 0) right in front of acid splash ',' at (5, 1)
+    game.player.body.setPosition(game.level.center(4, 1));
+    game.player.angle = 0;
+    game.usePrompt.fade = 0;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'pit', 'facing adjacent acid splash tile sets jump target');
+    assert.equal(game.useTarget.verb, 'JUMP', 'facing adjacent acid splash tile prompts JUMP');
+    assert.equal(game.usePrompt.key, 'jump', 'facing adjacent acid splash tile uses jump key');
+    assert.ok(game.usePrompt.fade > 0, 'jump prompt fades in when facing acid splash tile');
+
+    // 3. Standing on an acid splash tile ',' at (5, 1) facing south (away from other hazards) also prompts JUMP
+    game.player.body.setPosition(game.level.center(5, 1));
+    game.player.angle = 0;
+    game.usePrompt.fade = 0;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'pit', 'standing on acid splash tile prompts JUMP');
+    assert.equal(game.usePrompt.key, 'jump');
+
+    // While airborne (jumping, z > 0), the prompt clears
+    game.player.z = 10;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, null, 'airborne player no longer shows jump target');
+  },
+  'empty pits (_): display JUMP prompt in front, kill the player when falling in even with Rad Suit or Armor, kill non-flying enemies, and render recessed 3D shaft': () => {
+    const rows = [
+      '##########',
+      '#........#',
+      '#..P_...i#',
+      '#........#',
+      '##########',
+    ];
+    const game = new Game();
+    game.load({ name: 'Empty Pit Test', par: 30, rows });
+    game.state = 'play';
+
+    assert.equal(game.level.isEmptyPit(4, 2), true, 'tile (4,2) should be an empty pit');
+    assert.equal(game.level.emptyPitAt(new Vec2(4 * TILE + TILE / 2, 2 * TILE + TILE / 2)), true);
+    assert.equal(game.level.isSlime(4, 2), false, 'empty pit is not acid slime');
+
+    // Standing at (3,2) facing east (+X) toward empty pit at (4,2) displays JUMP prompt
+    game.player.body.setPosition(new Vec2(3 * TILE + TILE / 2, 2 * TILE + TILE / 2));
+    game.player.pos = game.player.body.position;
+    game.player.angle = 0;
+    game.usePrompt.fade = 0;
+    game.updateUsePrompt(0.05);
+    assert.equal(game.useTarget.kind, 'pit', 'standing in front of an empty pit prompts JUMP');
+    assert.equal(game.usePrompt.key, 'jump');
+
+    // Jumping over the 1-tile empty pit crosses safely
+    for (let i = 0; i < 35; i++)
+      game.update(1 / 60, input({ forward: 1, run: true, jump: i === 0 }));
+    assert.equal(game.state, 'play', 'player survives jumping across a 1-tile empty pit');
+    assert.ok(game.player.pos.x > 5 * TILE, 'player landed past the empty pit');
+
+    // Non-flying enemy falling into an empty pit dies
+    const imp = game.enemies.find((e) => e.state !== 'dead');
+    assert.ok(imp, 'imp should exist');
+    imp.body.setPosition(new Vec2(4 * TILE + TILE / 2, 2 * TILE + TILE / 2));
+    imp.pos = imp.body.position;
+    for (let i = 0; i < 40 && imp.state !== 'dead'; i++)
+      game.update(1 / 60, input());
+    assert.equal(imp.state, 'dead', 'non-flying enemy falling into an empty pit dies');
+
+    // Player walking into an empty pit dies even with Radiation Suit and MegaArmor
+    game.player.radSuit = 45;
+    game.player.armor = 200;
+    game.player.armorType = 'blue';
+    game.player.health = 200;
+    game.player.body.setPosition(new Vec2(4 * TILE + TILE / 2, 2 * TILE + TILE / 2));
+    game.player.pos = game.player.body.position;
+    game.player.z = 0;
+    game.player.vz = 0;
+    for (let i = 0; i < 30 && game.state === 'play'; i++)
+      game.update(1 / 60, input());
+    assert.ok(game.player.z <= -ACID_PIT_DEPTH, `player z (${game.player.z}) should drop into the empty pit`);
+    assert.equal(game.player.health, 0, 'falling into an empty pit kills the player');
+    assert.equal(game.state, 'dead', 'game state becomes dead when player falls into an empty pit');
+
+    // Verify 3D emptyPitBatch builds recessed shaft geometry with deep vertical pit fog
+    withWallWorld((world, programs) => {
+      world.floorBatch = World.prototype.floorBatch;
+      world.emptyPitBatch = World.prototype.emptyPitBatch;
+      World.prototype.buildStatic.call(world, game.level);
+      assert.ok(world.emptyPitMesh instanceof QuadBatch, 'emptyPitMesh should be built for empty pit tiles');
+      assert.equal(world.emptyPitMesh.used, 9, 'emptyPitMesh should emit 1 bottom quad + 4 rim quads + 4 shaft wall quads for an isolated pit tile');
+      const pitProgram = programs.find((p) => p.mesh === world.emptyPitMesh);
+      assert.equal(pitProgram?.fragment, SOLID_TEXTURED_FRAGMENT, 'emptyPitMesh uses SOLID_TEXTURED_FRAGMENT so geometry below y = -0.21 is not discarded');
+      assert.ok(SOLID_TEXTURED_FRAGMENT.includes('pitDepthFade'), 'pit shader fades deeper shaft walls and bottom into abyssal fog');
+      let minY = Infinity;
+      for (let i = 1; i < world.emptyPitMesh.used * 18; i += 3)
+        if (world.emptyPitMesh.vertices[i] < minY)
+          minY = world.emptyPitMesh.vertices[i];
+      assert.ok(minY <= -EMPTY_PIT_DEPTH + 0.5, `emptyPitMesh should reach pit bottom near -${EMPTY_PIT_DEPTH} (got ${minY})`);
+    });
+  },
+
+  'chest loot items rise one by one sequentially and rotate slower': () => {
+    assert.equal(CACHE_LOOT_STAGGER, CACHE_LOOT_TIME * 0.5, 'each chest item starts in the middle of the previous item sequence');
+    const game = new Game();
+    game.load({ name: 'Sequential chest test', rows: ['#######', '#P....#', '#######'] });
+    game.state = 'play';
+    game.player.health = 50;
+    game.player.shells = 0;
+    game.player.weapons.shotgun = false;
+    const cache = game.addCache([1 * game.level.width + 3], ['health', 'ammo', 'shotgun']);
+    game.openCache(cache);
+    assert.equal(cache.items[0].delay, 0);
+    assert.equal(cache.items[1].delay, CACHE_LOOT_STAGGER);
+    assert.equal(cache.items[2].delay, CACHE_LOOT_STAGGER * 2);
+
+    // Quarter-way through first item's flight, second and third items are still waiting at progress 0
+    game.updateCaches(CACHE_LOOT_TIME * 0.25);
+    assert.ok(cache.items[0].progress > 0.2 && cache.items[0].progress < 0.3, 'first item is rising');
+    assert.equal(cache.items[1].progress, 0, 'second item waits in chest during first half of first item');
+    assert.equal(cache.items[2].progress, 0, 'third item waits in chest');
+
+    // Past the middle of first item's sequence, second item begins rising while third still waits
+    game.updateCaches(CACHE_LOOT_TIME * 0.5);
+    assert.ok(cache.items[0].progress > 0.7 && cache.items[0].progress < 0.8, 'first item is pulling toward player');
+    assert.ok(cache.items[1].progress > 0.2 && cache.items[1].progress < 0.3, 'second item is now rising');
+    assert.equal(cache.items[2].progress, 0, 'third item still waits until middle of second item');
+  },
+
+  'locked chests require the 3-ring line-art tumbler mini-game to open': () => {
+    const level = {
+      name: 'Locked chest test',
+      rows: ['##########', '#........#', '#P...=...#', '#........#', '##########'],
+      chests: [{ x: 5, y: 2, contents: ['rocket', 'rockets'], locked: true }],
+    };
+    const game = new Game();
+    game.load(level);
+    game.state = 'play';
+    const cache = game.caches[0];
+    assert.equal(cache.locked, true, 'chest starts locked');
+    game.player.body.setPosition(new Vec2(cache.pos.x - 56, cache.pos.y));
+    game.player.angle = 0;
+
+    // Facing a locked chest shows UNLOCK prompt
+    game.update(1 / 60, idle);
+    assert.equal(game.useTarget.kind, 'cache');
+    assert.equal(game.useTarget.verb, 'UNLOCK');
+
+    // Pressing USE starts the tumbler ring lock instead of opening immediately
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(cache.state, 'closed', 'chest stays closed while lockpicking');
+    assert.equal(game.chestLock.active, true, 'tumbler ring lock is active');
+    assert.equal(game.chestLock.cache, cache);
+    assert.equal(game.chestLock.stage, 0);
+
+    // Pressing USE again toggles the mini-game closed, and pressing USE re-opens it
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(game.chestLock.active, false, 'pressing E again closes the chest lock mini-game');
+    game.update(1 / 60, input({ use: true }));
+    assert.equal(game.chestLock.active, true, 'pressing E re-opens the chest lock mini-game');
+
+    // Align ring 0 and lock it
+    game.chestLock.needle = game.chestLock.targets[0];
+    assert.equal(game.tryChestLock(), true, 'striking inside ring 0 gap locks ring 0');
+    assert.equal(game.chestLock.stage, 1);
+
+    // Miss on ring 1 steps back to ring 0 and triggers missFlash
+    game.chestLock.needle = (game.chestLock.targets[1] + Math.PI) % Trigo.twopi;
+    assert.equal(game.tryChestLock(), false, 'striking outside gap fails');
+    assert.equal(game.chestLock.stage, 0, 'missing steps back one ring');
+    assert.ok(game.chestLock.missFlash > 0, 'missing triggers red flash');
+
+    // Draw HUD tumbler lock line art
+    const { texts, hud } = pausedHud();
+    game.state = 'play';
+    let crispLines = 0;
+    let glowLines = 0;
+    hud.overlay.crisp.line = () => { crispLines++; };
+    hud.overlay.glow.line = () => { glowLines++; };
+    assert.equal(hud.computeHudTextKey(game, false), '', 'HUD text cache invalidates while chest lock is active');
+    hud.drawChestLock(game, 512, 384);
+    assert.ok(crispLines > CHEST_LOCK_RINGS * 20, 'tumbler rings and needle draw into overlay.crisp above fillRect');
+    assert.equal(glowLines, 0, 'tumbler lines are not drawn into glow underneath crisp.fillRect');
+    assert.ok(texts.some((t) => t.includes('LOCK')), 'lock status text rendered');
+
+    // Lock all 3 rings in sequence -> chest unlocks and opens!
+    for (let r = 0; r < CHEST_LOCK_RINGS; r++) {
+      assert.equal(game.chestLock.stage, r);
+      game.chestLock.needle = game.chestLock.targets[r] + CHEST_LOCK_GAP_HALF[r] * 0.5;
+      assert.equal(game.tryChestLock(), true, `ring ${r} locked`);
+    }
+    assert.equal(game.chestLock.active, false, 'mini-game closes on completion');
+    assert.equal(cache.locked, false, 'chest is now unlocked');
+    assert.equal(cache.state, 'opening', 'chest opens once all 3 rings are locked');
+    assert.equal(game.player.weapons.rocket, true, 'chest contents awarded');
+  },
+
+  'level start elevator: player spawns inside a 1-tile elevator cab with a thin threshold door that rumbles, opens into the first room, and locks behind them on exit'() {
+    const geoEW = elevatorDoorBox(new Vec3(TILE - 0.8, TILE, ELEVATOR_DOOR_THICKNESS), false);
+    const geoNS = elevatorDoorBox(new Vec3(TILE - 0.8, TILE, ELEVATOR_DOOR_THICKNESS), true);
+    assert.equal(geoEW.vertices.length, 30 * 3, 'thin elevator door builds a single 5-faced slab (30 vertices)');
+    assert.equal(geoNS.vertices.length, 30 * 3);
+    for (let k = 0; k < geoEW.vertices.length; k += 3)
+      assert.ok(Math.abs(geoEW.vertices[k]) <= ELEVATOR_DOOR_THICKNESS * 0.5 + 1e-6, 'EW elevator door depth stays within thin slab thickness');
+    for (let k = 2; k < geoNS.vertices.length; k += 3)
+      assert.ok(Math.abs(geoNS.vertices[k]) <= ELEVATOR_DOOR_THICKNESS * 0.5 + 1e-6, 'NS elevator door depth stays within thin slab thickness');
+
+    for (let i = 0; i < LEVELS.length; i++) {
+      const game = fresh(i);
+      const { level, elevator } = game;
+      const expectedFloorLevel = BASE_FLOOR_LEVEL + i;
+      assert.equal(level.floorLevel, expectedFloorLevel, `level ${i} (${level.name}) has floorLevel ${expectedFloorLevel}`);
+      assert.ok(level.elevator, `level ${i} (${level.name}) has a starting elevator alcove`);
+      assert.equal(level.elevator.floorLevel, expectedFloorLevel, `level ${i} elevator has floorLevel ${expectedFloorLevel}`);
+      assert.equal(level.elevator.door.floorLevel, expectedFloorLevel, `level ${i} elevator door has floorLevel ${expectedFloorLevel}`);
+      assert.equal(elevator.active, true, `level ${i} elevator starts active`);
+      assert.equal(elevator.phase, 'arriving', `level ${i} elevator starts in arriving phase`);
+      assert.equal(elevator.door, level.elevator.door, `level ${i} elevator references the alcove door`);
+      assert.equal(level.elevator.door.elevator, true, `level ${i} elevator door is flagged`);
+      assert.equal(level.elevator.door.thin, true, `level ${i} elevator door is thin and does not take a full square`);
+      assert.equal(level.elevator.door.thickness, ELEVATOR_DOOR_THICKNESS, `level ${i} elevator door uses ELEVATOR_DOOR_THICKNESS`);
+      assert.equal(Math.min(level.elevator.door.body.body.size.x, level.elevator.door.body.body.size.y), ELEVATOR_DOOR_THICKNESS, `level ${i} elevator physics body is thin`);
+      assert.equal(level.elevator.door.elevatorLocked, false, `level ${i} elevator door starts unlocked while opening`);
+      assert.equal(game.player.angle, level.elevator.angle, `level ${i} player faces the elevator door into the first room`);
+      if (level.planet === 'mars') {
+        assert.equal(level.indoor.has(level.elevator.tileIdx), true, 'Mars elevator cab is indoor');
+        assert.equal(level.indoor.has(level.elevator.exitTileIdx), true, 'Mars airlock room outside elevator is indoor');
+      }
+      const elevAtlas = elevatorDoorAtlas(expectedFloorLevel);
+      assert.equal(elevAtlas.frames, 4, 'elevator door atlas has 4 cells (1024x256 power-of-two for WebGL1 mipmap compatibility)');
+      assert.equal(elevAtlas.width & (elevAtlas.width - 1), 0, 'elevator door atlas width is a power of two');
+      assert.equal(elevAtlas.height & (elevAtlas.height - 1), 0, 'elevator door atlas height is a power of two');
+      assert.equal(elevAtlas.floorLevel, expectedFloorLevel);
+      // Verify the outer face (cell 2) differs from the inner cab face (cell 0) and differs between floor levels
+      let diffOuterInner = 0;
+      for (let y = 0; y < 256; y++)
+        for (let x = 0; x < 256; x++) {
+          const i0 = (y * elevAtlas.width + x) * 4;
+          const i2 = (y * elevAtlas.width + 2 * 256 + x) * 4;
+          if (elevAtlas.data[i0] !== elevAtlas.data[i2] || elevAtlas.data[i0 + 1] !== elevAtlas.data[i2 + 1] || elevAtlas.data[i0 + 2] !== elevAtlas.data[i2 + 2])
+            diffOuterInner++;
+        }
+      assert.ok(diffOuterInner > 5000, `level ${i} elevator outer face is visually distinct from standard inner door face`);
+      if (i > 0) {
+        const prevAtlas = elevatorDoorAtlas(expectedFloorLevel - 1);
+        let diffLevelText = 0;
+        for (let y = 0; y < 256; y++)
+          for (let x = 0; x < 256; x++) {
+            const idx = (y * elevAtlas.width + 2 * 256 + x) * 4;
+            if (elevAtlas.data[idx] !== prevAtlas.data[idx] || elevAtlas.data[idx + 1] !== prevAtlas.data[idx + 1] || elevAtlas.data[idx + 2] !== prevAtlas.data[idx + 2])
+              diffLevelText++;
+          }
+        assert.ok(diffLevelText > 50, `level ${i} outer elevator door displays its own floor level (${expectedFloorLevel}) distinct from level ${expectedFloorLevel - 1}`);
+      }
+    }
+
+    // Verify elevatorDoorBox maps the exterior side (facing into the room) to cell 2 (u in [0.5, 0.75]) and interior side to cell 0 (u in [0, 0.25])
+    const geoOutPos = elevatorDoorBox(new Vec3(TILE - 0.8, TILE, ELEVATOR_DOOR_THICKNESS), false, 1, 4);
+    assert.ok(geoOutPos.uvs[0] > 0.5 && geoOutPos.uvs[0] < 0.75, '+X outward face maps to cell 2 (exterior elevator face)');
+    assert.ok(geoOutPos.uvs[12] < 0.25, '-X inward face maps to cell 0 (interior cab face)');
+    const geoOutNeg = elevatorDoorBox(new Vec3(TILE - 0.8, TILE, ELEVATOR_DOOR_THICKNESS), false, -1, 4);
+    assert.ok(geoOutNeg.uvs[0] < 0.25, '+X inward face maps to cell 0 when outwardDir is -1');
+    assert.ok(geoOutNeg.uvs[12] > 0.5 && geoOutNeg.uvs[12] < 0.75, '-X outward face maps to cell 2 when outwardDir is -1');
+
+    const game = fresh(0);
+    clearEnemies(game);
+    withWallWorld((world) => {
+      const solidVerts = [];
+      const origSolid = world.solid;
+      world.solid = function(vertices) {
+        solidVerts.push(...vertices);
+        return origSolid.call(this, vertices);
+      };
+      World.prototype.buildStatic.call(world, game.level);
+      let blockedThreshold = false;
+      for (let i = 0; i < solidVerts.length; i += 9) {
+        const x0 = solidVerts[i], y0 = solidVerts[i + 1], z0 = solidVerts[i + 2];
+        const x1 = solidVerts[i + 3], y1 = solidVerts[i + 4], z1 = solidVerts[i + 5];
+        const x2 = solidVerts[i + 6], y2 = solidVerts[i + 7], z2 = solidVerts[i + 8];
+        if (
+          Math.abs(x0 - (2 * TILE - 0.9)) < 0.2 &&
+          Math.abs(x1 - (2 * TILE - 0.9)) < 0.2 &&
+          Math.abs(x2 - (2 * TILE - 0.9)) < 0.2 &&
+          Math.min(y0, y1, y2) < CEILING - 1 &&
+          Math.max(z0, z1, z2) > TILE + 1 &&
+          Math.min(z0, z1, z2) < 2 * TILE - 1
+        )
+          blockedThreshold = true;
+      }
+      assert.equal(blockedThreshold, false, 'thin elevator doorway has no black hide occluder blocking the view into the first room');
+    });
+    const { elevator } = game;
+    const door = elevator.door;
+    assert.equal(door.open, 0, 'elevator door starts closed at t=0');
+    assert.equal(door.body.active, true, 'closed elevator door keeps the player inside the cab during the ride');
+    assert.equal(elevator.duration, ELEVATOR_RIDE_TIME, 'elevator ride lasts ELEVATOR_RIDE_TIME seconds');
+    const rideLightFactor = elevatorLightFactor(game);
+    assert.ok(rideLightFactor <= 0.25, 'ambient light inside the closed elevator cab is dimmed during the ride');
+    const titleGame = new Game();
+    assert.equal(titleGame.state, 'title');
+    assert.equal(elevatorLightFactor(titleGame), 1, 'home screen title animation keeps default 1.0 lighting even while player spawn is in the elevator');
+
+    // Step 2.5s during the ride: elevator shakes slowly, plays elevator sound, and keeps the door shut
+    const rideEvents = [];
+    const stepsRide = Math.round(2.5 * 60);
+    for (let i = 0; i < stepsRide; i++) {
+      game.update(1 / 60, input({ forward: 1 }));
+      for (const e of game.events)
+        rideEvents.push(e.type);
+    }
+    assert.equal(elevator.phase, 'arriving', 'elevator is still riding at t=2.5s');
+    assert.ok(game.shake > 0.04, 'elevator ride produces camera vibration');
+    assert.ok(rideEvents.includes('elevator'), 'elevator ride emits synthesized elevator sound pulses');
+    assert.equal(door.target, 0, 'elevator door remains targeted closed while riding');
+    assert.equal(door.open, 0, 'elevator door stays closed during the ride');
+    assert.equal(game.level.grid.getCell(game.player.pos), elevator.cabIdx, 'closed door keeps player inside cab during the ride');
+
+    // Finish the ELEVATOR_RIDE_TIME ride and let the door slide open (~1.6s more)
+    const arrivalEvents = [];
+    const stepsArrival = Math.round((ELEVATOR_RIDE_TIME - 2.5 + 1.6) * 60);
+    for (let i = 0; i < stepsArrival; i++) {
+      game.update(1 / 60, idle);
+      for (const e of game.events)
+        arrivalEvents.push(e.type);
+    }
+    assert.ok(arrivalEvents.includes('elevatorStop'), 'elevator emits elevatorStop sound when arriving at the floor');
+    assert.ok(arrivalEvents.includes('doorOpen'), 'elevator emits doorOpen sound when the door slides open after the ride');
+    assert.equal(elevator.phase, 'open', 'elevator transitions to open phase once the ride finishes');
+    assert.equal(door.open, 1, 'elevator door opens completely into the first room after the ride');
+    assert.equal(door.body.active, false, 'opened elevator door deactivates collision body so player can walk out');
+    const openCabLightFactor = elevatorLightFactor(game);
+    assert.ok(openCabLightFactor > rideLightFactor && openCabLightFactor < 0.5, 'elevator cab remains dimly lit when door opens');
+
+    // Walk forward out of the elevator cab into the first room
+    run(game, 0.75, input({ forward: 1 }));
+    assert.equal(elevatorLightFactor(game), 1, 'full room lighting restores once player steps out of the elevator cab');
+    const playerTile = game.level.grid.getCell(game.player.pos);
+    assert.notEqual(playerTile, elevator.cabIdx, 'player stepped out of the elevator cab into the first room');
+    assert.equal(elevator.phase, 'locked', 'elevator locks behind the player after stepping into the first room');
+    assert.equal(door.elevatorLocked, true, 'elevator door is marked elevatorLocked');
+    assert.equal(door.target, 0, 'elevator door targets closed once locked');
+
+    // Wait for door to finish sliding shut; verify it cannot be reopened with use() or re-entered
+    run(game, 1.5);
+    assert.equal(door.open, 0, 'elevator door slides completely shut behind the player');
+    assert.equal(door.body.active, true, 'locked elevator door collision body blocks re-entry');
+    game.player.body.setPosition(new Vec2(2 * 64 + 20, 1 * 64 + 32));
+    game.player.angle = Math.PI;
+    game.use();
+    assert.equal(door.target, 0, 'pressing use on the locked elevator door does not reopen it');
+    assert.equal(game.findUseTarget(), false, 'locked elevator door does not show an interactive use prompt');
+  },
+
   'tests/sim.test.mjs: AC-1 drawControlHints does not declare unused capPadX'() {
     const fnStr = Hud.prototype.drawControlHints.toString();
     assert.ok(!fnStr.includes('capPadX'), 'drawControlHints does not contain capPadX');
@@ -16947,6 +17796,266 @@ const tests = {
     assert.equal(hud.optionsText, 'OPTIONS · F1');
     assert.equal(hud.unboundText, '');
     assert.equal(typeof hud.drawControlHints, 'function');
+  },
+
+  'E1M1 starting room exit doors are switch-locked until the wall switch is pulled'() {
+    const game = fresh(0);
+    clearEnemies(game);
+    const eastDoor = game.level.doors.get(3 * game.level.width + 5);
+    const southDoor = game.level.doors.get(5 * game.level.width + 3);
+    assert.ok(eastDoor, 'E1M1 has East starting room exit door at (5, 3)');
+    assert.ok(southDoor, 'E1M1 has South starting room exit door at (3, 5)');
+    assert.equal(game.switches.length, 1, 'E1M1 has a wall switch in the starting room');
+    assert.ok(eastDoor.switchLocked, 'East door (5, 3) is switch-locked');
+    assert.ok(southDoor.switchLocked, 'South door (3, 5) is switch-locked');
+    assert.ok(game.activateSwitch(game.switches[0]), 'the wall switch can be pulled');
+    assert.ok(!eastDoor.switchLocked, 'East door (5, 3) is unlocked by the switch');
+    assert.ok(!southDoor.switchLocked, 'South door (3, 5) is unlocked by the switch');
+
+    // Finish the elevator ride and step out into the starting room
+    run(game, ELEVATOR_RIDE_TIME + 1.6);
+    run(game, 0.75, input({ forward: 1 }));
+    assert.equal(game.elevator.phase, 'locked', 'player has exited the elevator into the starting room');
+
+    game.player.body.setPosition(new Vec2(4 * 64 + 32, 3 * 64 + 32));
+    game.player.angle = 0;
+    assert.equal(game.findUseTarget(), true, 'East door shows a use prompt');
+    assert.equal(game.useTarget.verb, 'OPEN', 'East door prompt shows OPEN');
+    game.use();
+    assert.equal(eastDoor.target, 1, 'East door opens when used');
+
+    game.player.body.setPosition(new Vec2(3 * 64 + 32, 4 * 64 + 32));
+    game.player.angle = Math.PI / 2;
+    assert.equal(game.findUseTarget(), true, 'South door shows a use prompt');
+    assert.equal(game.useTarget.verb, 'OPEN', 'South door prompt shows OPEN');
+    game.use();
+    assert.equal(southDoor.target, 1, 'South door opens when used');
+  },
+
+  'door-corridor walls use dedicated doorWallAtlas textures and never usual room wall textures'() {
+    const doorAtlasData = doorWallAtlas();
+    const roomAtlasData = wallAtlas();
+    const pow2 = (n) => (n & (n - 1)) === 0;
+    assert.equal(doorAtlasData.name, 'doorWall');
+    assert.equal(doorAtlasData.width, TILE_PIXELS * DOOR_WALL_CELL_COUNT);
+    assert.equal(doorAtlasData.height, TILE_PIXELS);
+    assert.ok(pow2(doorAtlasData.width) && pow2(doorAtlasData.height), 'doorWallAtlas dimensions are power-of-two');
+
+    for (let cell = 0; cell < DOOR_WALL_CELL_COUNT; cell++) {
+      let r = 0;
+      let b = 0;
+      let diffPixels = 0;
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const o = (y * doorAtlasData.width + cell * TILE_PIXELS + x) * 4;
+          assert.equal(doorAtlasData.data[o + 3], 255, 'doorWallAtlas texels are opaque');
+          r += doorAtlasData.data[o];
+          b += doorAtlasData.data[o + 2];
+          if (
+            doorAtlasData.data[o] !== roomAtlasData.data[o] ||
+            doorAtlasData.data[o + 1] !== roomAtlasData.data[o + 1] ||
+            doorAtlasData.data[o + 2] !== roomAtlasData.data[o + 2]
+          )
+            diffPixels++;
+        }
+      }
+      assert.ok(b > r, `doorWallAtlas cell ${cell} is cold blue-grey steel with rust left to the shader`);
+      assert.ok(diffPixels > 4000, `doorWallAtlas cell ${cell} is distinct from room wallAtlas cell ${cell}`);
+    }
+
+    // Unlocked door corridors cycle across all four dedicated vestibule cells (jamb, pistons, seal, sensor)
+    const seenDoorCells = new Set();
+    for (let y = 0; y < 20; y++)
+      for (let x = 0; x < 20; x++) {
+        const cell = wallCellFor(new Vec2(x, y), 0, false, true);
+        assert.equal(cell, doorWallCellFor(new Vec2(x, y), 0));
+        assert.ok(cell >= DOOR_WALL_CELLS.jamb && cell <= DOOR_WALL_CELLS.sensor);
+        seenDoorCells.add(cell);
+      }
+    assert.equal(seenDoorCells.size, 4, 'unlocked door corridors use all 4 dedicated door-corridor cells');
+
+    // Keycard-locked door corridors select their matching security lock cell
+    assert.equal(wallCellFor(new Vec2(3, 4), 1, false, true, 'red'), DOOR_WALL_CELLS.red);
+    assert.equal(wallCellFor(new Vec2(3, 4), 1, false, true, 'yellow'), DOOR_WALL_CELLS.yellow);
+    assert.equal(wallCellFor(new Vec2(3, 4), 1, false, true, 'blue'), DOOR_WALL_CELLS.blue);
+
+    // Tall door-corridor walls use DOOR_WALL_CELLS.seam on upper segments
+    const tallQuads = wallFaceQuads({
+      axis: 'x',
+      plane: 64,
+      from: 2,
+      to: 2,
+      base: 0,
+      top: 104,
+      tile: new Vec2(1, 2),
+      d: 1,
+      exit: false,
+      door: true,
+      lock: 'red',
+    });
+    assert.equal(tallQuads.length, 2);
+    assert.deepEqual(tallQuads[0].uv, doorWallCellUv(DOOR_WALL_CELLS.red, 0, 1));
+    assert.deepEqual(tallQuads[1].uv, doorWallCellUv(DOOR_WALL_CELLS.seam, 1 - (40 / 64), 1));
+
+    // World.buildStatic separates door-corridor wall faces into a doorWallAtlas batch
+    const level = new Level(LEVELS[0]);
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, level);
+      const indoorBatches = programs.filter(({ fragment }) => fragment === WALL_FRAGMENT).map(({ mesh }) => mesh);
+      const doorWallMeshes = indoorBatches.filter((mesh) => mesh.sharedAtlas?.name === 'doorWall');
+      const roomWallMeshes = indoorBatches.filter((mesh) => mesh.sharedAtlas?.name === 'wall');
+      assert.ok(doorWallMeshes.length > 0, 'buildStatic creates dedicated doorWallAtlas batches for door corridors');
+      assert.ok(roomWallMeshes.length > 0, 'buildStatic keeps room wallAtlas batches for normal room walls');
+
+      // Verify that the side walls of a non-secret doorway tile in E1M1 are in doorWallMeshes and not in roomWallMeshes
+      const sampleDoor = [...level.doors.values()].find((d) => !d.secret && !d.thin);
+      assert.ok(sampleDoor, 'E1M1 has a standard double door');
+      const x0 = sampleDoor.x * TILE;
+      const x1 = (sampleDoor.x + 1) * TILE;
+      const z0 = sampleDoor.y * TILE;
+      const z1 = (sampleDoor.y + 1) * TILE;
+      const hasQuadInDoorTile = (meshes) => meshes.some((mesh) => {
+        const v = mesh.vertices;
+        for (let i = 0; i < mesh.used * 18; i += 18) {
+          const xs = [v[i], v[i + 3], v[i + 6], v[i + 9], v[i + 12], v[i + 15]];
+          const zs = [v[i + 2], v[i + 5], v[i + 8], v[i + 11], v[i + 14], v[i + 17]];
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minZ = Math.min(...zs);
+          const maxZ = Math.max(...zs);
+          const onVerticalSide = (minX === maxX && (minX === x0 || minX === x1) && minZ === z0 && maxZ === z1);
+          const onHorizontalSide = (minZ === maxZ && (minZ === z0 || minZ === z1) && minX === x0 && maxX === x1);
+          if (onVerticalSide || onHorizontalSide)
+            return true;
+        }
+        return false;
+      });
+      assert.equal(hasQuadInDoorTile(doorWallMeshes), true, 'side walls inside doorway corridor are batched into doorWallMeshes');
+      assert.equal(hasQuadInDoorTile(roomWallMeshes), false, 'side walls inside doorway corridor are excluded from usual roomWallMeshes');
+    });
+  },
+
+  'door-corridor ceilings use dedicated doorCeilingAtlas textures and never usual room ceiling textures'() {
+    const doorCeilData = doorCeilingAtlas();
+    const roomCeilData = ceilingAtlas();
+    const pow2 = (n) => (n & (n - 1)) === 0;
+    assert.equal(doorCeilData.name, 'doorCeiling');
+    assert.equal(doorCeilData.width, TILE_PIXELS * DOOR_CEILING_CELL_COUNT);
+    assert.equal(doorCeilData.height, TILE_PIXELS);
+    assert.ok(pow2(doorCeilData.width) && pow2(doorCeilData.height), 'doorCeilingAtlas dimensions are power-of-two');
+
+    for (let cell = 0; cell < DOOR_CEILING_CELL_COUNT; cell++) {
+      let r = 0;
+      let b = 0;
+      let diffPixels = 0;
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const o = (y * doorCeilData.width + cell * TILE_PIXELS + x) * 4;
+          assert.equal(doorCeilData.data[o + 3], 255, 'doorCeilingAtlas texels are opaque');
+          r += doorCeilData.data[o];
+          b += doorCeilData.data[o + 2];
+          if (
+            doorCeilData.data[o] !== roomCeilData.data[o] ||
+            doorCeilData.data[o + 1] !== roomCeilData.data[o + 1] ||
+            doorCeilData.data[o + 2] !== roomCeilData.data[o + 2]
+          )
+            diffPixels++;
+        }
+      }
+      assert.ok(b > r, `doorCeilingAtlas cell ${cell} is dark blue-grey steel superstructure`);
+      assert.ok(diffPixels > 4000, `doorCeilingAtlas cell ${cell} is distinct from room ceilingAtlas cell ${cell}`);
+    }
+
+    // Unlocked door corridors cycle across all four dedicated soffit cells (lintel, hoist, seal, strobe)
+    const seenCells = new Set();
+    for (let y = 0; y < 20; y++)
+      for (let x = 0; x < 20; x++) {
+        const tile = new Vec2(x, y);
+        const cell = ceilingCellFor(tile, true);
+        assert.equal(cell, doorCeilingCellFor(tile));
+        assert.ok(cell >= DOOR_CEILING_CELLS.lintel && cell <= DOOR_CEILING_CELLS.strobe);
+        seenCells.add(cell);
+      }
+    assert.equal(seenCells.size, 4, 'unlocked door corridors use all 4 dedicated door-corridor ceiling cells');
+
+    // Keycard-locked door corridors and 1-tile vestibules select their matching ceiling cell
+    assert.equal(ceilingCellFor(new Vec2(3, 4), true, 'red'), DOOR_CEILING_CELLS.red);
+    assert.equal(ceilingCellFor(new Vec2(3, 4), true, 'yellow'), DOOR_CEILING_CELLS.yellow);
+    assert.equal(ceilingCellFor(new Vec2(3, 4), true, 'blue'), DOOR_CEILING_CELLS.blue);
+    assert.equal(ceilingCellFor(new Vec2(3, 4), true, null, true), DOOR_CEILING_CELLS.vestibule);
+    assert.equal(doorCeilingCellUv(DOOR_CEILING_CELLS.red).length, 4);
+
+    // World.buildStatic separates door-corridor ceiling tiles into a doorCeilingAtlas batch
+    const level = new Level(LEVELS[0]);
+    withWallWorld((world, programs) => {
+      world.ceilingBatch = World.prototype.ceilingBatch;
+      World.prototype.buildStatic.call(world, level);
+      const ceilingBatches = programs.filter(({ fragment }) => fragment === CEILING_FRAGMENT).map(({ mesh }) => mesh);
+      const doorCeilingMeshes = ceilingBatches.filter((mesh) => mesh.sharedAtlas?.name === 'doorCeiling');
+      const roomCeilingMeshes = ceilingBatches.filter((mesh) => mesh.sharedAtlas?.name === 'ceiling');
+      assert.ok(doorCeilingMeshes.length > 0, 'buildStatic creates dedicated doorCeilingAtlas batches for door corridors');
+      assert.ok(roomCeilingMeshes.length > 0, 'buildStatic keeps room ceilingAtlas batches for normal room ceilings');
+
+      const sampleDoor = [...level.doors.values()].find((d) => !d.secret && !d.thin);
+      assert.ok(sampleDoor, 'E1M1 has a standard double door');
+      const x0 = sampleDoor.x * TILE;
+      const x1 = (sampleDoor.x + 1) * TILE;
+      const z0 = sampleDoor.y * TILE;
+      const z1 = (sampleDoor.y + 1) * TILE;
+      const hasCeilingTile = (meshes) => meshes.some((mesh) => {
+        const v = mesh.vertices;
+        for (let i = 0; i < mesh.used * 18; i += 18) {
+          const xs = [v[i], v[i + 3], v[i + 6], v[i + 9], v[i + 12], v[i + 15]];
+          const zs = [v[i + 2], v[i + 5], v[i + 8], v[i + 11], v[i + 14], v[i + 17]];
+          if (Math.min(...xs) === x0 && Math.max(...xs) === x1 && Math.min(...zs) === z0 && Math.max(...zs) === z1)
+            return true;
+        }
+        return false;
+      });
+      assert.equal(hasCeilingTile(doorCeilingMeshes), true, 'ceiling inside doorway corridor is batched into doorCeilingMeshes');
+      assert.equal(hasCeilingTile(roomCeilingMeshes), false, 'ceiling inside doorway corridor is excluded from usual roomCeilingMeshes');
+    });
+  },
+
+  'green armor can be placed in a chest, refused when armor is full, and picked up when needed'() {
+    const game = new Game();
+    game.load({
+      name: 'Green Armor Chest',
+      rows: ['#########', '#P..=...#', '#.......#', '#########'],
+      chests: [{ x: 4, y: 1, contents: ['greenArmor', 'ammo'] }],
+    });
+    game.state = 'play';
+    const cache = game.caches[0];
+    assert.deepEqual(cache.contents, ['greenArmor', 'ammo']);
+    assert.equal(cache.items.length, 2);
+    assert.equal(cache.items[0].type, 'greenArmor');
+
+    // When player already has 100 armor and max shells, both are refused and 'Armor full' is shown for a single-item armor refusal
+    game.player.armor = 100;
+    game.player.armorType = 'green';
+    game.player.shells = AMMO_TYPES.shells.max;
+    game.openCache(cache);
+    assert.deepEqual(cache.contents, ['greenArmor', 'ammo'], 'refused greenArmor and ammo stay in chest');
+
+    // Take ammo while armor is still full -> greenArmor remains in chest
+    game.player.shells = 0;
+    game.openCache(cache);
+    assert.equal(game.player.shells, AMMO_TYPES.shells.bonus);
+    assert.deepEqual(cache.contents, ['greenArmor'], 'greenArmor stays in chest while armor >= 100');
+
+    // Trying to take when only greenArmor remains and armor is full says 'Armor full' without throwing
+    game.openCache(cache);
+    assert.equal(game.message.text, 'Armor full');
+    assert.deepEqual(cache.contents, ['greenArmor']);
+
+    // Once armor drops below 100, picking from the chest grants greenArmor (100, 'green')
+    game.player.armor = 40;
+    game.openCache(cache);
+    assert.equal(game.player.armor, 100);
+    assert.equal(game.player.armorType, 'green');
+    assert.equal(game.message.text, 'Picked up the Security Armor.');
+    assert.equal(cache.contents.length, 0);
+    assert.equal(cache.items[0].state, 'flying');
   },
 };
 
