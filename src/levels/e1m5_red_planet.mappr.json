@@ -1,0 +1,179 @@
+{
+  "format": "mappr-level",
+  "version": 1,
+  "id": "e1m5_red_planet",
+  "name": "E1M5 · Red Planet",
+  "par": 240,
+  "angle": 0,
+  "width": 56,
+  "height": 36,
+  "chests": [
+    {
+      "x": 3,
+      "y": 1,
+      "contents": [
+        "shotgun",
+        "ammo",
+        "health"
+      ]
+    },
+    {
+      "x": 42,
+      "y": 2,
+      "contents": [
+        "ammo"
+      ]
+    },
+    {
+      "x": 52,
+      "y": 2,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 22,
+      "y": 3,
+      "contents": [
+        "chainsaw"
+      ]
+    },
+    {
+      "x": 1,
+      "y": 10,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 14,
+      "y": 11,
+      "contents": [
+        "bullets",
+        "chaingun"
+      ]
+    },
+    {
+      "x": 52,
+      "y": 14,
+      "contents": [
+        "health",
+        "ammo",
+        "health",
+        "rockets"
+      ]
+    },
+    {
+      "x": 28,
+      "y": 22,
+      "contents": [
+        "health",
+        "rockets",
+        "rocket"
+      ]
+    },
+    {
+      "x": 6,
+      "y": 28,
+      "contents": [
+        "health",
+        "rockets",
+        "ammo"
+      ]
+    },
+    {
+      "x": 48,
+      "y": 29,
+      "contents": [
+        "health"
+      ]
+    },
+    {
+      "x": 44,
+      "y": 33,
+      "contents": [
+        "ammo",
+        "health"
+      ]
+    }
+  ],
+  "rows": [
+    "########################################################",
+    "#P.=..#..............######............#######...#######",
+    "##d...#...i....x.....#....#....c.......#..=..#...#..=O.#",
+    "#.....D..N............=................x.....#.i.......#",
+    "#.g...#....o....o....######....o...o...#.....#...#######",
+    "#######..............#..~..#...........###.###.........#",
+    "#....................#..~..#..o.....o....#.#...o....o..#",
+    "#...i....z,...b.........b........^.......#.#.....b.....#",
+    "#....................#..~..#.............#.#.....u.....#",
+    "######.#######.......#######..x.....i..###.#...o....o..#",
+    "#=....A......#.......#.................#.#.......r.....#",
+    "##############=.........##◤....V....◥##..#.#############",
+    "#...........#........#..#~~To....o.~~#...#.......#.....#",
+    "#...w.......#...Z....#..#~~~...x..~~~#...#####.###.....#",
+    "#.........N..........#.......#~~~#..................=..#",
+    "#.....o.....##########..#~~~~..r..~~~#...#.#####.#####.#",
+    "#...c....i...........#..#..y.#~~~#...#...#.#...#.#.....#",
+    "#...............z,...#..#~~~...x..~~~#...#.#.c.#.#.....#",
+    "#..T....o............#..#~~.o....oT~~#.....#.....#.....#",
+    "###.##################..##◣........◢##...#.#####.#####.#",
+    "#....#...............#...................#.#.........#.#",
+    "#.s......i.....x.....#######.....#########.#..z,..b....#",
+    "#....#...............#.....#=....#.......#.#.........#.#",
+    "######.......o...o...#..s............s...#.#####.#####.#",
+    "#....................#.....#.....#.......#.............#",
+    "#...w.......N........#######.....#########..o.......o..#",
+    "#...........o....o...#...................#......B......#",
+    "######.#####.............o...^.x.^...o.................#",
+    "#.....=....#..i...c..#...................#..o...k...o..#",
+    "############.........#######.#####.#######......=......#",
+    "#...........########.#.....#.#...#.#.....#########.#####",
+    "#....b..z,.........#.#..b....#...#....r.....^..........#",
+    "#...........#.o..o.#.#.....#.#...#.#.....#######.#######",
+    "#...w................#######.#...#.#######..=......i..X#",
+    "#...........#..T...#.........#...#...............#####X#",
+    "########################################################"
+  ],
+  "comments": [
+    "Outer Martian Canyon Rim",
+    "Airlock Start Room & North Dust Wastes",
+    "Airlock Chamber & North Canyon Secret Crevice",
+    "Airlock Door Opening to Hostile Mars Surface",
+    "Martian Regolith Boulders & Outcrops",
+    "Sealed Airlock Hull & Dust Plain",
+    "Swept Martian Dune Field",
+    "Wind-Scoured Ridge & Canyon Pass",
+    "Eastern Mesa & Blue Keycard Outpost",
+    "West Canyon Secret Cave & Dune Pass",
+    "MegaArmor Secret Cave & Wraith Ridge",
+    "Chaingun Outcrop & Central Crater North Rim",
+    "Teleporter Pad 1A & Martian Fissure",
+    "Swarmer Basin, Berserk & Canyon Pass",
+    "Central Martian Crater",
+    "Central Crater Core & East Crevice",
+    "Yellow Keycard Overlook",
+    "Southern Fissure & Rocket Cache",
+    "Teleporter Pad 1B & Pad 2A",
+    "Crater South Rim & Canyon Gap",
+    "Lower Martian Badlands",
+    "Badlands Ambush & Skull Gulch",
+    "Badlands Crossway",
+    "Twin Skull Caverns & Southern Canyon",
+    "Rocket Launcher Vault & Southern Boss Crater",
+    "Open Martian Dust Bowl & Crater Boulders",
+    "Southern Boss Crater (Warden of Mars)",
+    "Southern Trench & Boss Crater",
+    "Red Keycard in Boss Crater & Rock Alcove",
+    "Southern Rock Narrows",
+    "Southern Canyon Approach",
+    "Pre-Exit Guard Line & Canyon Defile",
+    "Martian Canyon Approach",
+    "Martian Cliff Exit Portal",
+    "Teleporter Pad 2B & Red Planet Exit Portal",
+    "Outer Martian Canyon Rim"
+  ],
+  "planet": "mars"
+}

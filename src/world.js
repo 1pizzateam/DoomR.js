@@ -23,6 +23,7 @@ import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
 import { keycardAtlas, keycardMesh } from './keycard.js';
 import { CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, SWITCH_LEVER_ANGLE, SWITCH_LEVER_HINGE, SWITCH_TINTS, chestAtlas, chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from './cache.js';
+import { createDeskBreakPose, createDispenserBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
 import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, knifeAtlas, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from './arsenal.js';
 import { WEAPONS } from './weapon.js';
 import { armorAtlas, armorMesh } from './armor.js';
@@ -262,6 +263,10 @@ const scratchCam2d = new Vec2();
 const EMPTY = Object.freeze([]);
 const scratchEntity2d = new Vec2();
 const scratchParticleQuad = { corners: new Float32Array(12), uv: [0, 0, 0, 0] };
+const scratchShadowCorners = new Array(12).fill(0);
+const scratchShadowOrigin = new Vec3();
+const scratchShadowDir = new Vec2();
+const scratchShadowBounds = new Vec3();
 const SECTOR_TILES = 16;
 
 const scratchTile = new Vec2();
@@ -445,6 +450,7 @@ export class World {
     this.doorViews = new Map();
     this.crusherViews = new Map();
     this.switchViews = new Map();
+    this.furnitureViews = new Map();
     this.enemyViews = new Map();
     this.pickupViews = new Map();
     this.cacheViews = new Map();
@@ -949,6 +955,7 @@ export class World {
     this.doorViews.clear();
     this.crusherViews.clear();
     this.switchViews.clear();
+    this.furnitureViews.clear();
     this.enemyViews.clear();
     this.pickupViews.clear();
     this.cacheViews.clear();
@@ -1029,6 +1036,23 @@ export class World {
     this.impactPixels ??= impactAtlas();
     const sharedImpactTex = this.sharedTexture(this.impactPixels);
     this.holes = new QuadBatch(this.gl, { capacity: BLOOD.holes, atlas: this.impactPixels, sharedTexture: sharedImpactTex });
+    this.shadowPixels ??= shadowAtlas();
+    const shadowTexOpts = { minFilter: this.gl.LINEAR, magFilter: this.gl.LINEAR };
+    const sharedShadowTex = this.sharedTexture(this.shadowPixels, shadowTexOpts);
+    this.shadows = new QuadBatch(this.gl, {
+      capacity: 384,
+      atlas: this.shadowPixels,
+      sharedTexture: sharedShadowTex,
+      vertex: SHADOW_VERTEX,
+      fragment: SHADOW_FRAGMENT,
+      textureOptions: shadowTexOpts,
+    });
+    this.shadows.setBlend('SRC_ALPHA', 'ONE_MINUS_SRC_ALPHA');
+    this.shadows.setDepthWrite(false);
+    this.shadows.sharedAtlas = this.shadowPixels;
+    this.shadows.sharedTexOptions = shadowTexOpts;
+    this.sharedTexturedMeshes.push(this.shadows);
+    this.scene.addMesh(this.shadows);
     for (const b of [this.droplets, this.dust, this.splatters, this.drips]) {
       b.sharedAtlas = this.bloodTexture;
       this.sharedTexturedMeshes.push(b);
@@ -1460,6 +1484,196 @@ export class World {
       return;
     this.splatVersion = blood.version;
     this.syncSplatSprites(blood);
+  }
+
+  /** Resolves the dominant horizontal shadow projection vector (`outDir`) at `pos` from nearby ceiling and combat lights. */
+  resolveShadowLightDir(pos, outDir) {
+    let sumX = 0;
+    let sumZ = 0;
+    let totalW = 0;
+    const lights = this.ceilingLights;
+    if (lights)
+      for (let i = 0; i < lights.length; i++) {
+        const l = lights[i];
+        if (!l?.position || l.position.y < -1000)
+          continue;
+        const dx = pos.x - l.position.x;
+        const dz = pos.y - l.position.z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 > 340 * 340)
+          continue;
+        const lum = (l.color?.x ?? 0) + (l.color?.y ?? 0) + (l.color?.z ?? 0);
+        if (lum <= 0.01)
+          continue;
+        const w = lum / (600 + d2);
+        sumX += dx * w;
+        sumZ += dz * w;
+        totalW += w;
+      }
+    if (totalW <= 1e-5 && this.lightFixtures?.length)
+      for (let i = 0; i < this.lightFixtures.length; i++) {
+        const f = this.lightFixtures[i];
+        const dx = pos.x - f.position.x;
+        const dz = pos.y - f.position.z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 > 320 * 320)
+          continue;
+        const w = 1 / (600 + d2);
+        sumX += dx * w;
+        sumZ += dz * w;
+        totalW += w;
+      }
+    if (totalW > 1e-5) {
+      const avgX = sumX / totalW;
+      const avgZ = sumZ / totalW;
+      const len = Math.hypot(avgX, avgZ);
+      if (len > 1e-3) {
+        const stretch = Math.min(0.65, len / 56);
+        outDir.setScalar((avgX / len) * stretch, (avgZ / len) * stretch);
+        return outDir;
+      }
+      outDir.setScalar(0, 0);
+      return outDir;
+    }
+    outDir.setScalar(0.16, 0.14);
+    return outDir;
+  }
+
+  /** Rebuilds ground contact and directional floor cast shadows for furniture, chests, barrels, monsters, and pickups. */
+  syncShadows(game, fog = null) {
+    if (!this.shadows)
+      return;
+    const batch = this.shadows.begin();
+    const level = game.level;
+    const cullDistSq = this.frameCullDistSq;
+    const floorY = -0.08;
+    const canCastOnFloor = (pos) => {
+      if (!pos)
+        return false;
+      if (Number.isFinite(cullDistSq) && pos.getDistance(scratchCam2d, true) > cullDistSq)
+        return false;
+      if (fog && !fog.canSeeNear(pos))
+        return false;
+      if (level?.slimeAt?.(pos) || level?.emptyPitAt?.(pos))
+        return false;
+      return true;
+    };
+    const isSolidNeighbor = (tx, ty) => {
+      if (!level || !level.inBounds(tx, ty))
+        return true;
+      const k = level.kind[ty * level.width + tx];
+      return k === WALL || k === EXIT || k === DOOR;
+    };
+    const clampToTileWalls = (pos) => {
+      if (!level)
+        return;
+      const tx = Math.floor(pos.x / TILE);
+      const ty = Math.floor(pos.y / TILE);
+      const minX = isSolidNeighbor(tx - 1, ty) ? tx * TILE + 0.5 : -Infinity;
+      const maxX = isSolidNeighbor(tx + 1, ty) ? (tx + 1) * TILE - 0.5 : Infinity;
+      const minZ = isSolidNeighbor(tx, ty - 1) ? ty * TILE + 0.5 : -Infinity;
+      const maxZ = isSolidNeighbor(tx, ty + 1) ? (ty + 1) * TILE - 0.5 : Infinity;
+      for (let c = 0; c < 12; c += 3) {
+        scratchShadowCorners[c] = Utils.clamp(scratchShadowCorners[c], minX, maxX);
+        scratchShadowCorners[c + 2] = Utils.clamp(scratchShadowCorners[c + 2], minZ, maxZ);
+      }
+    };
+
+    const furnitures = game.furnitures ?? level?.furnitures ?? EMPTY;
+    for (let i = 0; i < furnitures.length; i++) {
+      const f = furnitures[i];
+      if (!canCastOnFloor(f.pos))
+        continue;
+      this.resolveShadowLightDir(f.pos, scratchShadowDir);
+      const isDesk = f.type === 'desk';
+      const alongX = f.wallSide === 1 || f.wallSide === 3 || Math.abs(Math.sin(f.angle ?? 0)) > 0.7;
+      const halfX = isDesk ? (alongX ? 22.0 : 19.0) : (f.gone ? 16.5 : 17.5);
+      const halfZ = isDesk ? (alongX ? 19.0 : 22.0) : (f.gone ? 16.5 : 17.5);
+      const height = f.gone ? 18.0 : 38.0;
+      writeFloorShadowQuad(
+        scratchShadowCorners,
+        scratchShadowOrigin.setScalar(f.pos.x, floorY, f.pos.y),
+        scratchShadowDir,
+        scratchShadowBounds.setScalar(halfX, halfZ, height)
+      );
+      clampToTileWalls(f.pos);
+      batch.quad(scratchShadowCorners, SHADOW_UV_BOX);
+    }
+
+    const caches = game.caches ?? EMPTY;
+    for (let i = 0; i < caches.length; i++) {
+      const c = caches[i];
+      if (!canCastOnFloor(c.pos))
+        continue;
+      this.resolveShadowLightDir(c.pos, scratchShadowDir);
+      const alongX = c.wallSide === 1 || c.wallSide === 3 || Math.abs(Math.sin(c.angle ?? 0)) > 0.7;
+      const halfX = alongX ? 29.0 : 22.0;
+      const halfZ = alongX ? 22.0 : 29.0;
+      writeFloorShadowQuad(
+        scratchShadowCorners,
+        scratchShadowOrigin.setScalar(c.pos.x, floorY, c.pos.y),
+        scratchShadowDir,
+        scratchShadowBounds.setScalar(halfX, halfZ, 24.0)
+      );
+      clampToTileWalls(c.pos);
+      batch.quad(scratchShadowCorners, SHADOW_UV_BOX);
+    }
+
+    const barrels = game.barrels ?? EMPTY;
+    for (let i = 0; i < barrels.length; i++) {
+      const b = barrels[i];
+      const bz = b.z ?? 0;
+      if (bz < -2 || !canCastOnFloor(b.pos))
+        continue;
+      this.resolveShadowLightDir(b.pos, scratchShadowDir);
+      const r = b.gone ? 17.5 : (b.horizontal ? 22.0 : 19.5);
+      const h = b.gone ? 14.0 : (b.horizontal ? 22.0 : 32.0);
+      writeFloorShadowQuad(
+        scratchShadowCorners,
+        scratchShadowOrigin.setScalar(b.pos.x, bz + floorY, b.pos.y),
+        scratchShadowDir,
+        scratchShadowBounds.setScalar(r, r, h)
+      );
+      clampToTileWalls(b.pos);
+      batch.quad(scratchShadowCorners, SHADOW_UV_RADIAL);
+    }
+
+    const enemies = game.enemies ?? EMPTY;
+    for (let i = 0; i < enemies.length; i++) {
+      const e = enemies[i];
+      if (e.gibbed || (e.z ?? 0) < -2 || !canCastOnFloor(e.pos))
+        continue;
+      this.resolveShadowLightDir(e.pos, scratchShadowDir);
+      const dead = e.state === 'dead';
+      const r = (e.radius ?? 14) * (dead ? 1.55 : 1.38);
+      const h = dead ? 12.0 : (e.type === 'boss' ? 48.0 : 34.0);
+      writeFloorShadowQuad(
+        scratchShadowCorners,
+        scratchShadowOrigin.setScalar(e.pos.x, floorY, e.pos.y),
+        scratchShadowDir,
+        scratchShadowBounds.setScalar(r, r, h)
+      );
+      clampToTileWalls(e.pos);
+      batch.quad(scratchShadowCorners, SHADOW_UV_RADIAL);
+    }
+
+    const pickups = game.pickups ?? EMPTY;
+    for (let i = 0; i < pickups.length; i++) {
+      const p = pickups[i];
+      if (p.taken || !canCastOnFloor(p.pos))
+        continue;
+      this.resolveShadowLightDir(p.pos, scratchShadowDir);
+      writeFloorShadowQuad(
+        scratchShadowCorners,
+        scratchShadowOrigin.setScalar(p.pos.x, floorY, p.pos.y),
+        scratchShadowDir,
+        scratchShadowBounds.setScalar(13.0, 13.0, 12.0)
+      );
+      clampToTileWalls(p.pos);
+      batch.quad(scratchShadowCorners, SHADOW_UV_RADIAL);
+    }
+
+    batch.end();
   }
 
   /** One outline quad per flat wall face; the hiding faces sit just behind them. */
@@ -2654,10 +2868,12 @@ export class World {
     const makePart = (data, material) => {
       const geometry = new CustomMesh();
       geometry.vertices = data.vertices;
+      geometry.normals = data.normals;
       geometry.uvs = data.uvs;
       geometry.setPrimitive('TRIANGLES');
       const mesh = texturedMesh(gl, geometry, {
-        fragment: SOLID_TEXTURED_FRAGMENT,
+        vertex: FURNITURE_VERTEX,
+        fragment: FURNITURE_FRAGMENT,
         atlas,
         sharedTexture,
         material,
@@ -2692,6 +2908,170 @@ export class World {
       lastActivated: false,
       lastPull: 0,
     });
+  }
+
+  buildFurniture(furniture) {
+    const { gl } = this;
+    const isDesk = furniture?.type === 'desk';
+    const atlas = isDesk
+      ? (this.deskPixels ??= deskAtlas())
+      : (this.dispenserPixels ??= dispenserAtlas());
+    const intactGeo = isDesk
+      ? (this.deskGeo ??= deskMesh())
+      : (this.dispenserGeo ??= dispenserMesh());
+    const wreckGeo = isDesk
+      ? (this.deskWreckGeo ??= deskWreckMesh())
+      : (this.dispenserWreckGeo ??= dispenserWreckMesh());
+    const puddleGeo = isDesk
+      ? (this.deskDebrisGeo ??= deskDebrisMesh())
+      : (this.dispenserPuddleGeo ??= dispenserPuddleMesh());
+    const shrapnelGeo = isDesk
+      ? (this.deskShrapnelGeo ??= deskShrapnelParts())
+      : (this.dispenserShrapnelGeo ??= dispenserShrapnelParts());
+    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
+    const sharedTexture = this.sharedTexture(atlas, texOpts);
+    const root = new Mesh(gl, new CustomMesh());
+    const skinMaterial = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const wreckMaterial = new Material({ diffuse: new Vec3(1, 1, 1) });
+
+    const makePart = (partGeo, material, active = false) => {
+      const geometry = new CustomMesh();
+      geometry.vertices = partGeo.vertices;
+      geometry.normals = partGeo.normals;
+      geometry.uvs = partGeo.uvs;
+      geometry.setPrimitive('TRIANGLES');
+      const mesh = texturedMesh(gl, geometry, {
+        vertex: FURNITURE_VERTEX,
+        fragment: FURNITURE_FRAGMENT,
+        atlas,
+        sharedTexture,
+        material,
+        textureOptions: texOpts,
+      });
+      if (sharedTexture) {
+        mesh.sharedAtlas = atlas;
+        mesh.sharedTexOptions = texOpts;
+        this.sharedTexturedMeshes.push(mesh);
+      }
+      if (!active)
+        mesh.setInactive();
+      root.addChild(mesh);
+      return mesh;
+    };
+
+    const intact = makePart(intactGeo, skinMaterial, true);
+    const wreck = makePart(wreckGeo, wreckMaterial, false);
+    const puddle = makePart(puddleGeo, wreckMaterial, false);
+    const carboyTop = makePart(shrapnelGeo.carboyTop, wreckMaterial, false);
+    const shards = shrapnelGeo.shards.map((shardGeo) => makePart(shardGeo, wreckMaterial, false));
+
+    const yaw = Trigo.halfpi - (furniture?.angle ?? 0);
+    if (furniture?.pos)
+      root.setPosition(scratchPos.setScalar(furniture.pos.x, 0, furniture.pos.y));
+    root.setRotation(scratchRot.setScalar(0, yaw, 0));
+    this.scene.addMesh(root);
+    const view = {
+      type: isDesk ? 'desk' : 'dispenser',
+      root,
+      intact,
+      wreck,
+      puddle,
+      carboyTop,
+      shards,
+      skinMaterial,
+      wreckMaterial,
+      pose: isDesk ? createDeskBreakPose() : createDispenserBreakPose(),
+      wasGone: false,
+      intactSettled: true,
+      wreckSettled: false,
+    };
+    if (furniture)
+      this.furnitureViews.set(furniture, view);
+    return view;
+  }
+
+  buildFurnitureView(furniture) {
+    return this.buildFurniture(furniture);
+  }
+
+  updateFurnitureView(furniture, view) {
+    const time = this.frameTime;
+    const cullDistSq = this.frameCullDistSq;
+    const occludeFog = this.frameOccludeFog;
+    if ((Number.isFinite(cullDistSq) && furniture.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(furniture.pos))) {
+      view.root.setInactive();
+      return;
+    }
+    view.root.setActive();
+
+    if (!furniture.gone) {
+      if (view.wasGone) {
+        view.wasGone = false;
+        view.intactSettled = false;
+        view.wreckSettled = false;
+        view.intact.setActive();
+        view.wreck.setInactive();
+        view.puddle.setInactive();
+        view.carboyTop.setInactive();
+        for (const shard of view.shards)
+          shard.setInactive();
+      }
+      const hurt = furniture.hurt ?? 0;
+      if (hurt <= 0 && view.intactSettled)
+        return;
+      if (hurt > 0) {
+        const pulse = Math.min(1, hurt / 0.16);
+        const flash = 1 + pulse * 0.45;
+        scratchPos.setScalar(flash, flash, flash);
+        view.skinMaterial.setDiffuse(scratchPos);
+        const tilt = Math.sin(time * 75 + (furniture.phase ?? 0)) * 0.055 * pulse;
+        view.intact.setRotation(scratchRot.setScalar(tilt, 0, -tilt * 0.7));
+        const s = 1 + 0.035 * pulse;
+        view.intact.setScale(scratchScale.setScalar(s, 1 - 0.025 * pulse, s));
+        view.intactSettled = false;
+      } else {
+        scratchPos.setScalar(1, 1, 1);
+        view.skinMaterial.setDiffuse(scratchPos);
+        view.intact.setRotation(scratchRot.setScalar(0, 0, 0));
+        view.intact.setScale(scratchScale.setScalar(1, 1, 1));
+        view.intactSettled = true;
+      }
+      return;
+    }
+
+    if (!view.wasGone) {
+      view.wasGone = true;
+      view.intactSettled = false;
+      view.wreckSettled = false;
+      view.intact.setInactive();
+      view.wreck.setActive();
+      view.puddle.setActive();
+      view.carboyTop.setActive();
+      for (const shard of view.shards)
+        shard.setActive();
+    }
+    if (view.wreckSettled)
+      return;
+    const deadTime = furniture.deadTime ?? 0;
+    const phase = furniture.phase ?? 0;
+    if (view.type === 'desk' || furniture.type === 'desk')
+      deskBreakPose(deadTime, phase, view.pose);
+    else
+      dispenserBreakPose(deadTime, phase, view.pose);
+    const flash = deadTime < 0.25 ? (1 - deadTime / 0.25) * 0.42 : 0;
+    scratchPos.setScalar(1 + flash, 1 + flash, 1 + flash);
+    view.wreckMaterial.setDiffuse(scratchPos);
+    view.wreck.setRotation(view.pose.wreckRot);
+    view.wreck.setScale(view.pose.wreckScale);
+    view.puddle.setScale(view.pose.puddleScale);
+    view.carboyTop.setPosition(view.pose.carboyTop.pos);
+    view.carboyTop.setRotation(view.pose.carboyTop.rot);
+    for (let i = 0; i < view.shards.length; i++) {
+      view.shards[i].setPosition(view.pose.shards[i].pos);
+      view.shards[i].setRotation(view.pose.shards[i].rot);
+    }
+    if (deadTime >= 1.15)
+      view.wreckSettled = true;
   }
 
   // ---- actors -------------------------------------------------------------
@@ -2885,10 +3265,12 @@ export class World {
     const makePart = (data, material) => {
       const geometry = new CustomMesh();
       geometry.vertices = data.vertices;
+      geometry.normals = data.normals;
       geometry.uvs = data.uvs;
       geometry.setPrimitive('TRIANGLES');
       const mesh = texturedMesh(gl, geometry, {
-        fragment: SOLID_TEXTURED_FRAGMENT,
+        vertex: FURNITURE_VERTEX,
+        fragment: FURNITURE_FRAGMENT,
         atlas,
         sharedTexture,
         material,
@@ -3071,7 +3453,8 @@ export class World {
         cylinder.vertices[i] += H / 2;
     const skinMaterial = new Material({ diffuse: new Vec3(1, 1, 1) });
     const intact = texturedMesh(gl, cylinder, {
-      fragment: SOLID_TEXTURED_FRAGMENT,
+      vertex: FURNITURE_VERTEX,
+      fragment: FURNITURE_FRAGMENT,
       atlas: this.barrelPixels,
       sharedTexture: sharedBarrelTex,
       material: skinMaterial,
@@ -3133,7 +3516,8 @@ export class World {
       geometry.uvs = partGeo.uvs;
       geometry.setPrimitive('TRIANGLES');
       const mesh = texturedMesh(gl, geometry, {
-        fragment: SOLID_TEXTURED_FRAGMENT,
+        vertex: FURNITURE_VERTEX,
+        fragment: FURNITURE_FRAGMENT,
         atlas: this.barrelPixels,
         sharedTexture: sharedBarrelTex,
         material: wreckMaterial,
@@ -3737,6 +4121,13 @@ export class World {
       }
 
     this.syncViews(
+      this.furnitureViews,
+      game.furnitures ?? game.level.furnitures ?? EMPTY,
+      (this.buildFurnitureViewFn ??= (furniture) => this.buildFurnitureView(furniture)),
+      (this.updateFurnitureViewFn ??= (furniture, view) => this.updateFurnitureView(furniture, view))
+    );
+
+    this.syncViews(
       this.enemyViews,
       game.enemies,
       (this.buildEnemyViewFn ??= (enemy) => this.buildEnemyView(enemy)),
@@ -3779,6 +4170,7 @@ export class World {
     this.updateShotgun(game);
     this.updateRocketLauncher(game);
     updateCeilingLights(this.ceilingLights, this.lightFixtures, this.camera.position, time, game, cullDist, occludeFog);
+    this.syncShadows(game, occludeFog);
     this.syncBlood(game.blood, game.dust, occludeFog, game.effects, game.rubble);
 
     const { gl } = this;

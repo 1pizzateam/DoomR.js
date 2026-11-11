@@ -1024,6 +1024,7 @@ const tests = {
       enemyViews: new Map(),
       pickupViews: new Map(),
       cacheViews: new Map(),
+      furnitureViews: new Map(),
       barrelViews: new Map(),
       shotViews: new Map(),
       effectViews: new Map(),
@@ -2450,6 +2451,11 @@ const tests = {
   'every pellet that stops on a half-height pillar marks its face, inside its height'() {
     const game = fresh();
     clearEnemies(game);
+    // furniture standing in the line of fire along row 2 would take the pellets, so clear it first
+    for (const f of game.furnitures)
+      if (f.y === 2)
+        game.hitFurniture(f, 1);
+    game.effects.length = 0;
     game.blood.reset(game.level, game.rand);
     // the pillar at tile (9, 2) is 26 high, below the 32 eye height: its west face is the plane x = 576
     assert.equal(game.level.heights[2 * game.level.width + 9], 26);
@@ -5420,7 +5426,7 @@ const tests = {
     // Chainsaw puts specific vertical slash marks on walls distinct from firearm bullet holes
     const holesBeforeSaw = game.blood.holes.length;
     game.player.cooldown = 0;
-    game.player.body.setPosition(new Vec2(1 * 64 + 28, 3 * 64 + 32));
+    game.player.body.setPosition(new Vec2(2 * 64 + 28, 2 * 64 + 32));
     game.player.angle = Math.PI;
     game.events.length = 0;
     game.fire();
@@ -9788,6 +9794,7 @@ const tests = {
       enemyViews: new Map(),
       pickupViews: new Map(),
       cacheViews: new Map(),
+      furnitureViews: new Map(),
       barrelViews: new Map(),
       shotViews: new Map(),
       effectViews: new Map(),
@@ -17791,16 +17798,19 @@ const tests = {
     assert.equal(typeof hud.drawControlHints, 'function');
   },
 
-  'E1M1 starting room exit doors are no longer switch-locked and open freely'() {
+  'E1M1 starting room exit doors are switch-locked until the wall switch is pulled'() {
     const game = fresh(0);
     clearEnemies(game);
     const eastDoor = game.level.doors.get(3 * game.level.width + 5);
     const southDoor = game.level.doors.get(5 * game.level.width + 3);
     assert.ok(eastDoor, 'E1M1 has East starting room exit door at (5, 3)');
     assert.ok(southDoor, 'E1M1 has South starting room exit door at (3, 5)');
-    assert.equal(game.switches.length, 0, 'E1M1 no longer has a wall switch in the starting room');
-    assert.ok(!eastDoor.switchLocked, 'East door (5, 3) is not switch-locked');
-    assert.ok(!southDoor.switchLocked, 'South door (3, 5) is not switch-locked');
+    assert.equal(game.switches.length, 1, 'E1M1 has a wall switch in the starting room');
+    assert.ok(eastDoor.switchLocked, 'East door (5, 3) is switch-locked');
+    assert.ok(southDoor.switchLocked, 'South door (3, 5) is switch-locked');
+    assert.ok(game.activateSwitch(game.switches[0]), 'the wall switch can be pulled');
+    assert.ok(!eastDoor.switchLocked, 'East door (5, 3) is unlocked by the switch');
+    assert.ok(!southDoor.switchLocked, 'South door (3, 5) is unlocked by the switch');
 
     // Finish the elevator ride and step out into the starting room
     run(game, ELEVATOR_RIDE_TIME + 1.6);

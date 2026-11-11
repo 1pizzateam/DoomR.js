@@ -13,6 +13,7 @@ import { KNIFE_ATTACKS } from './arsenal.js';
 import { POWERUP_TYPES } from './powerups.js';
 import { defaultActionLabel } from './keymap.js';
 import { GRENADE_SCALE, GRENADE_START } from './grenade.js';
+import { DESK_HP, DESK_RADIUS, DISPENSER_HP, DISPENSER_RADIUS } from './furniture.js';
 
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
@@ -367,6 +368,7 @@ export class Game {
     this.enemies = [];
     this.pickups = [];
     this.caches = [];
+    this.furnitures = [];
     this.switches = this.level.switches ?? [];
     for (let i = 0; i < this.switches.length; i++) {
       const sw = this.switches[i];
@@ -438,6 +440,7 @@ export class Game {
     for (const spawn of this.level.pickups)
       this.addPickup(spawn.type, spawn.pos, true);
     this.buildCaches();
+    this.buildFurnitures();
     this.totalEnemies = this.enemies.length;
     if (this.level.planet === 'mars')
       this.seedMarsDust();
@@ -838,6 +841,88 @@ export class Game {
       this.addCache(chest);
   }
 
+  buildFurnitures() {
+    if (!this.level.furnitures)
+      return;
+    for (const entry of this.level.furnitures)
+      this.addFurniture(entry);
+  }
+
+  addFurniture(entry) {
+    const type = entry.type ?? 'dispenser';
+    const radius = type === 'desk' ? DESK_RADIUS : DISPENSER_RADIUS;
+    const hp = type === 'desk' ? DESK_HP : DISPENSER_HP;
+    const body = makeBody(entry.pos, radius, {
+      type: 'static',
+      category: CAT.BARREL,
+      mask: CAT.PLAYER | CAT.ENEMY | CAT.SHOT,
+    });
+    const furniture = {
+      kind: 'furniture',
+      type,
+      idx: entry.idx,
+      x: entry.x,
+      y: entry.y,
+      room: entry.room,
+      wallSide: entry.wallSide,
+      body,
+      pos: body.position,
+      angle: entry.angle ?? 0,
+      hp,
+      hurt: 0,
+      gone: false,
+      deadTime: 0,
+      phase: ((entry.x * 13 + entry.y * 7) & 31) * 0.2,
+    };
+    body.ref = furniture;
+    this.scene.addBody(body);
+    this.furnitures.push(furniture);
+    return furniture;
+  }
+
+  /** Whether a 2D world point (`Vec2`) lies inside the spilled water puddle around a destroyed Water Dispenser. */
+  inDispenserWater(pos) {
+    for (let i = 0; i < this.furnitures.length; i++) {
+      const furniture = this.furnitures[i];
+      if (!furniture.gone || furniture.type !== 'dispenser')
+        continue;
+      if (pos.getDistance(furniture.pos, true) <= 22 * 22)
+        return true;
+    }
+    return false;
+  }
+
+  /** Damage a piece of facility furniture; when its HP reaches zero, it shatters and its collision body is removed. */
+  hitFurniture(furniture, amount) {
+    if (!furniture || furniture.gone)
+      return;
+    furniture.hp -= amount;
+    furniture.hurt = 0.16;
+    if (this.player)
+      this.player.hitMarker = 0.15;
+    if (furniture.hp > 0)
+      return;
+    furniture.hp = 0;
+    furniture.gone = true;
+    furniture.deadTime = 0;
+    this.scene.removeBody(furniture.body);
+    this.burst(furniture.pos.x, furniture.pos.y, 18, 'spark');
+    this.burst(furniture.pos.x, furniture.pos.y, 34, 'spark');
+    this.emit('clang', furniture.pos);
+    const away = this.player ? this.player.pos.getDistance(furniture.pos) : Infinity;
+    if (away < 260)
+      this.shake = Math.max(this.shake, Utils.clamp(1 - away / 260, 0, 1) * 0.28);
+  }
+
+  updateFurnitures(dt) {
+    for (const furniture of this.furnitures) {
+      if (furniture.hurt > 0)
+        furniture.hurt = Math.max(0, furniture.hurt - dt);
+      if (furniture.gone)
+        furniture.deadTime = (furniture.deadTime ?? 0) + dt;
+    }
+  }
+
   addCache(chestOrTiles, contents, locked = false) {
     let chest = chestOrTiles;
     if (typeof chestOrTiles === 'number' || Array.isArray(chestOrTiles)) {
@@ -1097,6 +1182,8 @@ export class Game {
         this.hurtPlayer(shot.damage);
       else if (other.ref?.kind === 'barrel')
         this.hitBarrel(other.ref, BARREL.hp);
+      else if (other.ref?.kind === 'furniture')
+        this.hitFurniture(other.ref, DISPENSER_HP);
       this.burst(shot.pos.x, shot.pos.y, EYE - 4, 'blast');
       this.emit('explode', shot.pos);
       this.blastSurfaces(shot.pos, FIREBALL_BLAST.radius, FIREBALL_BLAST.power);
@@ -1240,6 +1327,8 @@ export class Game {
       this.damageEnemy(directRef, shot.damage);
     } else if (directRef?.kind === 'barrel')
       this.hitBarrel(directRef, BARREL.hp, 0.02);
+    else if (directRef?.kind === 'furniture')
+      this.hitFurniture(directRef, DISPENSER_HP);
     else if ((!directRef || directRef.kind === 'wall') && shot.dir) {
       const from = this.rocketFrom.copy(pos).addScaledVector(shot.dir, -16);
       const to = this.rocketTo.copy(pos).addScaledVector(shot.dir, 16);
@@ -1278,10 +1367,14 @@ export class Game {
     }
     this.blastSurfaces(pos, shot.radius, 1);
     for (const body of this.scene.queryCircle(pos, shot.radius, QUERY_BARREL, this.queryScratch)) {
-      const barrel = body.ref;
-      const d = barrel.pos.getDistance(pos);
-      if (!barrel.gone && d < shot.radius && this.canReach(pos, barrel.pos))
-        this.hitBarrel(barrel, BARREL.hp, 0.08 + 0.2 * (d / shot.radius));
+      const prop = body.ref;
+      const d = prop.pos.getDistance(pos);
+      if (prop.gone || d >= shot.radius || !this.canReach(pos, prop.pos))
+        continue;
+      if (prop.kind === 'furniture')
+        this.hitFurniture(prop, DISPENSER_HP);
+      else
+        this.hitBarrel(prop, BARREL.hp, 0.08 + 0.2 * (d / shot.radius));
     }
     this.resolveGibs();
   }
@@ -1460,7 +1553,11 @@ export class Game {
     for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_BARREL, this.queryScratch)) {
       const other = body.ref;
       const d = other.pos.getDistance(barrel.pos);
-      if (!other.gone && d < BARREL.blast && this.canReach(barrel.pos, other.pos))
+      if (other.gone || d >= BARREL.blast || !this.canReach(barrel.pos, other.pos))
+        continue;
+      if (other.kind === 'furniture')
+        this.hitFurniture(other, DISPENSER_HP);
+      else
         this.hitBarrel(other, BARREL.hp, 0.12 + 0.25 * (d / BARREL.blast));
     }
     this.resolveGibs();
@@ -1978,6 +2075,12 @@ export class Game {
       this.hitBarrel(hit.body.ref, dmg);
       return;
     }
+    if (hit.body.ref?.kind === 'furniture') {
+      this.burst(hit.point.x, hit.point.y, 22, 'spark');
+      this.emit('clang', hit.point);
+      this.hitFurniture(hit.body.ref, dmg);
+      return;
+    }
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
     if (!enemy) {
       const height = Utils.clamp(player.eye - 2 + this.rand.float(-5, 5), 4, 62);
@@ -2029,6 +2132,12 @@ export class Game {
       this.burst(hit.point.x, hit.point.y, 14, 'spark');
       this.emit('clang', hit.point);
       this.hitBarrel(hit.body.ref, dmg);
+      return;
+    }
+    if (hit.body.ref?.kind === 'furniture') {
+      this.burst(hit.point.x, hit.point.y, 22, 'spark');
+      this.emit('clang', hit.point);
+      this.hitFurniture(hit.body.ref, dmg);
       return;
     }
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
@@ -2159,6 +2268,12 @@ export class Game {
         this.hitBarrel(hit.body.ref, pelletDmg);
         continue;
       }
+      if (hit.body.ref?.kind === 'furniture') {
+        this.burst(hit.point.x, hit.point.y, 24, 'spark');
+        this.emit('clang', hit.point);
+        this.hitFurniture(hit.body.ref, pelletDmg);
+        continue;
+      }
       const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
       if (!enemy) {
         // the pellets spread vertically like they do sideways: tight up close, wide at range
@@ -2214,6 +2329,12 @@ export class Game {
       this.burst(hit.point.x, hit.point.y, 14, 'spark');
       this.emit('clang', hit.point);
       this.hitBarrel(hit.body.ref, def.damage);
+      return;
+    }
+    if (hit.body.ref?.kind === 'furniture') {
+      this.burst(hit.point.x, hit.point.y, 24, 'spark');
+      this.emit('clang', hit.point);
+      this.hitFurniture(hit.body.ref, def.damage);
       return;
     }
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
@@ -3128,7 +3249,7 @@ export class Game {
     // the head is lowest once per stride; that is when the foot lands
     const landed = (bob) => Math.floor((bob - FOOTFALL) / Trigo.pi);
     if (this.state === 'play' && ((wasAirborne && !airborne) || (!airborne && landed(player.bob) > landed(before))))
-      this.emit('step', null, { wet: player.feet.blood > 0.08 || Boolean(this.level.acidSplashAt?.(player.pos)) || this.inBarrelAcid(player.pos), who: 'player' });
+      this.emit('step', null, { wet: player.feet.blood > 0.08 || Boolean(this.level.acidSplashAt?.(player.pos)) || this.inBarrelAcid(player.pos) || this.inDispenserWater(player.pos), who: 'player' });
 
     this.updateChestLock(dt);
     if (input.weapon)
@@ -3534,6 +3655,7 @@ export class Game {
     this.updateDoors(dt);
     this.updateCaches(dt);
     this.updateBarrels(dt);
+    this.updateFurnitures(dt);
     this.updateHazards(dt);
     for (const enemy of this.enemies)
       this.updateEnemy(enemy, dt);

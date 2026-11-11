@@ -1,0 +1,239 @@
+{
+  "format": "mappr-level",
+  "version": 1,
+  "id": "e1m1_hangar",
+  "name": "E1M1 · Hangar",
+  "par": 90,
+  "angle": 0,
+  "width": 56,
+  "height": 36,
+  "chests": [
+    {
+      "x": 4,
+      "y": 1,
+      "contents": [
+        "ammo",
+        "shotgun"
+      ]
+    },
+    {
+      "x": 14,
+      "y": 1,
+      "contents": [
+        "greenArmor"
+      ],
+      "locked": true
+    },
+    {
+      "x": 24,
+      "y": 1,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 32,
+      "y": 1,
+      "contents": [
+        "ammo",
+        "bullets"
+      ]
+    },
+    {
+      "x": 12,
+      "y": 2,
+      "contents": [
+        "ammo",
+        "ammo"
+      ]
+    },
+    {
+      "x": 52,
+      "y": 2,
+      "contents": [
+        "health",
+        "chainsaw"
+      ]
+    },
+    {
+      "x": 13,
+      "y": 6,
+      "contents": [
+        "rocket",
+        "rockets"
+      ],
+      "locked": true
+    },
+    {
+      "x": 41,
+      "y": 10,
+      "contents": [
+        "ammo",
+        "health"
+      ]
+    },
+    {
+      "x": 10,
+      "y": 12,
+      "contents": [
+        "health",
+        "chaingun",
+        "bullets",
+        "health"
+      ],
+      "locked": true
+    },
+    {
+      "x": 53,
+      "y": 19,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 3,
+      "y": 21,
+      "contents": [
+        "health",
+        "rockets"
+      ]
+    },
+    {
+      "x": 34,
+      "y": 28,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 50,
+      "y": 32,
+      "contents": [
+        "ammo"
+      ]
+    },
+    {
+      "x": 3,
+      "y": 33,
+      "contents": [
+        "health"
+      ]
+    },
+    {
+      "x": 9,
+      "y": 34,
+      "contents": [
+        "ammo",
+        "health"
+      ]
+    }
+  ],
+  "switches": [
+    {
+      "x": 4,
+      "y": 2,
+      "wallSide": 0,
+      "doors": [
+        {
+          "x": 5,
+          "y": 3
+        },
+        {
+          "x": 3,
+          "y": 5
+        }
+      ]
+    }
+  ],
+  "furnitures": [
+    {
+      "x": 6,
+      "y": 2,
+      "wallSide": 1
+    },
+    {
+      "x": 7,
+      "y": 2,
+      "wallSide": 1
+    }
+  ],
+  "rows": [
+    "########################################################",
+    "#P..=#i......#=......#..=.#....#=....########....#######",
+    "##..!#tt.o..=#.......#.i..#....#..i..#......#..c.#..=Os#",
+    "#d...D.......D.x.x..iD....D....◥##D###..#s..D....S.....#",
+    "#◣...#.....i.#.......#....#..........D......#....#...i.#",
+    "###D#######D#######D##....####D#######..#s..############",
+    "#...#.....#.#=...S...#....#.V..~~~~~.#..u..◢#◤........◥#",
+    "#...#.....#.######.s.#,,z,#..o.~~~#~.########..o....o..#",
+    "#.............i..#...#....#...x~~....D......D....b.....#",
+    "#..o.................D....#...i~~....###D####..........#",
+    "#........i..b........#....#..o.~~~#~.#...=..#..o....o..#",
+    "#..Z..o..i.......#D########....~~~~~.#......#◣...i....◢#",
+    "#.........=......#........#####D######......◥####D######",
+    "#########D#.######...##.......#.#....#..........#.#....#",
+    "#.......#.#.#........##..i.x..#.#.y..########...#.#....#",
+    "#.......#.#.#..i.c...######D###.#.........b.#...#.#....#",
+    "#.......#.#.#........#..~~~.....###....#.#..#...#.#....#",
+    "#..i.x..D.#..........#..#~~~~#....#.....T...U...#.◥##D##",
+    "#.......#.#..........#..~~~~~~....#....#.#..#...#◣.....#",
+    "#####D###.#############...##......###.....b.#...◥####=.#",
+    "#####.#.......#....#......##........####U####.......#..#",
+    "#..=..S..x.i..D....#.T.b..~~.c.........#.#....i..z,.#..#",
+    "#.A...#.......#....#......~~...##......#.#..........#..#",
+    "#####.#########....####...o..o..########.########D###..#",
+    "#####.#.......#....#......i......^..............#.#....#",
+    "#.....D...s...D....D...x........#####Y########..#.#....#",
+    "#.c...#.......######............#...#.#......#..#.#....#",
+    "#.....#..o..o......#########D####...#.#..#...#..#.###D##",
+    "###D###............#.......#.#..#.=.S.#.k..r.#..#...#..#",
+    "###.#.######D#######..i.z,.#.#..#####.#..x...Y..D.i.#..#",
+    "#...#.#............D.......D.#........#......#..#...#..#",
+    "#.w.#.#..o...b..o..#########.#..o..o..########..###R####",
+    "#...D.#............D.........D...^....D......R....=.R..#",
+    "#..=#.#............#########.#...b....########..b...#XX#",
+    "#...#....=.........#########..........########......#XX#",
+    "########################################################"
+  ],
+  "comments": [
+    "Outer Hull",
+    "NW Entry Bay / NE Comms Closets",
+    "NW Reception / North Alcoves (Chainsaw & Soulsphere Secret)",
+    "North Airlock Corridor & Secret Push-Walls",
+    "Upper Tech Hallway & Crusher",
+    "Bulkhead Connectors",
+    "North-West Dogleg & Rad Suit by Slime Pool",
+    "West Supply / North Hub Slime Pool",
+    "West Command Hall (North)",
+    "West Command Hall (Main Sightline)",
+    "West Command Hall (South)",
+    "West Command Hall (Lower - Berserk Pack)",
+    "West Command Support",
+    "South-West Connector",
+    "Mid-Base Crossway",
+    "Mid-West Ambush Closet",
+    "Central Courtyard & Teleporter Pad A",
+    "Courtyard Airlocks & Blue-Locked Reactor",
+    "Central Courtyard / Yellow Key in Reactor",
+    "Courtyard Bulkhead & Monoliths",
+    "Central Courtyard (Core & Teleporter Pad B)",
+    "Courtyard Secret Closet & Catwalk",
+    "West Secret Ammo Closet / Courtyard South",
+    "South Courtyard Rim",
+    "South Interconnect Crusher Corridor",
+    "Skull Ambush & Yellow-Locked Vault Door",
+    "Lower Maintenance Wing",
+    "South Pillar Gallery",
+    "Wraith Vault (Red Key) & Secret Closet",
+    "Southern Zig-Zag Tunnels",
+    "Pre-Exit Staging Corridor",
+    "Swarmer Kennel & Red-Locked Guard Hall",
+    "Final Security Airlock & Crusher",
+    "Exit Antechamber & Exit Hatch",
+    "Exit Bay",
+    "Outer Hull"
+  ]
+}

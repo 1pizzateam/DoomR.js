@@ -76,6 +76,7 @@ const PICKUPS = {
   V: 'radsuit',
   N: 'nightvision',
 };
+const FURNITURES = { d: 'dispenser', t: 'desk' };
 
 // Face directions: the side of a tile a ray enters through (0: -x, 1: +x, 2: -y, 3: +y).
 const DX = [-1, 1, 0, 0];
@@ -83,6 +84,8 @@ const DY = [0, 0, -1, 1];
 const WALL_DX = [1, 0, -1, 0];
 const WALL_DY = [0, 1, 0, -1];
 export const CACHE_WALL_OFFSET = 14;
+export const DISPENSER_WALL_OFFSET = 20;
+export const DESK_WALL_OFFSET = 14;
 export const SWITCH_WALL_OFFSET = 2;
 
 /**
@@ -92,7 +95,7 @@ export const SWITCH_WALL_OFFSET = 2;
  * line where a wall really starts or ends.
  */
 export class Level {
-  constructor({ name, rows, angle = null, par = 120, planet = null, wind = null, chests = [], switches = [], floorLevel = null }) {
+  constructor({ name, rows, angle = null, par = 120, planet = null, wind = null, chests = [], switches = [], furnitures = [], floorLevel = null }) {
     this.name = name;
     this.rows = rows;
     this.par = par;
@@ -128,8 +131,12 @@ export class Level {
     this.chestDefs = Array.isArray(chests) ? chests : [];
     this.chestTiles = [];
     this.chests = [];
-    this.switchDefs = switches ?? [];
+    this.switchDefs = Array.isArray(switches) ? switches : [];
+    this.switchTiles = [];
     this.switches = [];
+    this.furnitureDefs = Array.isArray(furnitures) ? furnitures : [];
+    this.furnitureTiles = [];
+    this.furnitures = [];
     this.barrels = [];
     this.crushers = [];
     this.teleporters = [];
@@ -155,6 +162,7 @@ export class Level {
     this.findRooms();
     this.buildChests();
     this.buildSwitches();
+    this.buildFurnitures();
   }
 
   /**
@@ -528,27 +536,48 @@ export class Level {
     }
   }
 
-  buildSwitches() {
-    for (let i = 0; i < this.switchDefs.length; i++) {
-      const entry = this.switchDefs[i];
-      if (!entry || !this.inBounds(entry.x, entry.y))
+  findRoomDoors(room) {
+    if (!Number.isInteger(room) || room < 0)
+      return [];
+    const found = [];
+    for (const door of this.doors.values()) {
+      if (door.elevator || door.secret || door.lock)
         continue;
-      const idx = entry.y * this.width + entry.x;
-      if (this.kind[idx] !== FLOOR)
-        continue;
-      const wallSide = entry.wallSide ?? this.chestWallSide(entry.x, entry.y);
-      if (wallSide < 0 || wallSide >= 4)
-        continue;
-      const dx = WALL_DX[wallSide];
-      const dy = WALL_DY[wallSide];
-      const normal = new Vec2(-dx, -dy);
-      const pos = new Vec2(
-        (entry.x + 0.5) * TILE + dx * (TILE * 0.5 - SWITCH_WALL_OFFSET),
-        (entry.y + 0.5) * TILE + dy * (TILE * 0.5 - SWITCH_WALL_OFFSET),
-      );
-      const angle = Math.atan2(normal.y, normal.x);
-      const doors = [];
-      const doorDefs = entry.doors ?? [];
+      let touchesRoom = false;
+      for (let d = 0; d < 4; d++) {
+        const nx = door.x + DX[d];
+        const ny = door.y + DY[d];
+        if (this.inBounds(nx, ny) && this.roomByTile[ny * this.width + nx] === room) {
+          touchesRoom = true;
+          break;
+        }
+      }
+      if (touchesRoom)
+        found.push(door);
+    }
+    return found;
+  }
+
+  createSwitch(x, y, wallSide = null, doorDefs = null) {
+    const idx = y * this.width + x;
+    if (this.kind[idx] !== FLOOR)
+      return null;
+    const resolvedWallSide = Number.isInteger(wallSide) && wallSide >= 0 && wallSide < 4
+      ? wallSide
+      : this.chestWallSide(x, y);
+    if (resolvedWallSide < 0 || resolvedWallSide >= 4)
+      return null;
+    const dx = WALL_DX[resolvedWallSide];
+    const dy = WALL_DY[resolvedWallSide];
+    const normal = new Vec2(-dx, -dy);
+    const pos = new Vec2(
+      (x + 0.5) * TILE + dx * (TILE * 0.5 - SWITCH_WALL_OFFSET),
+      (y + 0.5) * TILE + dy * (TILE * 0.5 - SWITCH_WALL_OFFSET),
+    );
+    const angle = Math.atan2(normal.y, normal.x);
+    const room = this.roomByTile[idx];
+    const doors = [];
+    if (Array.isArray(doorDefs)) {
       for (let j = 0; j < doorDefs.length; j++) {
         const d = doorDefs[j];
         if (!d || !this.inBounds(d.x, d.y))
@@ -559,19 +588,108 @@ export class Level {
         door.switchLocked = true;
         doors.push(door);
       }
-      this.switches.push({
-        idx,
-        x: entry.x,
-        y: entry.y,
-        room: this.roomByTile[idx],
-        wallSide,
-        pos,
-        normal,
-        angle,
-        doors,
-        activated: false,
-        pull: 0,
-      });
+    } else {
+      const roomDoors = this.findRoomDoors(room);
+      for (let j = 0; j < roomDoors.length; j++) {
+        roomDoors[j].switchLocked = true;
+        doors.push(roomDoors[j]);
+      }
+    }
+    return {
+      idx,
+      x,
+      y,
+      room,
+      wallSide: resolvedWallSide,
+      pos,
+      normal,
+      angle,
+      doors,
+      activated: false,
+      pull: 0,
+    };
+  }
+
+  buildSwitches() {
+    const defsByIdx = new Map();
+    for (let i = 0; i < this.switchDefs.length; i++) {
+      const entry = this.switchDefs[i];
+      if (!entry || !Number.isInteger(entry.x) || !Number.isInteger(entry.y) || !this.inBounds(entry.x, entry.y))
+        continue;
+      defsByIdx.set(entry.y * this.width + entry.x, entry);
+    }
+    const seen = new Set();
+    for (let i = 0; i < this.switchTiles.length; i++) {
+      const tile = this.switchTiles[i];
+      seen.add(tile.idx);
+      const entry = defsByIdx.get(tile.idx);
+      const sw = this.createSwitch(tile.x, tile.y, entry?.wallSide, entry?.doors);
+      if (sw)
+        this.switches.push(sw);
+    }
+    for (const [idx, entry] of defsByIdx) {
+      if (seen.has(idx) || this.kind[idx] !== FLOOR)
+        continue;
+      seen.add(idx);
+      const sw = this.createSwitch(entry.x, entry.y, entry.wallSide, entry.doors ?? []);
+      if (sw)
+        this.switches.push(sw);
+    }
+  }
+
+  createFurniture(x, y, type = 'dispenser', wallSide = null, angle = null) {
+    const idx = y * this.width + x;
+    const resolvedWallSide = Number.isInteger(wallSide) && wallSide >= 0 && wallSide < 4
+      ? wallSide
+      : this.chestWallSide(x, y);
+    const pos = this.center(x, y);
+    const wallOffset = type === 'desk' ? DESK_WALL_OFFSET : DISPENSER_WALL_OFFSET;
+    let resolvedAngle = 0;
+    if (resolvedWallSide >= 0) {
+      pos.x += WALL_DX[resolvedWallSide] * wallOffset;
+      pos.y += WALL_DY[resolvedWallSide] * wallOffset;
+      resolvedAngle = Math.atan2(-WALL_DY[resolvedWallSide], -WALL_DX[resolvedWallSide]);
+    } else {
+      let bestScore = -1;
+      for (let d = 0; d < 4; d++) {
+        const nx = x + WALL_DX[d];
+        const ny = y + WALL_DY[d];
+        if (!this.isWalkable(nx, ny))
+          continue;
+        let score = 0;
+        for (let e = 0; e < 4; e++)
+          if (this.isWalkable(nx + WALL_DX[e], ny + WALL_DY[e]))
+            score++;
+        if (score > bestScore) {
+          bestScore = score;
+          resolvedAngle = Math.atan2(WALL_DY[d], WALL_DX[d]);
+        }
+      }
+    }
+    if (typeof angle === 'number' && Number.isFinite(angle))
+      resolvedAngle = angle;
+    return {
+      idx,
+      x,
+      y,
+      type,
+      room: this.roomByTile[idx],
+      wallSide: resolvedWallSide,
+      pos,
+      angle: resolvedAngle,
+    };
+  }
+
+  buildFurnitures() {
+    // optional per-piece overrides from the level's `furnitures` list ({ x, y, wallSide, angle }); otherwise automatic
+    const defsByIdx = new Map();
+    for (const entry of this.furnitureDefs)
+      if (entry && Number.isInteger(entry.x) && Number.isInteger(entry.y))
+        defsByIdx.set(entry.y * this.width + entry.x, entry);
+    for (let i = 0; i < this.furnitureTiles.length; i++) {
+      const tile = this.furnitureTiles[i];
+      const entry = defsByIdx.get(tile.idx);
+      this.furnitures.push(this.createFurniture(tile.x, tile.y, tile.type, entry?.wallSide, entry?.angle));
     }
   }
 
@@ -782,6 +900,10 @@ export class Level {
           this.pickups.push({ type: PICKUPS[char], pos: this.center(x, y) });
         else if (char === '=')
           this.chestTiles.push({ idx, x, y });
+        else if (char === '!')
+          this.switchTiles.push({ idx, x, y });
+        else if (FURNITURES[char])
+          this.furnitureTiles.push({ idx, x, y, type: FURNITURES[char] });
         else if (char === '~')
           this.slime[idx] = 1;
         else if (char === ',')

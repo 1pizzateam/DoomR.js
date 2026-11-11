@@ -1,0 +1,189 @@
+{
+  "format": "mappr-level",
+  "version": 1,
+  "id": "e1m3_toxin_refinery",
+  "name": "E1M3 · Toxin Refinery",
+  "par": 180,
+  "angle": 0,
+  "width": 56,
+  "height": 36,
+  "chests": [
+    {
+      "x": 30,
+      "y": 2,
+      "contents": [
+        "health"
+      ]
+    },
+    {
+      "x": 43,
+      "y": 2,
+      "contents": [
+        "ammo"
+      ]
+    },
+    {
+      "x": 53,
+      "y": 2,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 18,
+      "y": 3,
+      "contents": [
+        "ammo"
+      ]
+    },
+    {
+      "x": 2,
+      "y": 7,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 5,
+      "y": 10,
+      "contents": [
+        "chaingun"
+      ]
+    },
+    {
+      "x": 17,
+      "y": 12,
+      "contents": [
+        "health",
+        "bullets"
+      ]
+    },
+    {
+      "x": 53,
+      "y": 14,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 28,
+      "y": 22,
+      "contents": [
+        "health",
+        "rockets",
+        "rocket"
+      ]
+    },
+    {
+      "x": 2,
+      "y": 25,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 41,
+      "y": 29,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 3,
+      "y": 33,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 42,
+      "y": 33,
+      "contents": [
+        "ammo",
+        "health"
+      ]
+    }
+  ],
+  "rows": [
+    "########################################################",
+    "#P....#........#######.....#########....#######...######",
+    "##d...#..i..x..#..~~.#..c..#..=....#..s.#..=..#.w.#..=O#",
+    "#..o..D........D..=..D.....D...#...D....D..x..D...S....#",
+    "#.....#........#######..~..#.......#....#.....#...######",
+    "####D######D##########.,z..####D####....###D###........#",
+    "####.#....#.#........#..~..#...#...........#.#..o...o..#",
+    "#.=..#....#.#..o..o..D..b..D.^.D...i...x...#.#....b....#",
+    "#..g.#.c..#.#........#..~..#...#...........#.#....u....#",
+    "######S####.#..x..i..#######...########D####.#..o...o..#",
+    "#....=....#.#........#.................#.#...D....r....#",
+    "#..i...z,.D.########D#..##◤...V...◥##..#.#...###########",
+    "#.........#.#....=.#.#..#~~To...o.~~#..#.#.........#...#",
+    "####D######.#.w....#.#..#~~~..x..~~~#..#.#######D#.#...#",
+    "####.#......D......#.D..U...#~~~#...U..D.......#.#.#.=.#",
+    "#....#.######......#.#..#~~~~.r.~~~~#..#.#####.#.#.###S#",
+    "#.s..#.#....########.#..#..y#~~~#...#..#.#...#.#.#.....#",
+    "#....D.#....#...~~...#..#~~~..x..~~~#..#.#.c.#.#.#####.#",
+    "#.z,.#.#....#.o.~~.o.#..#~~.o...oT~~#..D.#...D.#.....#.#",
+    "######.####D#...~~...#..##◣.......◢##..#.#####.#####.#.#",
+    "#...Z.....#.#..b..x..#........U........#.#.........#.#.#",
+    "#..c...i..D.#........#######.....#######.#..z,..b..D.#.#",
+    "#.........#.########D#.....#=....#.....#.#.........#.#.#",
+    "####D######.#........#..s..D.....D..s..#.#####Y#####.#.#",
+    "####.#......#..o..o..#.....#.....#.....#.....#.#.....#.#",
+    "#.=..#.######........#######.....#######..w..#.#.kr..#.#",
+    "#..A.S.#....####D#####.................#####.#.#.....#.#",
+    "######.#....#........D...o..^.x.^..o...S...#.#.#####Y#.#",
+    "#......D....#..i..c..#.................#...#.#.#.....#.#",
+    "#..w...######........#######Y###Y#######.=.#.#.#..x..#.#",
+    "#...........########.#.....#.#.#.#.....#####.#.#.....#.#",
+    "#####D#####........#.#..b..D.#.#.D..r..D..^..R.#..b..#.#",
+    "#####.#...#.o....o.#.#.....#.#.#.#.....#######.#########",
+    "#..=..S.i.D........D.#######.#.#.#######..=....R..i...X#",
+    "#.....#...#....b...#.........#.#...............#######X#",
+    "########################################################"
+  ],
+  "comments": [
+    "Outer Hull",
+    "Refinery Entry & North Closets",
+    "North Guard Alcoves & Soulsphere Secret",
+    "North Refinery Conduit & Secret Wall",
+    "North Vat Chambers",
+    "North Bulkhead Airlocks",
+    "Upper Catwalk Loop",
+    "West Supply & Crusher Overlook",
+    "West Crawler Duct & Blue Keycard Gallery",
+    "Mid-North Secret Push-Wall",
+    "Refinery Upper Ring",
+    "Octagonal Central Hub (North - Rad Suit)",
+    "Octagonal Hub (Upper Toxin Channels & Pad A)",
+    "Swarmer Trap & Hub Toxin Rim",
+    "Blue-Locked Central Toxin Vat Hub",
+    "Central Toxin Vat Hub (Core) & Secret",
+    "Central Toxin Vat Hub (Yellow Keycard)",
+    "West Service Tunnel & Toxin Vat",
+    "East/West Hub Sluices & Teleporter Pad B",
+    "Octagonal Central Hub (South)",
+    "Blue-Locked South Hub Spillway & Berserk Pack",
+    "South-West & South-East Halls",
+    "Lower Refinery Crossway",
+    "Twin Skull Closets & Yellow-Locked Wing",
+    "South Pillar Room",
+    "South Swarmer & Wraith Wing (Red Keycard)",
+    "Lower Secret Ammo & MegaArmor Cache",
+    "South Crossfire Crusher Gallery",
+    "Southern Dogleg",
+    "Yellow-Locked Double-Door Checkpoint",
+    "Final Refinery Approach",
+    "Pre-Exit Guard Wings & Red-Locked Door",
+    "Final Pillar Hall",
+    "Red-Locked Exit Corridor & Secret",
+    "Toxin Refinery Exit Bay",
+    "Outer Hull"
+  ]
+}

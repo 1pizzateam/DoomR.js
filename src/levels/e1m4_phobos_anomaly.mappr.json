@@ -1,0 +1,200 @@
+{
+  "format": "mappr-level",
+  "version": 1,
+  "id": "e1m4_phobos_anomaly",
+  "name": "E1M4 · Phobos Anomaly",
+  "par": 210,
+  "angle": 0,
+  "width": 56,
+  "height": 36,
+  "chests": [
+    {
+      "x": 3,
+      "y": 1,
+      "contents": [
+        "ammo"
+      ]
+    },
+    {
+      "x": 30,
+      "y": 2,
+      "contents": [
+        "ammo"
+      ]
+    },
+    {
+      "x": 43,
+      "y": 2,
+      "contents": [
+        "ammo"
+      ]
+    },
+    {
+      "x": 53,
+      "y": 2,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 3,
+      "y": 7,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 17,
+      "y": 8,
+      "contents": [
+        "chaingun"
+      ]
+    },
+    {
+      "x": 16,
+      "y": 11,
+      "contents": [
+        "health",
+        "bullets"
+      ]
+    },
+    {
+      "x": 37,
+      "y": 14,
+      "contents": [
+        "health",
+        "rocket",
+        "rockets"
+      ]
+    },
+    {
+      "x": 24,
+      "y": 19,
+      "contents": [
+        "ammo",
+        "health",
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 51,
+      "y": 20,
+      "contents": [
+        "health",
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 2,
+      "y": 24,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 37,
+      "y": 30,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 3,
+      "y": 34,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 42,
+      "y": 34,
+      "contents": [
+        "ammo",
+        "health"
+      ]
+    }
+  ],
+  "rows": [
+    "########################################################",
+    "#P.=..#..........######.....########....#######...######",
+    "##d...#..i...x...#....#..c..#.=~~..#..s.#..=..#.w.#..=O#",
+    "#..g..D..........D....D.....D......D....D..x..D...S....#",
+    "#.....#....i.....######..~..#..~~..#....#.....#...######",
+    "####D#######D#########..,z..####D###....###D###........#",
+    "####.#.....#.#.......#..o...#......#......#.#...o...o..#",
+    "#..=.#..c..#.#.Z.b...D......D..^...D..i...#.#.....b....#",
+    "#...A#.....#.#...=...#..o...#..x.u.#......#.#..........#",
+    "######S#####.#########......#......########.#..o.....o.#",
+    "#..........#.#.......########D######........D....r.....#",
+    "#...i..x.....D..=....#.............#####U####..........#",
+    "#..T.......#.#########..o...s...o..#...#.#..####D#######",
+    "#..o....o..#.#..T....D.............S...#.#......#.#....#",
+    "#....V.....D.#..c.z,.#######Y#######.=.#.######.#.#.w..#",
+    "#####D######.#.......##◤...........◥##.#......#.#.#....#",
+    "#####.#~~~~#.####D####.T.o.....o...###.######.#.#.####D#",
+    "#..~..#~.s~#.#.......#...~~~...~~~.###......D.#.#....#.#",
+    "#.w~..D~~~~D.#..i.x..#..#~~~...~~~####.######.#.##S#.#.#",
+    "#..~..#~~~~#.#.......#..=...k......###.#....#.#.S....#.#",
+    "###D###....#.####Y####...B.....B...###Y#.,z.D.#.#..=.#.#",
+    "###.#.######.#.......#.............###.#....#.#.######.#",
+    "#...#.#~~~~#.#..b..y.#..#~~~...~~~####.######.#...^....#",
+    "#...S.#~c~~D.#.......#...~~~...~~~.###......#.#####U####",
+    "#.=.#.#~~~~#.####D####...o.....o.T.##########.....#.#..#",
+    "#####.#....#.#.......##◣...........◢#########..i..#.#..#",
+    "#.....D....#.#..x.i..#######Y#######...^....D.....D.#..#",
+    "#..c..######.####D####.............#####D####..z,.#.#..#",
+    "#.....#..............D..o...r...o..S...#.#..#######.#..#",
+    "####D##...########D###.............#...#.#..........#..#",
+    "####.##.s.#......#.#.###############.=.#.########R###..#",
+    "#.....D...D..i...#.#.#.............#####........#.#....#",
+    "#..w..#####....x.#.#.#..b...x...s..D.....^......R.R.r..#",
+    "#.........########.#.#.............#####........#.#...X#",
+    "#..=......##########.###################..=.....#.###XX#",
+    "########################################################"
+  ],
+  "comments": [
+    "Outer Hull",
+    "Anomaly Breach Entry & North Closets",
+    "North Guard Posts & Soulsphere Secret",
+    "North Anomaly Conduit & Secret Push-Wall",
+    "North Nukage Sump",
+    "North Bulkhead Airlocks",
+    "Upper Ritual Loop",
+    "West Berserk Chamber & Crusher Hall",
+    "West MegaArmor Secret & Blue Keycard",
+    "West Secret Push-Wall",
+    "Mid-North Security Junction",
+    "Supply Airlock & Blue-Locked Wraith Gate",
+    "West Teleporter Pad 1A & Central Gallery",
+    "Teleporter Pad 1B & Central Secret Closet",
+    "Rad Suit, Rocket Cache & Boss Sanctum Gate",
+    "Twin Wardens Star Sanctum (North Wing)",
+    "Star Sanctum (NW Teleporter Pad 2A)",
+    "West Nukage Sluice & Sanctum Pools",
+    "Swarmer Vat & Sanctum Pillars",
+    "Sanctum Altar (Red Keycard) & East Secret",
+    "Twin Wardens ('B' & 'B') Boss Arena!",
+    "Sanctum Lower Ring",
+    "Yellow Keycard Guard Room & Sanctum",
+    "Slime Secret Closet & Blue-Locked Connector",
+    "Star Sanctum (SE Teleporter Pad 2B)",
+    "Sanctum South Rim",
+    "Yellow-Locked South Sanctum Gate & Crusher",
+    "South Hub & Barrel Trap",
+    "Lower Wraith Gallery & Secret Closet",
+    "South-West Dogleg",
+    "South Bulkhead & Red-Locked Anomaly Portal",
+    "South-West Guard Line",
+    "Final Gauntlet Crusher & Red-Locked Portal Gate",
+    "Anomaly Portal Antechamber",
+    "Phobos Anomaly Exit Portal",
+    "Outer Hull"
+  ]
+}

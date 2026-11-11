@@ -1,0 +1,193 @@
+{
+  "format": "mappr-level",
+  "version": 1,
+  "id": "e1m2_nuclear_plant",
+  "name": "E1M2 · Nuclear Plant",
+  "par": 150,
+  "angle": 0,
+  "width": 56,
+  "height": 36,
+  "chests": [
+    {
+      "x": 4,
+      "y": 1,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 11,
+      "y": 1,
+      "contents": [
+        "chaingun"
+      ]
+    },
+    {
+      "x": 24,
+      "y": 1,
+      "contents": [
+        "health",
+        "bullets"
+      ]
+    },
+    {
+      "x": 40,
+      "y": 1,
+      "contents": [
+        "ammo",
+        "bullets"
+      ]
+    },
+    {
+      "x": 52,
+      "y": 1,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 3,
+      "y": 10,
+      "contents": [
+        "ammo"
+      ]
+    },
+    {
+      "x": 52,
+      "y": 11,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 2,
+      "y": 18,
+      "contents": [
+        "health",
+        "rockets"
+      ]
+    },
+    {
+      "x": 21,
+      "y": 19,
+      "contents": [
+        "ammo",
+        "health",
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 44,
+      "y": 19,
+      "contents": [
+        "health",
+        "rocket",
+        "rockets"
+      ]
+    },
+    {
+      "x": 2,
+      "y": 25,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 3,
+      "y": 34,
+      "contents": [
+        "health",
+        "ammo"
+      ]
+    },
+    {
+      "x": 47,
+      "y": 34,
+      "contents": [
+        "ammo",
+        "health"
+      ]
+    }
+  ],
+  "rows": [
+    "########################################################",
+    "#...=.....#=.O#...______=...______....#.=.#####.....=..#",
+    "#.x..b..i.#...#.w.______....______....#...#...#....b...#",
+    "#.........#...#...______._..______..c.#...#...#........#",
+    "#.___.___.##S##...______..._______....##S##...#._____..#",
+    "#.Z._.___.#...#...___s__.x..__s___........#...#._,z._..#",
+    "#.___.___.#...#..._..._.^._.._..._..i.....D...#._.u._..#",
+    "#____.____D...D...___...___..__..._.......#...#._..._..#",
+    "#.........#...#..._________________.......#.i.#._____..#",
+    "#####D#####...#####################.......#............#",
+    "#..=..............#...............##############U#######",
+    "##d..o.....x..#...#._...o.s.o.....#.......#.........=..#",
+    "#P....g....i..D...D._.............#.......#.T....r...i.#",
+    "##...o........#...#.#######Y#######.......#............#",
+    "#.............#...#.#◤...........◥#.......#____________#",
+    "#####D#########...#.#..o.......o..#.......#___________.#",
+    "#....V........#...#.#....~~.~~....#.......#____________#",
+    "####...########...#.#....~~.~~....#.......#.T..........#",
+    "#.=#...#......#...#.#.............#.......######D#######",
+    "#..#.____~~~~.#...#.#=...k........#.......#.=..........#",
+    "#A.#.._._~~~~s#...#.#......B......#.......#..,z..____..#",
+    "#..#.____~~~~.#...#.#.............#.......#......____..#",
+    "##S#.._._~~~~.#...#.#....~~.~~....#.......#......x._...#",
+    "#....._.......#...#.#..o.......o..#.......#..c...____b.#",
+    "#.....w....c..#...#.#._........._.#.......#......____.y#",
+    "#.=...........#...#.#◣...........◢#.......#............#",
+    "#####D#########...#.#######Y#######.......##############",
+    "#.......#.........D...............#.......##############",
+    "#..o....#..___________..s.._______#.......##############",
+    "#.......#..___________.....__________________#.........#",
+    "#.......#....z,........_......._....x........#....b....#",
+    "#....w..D......x..._...^...r..._....^....b...R..^._....#",
+    "#.......#.........._..........._.............#...._....#",
+    "#.......#..___________.....__________________#...._...X#",
+    "#..=....#..___________....._______s__________#.=.._..XX#",
+    "########################################################"
+  ],
+  "comments": [
+    "Outer Hull",
+    "NW Guard Bay & North Wing",
+    "North Guard Posts & Swarmer Den",
+    "North Main Spine & Secret Push-Wall",
+    "Cooling Tower North",
+    "North-West Interconnect",
+    "Service Ducts & NE Gallery",
+    "Upper Processing Rooms (Berserk Pack) & Crusher",
+    "Pillbox Secret Soulsphere & Blue Keycard",
+    "Pillbox Secret Closet",
+    "Mid-North Security Junction",
+    "Supply Airlock & Blue-Locked Wraith Hall",
+    "West Arrival Bay (4,12 open) & Hub",
+    "Central Spine Hallway & Secret Cache",
+    "Rad Suit before Slime Maze & Boss Approach",
+    "Warden Sanctum (North Chamfer)",
+    "Warden Sanctum (Upper Ring & Teleporter Pad A)",
+    "West Slime Tunnels / Sanctum",
+    "Swarmer Closet / Warden Slime Vats",
+    "Slime Maze / Sanctum Center (Red Keycard)",
+    "Yellow-Locked West & East Sanctum Airlocks",
+    "Sanctum Lower Ring",
+    "Brute Guard Room (Yellow Key) / Sanctum",
+    "Slime Maze Secret & Blue-Locked Connector",
+    "Warden Sanctum (South Chamfer & Teleporter Pad B)",
+    "Sanctum South Rim",
+    "Yellow-Locked South Boss Approach & Crusher",
+    "South Hub & Barrel Trap",
+    "Lower Wraith Gallery & Secret Closet",
+    "South-West Dogleg",
+    "South Bulkhead & Red-Locked Exit Wing",
+    "South-West Guard Line",
+    "Final Gauntlet Crusher & Red-Locked Doors",
+    "Exit Antechamber",
+    "Nuclear Plant Exit Hatch",
+    "Outer Hull"
+  ]
+}
