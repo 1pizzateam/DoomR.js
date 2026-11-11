@@ -116,6 +116,7 @@ export class Level {
     this.teleporterByTile = new Map();
     this.exits = [];
     this.doors = new Map();
+    this.doorsList = [];
     this.diagTriangles = new Map();
     this.secrets = [];
     this.secretDoorByRoom = [];
@@ -451,8 +452,11 @@ export class Level {
           this.heights[idx] = solid.height;
           if (typeof solid.diag === 'number')
             this.diag[idx] = solid.diag;
-          if (solid.kind === DOOR)
-            this.doors.set(idx, { idx, x, y, center: this.center(x, y), open: 0, target: 0, timer: 0, secret: !!solid.secret, lock: solid.lock ?? null, revealed: false, alongY: false, body: null });
+          if (solid.kind === DOOR) {
+            const door = { idx, x, y, center: this.center(x, y), open: 0, target: 0, timer: 0, secret: !!solid.secret, lock: solid.lock ?? null, revealed: false, alongY: false, body: null };
+            this.doors.set(idx, door);
+            this.doorsList.push(door);
+          }
           if (solid.kind === EXIT)
             this.exits.push(this.center(x, y));
         } else if (char === 'P')

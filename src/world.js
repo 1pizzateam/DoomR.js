@@ -141,18 +141,30 @@ function burnQuadOf(mark, out) {
   return mark.kind === SURFACE.WALL ? burnWallQuad(scratchBlastMark, out) : burnFlatQuad(scratchBlastMark, out);
 }
 const scratchMarkPos2 = new Vec2();
+// shared output of the mark adapters; only dissolving marks use it, as their quad is rebuilt and consumed every frame
+const scratchMarkQuad = { corners: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], uv: [0, 0, 0, 0] };
 const scratchFloorOpts = { pos: scratchMarkPos2, size: 0, seed: 0, height: undefined };
 const scratchGibOpts = { pos: scratchMarkPos2, size: 0, variant: undefined, angle: undefined, height: undefined };
 const scratchPrintOpts = { pos: scratchMarkPos2, angle: 0, side: 0, strength: 0, scale: 0 };
 const scratchSplatMark = { pos: new Vec3(), normal: new Vec2(), size: 0, top: 0, seed: 0, age: undefined, lo: undefined, hi: undefined, slope: undefined };
 const scratchParticleOpts = { pos: new Vec3(), gib: false, variant: undefined, scale: undefined, visualScale: undefined };
 
+// state of the one `syncViews` prune in flight, so its `forEach` callback is a single function instead of a closure per call
+const prune = { host: null, map: null, stamp: 0 };
+
+function pruneView(view, entity) {
+  if (view.stamp === prune.stamp)
+    return;
+  prune.host.discard(view.root);
+  prune.map.delete(entity);
+}
+
 function floorSplatOf(mark) {
   scratchMarkPos2.setScalar(mark.x, mark.y);
   scratchFloorOpts.size = mark.size;
   scratchFloorOpts.seed = mark.seed;
   scratchFloorOpts.height = mark.height;
-  return floorSplatQuad(scratchFloorOpts);
+  return floorSplatQuad(scratchFloorOpts, mark.dissolving ? scratchMarkQuad : null);
 }
 
 function floorGibOf(mark) {
@@ -161,7 +173,7 @@ function floorGibOf(mark) {
   scratchGibOpts.variant = mark.variant;
   scratchGibOpts.angle = mark.angle;
   scratchGibOpts.height = mark.height;
-  return floorGibQuad(scratchGibOpts);
+  return floorGibQuad(scratchGibOpts, mark.dissolving ? scratchMarkQuad : null);
 }
 
 function printOf(mark) {
@@ -170,7 +182,7 @@ function printOf(mark) {
   scratchPrintOpts.side = mark.side;
   scratchPrintOpts.strength = mark.strength;
   scratchPrintOpts.scale = mark.scale;
-  return printQuad(scratchPrintOpts);
+  return printQuad(scratchPrintOpts, mark.dissolving ? scratchMarkQuad : null);
 }
 
 function fillWallOpts(mark) {
@@ -188,7 +200,7 @@ function fillWallOpts(mark) {
 }
 
 function wallSplatOf(mark) {
-  return wallSplatQuad(fillWallOpts(mark));
+  return wallSplatQuad(fillWallOpts(mark), mark.dissolving ? scratchMarkQuad : null);
 }
 
 function fillParticleOpts(p) {
@@ -939,8 +951,8 @@ export class World {
     this.ambientLight = ambient;
     this.ceilingLights = pointLights;
     this.buildStatic(level);
-    for (const door of level.doors.values())
-      this.buildDoor(door);
+    for (let i = 0; i < level.doorsList.length; i++)
+      this.buildDoor(level.doorsList[i]);
     for (const crusher of level.crushers)
       this.buildCrusher(crusher);
 
@@ -1162,7 +1174,7 @@ export class World {
       const sunk = scratchSplatMark;
       sunk.pos.setScalar(mark.x - mark.nx * inset, mark.y - mark.ny * inset, mark.z - drop);
       sunk.top = mark.top * height;
-      const quad = wallSplatQuad(sunk);
+      const quad = wallSplatQuad(sunk, scratchMarkQuad);
       if (quad)
         batch.quad(quad.corners, quad.uv);
       const drips = wallDripQuads(sunk, this.dripTarget);
@@ -1430,7 +1442,8 @@ export class World {
     }
 
     // a doorway has no wall of its own, so its two open ends get a lintel from the door's height up to the roof
-    for (const door of level.doors.values()) {
+    for (let i = 0; i < level.doorsList.length; i++) {
+      const door = level.doorsList[i];
       const { x, y } = door;
       const top = Math.min(baseHeight[door.idx], ROOF);
       if (top >= ROOF)
@@ -2751,12 +2764,12 @@ export class World {
       view.stamp = stamp;
       update(entity, view);
     }
-    map.forEach((view, entity) => {
-      if (view.stamp !== stamp) {
-        this.discard(view.root);
-        map.delete(entity);
-      }
-    });
+    prune.host = this;
+    prune.map = map;
+    prune.stamp = stamp;
+    map.forEach(pruneView);
+    prune.host = null;
+    prune.map = null;
   }
 
   // ---- frame --------------------------------------------------------------
@@ -2847,7 +2860,9 @@ export class World {
     else if (this.crateMesh)
       this.crateMesh.setCustomUniform('time', time);
 
-    for (const door of game.level.doors.values()) {
+    const { doorsList } = game.level;
+    for (let i = 0; i < doorsList.length; i++) {
+      const door = doorsList[i];
       const view = this.doorViews.get(door);
       const height = 1 - door.open;
       const inRange = (!Number.isFinite(cullDistSq) || door.center.getDistance(scratchCam2d, true) <= cullDistSq) && (!occludeFog || occludeFog.canSeeNear(door.center));
