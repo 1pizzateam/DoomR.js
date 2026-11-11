@@ -23,6 +23,9 @@ const LID = { x: 128, width: 64, height: 64 };
 const CHAR = { x: 192, width: 64, height: 64 };
 export const BARREL_ATLAS = { width: 256, height: 64 };
 export const BARREL_STAVE_COUNT = 5;
+export const BARREL_SHRAPNEL_FIRE_FADE_START = 4.0;
+export const BARREL_SHRAPNEL_FIRE_DURATION = 11.0;
+export const BARREL_SHRAPNEL_FIRE_RANDOM_SPAN = 9.0;
 
 export const BARREL_FIRE_VERTEX = `
 attribute vec3 aVertexPosition;
@@ -202,7 +205,8 @@ void main(void) {
     float layerWeight = clamp(1.0 - radial * 0.52, 0.18, 1.0) * (1.0 - 0.52 * hFrac * hFrac);
     float wisp = smoothstep(0.30 - 0.09 * layerWeight, 0.85, density * plumeWave);
     float soft = smoothstep(0.0, 0.26, edge);
-    alpha = clamp(wisp * (0.24 + 0.76 * layerWeight) * 0.44 * soft, 0.0, 1.0);
+    float smokeStrength = clamp(uHeat, 0.0, 1.0);
+    alpha = clamp(wisp * (0.24 + 0.76 * layerWeight) * 0.44 * soft * smokeStrength, 0.0, 1.0);
     alpha *= smoothstep(4.0, 26.0, vDepth);
 
     vec3 texTint = texture2D(uSampler, fract(vWorld / 64.0 + vec2(q1 * 0.73 + uTime * 0.02 * dir, q2 * 0.61 - uTime * 0.03))).rgb;
@@ -951,7 +955,7 @@ export function createBarrelExplosionPose() {
   const staveFires = [];
   for (let i = 0; i < BARREL_STAVE_COUNT; i++) {
     staves.push({ pos: new Vec3(), rot: new Vec3() });
-    staveFires.push({ pos: new Vec3(), rot: new Vec3(), scale: new Vec3(1, 1, 1) });
+    staveFires.push({ pos: new Vec3(), rot: new Vec3(), scale: new Vec3(1, 1, 1), active: true, heat: 1, dissolve: 0.24 });
   }
   return {
     wreckScale: new Vec3(1, 1, 1),
@@ -971,6 +975,9 @@ export function createBarrelExplosionPose() {
       pos: new Vec3(),
       rot: new Vec3(),
       scale: new Vec3(1, 1, 1),
+      active: true,
+      heat: 1,
+      dissolve: 0.23,
     },
     staveFires,
     fireColor: new Vec3(1, 0.85, 0.42),
@@ -1001,6 +1008,25 @@ function writeBallisticArc(posTarget, rotTarget, startX, startY, startZ, endX, e
   const ry = Utils.lerp(spinY * out, restYaw, settle * settle);
   const rz = Utils.lerp(spinZ * out, restRoll, settle * settle);
   rotTarget.setScalar(rx, ry, rz);
+}
+
+function shrapnelFireHash(seed, index) {
+  const x = Math.sin((seed + 1.37) * 12.9898 + (index + 1) * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function shrapnelFireFade(t, seed, index) {
+  const count = BARREL_STAVE_COUNT + 1;
+  const jitter = shrapnelFireHash(seed, index * 2);
+  const spanRand = shrapnelFireHash(seed, index * 2 + 1);
+  // Permute slot per barrel seed and add random jitter so every flame gets a distinct lifetime in [11s .. 20s]
+  const slot = ((index * 5 + Math.floor(shrapnelFireHash(seed, 99) * count)) % count + jitter * 0.85) / count;
+  const extra = slot * BARREL_SHRAPNEL_FIRE_RANDOM_SPAN;
+  const startShare = 0.35 + 0.3 * spanRand;
+  const baseSpan = BARREL_SHRAPNEL_FIRE_DURATION - BARREL_SHRAPNEL_FIRE_FADE_START;
+  const fadeStart = BARREL_SHRAPNEL_FIRE_FADE_START + extra * startShare;
+  const fadeEnd = fadeStart + baseSpan + extra * (1 - startShare);
+  return 1 - Utils.smoothstep(fadeStart, fadeEnd, t);
 }
 
 /**
@@ -1070,12 +1096,14 @@ export function barrelExplosionPose(elapsed, seed = 0, target = createBarrelExpl
     );
   }
 
-  // 4. Persistent post-detonation fire inside the ruptured stump & smaller flame licks on the scattered shrapnel
+  // 4. Persistent post-detonation fire inside the ruptured stump & smaller flame licks on the scattered shrapnel that reduce and fade out after a few seconds
   const flare = t < 0.6 ? (1 - t / 0.6) * 0.24 : 0;
   const waveA = Math.sin(t * 2.4 + seed * 1.9);
   const waveB = Math.cos(t * 3.5 - seed * 2.7);
   const waveC = Math.sin(t * 1.6 + seed * 0.8);
   const flicker = 0.5 * waveA + 0.32 * waveB + 0.18 * waveC;
+  const baseHeat = 1.06 + flare * 0.22 + 0.06 * flicker;
+  const baseDissolve = 0.21 - flare * 0.05 - 0.015 * waveA;
 
   if (target.wreckFire) {
     const wf = target.wreckFire;
@@ -1093,8 +1121,8 @@ export function barrelExplosionPose(elapsed, seed = 0, target = createBarrelExpl
     const sy = 1.0 + flare * 0.26 + 0.05 * flicker;
     const sz = 0.98 + flare * 0.16 - 0.025 * waveB + 0.015 * waveA;
     wf.scale.setScalar(sx, sy, sz);
-    wf.heat = 1.06 + flare * 0.22 + 0.06 * flicker;
-    wf.dissolve = 0.21 - flare * 0.05 - 0.015 * waveA;
+    wf.heat = baseHeat;
+    wf.dissolve = baseDissolve;
     wf.progress = 0.34 + 0.06 * Math.sin(t * 1.8 + seed);
     wf.phase = (seed * 1.7 + t * 0.45) % Trigo.twopi;
   }
@@ -1108,19 +1136,24 @@ export function barrelExplosionPose(elapsed, seed = 0, target = createBarrelExpl
     );
   }
 
+  const lidFade = shrapnelFireFade(t, seed, 0);
+
   if (target.lidFire) {
     const lf = target.lidFire;
+    lf.active = lidFade > 0.001;
     const lidWaveA = Math.sin(t * 2.7 + seed * 3.1 + 1.2);
     const lidWaveB = Math.cos(t * 3.8 - seed * 1.4);
-    lf.pos.setScalar(target.lid.pos.x, target.lid.pos.y + 0.22, target.lid.pos.z);
+    lf.pos.setScalar(target.lid.pos.x, target.lid.pos.y + 0.22 * lidFade, target.lid.pos.z);
     lf.rot.setScalar(
       0.02 * lidWaveA,
       seed * 2.1 + 0.04 * lidWaveB + 0.025 * lidWaveA,
       0.02 * lidWaveB
     );
-    const lsXZ = 0.78 + flare * 0.14 + 0.025 * lidWaveB;
-    const lsY = 0.86 + flare * 0.22 + 0.05 * lidWaveA;
+    const lsXZ = (0.78 + flare * 0.14 + 0.025 * lidWaveB) * (0.28 + 0.72 * lidFade) * Math.min(1, lidFade * 3.5);
+    const lsY = (0.86 + flare * 0.22 + 0.05 * lidWaveA) * lidFade;
     lf.scale.setScalar(lsXZ, lsY, lsXZ);
+    lf.heat = baseHeat * 0.96 * (0.35 + 0.65 * lidFade) * Math.min(1, lidFade * 3);
+    lf.dissolve = baseDissolve + 0.03 + (1 - lidFade) * 0.07;
   }
 
   if (target.staveFires) {
@@ -1128,20 +1161,24 @@ export function barrelExplosionPose(elapsed, seed = 0, target = createBarrelExpl
       const sf = target.staveFires[i];
       if (!sf)
         continue;
+      const staveFade = shrapnelFireFade(t, seed, i + 1);
+      sf.active = staveFade > 0.001;
       const sp = target.staves[i].pos;
       const pOff = seed * 2.3 + (i + 1) * 1.93;
       const swA = Math.sin(t * (2.5 + i * 0.22) + pOff);
       const swB = Math.cos(t * (3.6 + i * 0.18) - pOff * 1.3);
-      sf.pos.setScalar(sp.x, sp.y + 0.18, sp.z);
+      sf.pos.setScalar(sp.x, sp.y + 0.18 * staveFade, sp.z);
       sf.rot.setScalar(
         0.02 * swA,
         pOff + 0.04 * swB + 0.025 * swA,
         0.02 * swB
       );
       const baseScale = 0.66 + (i % 2) * 0.1;
-      const sXZ = baseScale + flare * 0.12 + 0.025 * swB;
-      const sY = baseScale * 1.08 + flare * 0.18 + 0.05 * swA;
+      const sXZ = (baseScale + flare * 0.12 + 0.025 * swB) * (0.28 + 0.72 * staveFade) * Math.min(1, staveFade * 3.5);
+      const sY = (baseScale * 1.08 + flare * 0.18 + 0.05 * swA) * staveFade;
       sf.scale.setScalar(sXZ, sY, sXZ);
+      sf.heat = baseHeat * 0.94 * (0.35 + 0.65 * staveFade) * Math.min(1, staveFade * 3);
+      sf.dissolve = baseDissolve + 0.04 + (1 - staveFade) * 0.07;
     }
   }
 

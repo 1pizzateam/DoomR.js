@@ -227,4 +227,30 @@ test('AC-10 elevatorAlert synthesizes cascading "system failure in sector 1..3" 
   assert.equal(emitted.filter((t) => t === 'elevatorAlert').length, 1);
 });
 
+test('AC-11 lowHealth synthesizes "I think you are going to die" when player reaches 30% health or less', () => {
+  assert.match(source, /lowHealth\(ctx,\s*out,\s*t,\s*\{\s*gender\s*=\s*'female'\s*\}/);
+  assert.match(source, /speak\(ctx,\s*out,\s*t\s*\+\s*0\.14,\s*'I think you are going to die'/);
+  const { ctx, created } = mockContext();
+  const info = RECIPES.lowHealth(ctx, node(), 0);
+  assert.ok(info.duration > 1.8, 'lowHealth duration covers the full sentence');
+  assert.equal(created.shapers.length, 1, 'lowHealth creates vocal-cord waveshaper');
+
+  const game = new Game();
+  game.state = 'play';
+  game.player.armor = 0;
+  // Dropping from 100 to 50 HP (> 30%) does not emit lowHealth
+  game.events.length = 0;
+  game.hurtPlayer(50);
+  assert.equal(game.events.some((e) => e.type === 'lowHealth'), false);
+  // Dropping from 50 to 30 HP (<= 30%) emits lowHealth once
+  game.events.length = 0;
+  game.hurtPlayer(20);
+  assert.equal(game.player.health, 30);
+  assert.equal(game.events.filter((e) => e.type === 'lowHealth').length, 1);
+  // Further damage while still <= 30% does not repeat lowHealth
+  game.events.length = 0;
+  game.hurtPlayer(10);
+  assert.equal(game.events.some((e) => e.type === 'lowHealth'), false);
+});
+
 process.exit(failed ? 1 : 0);

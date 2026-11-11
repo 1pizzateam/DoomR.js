@@ -8,7 +8,7 @@
  * - Use `D` for doors in 1-tile doorways, `o` for waist-high futuristic cover crates, and `T` for paired teleporter pads.
  * - Keep the first and last row (and leftmost/rightmost column) solid `#`.
  * - Place `=` on a floor tile to place an openable supply chest; configure its contents (`health`, `ammo`, `bullets`,
- *   `rockets`, `chainsaw`, `shotgun`, `chaingun`, `rocket`) in the level's `chests` array.
+ *   `rockets`, `greenArmor`, `chainsaw`, `shotgun`, `chaingun`, `rocket`) in the level's `chests` array.
  * - Supply glyphs (`h`, `a`, `m`, `q`, `W`, `G`, `C`, `M`) placed directly on floor tiles spawn as standalone floor pickups.
  * - Every enemy (`i`, `b`, `s`, `c`, `w`, `r`, `B`), chest (`=`), pickup (`h`, `a`, `m`, `q`, `W`, `G`, `C`, `M`, `k`, `y`, `u`, `g`, `A`,
  *   `O`, `Z`, `V`, `N`), and barrel (`x`, `z`) must sit on a reachable floor tile.
@@ -64,11 +64,12 @@ export const LEVELS = [
     par: 90,
     chests: [
       { x: 4, y: 1, contents: ['ammo', 'shotgun'] },
+      { x: 14, y: 1, contents: ['greenArmor'], locked: true },
       { x: 24, y: 1, contents: ['health', 'ammo'] },
       { x: 32, y: 1, contents: ['ammo', 'bullets'] },
       { x: 12, y: 2, contents: ['ammo', 'ammo'] },
       { x: 52, y: 2, contents: ['health', 'chainsaw'] },
-      { x: 13, y: 6, contents: ['rocket', 'rockets'] },
+      { x: 13, y: 6, contents: ['rocket', 'rockets'], locked: true },
       { x: 41, y: 10, contents: ['ammo', 'health'] },
       { x: 10, y: 12, contents: ['health', 'chaingun', 'bullets', 'health'], locked: true },
       { x: 53, y: 19, contents: ['health', 'ammo'] },
@@ -78,14 +79,11 @@ export const LEVELS = [
       { x: 3, y: 33, contents: ['health'] },
       { x: 9, y: 34, contents: ['ammo', 'health'] },
     ],
-    switches: [
-      { x: 4, y: 2, wallSide: 0, doors: [{ x: 5, y: 3 }, { x: 3, y: 5 }] },
-    ],
     //        0         1         2         3         4         5
     //        01234567890123456789012345678901234567890123456789012345
     rows: [
       /* 00 */ '########################################################', // Outer Hull
-      /* 01 */ '#P..=#i......#g......#..=.#....#=....########....#######', // NW Entry Bay / NE Comms Closets
+      /* 01 */ '#P..=#i......#=......#..=.#....#=....########....#######', // NW Entry Bay / NE Comms Closets
       /* 02 */ '##...#...o..=#.......#.i..#....#..i..#......#..c.#..=Os#', // NW Reception / North Alcoves (Chainsaw & Soulsphere Secret)
       /* 03 */ '#....D.......D.x.x..iD....D....◥##D###..#s..D....S.....#', // North Airlock Corridor & Secret Push-Walls
       /* 04 */ '#◣...#.....i.#.......#....#..........D......#....#...i.#', // Upper Tech Hallway & Crusher
@@ -146,40 +144,40 @@ export const LEVELS = [
     //        01234567890123456789012345678901234567890123456789012345
     rows: [
       /* 00 */ '########################################################', // Outer Hull
-      /* 01 */ '#...=.....#=.O#...______=...______....#.=.#####.....=..#', // NW Chasm Hall, Secret #1, North Spine & NE Ledge
-      /* 02 */ '#.x..b..i.#...#.w.______....______....#...#...#....b...#', // Brute Pit Bait, Swarmer Ledge & NE Guard Post
-      /* 03 */ '#.........#...#...______._..______..c.#...#...#........#', // North Ledges & Stepping-Stone Bridge to Chest #3
-      /* 04 */ '#.___.___.##S##...______..._______....##S##...#._____..#', // 1-Tile Pit Bridges, Secrets #1 & #2
-      /* 05 */ '#.Z._.___.#...#...___s__.x..__s___........#...#._,z._..#', // Berserk Pit-Jump Island & Skull Abyss
-      /* 06 */ '#.___.___.#...#..._..._.^._.._..._..i.....D...#._.u._..#', // North Spine Stepping-Stones & Blue Key Moat
-      /* 07 */ '#____.____D...D...___...___..__..._.......#...#._..._..#', // 1-Tile Chasm Bridges & Airlocks
-      /* 08 */ '#.........#...#..._________________.......#.i.#._____..#', // NW Entry Ledge & Deep Reactor Chasm
-      /* 09 */ '#####D#####...#####################.......#............#', // NW Airlock & NE Corridor
-      /* 10 */ '#..=..............#...............##############U#######', // West Arrival Bay (Chest #6) & Blue Door U
-      /* 11 */ '##...o.....x..#...#._...o.s.o.....#.......#.........=..#', // Arrival Pillars, Mid-North Pit & East Ledge
-      /* 12 */ '#P....g....i..D...D._.............#.......#.T....r...i.#', // Starting Elevator (1,12), (4,12) Open & Teleporter A
-      /* 13 */ '##...o........#...#.#######Y#######.......#............#', // Arrival South & North Yellow Door Y to Sanctum
-      /* 14 */ '#.............#...#.#◤...........◥#.......#____________#', // Sanctum North Chamfer & 3-Tile Abyssal Rift
-      /* 15 */ '#####D#########...#.#..o.......o..#.......#___________.#', // West Filtration Door & East Stepping-Stone
-      /* 16 */ '#....V........#...#.#....~~.~~....#.......#____________#', // Rad Suit before Slime & Chasm Filtration Wing
-      /* 17 */ '####...########...#.#....~~.~~....#.......#.T..........#', // Filtration Upper & Teleporter Pad B
-      /* 18 */ '#.=#...#......#...#.#.............#.......######D#######', // Secret #3 Chest & East Vault Airlock
-      /* 19 */ '#..#.____~~~~.#...#.#=...k........#.......#.=..........#', // Secret #3 / Slime & Pit Trench / Sanctum Red Key
-      /* 20 */ '#A.#.._._~~~~s#...#.#......B......#.......#..,z..____..#', // MegaArmor Secret / Warden Sanctum / East Chasm
-      /* 21 */ '#..#.____~~~~.#...#.#.............#.......#......____..#', // 1-Tile Pit Bridge by Slime Pool & Vault Chasm
-      /* 22 */ '##S#.._._~~~~.#...#.#....~~.~~....#.......#......x._...#', // Secret #3 Push-Wall & Yellow Key Pit Bridge
-      /* 23 */ '#....._.......#...#.#..o.......o..#.......#..c...____b.#', // Filtration Lower & Sanctum Cover Pillars
-      /* 24 */ '#.....w....c..#...#.#._........._.#.......#......____.y#', // Swarmer Pack, Sanctum Pit Vents & Yellow Key
-      /* 25 */ '#.=...........#...#.#◣...........◢#.......#............#', // Filtration Supply Chest & Sanctum South Chamfer
-      /* 26 */ '#####D#########...#.#######Y#######.......##############', // South Chasm Gallery Airlocks & South Yellow Door Y
-      /* 27 */ '#.......#.........D...............#.......##############', // South Staging Hallway
-      /* 28 */ '#..o....#..___________..s.._______#.......##############', // South Suspension Chasm (North Pit Void)
-      /* 29 */ '#.......#..___________.....__________________#.........#', // Deep Abyssal Trench North of Bridge
-      /* 30 */ '#.......#....z,........_......._....x........#....b....#', // Suspension Bridge North Lane & Leaking Barrel
-      /* 31 */ '#....w..D......x..._...^...r..._....^....b...R..^._....#', // Main Suspension Bridge, Crushers & Red Door R
-      /* 32 */ '#.......#.........._..........._.............#...._....#', // Suspension Bridge South Lane
-      /* 33 */ '#.......#..___________.....__________________#...._...X#', // Deep Abyssal Trench South of Bridge & Exit
-      /* 34 */ '#..=....#..___________....._______s__________#.=.._..XX#', // South Chasm Chest, Skull Ambush & Exit Hatch
+      /* 01 */ '#...=.....#=.O#...______=...______....#.=.#####.....=..#', // NW Guard Bay & North Wing
+      /* 02 */ '#.x..b..i.#...#.w.______....______....#...#...#....b...#', // North Guard Posts & Swarmer Den
+      /* 03 */ '#.........#...#...______._..______..c.#...#...#........#', // North Main Spine & Secret Push-Wall
+      /* 04 */ '#.___.___.##S##...______..._______....##S##...#._____..#', // Cooling Tower North
+      /* 05 */ '#.Z._.___.#...#...___s__.x..__s___........#...#._,z._..#', // North-West Interconnect
+      /* 06 */ '#.___.___.#...#..._..._.^._.._..._..i.....D...#._.u._..#', // Service Ducts & NE Gallery
+      /* 07 */ '#____.____D...D...___...___..__..._.......#...#._..._..#', // Upper Processing Rooms (Berserk Pack) & Crusher
+      /* 08 */ '#.........#...#..._________________.......#.i.#._____..#', // Pillbox Secret Soulsphere & Blue Keycard
+      /* 09 */ '#####D#####...#####################.......#............#', // Pillbox Secret Closet
+      /* 10 */ '#..=..............#...............##############U#######', // Mid-North Security Junction
+      /* 11 */ '##...o.....x..#...#._...o.s.o.....#.......#.........=..#', // Supply Airlock & Blue-Locked Wraith Hall
+      /* 12 */ '#P....g....i..D...D._.............#.......#.T....r...i.#', // West Arrival Bay (4,12 open) & Hub
+      /* 13 */ '##...o........#...#.#######Y#######.......#............#', // Central Spine Hallway & Secret Cache
+      /* 14 */ '#.............#...#.#◤...........◥#.......#____________#', // Rad Suit before Slime Maze & Boss Approach
+      /* 15 */ '#####D#########...#.#..o.......o..#.......#___________.#', // Warden Sanctum (North Chamfer)
+      /* 16 */ '#....V........#...#.#....~~.~~....#.......#____________#', // Warden Sanctum (Upper Ring & Teleporter Pad A)
+      /* 17 */ '####...########...#.#....~~.~~....#.......#.T..........#', // West Slime Tunnels / Sanctum
+      /* 18 */ '#.=#...#......#...#.#.............#.......######D#######', // Swarmer Closet / Warden Slime Vats
+      /* 19 */ '#..#.____~~~~.#...#.#=...k........#.......#.=..........#', // Slime Maze / Sanctum Center (Red Keycard)
+      /* 20 */ '#A.#.._._~~~~s#...#.#......B......#.......#..,z..____..#', // Yellow-Locked West & East Sanctum Airlocks
+      /* 21 */ '#..#.____~~~~.#...#.#.............#.......#......____..#', // Sanctum Lower Ring
+      /* 22 */ '##S#.._._~~~~.#...#.#....~~.~~....#.......#......x._...#', // Brute Guard Room (Yellow Key) / Sanctum
+      /* 23 */ '#....._.......#...#.#..o.......o..#.......#..c...____b.#', // Slime Maze Secret & Blue-Locked Connector
+      /* 24 */ '#.....w....c..#...#.#._........._.#.......#......____.y#', // Warden Sanctum (South Chamfer & Teleporter Pad B)
+      /* 25 */ '#.=...........#...#.#◣...........◢#.......#............#', // Sanctum South Rim
+      /* 26 */ '#####D#########...#.#######Y#######.......##############', // Yellow-Locked South Boss Approach & Crusher
+      /* 27 */ '#.......#.........D...............#.......##############', // South Hub & Barrel Trap
+      /* 28 */ '#..o....#..___________..s.._______#.......##############', // Lower Wraith Gallery & Secret Closet
+      /* 29 */ '#.......#..___________.....__________________#.........#', // South-West Dogleg
+      /* 30 */ '#.......#....z,........_......._....x........#....b....#', // South Bulkhead & Red-Locked Exit Wing
+      /* 31 */ '#....w..D......x..._...^...r..._....^....b...R..^._....#', // South-West Guard Line
+      /* 32 */ '#.......#.........._..........._.............#...._....#', // Final Gauntlet Crusher & Red-Locked Doors
+      /* 33 */ '#.......#..___________.....__________________#...._...X#', // Exit Antechamber
+      /* 34 */ '#..=....#..___________....._______s__________#.=.._..XX#', // Nuclear Plant Exit Hatch
       /* 35 */ '########################################################', // Outer Hull
     ],
     //        01234567890123456789012345678901234567890123456789012345

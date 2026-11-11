@@ -401,6 +401,15 @@ export const RECIPES = {
     tone(ctx, out, t + 0.22, { from: 55, to: 35, duration: 0.14, gain: 0.4 });
     return { duration: 0.4, wet: 0 };
   },
+  lowHealth(ctx, out, t, { gender = 'female' } = {}) {
+    const voice = speak(ctx, out, t + 0.14, 'I think you are going to die', {
+      gender,
+      speed: 1.25,
+      gain: 0.18,
+      noise: noiseBuffer(ctx),
+    });
+    return { duration: Utils.round(0.14 + voice.duration, 2), wet: 0.42 };
+  },
 
   pickupHealth(ctx, out, t) {
     arpeggio(ctx, out, t, [659, 880, 1320], { spacing: 0.09, length: 0.16, gain: 0.22 });
@@ -778,6 +787,11 @@ export const RECIPES = {
       arpeggio(ctx, out, t + 0.03, [523 * step, 659 * step, 988 * step], { spacing: 0.055, length: 0.14, gain: 0.24, type: 'triangle' });
       return { duration: 0.32, wet: 0.28 };
     }
+    if (kind === 'greenArmor' || kind === 'blueArmor') {
+      noise(ctx, out, t + 0.04, { duration: 0.07, gain: 0.28, filter: 'bandpass', from: 1900, to: 850, q: 2.2 });
+      arpeggio(ctx, out, t + 0.04, [392 * step, 523 * step, 784 * step], { spacing: 0.055, length: 0.16, gain: 0.23, type: 'triangle' });
+      return { duration: 0.34, wet: 0.26 };
+    }
     noise(ctx, out, t + 0.03, { duration: 0.035, gain: 0.22, filter: 'highpass', from: 2600 });
     arpeggio(ctx, out, t + 0.03, [587 * step, 880 * step], { spacing: 0.055, length: 0.13, gain: 0.22, type: 'triangle' });
     return { duration: 0.28, wet: 0.22 };
@@ -832,6 +846,7 @@ const MIN_INTERVAL = {
   painImp: 0.15,
   painBrute: 0.15,
   hurt: 0.1,
+  lowHealth: 0.2,
   alertImp: 0.2,
   alertBrute: 0.3,
   alertSwarmer: 0.25,
@@ -918,7 +933,7 @@ addStatic('knife', 'knife', true, true);
 addStatic('chainsawIdle', 'chainsawIdle', true, true);
 addStatic('chainsawUp', 'chainsawUp', true, true);
 addStatic('rocketFire', 'rocketFire', true, false, WEAPONS.rocket.feel.duck);
-for (const name of ['weaponPickup', 'armor', 'powerup', 'automap', 'dry', 'hurt', 'death', 'heartbeat', 'clear', 'secret', 'tallyBoom', 'acid', 'keycard', 'elevator', 'elevatorAlert', 'elevatorStop', 'whoAreYou'])
+for (const name of ['weaponPickup', 'armor', 'powerup', 'automap', 'dry', 'hurt', 'death', 'heartbeat', 'lowHealth', 'clear', 'secret', 'tallyBoom', 'acid', 'keycard', 'elevator', 'elevatorAlert', 'elevatorStop', 'whoAreYou'])
   addStatic(name, name, true);
 addStatic('wind', 'wind', true, true);
 addStatic('tallyTick', 'tallyTick', true, true);

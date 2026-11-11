@@ -354,6 +354,7 @@ export class Game {
     this.rubble.reset(this.level);
     this.events.length = 0;
     this.heartbeat = 0;
+    this.lowHealthWarned = false;
     this.windTimer = 0;
     this.dust = [];
     this.dustFree.length = 0;
@@ -987,7 +988,7 @@ export class Game {
             }
           }
         }
-        if (isNew)
+        if (isNew || type === 'greenArmor' || type === 'blueArmor')
           line = line ? `${line} · ${this.message.text}` : this.message.text;
       } else {
         contents[write++] = type;
@@ -1010,9 +1011,11 @@ export class Game {
     } else if (refused) {
       const label = refused === 'health'
         ? 'Health'
-        : refused === 'chainsaw'
-          ? null
-          : AMMO_TYPES[AMMO_CRATES[refused] ?? WEAPONS[refused].ammoType].label;
+        : refused === 'greenArmor' || refused === 'blueArmor'
+          ? 'Armor'
+          : refused === 'chainsaw'
+            ? null
+            : AMMO_TYPES[AMMO_CRATES[refused] ?? WEAPONS[refused]?.ammoType]?.label;
       this.say(label ? `${label} full` : 'Chainsaw already owned', 2);
     }
     cache.hasWeapon = false;
@@ -1687,6 +1690,9 @@ export class Game {
       }
       this.blood.splat(12, 1.5);
       this.emit('death');
+    } else if (player.health <= 30 && !this.lowHealthWarned) {
+      this.lowHealthWarned = true;
+      this.emit('lowHealth');
     }
   }
 
@@ -3552,7 +3558,9 @@ export class Game {
       }
       // a failing heart: faster the lower the health
       const { health } = this.player;
-      if (health > 0 && health < 30) {
+      if (health > 30)
+        this.lowHealthWarned = false;
+      else if (health > 0 && health < 30) {
         this.heartbeat -= dt;
         if (this.heartbeat <= 0) {
           this.emit('heartbeat');

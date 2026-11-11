@@ -8552,17 +8552,30 @@ const tests = {
     }
     const wf15 = bRest.wreckFire.scale.y;
     const wfPhase15 = bRest.wreckFire.phase;
-    const lfRot15 = bRest.lidFire.rot.y;
-    const sfRot15 = bRest.staveFires[0].rot.y;
+    const lfScale15 = bRest.lidFire.scale.y;
+    const sfScale15 = bRest.staveFires[0].scale.y;
+    assert.equal(bRest.lidFire.active, true, 'lid fire is active shortly after shrapnel settles');
+    assert.ok(bRest.staveFires.every((sf) => sf.active), 'stave fires are active shortly after shrapnel settles');
     assert.ok(Math.hypot(bRest.lidFire.pos.x - bRest.lid.pos.x, bRest.lidFire.pos.z - bRest.lid.pos.z) < 1e-4, 'lid fire tracks lid resting position');
     for (let i = 0; i < BARREL_STAVE_COUNT; i++)
       assert.ok(Math.hypot(bRest.staveFires[i].pos.x - bRest.staves[i].pos.x, bRest.staveFires[i].pos.z - bRest.staves[i].pos.z) < 1e-4, `stave fire ${i} tracks stave resting position`);
 
-    const bLater = barrelExplosionPose(4.2, 7, barrelTarget);
+    const bFading = barrelExplosionPose(12.5, 7, barrelTarget);
+    assert.equal(bFading.lidFire.active, true, 'lid fire is still reducing at 12.5s');
+    assert.ok(bFading.lidFire.scale.y > 0 && bFading.lidFire.scale.y < lfScale15 * 0.75, 'lid fire shrinks as it burns down');
+    assert.ok(bFading.staveFires[0].scale.y > 0 && bFading.staveFires[0].scale.y < sfScale15 * 0.75, 'stave fire shrinks as it burns down');
+
+    // Individual shrapnel flames have randomized lifetimes above the 11s minimum so they do not extinguish all at once
+    const bStaggered = barrelExplosionPose(15.0, 7, barrelTarget);
+    const activeAt15 = [bStaggered.lidFire, ...bStaggered.staveFires].filter((f) => f.active).length;
+    assert.ok(activeAt15 > 0 && activeAt15 < 1 + BARREL_STAVE_COUNT, 'shrapnel flames extinguish at different random times');
+
+    const bLater = barrelExplosionPose(21.0, 7, barrelTarget);
     assert.notEqual(bLater.wreckFire.scale.y, wf15, 'stump fire scale continues flickering long after shrapnel settles');
     assert.notEqual(bLater.wreckFire.phase, wfPhase15, 'stump fire shader phase continues advancing');
-    assert.notEqual(bLater.lidFire.rot.y, lfRot15, 'lid fire continues dancing after lid settles');
-    assert.notEqual(bLater.staveFires[0].rot.y, sfRot15, 'stave fire continues dancing after staves settle');
+    assert.equal(bLater.lidFire.active, false, 'lid fire disappears after dying down');
+    assert.equal(bLater.lidFire.scale.y, 0, 'lid fire scale reduces to zero when extinguished');
+    assert.ok(bLater.staveFires.every((sf) => !sf.active && sf.scale.y === 0), 'all stave fires reduce and disappear after dying down');
 
     // 5. Detonating a barrel in Game tracks barrel.deadTime while keeping its position for persistent 3D wreck rendering
     const game = fresh();
@@ -17137,10 +17150,19 @@ const tests = {
       world.updateBarrelView(horiz, hView);
       assert.equal(hView.wreckSettled, true, 'metal wreck and shrapnel settle after 1.25s');
       const fireScaleAt2 = hView.wreckFire.scale.y;
-      horiz.deadTime = 2.35;
-      world.frameTime = 5.35;
+      const lidFireScaleAt2 = hView.lidFire.scale.y;
+      horiz.deadTime = 12.5;
+      world.frameTime = 15.5;
       world.updateBarrelView(horiz, hView);
       assert.notEqual(hView.wreckFire.scale.y, fireScaleAt2, 'wreckFire continues animating after wreckSettled is true');
+      assert.ok(hView.lidFire.scale.y < lidFireScaleAt2, 'smaller shrapnel flames reduce over time');
+
+      horiz.deadTime = 21.0;
+      world.frameTime = 24.0;
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.wreckFire.active, true, 'big stump fire keeps burning');
+      assert.equal(hView.lidFire.active, false, 'lid shrapnel flame disappears after dying down');
+      assert.ok(hView.staveFires.every((sf) => !sf.active), 'stave shrapnel flames disappear after dying down');
     } finally {
       Mesh.prototype.addProgram = addProgram;
     }
@@ -17957,6 +17979,47 @@ const tests = {
       assert.equal(hasCeilingTile(doorCeilingMeshes), true, 'ceiling inside doorway corridor is batched into doorCeilingMeshes');
       assert.equal(hasCeilingTile(roomCeilingMeshes), false, 'ceiling inside doorway corridor is excluded from usual roomCeilingMeshes');
     });
+  },
+
+  'green armor can be placed in a chest, refused when armor is full, and picked up when needed'() {
+    const game = new Game();
+    game.load({
+      name: 'Green Armor Chest',
+      rows: ['#########', '#P..=...#', '#.......#', '#########'],
+      chests: [{ x: 4, y: 1, contents: ['greenArmor', 'ammo'] }],
+    });
+    game.state = 'play';
+    const cache = game.caches[0];
+    assert.deepEqual(cache.contents, ['greenArmor', 'ammo']);
+    assert.equal(cache.items.length, 2);
+    assert.equal(cache.items[0].type, 'greenArmor');
+
+    // When player already has 100 armor and max shells, both are refused and 'Armor full' is shown for a single-item armor refusal
+    game.player.armor = 100;
+    game.player.armorType = 'green';
+    game.player.shells = AMMO_TYPES.shells.max;
+    game.openCache(cache);
+    assert.deepEqual(cache.contents, ['greenArmor', 'ammo'], 'refused greenArmor and ammo stay in chest');
+
+    // Take ammo while armor is still full -> greenArmor remains in chest
+    game.player.shells = 0;
+    game.openCache(cache);
+    assert.equal(game.player.shells, AMMO_TYPES.shells.bonus);
+    assert.deepEqual(cache.contents, ['greenArmor'], 'greenArmor stays in chest while armor >= 100');
+
+    // Trying to take when only greenArmor remains and armor is full says 'Armor full' without throwing
+    game.openCache(cache);
+    assert.equal(game.message.text, 'Armor full');
+    assert.deepEqual(cache.contents, ['greenArmor']);
+
+    // Once armor drops below 100, picking from the chest grants greenArmor (100, 'green')
+    game.player.armor = 40;
+    game.openCache(cache);
+    assert.equal(game.player.armor, 100);
+    assert.equal(game.player.armorType, 'green');
+    assert.equal(game.message.text, 'Picked up the Security Armor.');
+    assert.equal(cache.contents.length, 0);
+    assert.equal(cache.items[0].state, 'flying');
   },
 };
 

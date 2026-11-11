@@ -3332,24 +3332,35 @@ export class World {
     view.wreckFire.setCustomUniform('heat', wf.heat);
     view.wreckFire.setCustomUniform('phase', wf.phase);
 
-    view.lidFire.setPosition(view.pose.lidFire.pos);
-    view.lidFire.setRotation(view.pose.lidFire.rot);
-    view.lidFire.setScale(view.pose.lidFire.scale);
-    view.lidFire.setCustomUniform('time', time);
-    view.lidFire.setCustomUniform('dissolve', wf.dissolve + 0.03);
-    view.lidFire.setCustomUniform('heat', wf.heat * 0.96);
-    view.lidFire.setCustomUniform('phase', (wf.phase + 0.37) % 1);
+    const lf = view.pose.lidFire;
+    if (lf.active) {
+      view.lidFire.setActive();
+      view.lidFire.setPosition(lf.pos);
+      view.lidFire.setRotation(lf.rot);
+      view.lidFire.setScale(lf.scale);
+      view.lidFire.setCustomUniform('time', time);
+      view.lidFire.setCustomUniform('dissolve', lf.dissolve);
+      view.lidFire.setCustomUniform('heat', lf.heat);
+      view.lidFire.setCustomUniform('phase', (wf.phase + 0.37) % 1);
+    } else {
+      view.lidFire.setInactive();
+    }
 
     for (let i = 0; i < view.staveFires.length; i++) {
       const sfMesh = view.staveFires[i];
       const sfPose = view.pose.staveFires[i];
-      sfMesh.setPosition(sfPose.pos);
-      sfMesh.setRotation(sfPose.rot);
-      sfMesh.setScale(sfPose.scale);
-      sfMesh.setCustomUniform('time', time);
-      sfMesh.setCustomUniform('dissolve', wf.dissolve + 0.04);
-      sfMesh.setCustomUniform('heat', wf.heat * 0.94);
-      sfMesh.setCustomUniform('phase', (wf.phase + (i + 1) * 0.19) % 1);
+      if (sfPose.active) {
+        sfMesh.setActive();
+        sfMesh.setPosition(sfPose.pos);
+        sfMesh.setRotation(sfPose.rot);
+        sfMesh.setScale(sfPose.scale);
+        sfMesh.setCustomUniform('time', time);
+        sfMesh.setCustomUniform('dissolve', sfPose.dissolve);
+        sfMesh.setCustomUniform('heat', sfPose.heat);
+        sfMesh.setCustomUniform('phase', (wf.phase + (i + 1) * 0.19) % 1);
+      } else {
+        sfMesh.setInactive();
+      }
     }
   }
 
