@@ -1315,7 +1315,6 @@ function resetLimbTransforms(view) {
     view.goreChunks[i].setInactive();
   view.goreViscera.setInactive();
   view.gorePool.setInactive();
-  view.deadSettledKey = null;
   setMonsterGoreSkin(view, false);
 }
 
