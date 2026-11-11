@@ -2,6 +2,7 @@ import { Grid, RightTriangle, Vec2 } from '@1pizzateam/spock';
 
 export const TILE = 64;
 export const ELEVATOR_DOOR_THICKNESS = 6;
+export const BASE_FLOOR_LEVEL = -4;
 export const EYE = 32;
 export const CROUCH_EYE = 18;
 /** The ceiling is one wall texture high. Blood thrown up this far lands on it. */
@@ -82,6 +83,7 @@ const DY = [0, 0, -1, 1];
 const WALL_DX = [1, 0, -1, 0];
 const WALL_DY = [0, 1, 0, -1];
 export const CACHE_WALL_OFFSET = 14;
+export const SWITCH_WALL_OFFSET = 2;
 
 /**
  * A tile map parsed from ASCII rows.
@@ -90,11 +92,17 @@ export const CACHE_WALL_OFFSET = 14;
  * line where a wall really starts or ends.
  */
 export class Level {
-  constructor({ name, rows, angle = null, par = 120, planet = null, wind = null, chests = [] }) {
+  constructor({ name, rows, angle = null, par = 120, planet = null, wind = null, chests = [], switches = [], floorLevel = null }) {
     this.name = name;
     this.rows = rows;
     this.par = par;
     this.planet = planet;
+    const match = typeof name === 'string' ? name.match(/E\d+M(\d+)/i) : null;
+    this.floorLevel = Number.isFinite(floorLevel)
+      ? floorLevel
+      : match
+        ? BASE_FLOOR_LEVEL + (Number.parseInt(match[1], 10) - 1)
+        : BASE_FLOOR_LEVEL;
     this.wind = wind ? wind.clone() : new Vec2(planet === 'mars' ? 320 : 0, planet === 'mars' ? 95 : 0);
     this.width = rows[0].length;
     this.rowCount = rows.length;
@@ -120,6 +128,8 @@ export class Level {
     this.chestDefs = Array.isArray(chests) ? chests : [];
     this.chestTiles = [];
     this.chests = [];
+    this.switchDefs = switches ?? [];
+    this.switches = [];
     this.barrels = [];
     this.crushers = [];
     this.teleporters = [];
@@ -143,6 +153,7 @@ export class Level {
     this.secrets = this.findSecrets();
     this.findRooms();
     this.buildChests();
+    this.buildSwitches();
   }
 
   /**
@@ -209,10 +220,12 @@ export class Level {
         timer: 0,
         secret: false,
         lock: null,
+        switchLocked: false,
         revealed: false,
         alongY: DY[doorDir] !== 0,
         framed: true,
         elevator: true,
+        floorLevel: this.floorLevel,
         thin: true,
         thickness: ELEVATOR_DOOR_THICKNESS,
         baseHeight: CEILING,
@@ -227,6 +240,7 @@ export class Level {
         y,
         doorIdx: door.idx,
         door,
+        floorLevel: this.floorLevel,
         dirX: DX[doorDir],
         dirY: DY[doorDir],
         angle: Math.atan2(DY[doorDir], DX[doorDir]),
@@ -239,16 +253,20 @@ export class Level {
     if (!this.isWalkable(exitX, exitY))
       return null;
     door.elevator = true;
+    door.floorLevel = this.floorLevel;
     door.thin = true;
     door.thickness = ELEVATOR_DOOR_THICKNESS;
     door.alongY = DY[doorDir] !== 0;
     door.framed = true;
+    door.dirX = DX[doorDir];
+    door.dirY = DY[doorDir];
     return {
       tileIdx: startIdx,
       x,
       y,
       doorIdx: door.idx,
       door,
+      floorLevel: this.floorLevel,
       dirX: DX[doorDir],
       dirY: DY[doorDir],
       angle: Math.atan2(DY[doorDir], DX[doorDir]),
@@ -508,6 +526,53 @@ export class Level {
     }
   }
 
+  buildSwitches() {
+    for (let i = 0; i < this.switchDefs.length; i++) {
+      const entry = this.switchDefs[i];
+      if (!entry || !this.inBounds(entry.x, entry.y))
+        continue;
+      const idx = entry.y * this.width + entry.x;
+      if (this.kind[idx] !== FLOOR)
+        continue;
+      const wallSide = entry.wallSide ?? this.chestWallSide(entry.x, entry.y);
+      if (wallSide < 0 || wallSide >= 4)
+        continue;
+      const dx = WALL_DX[wallSide];
+      const dy = WALL_DY[wallSide];
+      const normal = new Vec2(-dx, -dy);
+      const pos = new Vec2(
+        (entry.x + 0.5) * TILE + dx * (TILE * 0.5 - SWITCH_WALL_OFFSET),
+        (entry.y + 0.5) * TILE + dy * (TILE * 0.5 - SWITCH_WALL_OFFSET),
+      );
+      const angle = Math.atan2(normal.y, normal.x);
+      const doors = [];
+      const doorDefs = entry.doors ?? [];
+      for (let j = 0; j < doorDefs.length; j++) {
+        const d = doorDefs[j];
+        if (!d || !this.inBounds(d.x, d.y))
+          continue;
+        const door = this.doors.get(d.y * this.width + d.x);
+        if (!door)
+          continue;
+        door.switchLocked = true;
+        doors.push(door);
+      }
+      this.switches.push({
+        idx,
+        x: entry.x,
+        y: entry.y,
+        room: this.roomByTile[idx],
+        wallSide,
+        pos,
+        normal,
+        angle,
+        doors,
+        activated: false,
+        pull: 0,
+      });
+    }
+  }
+
   /** Secret index at a 2D world point (`Vec2`), or -1. */
   secretAt(pos) {
     const idx = this.grid.getCell(pos);
@@ -699,7 +764,7 @@ export class Level {
           if (typeof solid.diag === 'number')
             this.diag[idx] = solid.diag;
           if (solid.kind === DOOR)
-            this.doors.set(idx, { idx, x, y, center: this.center(x, y), open: 0, target: 0, timer: 0, secret: !!solid.secret, lock: solid.lock ?? null, revealed: false, alongY: false, body: null });
+            this.doors.set(idx, { idx, x, y, center: this.center(x, y), open: 0, target: 0, timer: 0, secret: !!solid.secret, lock: solid.lock ?? null, switchLocked: false, revealed: false, alongY: false, body: null });
           if (solid.kind === EXIT)
             this.exits.push(this.center(x, y));
         } else if (char === 'P')

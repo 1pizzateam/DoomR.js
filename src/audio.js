@@ -415,20 +415,53 @@ export const RECIPES = {
   },
 
   doorOpen(ctx, out, t) {
-    tone(ctx, out, t, { from: 180, to: 90, duration: 0.1, gain: 0.3 });
-    noise(ctx, out, t, { duration: 0.75, gain: 0.3, filter: 'bandpass', from: 180, q: 2, attack: 0.08 });
-    tone(ctx, out, t, { type: 'sawtooth', from: 55, to: 48, duration: 0.75, gain: 0.1, filter: { freq: 200 } });
-    return { duration: 0.85, wet: 0.3 };
+    // Magnetic bolt unlatch click + heavy floor-seal break thud
+    noise(ctx, out, t, { duration: 0.045, gain: 0.34, filter: 'bandpass', from: 2800, to: 1350, q: 3.2 });
+    tone(ctx, out, t, { type: 'square', from: 680, to: 220, duration: 0.042, gain: 0.2 });
+    tone(ctx, out, t, { type: 'triangle', from: 165, to: 52, duration: 0.11, gain: 0.38 });
+    // Pneumatic seal vent hiss
+    noise(ctx, out, t + 0.04, { duration: 0.22, gain: 0.28, filter: 'bandpass', from: 3200, to: 1100, q: 2, attack: 0.015 });
+    // Rising hydraulic servo drive + counterweight rumble + steel guide-rail scrape
+    tone(ctx, out, t + 0.06, {
+      type: 'sawtooth',
+      from: 68,
+      to: 148,
+      duration: 0.62,
+      gain: 0.22,
+      attack: 0.04,
+      drive: 3,
+      filter: { from: 260, to: 680, q: 1.8 },
+      vibrato: { rate: 28, depth: 3.5 },
+    });
+    tone(ctx, out, t + 0.05, { type: 'triangle', from: 44, to: 64, duration: 0.62, gain: 0.26, attack: 0.04 });
+    noise(ctx, out, t + 0.06, { duration: 0.6, gain: 0.26, filter: 'bandpass', from: 240, to: 580, q: 2.4, attack: 0.05 });
+    // Upper lintel recess stop thud + latch lock
+    tone(ctx, out, t + 0.64, { type: 'triangle', from: 140, to: 42, duration: 0.15, gain: 0.42 });
+    noise(ctx, out, t + 0.64, { duration: 0.07, gain: 0.26, filter: 'bandpass', from: 1850, to: 620, q: 2.6 });
+    return { duration: 0.85, wet: 0.32 };
   },
   doorClose(ctx, out, t) {
-    noise(ctx, out, t, { duration: 0.55, gain: 0.3, filter: 'bandpass', from: 180, q: 2, attack: 0.08 });
-    tone(ctx, out, t, { type: 'sawtooth', from: 48, to: 55, duration: 0.55, gain: 0.1, filter: { freq: 200 } });
-    tone(ctx, out, t + 0.5, { from: 120, to: 45, duration: 0.18, gain: 0.5 });
-    noise(ctx, out, t + 0.5, { duration: 0.1, gain: 0.25, from: 600, to: 200 });
+    // Release click + descending hydraulic servo whine + guide-rail scrape + heavy floor-slam thud
+    noise(ctx, out, t, { duration: 0.04, gain: 0.24, filter: 'bandpass', from: 2200, to: 1100, q: 3 });
+    tone(ctx, out, t + 0.02, {
+      type: 'sawtooth',
+      from: 142,
+      to: 62,
+      duration: 0.5,
+      gain: 0.2,
+      attack: 0.03,
+      drive: 3,
+      filter: { from: 620, to: 220, q: 1.8 },
+      vibrato: { rate: 26, depth: 3 },
+    });
+    tone(ctx, out, t + 0.02, { type: 'triangle', from: 62, to: 42, duration: 0.5, gain: 0.24, attack: 0.03 });
+    noise(ctx, out, t + 0.02, { duration: 0.5, gain: 0.25, filter: 'bandpass', from: 540, to: 210, q: 2.2, attack: 0.04 });
+    tone(ctx, out, t + 0.5, { type: 'triangle', from: 135, to: 38, duration: 0.18, gain: 0.5 });
+    noise(ctx, out, t + 0.5, { duration: 0.1, gain: 0.28, from: 750, to: 180 });
     return { duration: 0.75, wet: 0.3 };
   },
   whoAreYou(ctx, out, t, { gender = 'female' } = {}) {
-    const voice = speak(ctx, out, t + 0.18, 'who are you ?', { gender, gain: 0.38, noise: noiseBuffer(ctx) });
+    const voice = speak(ctx, out, t + 0.18, 'who are you ?', { gender, gain: 0.18, noise: noiseBuffer(ctx) });
     return { duration: Utils.round(0.18 + voice.duration, 2), wet: 0.42 };
   },
   elevator(ctx, out, t) {
@@ -440,6 +473,23 @@ export const RECIPES = {
     noise(ctx, out, t + 0.12, { duration: 0.08, gain: 0.2, filter: 'bandpass', from: 1350, to: 620, q: 3 });
     return { duration: 0.75, wet: 0.38 };
   },
+  elevatorAlert(ctx, out, t, { gender = 'female' } = {}) {
+    // Cascading Nostromo / Hadley's Hope style telemetry alerts: "system failure in sector 1, 2, 3"
+    const noise = noiseBuffer(ctx);
+    let cursor = t;
+    for (let s = 1; s <= 3; s++) {
+      tone(ctx, out, cursor, { type: 'triangle', from: 880, to: 880, duration: 0.06, gain: 0.08 });
+      tone(ctx, out, cursor + 0.07, { type: 'triangle', from: 660, to: 660, duration: 0.08, gain: 0.08 });
+      const voice = speak(ctx, out, cursor + 0.16, `system failure in sector ${s}`, {
+        gender,
+        speed: 1.42,
+        gain: 0.18,
+        noise,
+      });
+      cursor += 0.16 + voice.duration + (s < 3 ? 0.16 : 0);
+    }
+    return { duration: Utils.round(cursor - t, 2), wet: 0.42 };
+  },
   elevatorStop(ctx, out, t, { gender = 'female' } = {}) {
     // Heavy hydraulic brake lock + landing thud + pneumatic pressure hiss + arrival chime + robotic "welcome"
     tone(ctx, out, t, { type: 'triangle', from: 135, to: 32, duration: 0.28, gain: 0.48 });
@@ -448,7 +498,7 @@ export const RECIPES = {
     noise(ctx, out, t + 0.06, { duration: 0.24, gain: 0.22, filter: 'bandpass', from: 2400, to: 900, q: 2.4, attack: 0.02 });
     tone(ctx, out, t + 0.12, { type: 'triangle', from: 784, to: 784, duration: 0.26, gain: 0.16 });
     tone(ctx, out, t + 0.2, { type: 'sine', from: 1175, to: 1175, duration: 0.3, gain: 0.14 });
-    const voice = speak(ctx, out, t + 0.42, 'welcome', { gender, gain: 0.38, noise: noiseBuffer(ctx) });
+    const voice = speak(ctx, out, t + 0.42, 'welcome', { gender, gain: 0.18, noise: noiseBuffer(ctx) });
     return { duration: Utils.round(0.42 + voice.duration, 2), wet: 0.42 };
   },
 
@@ -804,6 +854,7 @@ const MIN_INTERVAL = {
   doorClose: 0.2,
   whoAreYou: 0.2,
   elevator: 0.25,
+  elevatorAlert: 0.2,
   elevatorStop: 0.2,
   tallyTick: 0.04,
   tallyBoom: 0.08,
@@ -867,7 +918,7 @@ addStatic('knife', 'knife', true, true);
 addStatic('chainsawIdle', 'chainsawIdle', true, true);
 addStatic('chainsawUp', 'chainsawUp', true, true);
 addStatic('rocketFire', 'rocketFire', true, false, WEAPONS.rocket.feel.duck);
-for (const name of ['weaponPickup', 'armor', 'powerup', 'automap', 'dry', 'hurt', 'death', 'heartbeat', 'clear', 'secret', 'tallyBoom', 'acid', 'keycard', 'elevator', 'elevatorStop', 'whoAreYou'])
+for (const name of ['weaponPickup', 'armor', 'powerup', 'automap', 'dry', 'hurt', 'death', 'heartbeat', 'clear', 'secret', 'tallyBoom', 'acid', 'keycard', 'elevator', 'elevatorAlert', 'elevatorStop', 'whoAreYou'])
   addStatic(name, name, true);
 addStatic('wind', 'wind', true, true);
 addStatic('tallyTick', 'tallyTick', true, true);

@@ -31,6 +31,17 @@ export const CEILING_CELLS = {
   hatch: 7,
 };
 export const CEILING_CELL_COUNT = 8;
+export const DOOR_CEILING_CELLS = {
+  lintel: 0,
+  hoist: 1,
+  seal: 2,
+  strobe: 3,
+  red: 4,
+  yellow: 5,
+  blue: 6,
+  vestibule: 7,
+};
+export const DOOR_CEILING_CELL_COUNT = 8;
 const CEILING_LIGHT_COLOR = new Vec3(0.85, 0.96, 1.12);
 export const CEILING_AMBIENT_COLOR = new Vec3(0.45, 0.5, 0.58);
 export const CEILING_LIGHT_ATTENUATION = new Vec3(1, 0.0032, 0.000018);
@@ -60,6 +71,10 @@ const GIRDER = [24, 32, 48];
 const FLANGE = [54, 70, 98];
 const WARM = [214, 232, 255];
 const CYAN_LED = [68, 188, 245];
+const SIGNAL_GREEN = [70, 230, 150];
+const LOCK_RED = [220, 48, 56];
+const LOCK_YELLOW = [235, 190, 44];
+const LOCK_BLUE = [56, 136, 245];
 
 /**
  * Heavy load-bearing perimeter I-beam girder framing a deep sunken 50x50 overhead coffer cavity.
@@ -594,8 +609,293 @@ export function ceilingCellUv(cell) {
   return [cell / 8 + inset, 0, (cell + 1) / 8 - inset, 1];
 }
 
-/** Which cell hangs over a tile: light fixtures spaced on a wide 5x4 grid, and structural bays/ducts/trusses across the rest. */
-export function ceilingCellFor(x, y) {
+// ---- Doorway corridor (airlock soffit between twin blast-door slabs) ceiling atlas ---------------------------------
+
+/**
+ * Shared overhead doorway soffit frame: outer architrave header lips at x = 0..6 and x = 58..64 (`DOOR_INSET = 6`),
+ * dual recessed upper blast-door seal/track channels at x = 6..14 and x = 50..58 (`DOOR_THICKNESS = 8`) where the two
+ * slabs of `doubleDoorBox` meet the ceiling, side wall-header box girders at y = 0..6 and y = 58..64, and a sunken
+ * central vestibule ceiling bay at x = 14..50, y = 6..58.
+ */
+function doorCeilingBase(t, rnd) {
+  const s = t.scale;
+  cofferBase(t, rnd, COFFER);
+
+  // Outer doorway header architrave lips (x = 0..6 and x = 58..64)
+  for (const [jx0, jx1] of [[0, 6], [58, 64]]) {
+    for (let py = 2 * s; py < 62 * s; py++)
+      for (let px = jx0 * s; px < jx1 * s; px++) {
+        const edgeDist = Math.min(px - jx0 * s, jx1 * s - 1 - px);
+        t.setRaw(px, py, edgeDist < 2 ? FLANGE : mix(GIRDER, FLANGE, 0.28), 0.9);
+      }
+    for (const ry of [10, 24, 39, 53])
+      rivet(t, jx0 + 2, ry);
+  }
+
+  // Dual recessed overhead blast-door seal & guide channels (x = 6..14 and x = 50..58) aligned with `doubleDoorBox`
+  for (const tx0 of [6, 50]) {
+    const px0 = tx0 * s;
+    const pw = 8 * s;
+    const cx = px0 + pw * 0.5;
+    for (let py = 2 * s; py < 62 * s; py++)
+      for (let dx = 0; dx < pw; dx++) {
+        const px = px0 + dx;
+        const fromCenter = Math.abs(px + 0.5 - cx);
+        const railEdge = dx < s || dx >= pw - s;
+        const centerSlot = fromCenter < 1.2 * s;
+        const roller = ((py >> 2) % 4) === 0 && !railEdge && !centerSlot;
+        let col = VOID;
+        if (railEdge)
+          col = (dx === 0 || dx === pw - 1) ? VOID : FLANGE;
+        else if (centerSlot)
+          col = fromCenter < 0.5 * s ? VOID : mix(GIRDER, FLANGE, 0.52);
+        else if (roller)
+          col = mix(COFFER, GIRDER, 0.65);
+        else
+          col = mix(VOID, COFFER, 0.45);
+        t.setRaw(px, py, col, 0.98);
+      }
+  }
+
+  // Side wall-header box girders (y = 0..6 and y = 58..64) framing the central vestibule soffit
+  for (const [yy0, yy1] of [[0, 6], [58, 64]])
+    for (let py = yy0 * s; py < yy1 * s; py++)
+      for (let px = 14 * s; px < 50 * s; px++) {
+        const border = py === yy0 * s || py === yy1 * s - 1;
+        t.setRaw(px, py, border ? VOID : mix(GIRDER, FLANGE, 0.32), 0.94);
+      }
+}
+
+/** Cell 0 (`lintel`): Ribbed airlock header soffit with axial spine beam and twin green clearance LEDs. */
+function drawDoorCeilingLintel(t, rnd) {
+  doorCeilingBase(t, rnd);
+  const s = t.scale;
+  for (const [y0, y1] of [[8, 28], [36, 56]]) {
+    t.rect(16, y0, 32, y1 - y0, VOID, 0.9);
+    for (let py = (y0 + 1) * s; py < (y1 - 1) * s; py++)
+      for (let px = 17 * s; px < 47 * s; px++) {
+        const rib = ((px - 17 * s) % (5 * s)) < 2 * s;
+        t.setRaw(px, py, rib ? mix(GIRDER, FLANGE, 0.42) : COFFER, 0.94);
+      }
+  }
+  // Central axial spine girder (y = 28..36, x = 14..50) with twin green door-clearance status lamps
+  for (let py = 28 * s; py < 36 * s; py++)
+    for (let px = 14 * s; px < 50 * s; px++) {
+      const edge = py < 28 * s + 2 || py >= 36 * s - 2;
+      const hi = py >= 28 * s + 2 && py < 29 * s + 2;
+      t.setRaw(px, py, edge ? VOID : hi ? FLANGE : GIRDER, 0.96);
+    }
+  for (const lx of [19, 43])
+    for (let py = 30 * s; py < 34 * s; py++)
+      for (let px = lx * s; px < (lx + 2) * s; px++)
+        t.setRaw(px, py, mix(SIGNAL_GREEN, WARM, 0.3), 0.95);
+}
+
+/** Cell 1 (`hoist`): Overhead dual hydraulic/torsion door-sync drive shafts & central differential gearbox. */
+function drawDoorCeilingHoist(t, rnd) {
+  doorCeilingBase(t, rnd);
+  const s = t.scale;
+  t.rect(16, 8, 32, 48, VOID, 0.92);
+  // Twin cylindrical overhead drive shafts spanning between the two door header tracks (y = 18 and y = 46)
+  for (const yc of [18, 46]) {
+    const rad = 4 * s;
+    for (let dy = -rad; dy <= rad; dy++) {
+      const norm = dy / rad;
+      const cyl = Math.sqrt(Math.max(0, 1 - norm * norm));
+      const spec = Math.pow(Math.max(0, -norm * 0.4 + cyl * 0.9), 2.8);
+      const col = mix(VOID, FLANGE, Utils.clamp(0.22 + cyl * 0.62 + spec * 0.25, 0, 1));
+      const py = yc * s + dy;
+      for (let px = 14 * s; px < 50 * s; px++) {
+        const collar = Math.abs(px - 20 * s) < 1.5 * s || Math.abs(px - 44 * s) < 1.5 * s;
+        t.setRaw(px, py, collar ? mix(col, WARM, 0.25) : col, 0.98);
+      }
+    }
+  }
+  // Central synchronizing gearbox housing (x = 25..39, y = 12..52) with cyan pressure beacon
+  for (let py = 12 * s; py < 52 * s; py++)
+    for (let px = 25 * s; px < 39 * s; px++) {
+      const border = px < 25 * s + 2 || px >= 39 * s - 2 || py < 12 * s + 2 || py >= 52 * s - 2;
+      const hi = px < 26 * s || py < 13 * s;
+      t.setRaw(px, py, border ? VOID : hi ? FLANGE : mix(GIRDER, FLANGE, 0.25), 0.96);
+    }
+  for (let py = 29 * s; py < 35 * s; py++)
+    for (let px = 29 * s; px < 35 * s; px++)
+      t.setRaw(px, py, mix(CYAN_LED, WARM, 0.35), 0.95);
+}
+
+/** Cell 2 (`seal`): Overhead airlock decompression plenum with ribbed gasket cushions & air-curtain purge vents. */
+function drawDoorCeilingSeal(t, rnd) {
+  doorCeilingBase(t, rnd);
+  const s = t.scale;
+  // Ribbed upper compression seal cushions bordering the two door tracks (x = 15..18 and x = 46..49)
+  for (const gx0 of [15, 46])
+    for (let py = 7 * s; py < 57 * s; py++) {
+      const notch = ((py >> 2) % 3) === 0;
+      const col = notch ? VOID : mix(GIRDER, FLANGE, 0.48);
+      for (let px = gx0 * s; px < (gx0 + 3) * s; px++)
+        t.setRaw(px, py, col, 0.95);
+    }
+  // Central air-curtain purge grille (x = 20..44, y = 10..54)
+  t.rect(20, 10, 24, 44, VOID, 0.94);
+  for (let py = 12 * s; py < 52 * s; py++) {
+    const slat = ((py - 12 * s) % (3 * s)) < 1.8 * s;
+    for (let px = 22 * s; px < 42 * s; px++)
+      if (slat && ((px - 22 * s) % (6 * s)) >= 2)
+        t.setRaw(px, py, mix(COFFER, FLANGE, 0.46), 0.92);
+  }
+  for (const [cx, cy] of [[22, 12], [38, 12], [22, 48], [38, 48]])
+    rivet(t, cx, cy);
+}
+
+/** Cell 3 (`strobe`): Doorway threshold LED light-strip soffit & central transit radar dome. */
+function drawDoorCeilingStrobe(t, rnd) {
+  doorCeilingBase(t, rnd);
+  const s = t.scale;
+  // Twin recessed linear threshold light bars flanking the two door header tracks (x = 16.5..20.5 and x = 43.5..47.5)
+  for (const lx0 of [16.5, 43.5]) {
+    const px0 = Math.round(lx0 * s);
+    const pw = 4 * s;
+    for (let py = 9 * s; py < 55 * s; py++) {
+      const baffle = ((py - 9 * s) % (7 * s)) < s;
+      for (let dx = 0; dx < pw; dx++) {
+        const core = 1 - Math.abs(dx - pw * 0.5) / (pw * 0.5);
+        const col = baffle ? GIRDER : mix(CYAN_LED, WARM, 0.45 + 0.45 * core);
+        t.setRaw(px0 + dx, py, col, 0.96);
+      }
+    }
+  }
+  // Central octagonal overhead transit sensor housing (x = 23..41, y = 21..43)
+  const cx = 32 * s;
+  const cy = 32 * s;
+  const rad = 7.5 * s;
+  for (let py = cy - rad; py <= cy + rad; py++)
+    for (let px = cx - rad; px <= cx + rad; px++) {
+      const r = Math.hypot(px - cx, py - cy) / rad;
+      if (r > 1)
+        continue;
+      const col = r > 0.72
+        ? mix(GIRDER, FLANGE, 0.55)
+        : r > 0.42
+          ? COFFER
+          : mix(SIGNAL_GREEN, WARM, (1 - r / 0.42) * 0.55);
+      t.setRaw(px, py, col, 0.96);
+    }
+}
+
+/** Cells 4..6 (`red`, `yellow`, `blue`): Keycard security door-corridor ceiling with color-coded header light rails. */
+function drawDoorCeilingLock(t, rnd, accent) {
+  doorCeilingBase(t, rnd);
+  const s = t.scale;
+  // Security keycard light rails running alongside both overhead door header tracks (x = 15..18 and x = 46..49)
+  for (const sx0 of [15, 46])
+    for (let py = 8 * s; py < 56 * s; py++) {
+      const seg = ((py - 8 * s) % (6 * s)) < 4.5 * s;
+      const col = seg ? mix(FLANGE, accent, 0.76) : VOID;
+      for (let px = sx0 * s; px < (sx0 + 3) * s; px++)
+        t.setRaw(px, py, col, 0.95);
+    }
+  // Central overhead security lockdown beacon housing (x = 21..43, y = 14..50)
+  t.rect(21, 14, 22, 36, VOID, 0.94);
+  for (let py = 16 * s; py < 48 * s; py++)
+    for (let px = 23 * s; px < 41 * s; px++) {
+      const border = px < 23 * s + 2 || px >= 41 * s - 2 || py < 16 * s + 2 || py >= 48 * s - 2;
+      t.setRaw(px, py, border ? FLANGE : mix(COFFER, GIRDER, 0.55), 0.94);
+    }
+  // Glowing keycard-color overhead status bar (x = 26..38, y = 24..40)
+  for (let py = 24 * s; py < 40 * s; py++)
+    for (let px = 26 * s; px < 38 * s; px++) {
+      const dx = Math.abs(px - 32 * s) / (6 * s);
+      const glow = Math.max(0, 1 - dx * 0.6);
+      t.setRaw(px, py, mix(GIRDER, accent, 0.6 + 0.35 * glow), 0.96);
+    }
+}
+
+/** Cell 7 (`vestibule`): Heavy X-braced airlock bridge soffit for 1-tile vestibules pinched between two doors. */
+function drawDoorCeilingVestibule(t, rnd) {
+  doorCeilingBase(t, rnd);
+  const s = t.scale;
+  t.rect(16, 8, 32, 48, VOID, 0.92);
+  for (let py = 9 * s; py < 55 * s; py++)
+    for (let px = 17 * s; px < 47 * s; px++) {
+      const lx = (px + 0.5) / s;
+      const ly = (py + 0.5) / s;
+      const d1 = Math.abs((lx - 17) * 1.45 - (ly - 9));
+      const d2 = Math.abs((lx - 17) * 1.45 - (55 - ly));
+      const d = Math.min(d1, d2);
+      if (d <= 2.6)
+        t.setRaw(px, py, mix(GIRDER, FLANGE, d < 1.1 ? 0.68 : 0.32), 0.96);
+    }
+  for (const [bx, by] of [[19, 12], [43, 12], [19, 50], [43, 50]])
+    for (let py = by * s; py < (by + 2) * s; py++)
+      for (let px = bx * s; px < (bx + 2) * s; px++)
+        t.setRaw(px, py, mix(CYAN_LED, WARM, 0.35), 0.95);
+}
+
+const DOOR_CEILING_DRAW = [
+  drawDoorCeilingLintel,
+  drawDoorCeilingHoist,
+  drawDoorCeilingSeal,
+  drawDoorCeilingStrobe,
+  (t, rnd) => drawDoorCeilingLock(t, rnd, LOCK_RED),
+  (t, rnd) => drawDoorCeilingLock(t, rnd, LOCK_YELLOW),
+  (t, rnd) => drawDoorCeilingLock(t, rnd, LOCK_BLUE),
+  drawDoorCeilingVestibule,
+];
+
+/**
+ * 8-cell 2048x256 procedural door-corridor ceiling atlas used exclusively overhead inside doorway tiles
+ * (in between the two blast-door slabs of `doubleDoorBox` and 1-tile vestibules pinched between doors).
+ */
+export function doorCeilingAtlas() {
+  const width = SIZE * DOOR_CEILING_CELL_COUNT;
+  const data = new Uint8Array(width * SIZE * 4);
+  DOOR_CEILING_DRAW.forEach((draw, cell) => {
+    const t = new Tile(SIZE, SIZE, SIZE / 64);
+    draw(t, mulberry32(41000 + cell * 6733));
+    for (let y = 0; y < SIZE; y++)
+      for (let x = 0; x < SIZE; x++) {
+        const i = (y * SIZE + x) * 3;
+        const o = (y * width + cell * SIZE + x) * 4;
+        for (let k = 0; k < 3; k++)
+          data[o + k] = Utils.clamp(Math.round(t.pixels[i + k]), 0, 255);
+        data[o + 3] = 255;
+      }
+  });
+  return { name: 'doorCeiling', data, width, height: SIZE, cell: SIZE, frames: DOOR_CEILING_CELL_COUNT };
+}
+
+/** Texture coordinates of a door-corridor ceiling cell (`0..DOOR_CEILING_CELL_COUNT-1`). */
+export function doorCeilingCellUv(cell) {
+  const inset = 0.25 / (SIZE * DOOR_CEILING_CELL_COUNT);
+  return [cell / DOOR_CEILING_CELL_COUNT + inset, 0, (cell + 1) / DOOR_CEILING_CELL_COUNT - inset, 1];
+}
+
+/** Picks a dedicated door-corridor ceiling cell (`lintel`, `hoist`, `seal`, `strobe`, `vestibule`, or keycard lock variant). */
+export function doorCeilingCellFor(x, y, lock = null, vestibule = false) {
+  if (lock === 'red')
+    return DOOR_CEILING_CELLS.red;
+  if (lock === 'yellow')
+    return DOOR_CEILING_CELLS.yellow;
+  if (lock === 'blue')
+    return DOOR_CEILING_CELLS.blue;
+  if (vestibule)
+    return DOOR_CEILING_CELLS.vestibule;
+  let h = Math.imul(x * 73856093 ^ y * 19349663 ^ 11, 2654435761);
+  h ^= h >>> 15;
+  const r = ((Math.imul(h, 2246822519) >>> 0) % 1000) / 1000;
+  if (r < 0.3)
+    return DOOR_CEILING_CELLS.lintel;
+  if (r < 0.55)
+    return DOOR_CEILING_CELLS.hoist;
+  if (r < 0.8)
+    return DOOR_CEILING_CELLS.seal;
+  return DOOR_CEILING_CELLS.strobe;
+}
+
+/** Which cell hangs over a tile: dedicated door-corridor soffits inside doorways, light fixtures on a 5x4 grid, and structural bays/ducts/trusses across the rest. */
+export function ceilingCellFor(x, y, door = false, lock = null, vestibule = false) {
+  if (door)
+    return doorCeilingCellFor(x, y, lock, vestibule);
   if (x % 5 === 2 && y % 4 === 3)
     return CEILING_CELLS.light;
   let h = Math.imul(x * 73856093 ^ y * 19349663 ^ 5, 2654435761);
@@ -625,7 +925,7 @@ export const CEILING_FRAGMENT = SOLID_TEXTURED_FRAGMENT;
 
 
 /**
- * Every ceiling tile with a light fixture texture (`CEILING_CELLS.light`) over a roofed floor or doorway tile gets a 3D
+ * Every ceiling tile with a light fixture texture (`CEILING_CELLS.light`) over a roofed room floor tile gets a 3D
  * light fixture entry positioned just beneath the ceiling diffuser.
  */
 export function ceilingLightFixtures(level) {
@@ -635,6 +935,8 @@ export function ceilingLightFixtures(level) {
     for (let tx = 0; tx < level.width; tx++) {
       const idx = ty * level.width + tx;
       if ((level.kind[idx] !== FLOOR && level.kind[idx] !== DOOR && level.kind[idx] !== PILLAR && !level.diag[idx]) || level.arena?.has(idx))
+        continue;
+      if (level.kind[idx] === DOOR && !level.doors?.get(idx)?.secret)
         continue;
       if (ceilingCellFor(tx, ty) !== CEILING_CELLS.light)
         continue;
@@ -811,6 +1113,28 @@ const rankedFixturesPool = [];
 const rankedFixturesScratch = [];
 
 /**
+ * Returns the ambient lighting multiplier `[0.2..1]` for the player's position relative to the starting elevator cab.
+ * The cab interior stays dimly lit while riding and gradually brightens as the door opens and the player steps out.
+ */
+export function elevatorLightFactor(game) {
+  if (!game || game.state === 'title' || game.cam)
+    return 1;
+  const elev = game.level?.elevator;
+  const pos = game.player?.pos;
+  if (!elev || !pos)
+    return 1;
+  const dx = pos.x - (elev.x + 0.5) * TILE;
+  const dy = pos.y - (elev.y + 0.5) * TILE;
+  const along = dx * elev.dirX + dy * elev.dirY;
+  const perp = Math.abs(dx * elev.dirY - dy * elev.dirX);
+  if (perp >= TILE * 0.75 || along >= TILE * 0.85)
+    return 1;
+  const outFactor = Utils.clamp((along - 10) / 44, 0, 1);
+  const doorOpen = elev.door?.open ?? 0;
+  return Utils.lerp(0.2 + 0.22 * doorOpen, 1, outFactor);
+}
+
+/**
  * Positions the scene's active RoostR PointLight pool: transient dynamic lights (muzzle flash, flying rockets and
  * fireballs, explosions, teleporter bursts) claim the first slots, and the remaining slots illuminate the ceiling
  * light fixtures nearest `cameraPos`.
@@ -854,6 +1178,21 @@ export function updateCeilingLights(pointLights, fixtures, cameraPos, time = 0, 
   rankedFixturesScratch.length = rankedCount;
   rankedFixturesScratch.sort(compareFixtureDistSq);
 
+  let elevFixtureScale = 1;
+  const elev = !game || game.state === 'title' || game.cam ? null : game.level?.elevator;
+  const playerPos = game?.player?.pos;
+  if (elev && playerPos) {
+    const dx = playerPos.x - (elev.x + 0.5) * TILE;
+    const dy = playerPos.y - (elev.y + 0.5) * TILE;
+    const along = dx * elev.dirX + dy * elev.dirY;
+    const perp = Math.abs(dx * elev.dirY - dy * elev.dirX);
+    if (perp < TILE * 0.75 && along < TILE * 0.85) {
+      const outFactor = Utils.clamp((along - 10) / 44, 0, 1);
+      const doorOpen = elev.door?.open ?? 0;
+      elevFixtureScale = Utils.lerp(0.06 + 0.28 * doorOpen, 1, outFactor);
+    }
+  }
+
   for (let i = dynCount; i < limit; i++) {
     const light = pointLights[i];
     light.setConstantAttenuation(CEILING_LIGHT_ATTENUATION.x);
@@ -873,7 +1212,7 @@ export function updateCeilingLights(pointLights, fixtures, cameraPos, time = 0, 
       const wave = Math.sin(time * 19 + fixture.phase) * Math.sin(time * 43 + fixture.phase * 1.7);
       hum = wave < -0.68 ? 0.64 : 0.96 + 0.04 * wave;
     }
-    light.diffuse.scaleVector(CEILING_LIGHT_COLOR, windowFade * hum);
+    light.diffuse.scaleVector(CEILING_LIGHT_COLOR, windowFade * hum * elevFixtureScale);
   }
   return pointLights;
 }

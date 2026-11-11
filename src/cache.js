@@ -22,6 +22,12 @@ export const CHEST_TINTS = {
   open: new Vec3(1, 1, 1),
   emptied: new Vec3(0.45, 0.45, 0.5),
 };
+export const SWITCH_LEVER_HINGE = new Vec3(0, 0, 1.2);
+export const SWITCH_LEVER_ANGLE = 0.72;
+export const SWITCH_TINTS = {
+  locked: new Vec3(1.18, 0.46, 0.36),
+  activated: new Vec3(0.46, 1.24, 0.68),
+};
 
 const STEEL = [
   [16, 20, 26],
@@ -202,6 +208,43 @@ export function chestLidMesh() {
     left: CHEST_CELLS.latch,
     right: CHEST_CELLS.latch,
     top: CHEST_CELLS.latch,
+  });
+  return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
+}
+
+/** Wall-mounted switch housing box facing local +Z, recessed back to z = -2 so it sits flush against the wall plane. */
+export function switchBodyMesh() {
+  const vertices = [];
+  const uvs = [];
+  pushBox(vertices, uvs, -6, -8, -2, 6, 8, 1.2, {
+    front: CHEST_CELLS.latch,
+    left: CHEST_CELLS.lidSeal,
+    right: CHEST_CELLS.lidSeal,
+    top: CHEST_CELLS.lidSeal,
+    bottom: CHEST_CELLS.lidSeal,
+  });
+  return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
+}
+
+/** Pivoting wall-switch lever with hinge at local origin extending along +Z; a negative X rotation lifts the handle up and a positive X rotation pulls it down to the bottom. */
+export function switchLeverMesh() {
+  const vertices = [];
+  const uvs = [];
+  pushBox(vertices, uvs, -1.4, -1.0, 0, 1.4, 1.0, 5.2, {
+    front: CHEST_CELLS.sidePanel,
+    back: CHEST_CELLS.sidePanel,
+    left: CHEST_CELLS.sidePanel,
+    right: CHEST_CELLS.sidePanel,
+    top: CHEST_CELLS.sidePanel,
+    bottom: CHEST_CELLS.sidePanel,
+  });
+  pushBox(vertices, uvs, -3.4, -1.6, 4.2, 3.4, 1.6, 6.8, {
+    front: CHEST_CELLS.latch,
+    back: CHEST_CELLS.latch,
+    left: CHEST_CELLS.lidSeal,
+    right: CHEST_CELLS.lidSeal,
+    top: CHEST_CELLS.latch,
+    bottom: CHEST_CELLS.latch,
   });
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }

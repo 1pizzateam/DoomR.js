@@ -3,7 +3,7 @@ import { Physics, Raycast, Scene } from '@1pizzateam/bumpr';
 import { Blood, makeFeet } from './blood.js';
 import { Rubble, severityOf } from './rubble.js';
 import { CONE_RANGE, Fog, marsFogNearFar } from './fog.js';
-import { CACHE_WALL_OFFSET, CEILING, CROUCH_EYE, DOOR, EXIT, EYE, FLOOR, Level, TILE, WALL } from './level.js';
+import { BASE_FLOOR_LEVEL, CACHE_WALL_OFFSET, CEILING, CROUCH_EYE, DOOR, EXIT, EYE, FLOOR, Level, TILE, WALL } from './level.js';
 export { CACHE_WALL_OFFSET };
 import { LEVELS } from './levels.js';
 import { WEAPON_SLOTS, WEAPONS } from './weapon.js';
@@ -16,7 +16,7 @@ import { GRENADE_SCALE, GRENADE_START } from './grenade.js';
 
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
-export const ELEVATOR_RIDE_TIME = 4.2;
+export const ELEVATOR_RIDE_TIME = 6.6;
 
 // shared read-only query options: BumpR only reads them
 const QUERY_WALL = Object.freeze({ mask: CAT.WALL });
@@ -128,7 +128,7 @@ const CACHE_WEAPONS = new Set(['chainsaw', 'shotgun', 'chaingun', 'rocket']);
 const USE_RANGE = 96;
 const USE_DOT = 0.35;
 const CACHE_TOUCH_RANGE = TILE * 0.5;
-const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', unlock: 'UNLOCK', take: 'TAKE', locked: 'LOCKED', jump: 'JUMP' });
+const USE_VERBS = Object.freeze({ open: 'OPEN', close: 'CLOSE', loot: 'LOOT', unlock: 'UNLOCK', take: 'TAKE', locked: 'LOCKED', jump: 'JUMP', activate: 'ACTIVATE' });
 // seconds for a full 0 to 1 (in) or 1 to 0 (out) ramp of the use prompt
 const USE_PROMPT_FADE_IN = 0.12;
 const USE_PROMPT_FADE_OUT = 0.2;
@@ -202,7 +202,7 @@ export class Game {
     for (let i = 0; i < EVENT_CAPACITY; i++)
       this.eventPool.push({ type: '', pos: new Vec2(), x: 0, y: 0, visible: true });
     this.eventCursor = 0;
-    this.useTarget = { kind: null, door: null, cache: null, verb: '', lock: null, promptable: false };
+    this.useTarget = { kind: null, door: null, cache: null, switch: null, verb: '', lock: null, promptable: false };
     this.usePrompt = { fade: 0, verb: '', lock: null, key: 'use' };
     this.chestLock = {
       active: false,
@@ -220,6 +220,7 @@ export class Game {
       timer: 0,
       duration: ELEVATOR_RIDE_TIME,
       pulseTimer: 0,
+      announced: false,
       cabIdx: -1,
       door: null,
     };
@@ -338,7 +339,9 @@ export class Game {
     this.clearUseTarget();
     this.cancelChestLock();
     const seedIndex = this.levelIndex;
-    this.level = def instanceof Level ? def : new Level(def);
+    this.level = def instanceof Level
+      ? def
+      : new Level({ ...def, floorLevel: def.floorLevel ?? (BASE_FLOOR_LEVEL + seedIndex) });
     // the grid lets BumpR test only bodies that share a cell instead of every pair; two tiles per cell
     // is wider than any body, so each one touches at most four cells
     this.scene = new Scene(new Grid(new Vec2(this.level.width * TILE, this.level.rowCount * TILE), GRID_CELL));
@@ -357,6 +360,13 @@ export class Game {
     this.enemies = [];
     this.pickups = [];
     this.caches = [];
+    this.switches = this.level.switches ?? [];
+    for (let i = 0; i < this.switches.length; i++) {
+      const sw = this.switches[i];
+      sw.activated = false;
+      for (let j = 0; j < sw.doors.length; j++)
+        sw.doors[j].switchLocked = true;
+    }
     this.barrels = [];
     this.shots = [];
     this.effects = [];
@@ -380,6 +390,7 @@ export class Game {
       this.elevator.timer = 0;
       this.elevator.duration = ELEVATOR_RIDE_TIME;
       this.elevator.pulseTimer = 0;
+      this.elevator.announced = false;
       this.elevator.cabIdx = elev.tileIdx;
       this.elevator.door = elev.door;
       elev.door.elevatorLocked = false;
@@ -389,6 +400,7 @@ export class Game {
       this.elevator.phase = 'none';
       this.elevator.timer = 0;
       this.elevator.pulseTimer = 0;
+      this.elevator.announced = false;
       this.elevator.cabIdx = -1;
       this.elevator.door = null;
     }
@@ -2245,6 +2257,7 @@ export class Game {
     target.kind = null;
     target.door = null;
     target.cache = null;
+    target.switch = null;
     target.verb = '';
     target.lock = null;
     target.promptable = false;
@@ -2264,6 +2277,7 @@ export class Game {
     const facing = this.scratch.setScalar(1, 0).setRadian(player.angle);
     let best = null;
     let bestCache = null;
+    let bestSwitch = null;
     let bestDistance = USE_RANGE;
     for (const door of this.level.doors.values()) {
       if (door.elevator)
@@ -2289,7 +2303,25 @@ export class Game {
         bestDistance = distance;
       }
     }
-    if (bestCache) {
+    for (let i = 0; i < this.switches.length; i++) {
+      const sw = this.switches[i];
+      if (sw.activated)
+        continue;
+      const toSwitch = this.toPlayer.subVectors(sw.pos, player.pos);
+      const distance = toSwitch.getMagnitude();
+      if (distance > 0 && distance < bestDistance && toSwitch.dotProduct(facing) / distance > USE_DOT) {
+        bestSwitch = sw;
+        bestCache = null;
+        best = null;
+        bestDistance = distance;
+      }
+    }
+    if (bestSwitch) {
+      target.kind = 'switch';
+      target.switch = bestSwitch;
+      target.verb = USE_VERBS.activate;
+      target.promptable = !this.chestLock?.active;
+    } else if (bestCache) {
       target.kind = 'cache';
       target.cache = bestCache;
       target.verb = bestCache.state === 'closed'
@@ -2302,6 +2334,9 @@ export class Game {
       if (best.lock && !player.keys?.[best.lock]) {
         target.verb = USE_VERBS.locked;
         target.lock = best.lock;
+      } else if (best.switchLocked) {
+        target.verb = USE_VERBS.locked;
+        target.lock = 'switch';
       } else
         target.verb = best.target ? USE_VERBS.close : USE_VERBS.open;
       target.promptable = !(best.secret && !best.revealed);
@@ -2354,6 +2389,10 @@ export class Game {
     }
     this.findUseTarget();
     const target = this.useTarget;
+    if (target.kind === 'switch') {
+      this.activateSwitch(target.switch);
+      return;
+    }
     if (target.kind === 'cache') {
       if (target.cache.state === 'closed' && target.cache.locked)
         this.startChestLock(target.cache);
@@ -2363,9 +2402,7 @@ export class Game {
     }
     if (target.kind === 'door') {
       const best = target.door;
-      if (best.lock && !this.player.keys?.[best.lock]) {
-        const label = best.lock === 'red' ? 'Red' : best.lock === 'yellow' ? 'Yellow' : 'Blue';
-        this.say(`You need a ${label} keycard to open this door.`);
+      if ((best.lock && !this.player.keys?.[best.lock]) || best.switchLocked) {
         this.emit('locked', best.center);
         return;
       }
@@ -2373,6 +2410,17 @@ export class Game {
       if (best.secret)
         best.revealed = true;
     }
+  }
+
+  activateSwitch(sw) {
+    if (!sw || sw.activated)
+      return false;
+    sw.activated = true;
+    sw.pull = sw.pull ?? 0;
+    for (let i = 0; i < sw.doors.length; i++)
+      sw.doors[i].switchLocked = false;
+    this.emit('cacheOpen', sw.pos);
+    return true;
   }
 
   actorNear(point, distance, enemyDistance = distance) {
@@ -2410,6 +2458,10 @@ export class Game {
       elev.pulseTimer -= dt;
       elev.timer += dt;
       if (elev.timer < elev.duration) {
+        if (!elev.announced && elev.timer >= 0.25) {
+          elev.announced = true;
+          this.emit('elevatorAlert', door.center);
+        }
         const u = elev.timer / elev.duration;
         const railJolt = Math.pow(Math.max(0, Math.sin(elev.timer * 4.6)), 6) * 0.12;
         const hum = 0.08 + 0.03 * Math.sin(elev.timer * 8.5);
@@ -2438,6 +2490,12 @@ export class Game {
   }
 
   updateDoors(dt) {
+    if (this.switches)
+      for (let i = 0; i < this.switches.length; i++) {
+        const sw = this.switches[i];
+        if (sw.activated && (sw.pull ?? 0) < 1)
+          sw.pull = Math.min(1, (sw.pull ?? 0) + dt / 0.18);
+      }
     for (const door of this.level.doors.values()) {
       const doorTime = door.elevator ? 1.4 : 0.7;
       if (door.target && door.open < 1)

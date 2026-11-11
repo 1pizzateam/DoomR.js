@@ -4,14 +4,14 @@ import { RUBBLE, SURFACE } from './rubble.js';
 import { ACID_SURFACE_DEPTH, EMPTY_PIT_DEPTH } from './game.js';
 import { BARREL_FIRE_FRAGMENT, BARREL_FIRE_VERTEX, barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelFireMesh, barrelShrapnelFireMesh, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
 import { bloodAtlas, createQuadTarget, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
-import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
-import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, MARS_SKY_FRAGMENT, MARS_SKY_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, marsSkyAtlas, marsSkyMesh, updateCeilingLights } from './ceiling.js';
-import { WALL_CELLS, diagWallFaceQuads, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
+import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorAtlas, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
+import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, doorCeilingAtlas, doorCeilingCellFor, doorCeilingCellUv, elevatorLightFactor, MARS_SKY_FRAGMENT, MARS_SKY_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, marsSkyAtlas, marsSkyMesh, updateCeilingLights } from './ceiling.js';
+import { WALL_CELLS, diagWallFaceQuads, doorWallAtlas, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
 import { createExplosion3dPose, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from './explosion.js';
 import { FIREBALL_FRAMES, fireballAtlas } from './fireball.js';
 import { GRENADE_SCALE, grenadeAtlas, grenadeParts } from './grenade.js';
 import { ACID_MIST_FRAGMENT, CRATE_FRAGMENT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, acidSplashQuads, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
-import { CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
+import { BASE_FLOOR_LEVEL, CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
 import { FOG_FAR, FOG_NEAR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar } from './fog.js';
 import { faceCorners, quadTriangles } from './lines.js';
 import { MONSTERS, monsterGoreSkinAtlas, monsterParts, monsterSkinAtlas } from './monsters.js';
@@ -21,7 +21,7 @@ import { blastFlatQuad, blastWallQuad, burnFlatQuad, burnWallQuad, holeQuad, IMP
 import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
 import { keycardAtlas, keycardMesh } from './keycard.js';
-import { CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from './cache.js';
+import { CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, SWITCH_LEVER_ANGLE, SWITCH_LEVER_HINGE, SWITCH_TINTS, chestAtlas, chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from './cache.js';
 import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, knifeAtlas, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from './arsenal.js';
 import { WEAPONS } from './weapon.js';
 import { armorAtlas, armorMesh } from './armor.js';
@@ -427,6 +427,7 @@ export class World {
     this.level = null;
     this.doorViews = new Map();
     this.crusherViews = new Map();
+    this.switchViews = new Map();
     this.enemyViews = new Map();
     this.pickupViews = new Map();
     this.cacheViews = new Map();
@@ -930,6 +931,7 @@ export class World {
       this.discard(mesh);
     this.doorViews.clear();
     this.crusherViews.clear();
+    this.switchViews.clear();
     this.enemyViews.clear();
     this.pickupViews.clear();
     this.cacheViews.clear();
@@ -968,6 +970,9 @@ export class World {
       this.buildDoor(door);
     for (const crusher of level.crushers)
       this.buildCrusher(crusher);
+    if (level.switches)
+      for (const sw of level.switches)
+        this.buildSwitch(sw);
 
     // blood: droplets move every frame, splats are rewritten only when the game adds or drops one
     this.bloodTexture ??= bloodAtlas();
@@ -1467,10 +1472,34 @@ export class World {
     }
 
     const faces = [];
+    const doorFaces = [];
     const outdoorFaces = [];
     const hide = [];
     const isMars = level.planet === 'mars';
     const solid = (x, y) => level.inBounds(x, y) && (kind[y * width + x] === WALL || kind[y * width + x] === EXIT);
+    const isCorridorDoor = (tx, ty) => {
+      if (!level.inBounds(tx, ty))
+        return false;
+      const idx = ty * width + tx;
+      return kind[idx] === DOOR && !level.doors.get(idx)?.secret;
+    };
+    const doorCorridorInfo = (tx, ty, dir) => {
+      if (isCorridorDoor(tx, ty)) {
+        const door = level.doors.get(ty * width + tx);
+        return { door: true, lock: door?.lock ?? null };
+      }
+      if (level.inBounds(tx, ty) && kind[ty * width + tx] === FLOOR) {
+        const px = dir < 2 ? tx : tx - 1;
+        const py = dir < 2 ? ty - 1 : ty;
+        const qx = dir < 2 ? tx : tx + 1;
+        const qy = dir < 2 ? ty + 1 : ty;
+        if (isCorridorDoor(px, py) && isCorridorDoor(qx, qy)) {
+          const lock = level.doors.get(py * width + px)?.lock ?? level.doors.get(qy * width + qx)?.lock ?? null;
+          return { door: true, lock };
+        }
+      }
+      return null;
+    };
     for (const group of groups.values()) {
       const { d, top, base } = group;
       const axis = d < 2 ? 'x' : 'z';
@@ -1506,11 +1535,26 @@ export class World {
           const adjIdx = adjY * width + adjX;
           const tileRoofless = level.arena?.has(adjIdx);
           const tileToRoof = top < ROOF && !tileRoofless;
-          const quads = wallFaceQuads({ axis, plane, from: a, to: a, base, top: tileToRoof ? ROOF : top, tile: new Vec2(group.x, group.y), d, exit: group.kind === EXIT });
+          const corridor = group.kind !== EXIT ? doorCorridorInfo(adjX, adjY, d) : null;
+          const quads = wallFaceQuads({
+            axis,
+            plane,
+            from: a,
+            to: a,
+            base,
+            top: tileToRoof ? ROOF : top,
+            tile: new Vec2(group.x, group.y),
+            d,
+            exit: group.kind === EXIT,
+            door: Boolean(corridor),
+            lock: corridor?.lock ?? null,
+          });
           if (base === 0)
             sinkToFloor(quads);
           if (isMars && !level.isIndoorTile(adjIdx))
             outdoorFaces.push(...quads);
+          else if (corridor)
+            doorFaces.push(...quads);
           else
             faces.push(...quads);
         }
@@ -1679,6 +1723,9 @@ export class World {
         registerStaticChunk(this.staticChunks, this.track(this.wallBatch(sec.faces, false), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
     else
       this.track(this.wallBatch(faces, false), this.staticMeshes);
+    if (doorFaces.length)
+      for (const sec of partitionQuadsBySector(doorFaces, sectorGrid, sectorWorldSize, width, rowCount))
+        registerStaticChunk(this.staticChunks, this.track(this.wallBatch(sec.faces, false, true), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
     if (outdoorFaces.length)
       for (const sec of partitionQuadsBySector(outdoorFaces, sectorGrid, sectorWorldSize, width, rowCount))
         registerStaticChunk(this.staticChunks, this.track(this.wallBatch(sec.faces, true), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
@@ -1698,6 +1745,24 @@ export class World {
     const crateSectors = [];
     const boulderSectors = [];
     const ceilingSectors = [];
+    const doorCeilingSectors = [];
+    const doorCeilingInfo = (tx, ty) => {
+      if (isCorridorDoor(tx, ty)) {
+        const door = level.doors.get(ty * width + tx);
+        return { lock: door?.lock ?? null, alongY: Boolean(door?.alongY), vestibule: false };
+      }
+      if (level.inBounds(tx, ty) && kind[ty * width + tx] === FLOOR) {
+        if (isCorridorDoor(tx - 1, ty) && isCorridorDoor(tx + 1, ty)) {
+          const lock = level.doors.get(ty * width + tx - 1)?.lock ?? level.doors.get(ty * width + tx + 1)?.lock ?? null;
+          return { lock, alongY: false, vestibule: true };
+        }
+        if (isCorridorDoor(tx, ty - 1) && isCorridorDoor(tx, ty + 1)) {
+          const lock = level.doors.get((ty - 1) * width + tx)?.lock ?? level.doors.get((ty + 1) * width + tx)?.lock ?? null;
+          return { lock, alongY: true, vestibule: true };
+        }
+      }
+      return null;
+    };
     for (let sy = 0; sy < rowCount; sy += SECTOR_TILES)
       for (let sx = 0; sx < width; sx += SECTOR_TILES) {
         const x0 = sx;
@@ -1709,6 +1774,7 @@ export class World {
         let hasCrate = false;
         let hasBoulder = false;
         let hasCeiling = false;
+        let hasDoorCeiling = false;
         for (let ty = y0; ty < y1; ty++)
           for (let tx = x0; tx < x1; tx++) {
             const idx = ty * width + tx;
@@ -1726,8 +1792,12 @@ export class World {
               else
                 hasCrate = true;
             }
-            if (walkable && !level.arena?.has(idx))
-              hasCeiling = true;
+            if (walkable && !level.arena?.has(idx)) {
+              if (doorCeilingInfo(tx, ty))
+                hasDoorCeiling = true;
+              else
+                hasCeiling = true;
+            }
           }
         const center = new Vec2(((x0 + x1) * 0.5) * TILE, ((y0 + y1) * 0.5) * TILE);
         const radius = scratchCam2d.setScalar(x1 - x0, y1 - y0).getMagnitude() * TILE * 0.55;
@@ -1743,6 +1813,8 @@ export class World {
           boulderSectors.push(sec);
         if (hasCeiling)
           ceilingSectors.push(sec);
+        if (hasDoorCeiling)
+          doorCeilingSectors.push(sec);
       }
 
     if (floorSectors.length)
@@ -1783,11 +1855,16 @@ export class World {
     this.ceilingMeshes = [];
     if (ceilingSectors.length)
       for (const sec of ceilingSectors) {
-        const mesh = registerStaticChunk(this.staticChunks, this.track(this.ceilingBatch(level, sec), this.staticMeshes), sec.center, sec.radius, true, sec.bounds);
+        const mesh = registerStaticChunk(this.staticChunks, this.track(this.ceilingBatch(level, sec, false), this.staticMeshes), sec.center, sec.radius, true, sec.bounds);
         this.ceilingMeshes.push(mesh);
       }
     else
-      this.ceilingMeshes.push(this.track(this.ceilingBatch(level), this.staticMeshes));
+      this.ceilingMeshes.push(this.track(this.ceilingBatch(level, null, false), this.staticMeshes));
+    if (doorCeilingSectors.length)
+      for (const sec of doorCeilingSectors) {
+        const mesh = registerStaticChunk(this.staticChunks, this.track(this.ceilingBatch(level, sec, true), this.staticMeshes), sec.center, sec.radius, true, sec.bounds);
+        this.ceilingMeshes.push(mesh);
+      }
     this.ceilingMesh = this.ceilingMeshes[0] ?? null;
 
     this.lightConesMeshes = [];
@@ -1857,28 +1934,58 @@ export class World {
   }
 
   /** The ceiling: one quad over every tile you can stand on or see over, except the giant's room, which is open to the sky. */
-  ceilingBatch(level, bounds = null) {
+  ceilingBatch(level, bounds = null, doorCeiling = false) {
     const { gl } = this;
-    this.ceilingPixels ??= ceilingAtlas();
+    let atlas;
+    if (doorCeiling) {
+      this.doorCeilingPixels ??= doorCeilingAtlas();
+      atlas = this.doorCeilingPixels;
+    } else {
+      this.ceilingPixels ??= ceilingAtlas();
+      atlas = this.ceilingPixels;
+    }
     const x0Bound = bounds ? bounds.x0 : 0;
     const y0Bound = bounds ? bounds.y0 : 0;
     const x1Bound = bounds ? bounds.x1 : level.width;
     const y1Bound = bounds ? bounds.y1 : level.rowCount;
     const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
-    const sharedTexture = this.sharedTexture(this.ceilingPixels, texOpts);
+    const sharedTexture = this.sharedTexture(atlas, texOpts);
     const batch = new QuadBatch(gl, {
       capacity: Math.max(1, (x1Bound - x0Bound) * (y1Bound - y0Bound)),
-      atlas: this.ceilingPixels,
+      atlas,
       sharedTexture,
       vertex: FLOOR_VERTEX,
       fragment: CEILING_FRAGMENT,
       textureOptions: texOpts,
     });
     if (sharedTexture) {
-      batch.sharedAtlas = this.ceilingPixels;
+      batch.sharedAtlas = atlas;
       batch.sharedTexOptions = texOpts;
       this.sharedTexturedMeshes.push(batch);
     }
+    const isCorridorDoor = (tx, ty) => {
+      if (!level.inBounds(tx, ty))
+        return false;
+      const idx = ty * level.width + tx;
+      return level.kind[idx] === DOOR && !level.doors?.get(idx)?.secret;
+    };
+    const doorInfoAt = (tx, ty) => {
+      if (isCorridorDoor(tx, ty)) {
+        const door = level.doors?.get(ty * level.width + tx);
+        return { lock: door?.lock ?? null, alongY: Boolean(door?.alongY), vestibule: false };
+      }
+      if (level.inBounds(tx, ty) && level.kind[ty * level.width + tx] === FLOOR) {
+        if (isCorridorDoor(tx - 1, ty) && isCorridorDoor(tx + 1, ty)) {
+          const lock = level.doors?.get(ty * level.width + tx - 1)?.lock ?? level.doors?.get(ty * level.width + tx + 1)?.lock ?? null;
+          return { lock, alongY: false, vestibule: true };
+        }
+        if (isCorridorDoor(tx, ty - 1) && isCorridorDoor(tx, ty + 1)) {
+          const lock = level.doors?.get((ty - 1) * level.width + tx)?.lock ?? level.doors?.get((ty + 1) * level.width + tx)?.lock ?? null;
+          return { lock, alongY: true, vestibule: true };
+        }
+      }
+      return null;
+    };
     // just under the invisible roof, so the roof never hides it
     const y = ROOF - 1.2;
     batch.begin();
@@ -1887,22 +1994,38 @@ export class World {
         const idx = ty * level.width + tx;
         if ((level.kind[idx] !== FLOOR && level.kind[idx] !== DOOR && level.kind[idx] !== PILLAR && !level.diag[idx]) || level.arena?.has(idx))
           continue;
+        const doorInfo = doorInfoAt(tx, ty);
+        if (Boolean(doorInfo) !== Boolean(doorCeiling))
+          continue;
         const x0 = tx * TILE;
         const z0 = ty * TILE;
-        batch.quad([x0, y, z0 + TILE, x0 + TILE, y, z0 + TILE, x0 + TILE, y, z0, x0, y, z0], ceilingCellUv(ceilingCellFor(tx, ty)));
+        if (doorCeiling) {
+          const corners = doorInfo.alongY
+            ? [x0 + TILE, y, z0 + TILE, x0 + TILE, y, z0, x0, y, z0, x0, y, z0 + TILE]
+            : [x0, y, z0 + TILE, x0 + TILE, y, z0 + TILE, x0 + TILE, y, z0, x0, y, z0];
+          batch.quad(corners, doorCeilingCellUv(doorCeilingCellFor(tx, ty, doorInfo.lock, doorInfo.vestibule)));
+        } else {
+          batch.quad([x0, y, z0 + TILE, x0 + TILE, y, z0 + TILE, x0 + TILE, y, z0, x0, y, z0], ceilingCellUv(ceilingCellFor(tx, ty)));
+        }
       }
     }
     return batch.end();
   }
 
-  /** The faces of the walls, one quad per tile and per 64 units up, in one mesh: steel bulkheads indoors or craggy rock cliffs on Mars. */
-  wallBatch(faces, marsRock = false) {
+  /** The faces of the walls, one quad per tile and per 64 units up, in one mesh: steel bulkheads indoors, door-corridor frames inside doorways, or craggy rock cliffs on Mars. */
+  wallBatch(faces, marsRock = false, doorWall = false) {
     const { gl } = this;
-    if (marsRock)
+    let atlas;
+    if (marsRock) {
       this.marsRockPixels ??= marsRockAtlas();
-    else
+      atlas = this.marsRockPixels;
+    } else if (doorWall) {
+      this.doorWallPixels ??= doorWallAtlas();
+      atlas = this.doorWallPixels;
+    } else {
       this.wallPixels ??= wallAtlas();
-    const atlas = marsRock ? this.marsRockPixels : this.wallPixels;
+      atlas = this.wallPixels;
+    }
     const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
     const sharedTexture = this.sharedTexture(atlas, texOpts);
     const batch = new QuadBatch(gl, {
@@ -2443,15 +2566,25 @@ export class World {
     // A locked door ('R', 'Y', 'U') carries glowing color-coded security stripes and jamb lock bars.
     const { gl } = this;
     const isSecret = Boolean(door.secret);
+    const isElevator = Boolean(door.elevator);
+    const floorLevel = door.floorLevel ?? this.level?.floorLevel ?? BASE_FLOOR_LEVEL;
     const atlas = isSecret
       ? (this.wallPixels ??= wallAtlas())
-      : door.lock
-        ? ((this.lockedDoorPixels ??= {})[door.lock] ??= lockedDoorAtlas(door.lock))
-        : (this.doorPixels ??= doorAtlas());
+      : isElevator
+        ? ((this.elevatorDoorPixels ??= {})[floorLevel] ??= elevatorDoorAtlas(floorLevel))
+        : door.lock
+          ? ((this.lockedDoorPixels ??= {})[door.lock] ??= lockedDoorAtlas(door.lock))
+          : (this.doorPixels ??= doorAtlas());
+    const outwardDir = door.alongY ? (door.dirY || 1) : (door.dirX || 1);
     const { vertices, uvs } = isSecret
       ? secretDoorBox(scratchScale.setScalar(TILE, TILE, TILE))
-      : door.elevator || door.thin
-        ? elevatorDoorBox(scratchScale.setScalar(TILE - 0.8, TILE, door.thickness || ELEVATOR_DOOR_THICKNESS), Boolean(door.alongY))
+      : isElevator || door.thin
+        ? elevatorDoorBox(
+            scratchScale.setScalar(TILE - 0.8, TILE, door.thickness || ELEVATOR_DOOR_THICKNESS),
+            Boolean(door.alongY),
+            outwardDir,
+            isElevator ? atlas.frames : 2,
+          )
         : door.framed === false
           ? doorBox(scratchScale.setScalar(TILE - 0.8, TILE, TILE - 0.8))
           : doubleDoorBox(scratchScale.setScalar(TILE - 0.8, TILE, DOOR_THICKNESS), Boolean(door.alongY), DOOR_INSET);
@@ -2460,7 +2593,8 @@ export class World {
     geometry.setUvs(uvs);
     geometry.setPrimitive('TRIANGLES');
     const root = new Mesh(gl, geometry);
-    root.addProgram(DOOR_VERTEX, isSecret ? WALL_FRAGMENT : DOOR_FRAGMENT, new Material({ diffuse: new Vec3(1, 1, 1) }));
+    const doorDiffuse = door.elevator ? new Vec3(0.72, 0.76, 0.82) : new Vec3(1, 1, 1);
+    root.addProgram(DOOR_VERTEX, isSecret ? WALL_FRAGMENT : DOOR_FRAGMENT, new Material({ diffuse: doorDiffuse }));
     this.bindAtlasTexture(root, atlas, {
       magFilter: gl.NEAREST,
       minFilter: gl.NEAREST_MIPMAP_NEAREST,
@@ -2490,6 +2624,56 @@ export class World {
     root.setPosition(scratchPos.setScalar(crusher.center.x, crusher.low, crusher.center.y));
     this.scene.addMesh(root);
     this.crusherViews.set(crusher, root);
+  }
+
+  buildSwitch(sw) {
+    const { gl } = this;
+    const atlas = (this.chestPixels ??= chestAtlas());
+    this.switchBodyGeo ??= switchBodyMesh();
+    this.switchLeverGeo ??= switchLeverMesh();
+    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
+    const sharedTexture = this.sharedTexture(atlas, texOpts);
+    const makePart = (data, material) => {
+      const geometry = new CustomMesh();
+      geometry.vertices = data.vertices;
+      geometry.uvs = data.uvs;
+      geometry.setPrimitive('TRIANGLES');
+      const mesh = texturedMesh(gl, geometry, {
+        fragment: SOLID_TEXTURED_FRAGMENT,
+        atlas,
+        sharedTexture,
+        material,
+        textureOptions: texOpts,
+      });
+      if (sharedTexture) {
+        mesh.sharedAtlas = atlas;
+        mesh.sharedTexOptions = texOpts;
+        this.sharedTexturedMeshes.push(mesh);
+      }
+      return mesh;
+    };
+    const bodyMaterial = new Material({ diffuse: new Vec3(1, 1, 1) });
+    const leverMaterial = new Material({ diffuse: SWITCH_TINTS.locked.clone() });
+    const body = makePart(this.switchBodyGeo, bodyMaterial);
+    const lever = makePart(this.switchLeverGeo, leverMaterial);
+    const root = new Mesh(gl, new CustomMesh());
+    root.addChild(body);
+    root.addChild(lever);
+    lever.setPosition(scratchPos.setScalar(SWITCH_LEVER_HINGE.x, SWITCH_LEVER_HINGE.y, SWITCH_LEVER_HINGE.z));
+    lever.setRotation(scratchRot.setScalar(-SWITCH_LEVER_ANGLE, 0, 0));
+    const yaw = Trigo.halfpi - sw.angle;
+    root.setPosition(scratchPos.setScalar(sw.pos.x, EYE - 2, sw.pos.y));
+    root.setRotation(scratchRot.setScalar(0, yaw, 0));
+    this.scene.addMesh(root);
+    this.switchViews.set(sw, {
+      root,
+      body,
+      lever,
+      bodyMaterial,
+      leverMaterial,
+      lastActivated: false,
+      lastPull: 0,
+    });
   }
 
   // ---- actors -------------------------------------------------------------
@@ -3394,6 +3578,11 @@ export class World {
     if (!this.cutaway) {
       const isMars = game.level?.planet === 'mars';
       const skyVec = isMars ? MARS_SKY_VEC : BG_VEC;
+      if (this.ambientLight) {
+        const baseAmbient = isMars ? MARS_AMBIENT_COLOR : CEILING_AMBIENT_COLOR;
+        const elevLight = elevatorLightFactor(game);
+        this.ambientLight.setColor(scratchPos.scaleVector(baseAmbient, elevLight));
+      }
       marsFogNearFar(game.level, player.pos, scratchFog, nvgActive);
       this.fogNearFar.setScalar(
         Utils.lerp(this.fogNearFar.x, scratchFog.x, 0.22),
@@ -3492,6 +3681,29 @@ export class World {
       view.setActive();
       view.setPosition(scratchPos.setScalar(crusher.center.x, crusher.low, crusher.center.y));
     }
+
+    if (game.level.switches)
+      for (let i = 0; i < game.level.switches.length; i++) {
+        const sw = game.level.switches[i];
+        const view = this.switchViews.get(sw);
+        if (!view)
+          continue;
+        if ((Number.isFinite(cullDistSq) && sw.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(sw.pos))) {
+          view.root.setInactive();
+          continue;
+        }
+        view.root.setActive();
+        const activated = Boolean(sw.activated);
+        const pull = typeof sw.pull === 'number' ? sw.pull : (activated ? 1 : 0);
+        if (pull !== view.lastPull) {
+          view.lastPull = pull;
+          view.lever.setRotation(scratchRot.setScalar((pull * 2 - 1) * SWITCH_LEVER_ANGLE, 0, 0));
+        }
+        if (activated !== view.lastActivated) {
+          view.lastActivated = activated;
+          view.leverMaterial.setDiffuse(activated ? SWITCH_TINTS.activated : SWITCH_TINTS.locked);
+        }
+      }
 
     this.syncViews(
       this.enemyViews,
@@ -3827,7 +4039,8 @@ export class World {
     const drop = dead ? Math.min(player.deadTime * 36, 24) : 0;
     const crouch = player.crouch ?? 0;
     const bob = Math.sin(player.bob * 2) * 1.6 * player.moving * (1 - 0.35 * crouch);
-    const shake = Math.max(player.hurt > 0 ? player.hurt * 5 : 0, game.shake * 6);
+    const paused = game.state === 'paused';
+    const shake = paused ? 0 : Math.max(player.hurt > 0 ? player.hurt * 5 : 0, game.shake * 6);
     const { camera } = this;
     const kick = player.kick ?? ZERO_KICK;
     const teleFlash = player.teleFlash ?? 0;

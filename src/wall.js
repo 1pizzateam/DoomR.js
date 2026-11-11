@@ -15,10 +15,15 @@ const scratchTile = new Vec2();
 
 export const WALL_CELLS = { plain: 0, vent: 1, pipes: 2, lights: 3, console: 4, exit: 5, top: 6, seam: 7 };
 export const WALL_CELL_COUNT = 8;
+export const DOOR_WALL_CELLS = { jamb: 0, pistons: 1, seal: 2, sensor: 3, red: 4, yellow: 5, blue: 6, seam: 7 };
+export const DOOR_WALL_CELL_COUNT = 8;
 const SIZE = TILE_PIXELS;
 
 const SIGNAL = [70, 230, 150];
 const FRAME = [20, 26, 40];
+const LOCK_RED = [220, 48, 56];
+const LOCK_YELLOW = [235, 190, 44];
+const LOCK_BLUE = [56, 136, 245];
 
 /** A bevelled recess or boss: light on one pair of edges, dark on the other, drawn at native 256x256 precision. */
 function bevel(t, x0, y0, w, h, rise = true) {
@@ -849,10 +854,307 @@ export function wallCellUv(cell, v0 = 0, v1 = 1) {
   return [cell / WALL_CELL_COUNT + inset, v0, (cell + 1) / WALL_CELL_COUNT - inset, v1];
 }
 
-/** Which cell goes on a tile's face (`tile` is a Vec2 grid position): the exit hatch on exits, otherwise a mix scattered by where the tile is. */
-export function wallCellFor(tile, d, exit = false) {
+// ---- Doorway corridor (airlock vestibule between twin blast-door slabs) wall atlas ---------------------------------
+
+/**
+ * Shared doorway corridor frame: outer reveal architrave jambs at x = 0..6 and x = 58..64 (`DOOR_INSET = 6`),
+ * recessed vertical blast-door guide tracks at x = 6..14 and x = 50..58 (`DOOR_THICKNESS = 8`) where the two slabs
+ * of `doubleDoorBox` sit and retract into the floor, and an armored central vestibule bay at x = 14..50.
+ */
+function doorCorridorBase(t, rnd) {
+  const s = t.scale;
+  bulkhead(t, rnd);
+
+  // Outer doorway reveal jamb columns (x = 0..6 and x = 58..64)
+  for (const [jx0, jx1] of [[0, 6], [58, 64]]) {
+    for (let py = 4 * s; py < 56 * s; py++)
+      for (let px = jx0 * s; px < jx1 * s; px++) {
+        const edgeDist = Math.min(px - jx0 * s, jx1 * s - 1 - px);
+        const shade = edgeDist < 2 ? 0.35 : 0.14;
+        t.setRaw(px, py, mix(METAL, LIGHT, shade), 0.78);
+      }
+    bevel(t, jx0 + 0.5, 4.5, jx1 - jx0 - 1, 51.5, true);
+    for (const ry of [9, 21, 39, 51])
+      rivet(t, jx0 + 2, ry);
+  }
+
+  // Dual recessed vertical blast-door slide tracks (x = 6..14 and x = 50..58) aligned with `doubleDoorBox` slabs
+  for (const tx0 of [6, 50]) {
+    const px0 = tx0 * s;
+    const pw = 8 * s;
+    const cx = px0 + pw * 0.5;
+    for (let py = 0; py < t.height; py++)
+      for (let dx = 0; dx < pw; dx++) {
+        const px = px0 + dx;
+        const fromCenter = Math.abs(px + 0.5 - cx);
+        const railEdge = dx < s || dx >= pw - s;
+        const centerGuide = fromCenter < 1.1 * s;
+        const tooth = ((py >> 2) % 4) === 0 && !railEdge && !centerGuide;
+        let col = mix(SHADOW, FRAME, 0.42);
+        if (railEdge)
+          col = (dx === 0 || dx === pw - 1) ? SHADOW : mix(METAL, LIGHT, 0.36);
+        else if (centerGuide)
+          col = fromCenter < 0.45 * s ? SHADOW : mix(METAL, LIGHT, 0.28);
+        else if (tooth)
+          col = mix(METAL, SHADOW, 0.28);
+        t.setRaw(px, py, col, 0.96);
+      }
+    bevel(t, tx0, 0, 8, 64, false);
+  }
+
+  // Central vestibule bulkhead frame between the two door tracks (x = 14..50)
+  bevel(t, 14, 4.5, 36, 51.5, true);
+}
+
+/** Cell 0 (`jamb`): Heavy ribbed airlock vestibule bulkhead with twin green interlock status lamps. */
+function drawDoorJamb(t, rnd) {
+  doorCorridorBase(t, rnd);
+  const s = t.scale;
+  for (const [y0, h] of [[7, 20], [36, 17]]) {
+    bevel(t, 17, y0, 30, h, false);
+    for (let py = (y0 + 1) * s; py < (y0 + h - 1) * s; py++) {
+      const ribPhase = ((py - (y0 + 1) * s) % (4 * s)) / (4 * s);
+      const col = ribPhase < 0.25
+        ? mix(SHADOW, FRAME, 0.5)
+        : ribPhase < 0.55
+          ? mix(METAL, LIGHT, 0.34)
+          : mix(METAL, SHADOW, 0.36);
+      for (let px = 18 * s; px < 46 * s; px++)
+        t.setRaw(px, py, col, 0.9);
+    }
+  }
+  // Central horizontal interlock beam (y = 28..35) with twin green door-sync indicators
+  bevel(t, 16, 28, 32, 7, true);
+  for (const lx of [20, 41]) {
+    bevel(t, lx, 29.5, 3, 4, false);
+    for (let py = 30 * s; py < 33 * s; py++)
+      for (let px = (lx + 0.5) * s; px < (lx + 2.5) * s; px++)
+        t.setRaw(px, py, mix(SIGNAL, LIGHT, 0.28), 0.92);
+  }
+  bevel(t, 25, 29.5, 14, 4, false);
+  for (const [rx, ry] of [[16, 7], [46, 7], [16, 51], [46, 51]])
+    rivet(t, rx, ry);
+}
+
+/** Cell 1 (`pistons`): Twin vertical hydraulic door-lifter rams & central pressure manifold between the door tracks. */
+function drawDoorPistons(t, rnd) {
+  doorCorridorBase(t, rnd);
+  const s = t.scale;
+  bevel(t, 17, 7, 30, 46, false);
+  for (let py = 8 * s; py < 52 * s; py++)
+    for (let px = 18 * s; px < 46 * s; px++)
+      t.setRaw(px, py, mix(SHADOW, FRAME, 0.35), 0.9);
+
+  // Twin vertical hydraulic actuator cylinders at x = 20..26 and x = 38..44
+  for (const x0 of [20, 38]) {
+    const w = 6;
+    const cx = (x0 + w * 0.5) * s;
+    const rad = w * 0.5 * s;
+    for (let px = x0 * s; px < (x0 + w) * s; px++) {
+      const nx = (px + 0.5 - cx) / rad;
+      const nz = Math.sqrt(Math.max(0, 1 - nx * nx));
+      const spec = Math.pow(Math.max(0, -nx * 0.42 + nz * 0.9), 3.4);
+      const rodCol = mix(mix(SHADOW, METAL, 0.3 + nz * 0.7), LIGHT, Utils.clamp(spec * 0.85, 0, 0.94));
+      const barrelCol = mix(mix(SHADOW, FRAME, 0.4 + nz * 0.5), METAL, 0.45 + spec * 0.4);
+      for (let py = 7 * s; py < 53 * s; py++) {
+        const isBarrel = py >= 22 * s && py < 44 * s;
+        t.setRaw(px, py, isBarrel ? barrelCol : rodCol, 0.96);
+      }
+    }
+    for (const cy of [12, 22, 43, 49])
+      bevel(t, x0 - 0.5, cy, w + 1, 2.5, true);
+  }
+
+  // Central hydraulic bridge manifold (x = 26..38, y = 26..37) connecting the two rams
+  bevel(t, 26, 26, 12, 11, true);
+  for (let py = 27 * s; py < 36 * s; py++)
+    for (let px = 27 * s; px < 37 * s; px++)
+      t.setRaw(px, py, mix(METAL, LIGHT, 0.22), 0.92);
+  // Pressure indicator lamp in the manifold center
+  for (let py = 30 * s; py < 33 * s; py++)
+    for (let px = 30 * s; px < 34 * s; px++)
+      t.setRaw(px, py, mix(GLOW, LIGHT, 0.35), 0.9);
+}
+
+/** Cell 2 (`seal`): Pressurized airlock compression-gasket frame with dogging clamps and bumper rail. */
+function drawDoorSeal(t, rnd) {
+  doorCorridorBase(t, rnd);
+  const s = t.scale;
+  // Vertical ribbed compression gasket strips flanking the door tracks (x = 15..18 and x = 46..49)
+  for (const gx0 of [15, 46]) {
+    for (let py = 6 * s; py < 54 * s; py++) {
+      const notch = ((py >> 2) % 3) === 0;
+      const col = notch ? SHADOW : mix(FRAME, METAL, 0.52);
+      for (let px = gx0 * s; px < (gx0 + 3) * s; px++)
+        t.setRaw(px, py, col, 0.92);
+    }
+    bevel(t, gx0, 6, 3, 48, false);
+  }
+  // Central recessed equalization plenum (x = 19..45, y = 8..44) with 4 dogging clamps
+  bevel(t, 19, 8, 26, 36, false);
+  for (const cy of [12, 20, 28, 36]) {
+    bevel(t, 22, cy, 20, 5, true);
+    for (let py = (cy + 1) * s; py < (cy + 4) * s; py++)
+      for (let px = 24 * s; px < 40 * s; px++)
+        if (((px + py) & 3) === 0)
+          t.setRaw(px, py, SHADOW, 0.65);
+  }
+  // Angled steel & cyan-glow bumper rail along the lower vestibule (x = 19..45, y = 46..53)
+  bevel(t, 19, 46, 26, 7, true);
+  for (let py = 47 * s; py < 52 * s; py++)
+    for (let px = 20 * s; px < 44 * s; px++) {
+      const stripe = (((px + py) >> 3) & 1) === 0;
+      t.setRaw(px, py, stripe ? mix(METAL, GLOW, 0.38) : mix(SHADOW, FRAME, 0.55), 0.92);
+    }
+}
+
+/** Cell 3 (`sensor`): Automated door-interlock sensor bay with twin vertical status light bars. */
+function drawDoorSensor(t, rnd) {
+  doorCorridorBase(t, rnd);
+  const s = t.scale;
+  // Twin vertical armored status light bars flanking the vestibule (x = 17..20 and x = 44..47)
+  for (const lx0 of [17, 44]) {
+    bevel(t, lx0, 8, 3.5, 44, false);
+    for (let py = 9 * s; py < 51 * s; py++) {
+      const seg = ((py - 9 * s) % (6 * s)) < 4.5 * s;
+      const col = seg ? mix(SIGNAL, GLOW, 0.42) : SHADOW;
+      for (let px = Math.round((lx0 + 0.75) * s); px < Math.round((lx0 + 2.75) * s); px++)
+        t.setRaw(px, py, col, seg ? 0.92 : 0.95);
+    }
+  }
+  // Central sensor & manual-release housing (x = 22..42, y = 10..49)
+  bevel(t, 22, 10, 20, 39, false);
+  for (let py = 11 * s; py < 48 * s; py++)
+    for (let px = 23 * s; px < 41 * s; px++)
+      t.setRaw(px, py, mix(SHADOW, METAL, 0.24), 0.88);
+  // Circular optical motion sensor lens at (32, 21)
+  const cx = 32 * s;
+  const cy = 21 * s;
+  const rad = 5 * s;
+  for (let py = cy - rad; py <= cy + rad; py++)
+    for (let px = cx - rad; px <= cx + rad; px++) {
+      const r = Math.hypot(px - cx, py - cy) / rad;
+      if (r > 1)
+        continue;
+      const col = r > 0.72
+        ? mix(METAL, LIGHT, 0.4)
+        : mix(SHADOW, GLOW, Math.pow(1 - r / 0.72, 1.5) * 0.85);
+      t.setRaw(px, py, col, 0.95);
+    }
+  // Lower recessed manual-override latch pocket (x = 25..39, y = 32..45)
+  bevel(t, 25, 32, 14, 13, false);
+  bevel(t, 28, 35, 8, 7, true);
+}
+
+/** Cells 4..6 (`red`, `yellow`, `blue`): Keycard security door-corridor wall with color-coded lock rails. */
+function drawDoorLock(t, rnd, accent) {
+  doorCorridorBase(t, rnd);
+  const s = t.scale;
+  // Vertical keycard-color indicator strips bordering both door slide tracks (x = 15..17.5 and x = 46.5..49)
+  for (const sx0 of [15, 46.5]) {
+    bevel(t, sx0, 7, 2.5, 46, false);
+    for (let py = 8 * s; py < 52 * s; py++) {
+      const bar = ((py - 8 * s) % (5 * s)) < 3.5 * s;
+      const col = bar ? mix(METAL, accent, 0.72) : SHADOW;
+      for (let px = Math.round((sx0 + 0.5) * s); px < Math.round((sx0 + 2) * s); px++)
+        t.setRaw(px, py, col, 0.92);
+    }
+  }
+  // Central armored security keycard lock bay (x = 19..45, y = 9..49)
+  bevel(t, 19, 9, 26, 40, false);
+  for (let py = 10 * s; py < 48 * s; py++)
+    for (let px = 20 * s; px < 44 * s; px++)
+      t.setRaw(px, py, mix(SHADOW, METAL, 0.25), 0.9);
+  // Illuminated keycard header beacon (x = 22..42, y = 13..21)
+  bevel(t, 22, 13, 20, 8, false);
+  for (let py = 14 * s; py < 20 * s; py++)
+    for (let px = 23 * s; px < 41 * s; px++) {
+      const dy = Math.abs(py - 17 * s) / (3 * s);
+      const glow = Math.max(0, 1 - dy * 0.65);
+      t.setRaw(px, py, mix(METAL, accent, 0.55 + 0.35 * glow), 0.94);
+    }
+  // Recessed keycard reader slot & armored lock cylinder (x = 24..40, y = 24..44)
+  bevel(t, 24, 24, 16, 20, true);
+  bevel(t, 28, 28, 8, 12, false);
+  for (let py = 30 * s; py < 38 * s; py++)
+    for (let px = 31 * s; px < 33 * s; px++)
+      t.setRaw(px, py, mix(accent, LIGHT, 0.3), 0.96);
+}
+
+/** Cell 7 (`seam`): Upper door-corridor bulkhead extension with continuous vertical door guide tracks. */
+function drawDoorSeam(t, rnd) {
+  doorCorridorBase(t, rnd);
+  horizontalSeam(t, 12.5, 0.95);
+  bevel(t, 17, 16, 30, 12, false);
+  for (const x of [19, 31, 43])
+    rivet(t, x, 9);
+}
+
+const DOOR_WALL_DRAW = [
+  drawDoorJamb,
+  drawDoorPistons,
+  drawDoorSeal,
+  drawDoorSensor,
+  (t, rnd) => drawDoorLock(t, rnd, LOCK_RED),
+  (t, rnd) => drawDoorLock(t, rnd, LOCK_YELLOW),
+  (t, rnd) => drawDoorLock(t, rnd, LOCK_BLUE),
+  drawDoorSeam,
+];
+
+/**
+ * 8-cell 2048x256 procedural door-corridor wall atlas used exclusively inside doorway tiles (in between the
+ * two blast-door slabs of `doubleDoorBox` and 1-tile vestibules pinched between doors).
+ */
+export function doorWallAtlas() {
+  const width = SIZE * DOOR_WALL_CELL_COUNT;
+  const data = new Uint8Array(width * SIZE * 4);
+  DOOR_WALL_DRAW.forEach((draw, cell) => {
+    const t = new Tile(SIZE, SIZE, SIZE / 64);
+    draw(t, mulberry32(31000 + cell * 6151));
+    for (let y = 0; y < SIZE; y++)
+      for (let x = 0; x < SIZE; x++) {
+        const i = (y * SIZE + x) * 3;
+        const o = (y * width + cell * SIZE + x) * 4;
+        for (let k = 0; k < 3; k++)
+          data[o + k] = Utils.clamp(Math.round(t.pixels[i + k]), 0, 255);
+        data[o + 3] = 255;
+      }
+  });
+  return { name: 'doorWall', data, width, height: SIZE, cell: SIZE, frames: DOOR_WALL_CELL_COUNT };
+}
+
+/** Texture coordinates of a door-corridor wall cell (`0..DOOR_WALL_CELL_COUNT-1`). */
+export function doorWallCellUv(cell, v0 = 0, v1 = 1) {
+  const inset = 0.25 / (SIZE * DOOR_WALL_CELL_COUNT);
+  return [cell / DOOR_WALL_CELL_COUNT + inset, v0, (cell + 1) / DOOR_WALL_CELL_COUNT - inset, v1];
+}
+
+/** Picks a dedicated door-corridor wall cell (`jamb`, `pistons`, `seal`, `sensor`, or keycard lock variant). */
+export function doorWallCellFor(tile, d, lock = null) {
+  if (lock === 'red')
+    return DOOR_WALL_CELLS.red;
+  if (lock === 'yellow')
+    return DOOR_WALL_CELLS.yellow;
+  if (lock === 'blue')
+    return DOOR_WALL_CELLS.blue;
+  let h = Math.imul(tile.x * 73856093 ^ tile.y * 19349663 ^ d * 83492791, 2654435761);
+  h ^= h >>> 15;
+  const r = ((Math.imul(h, 2246822519) >>> 0) % 1000) / 1000;
+  if (r < 0.3)
+    return DOOR_WALL_CELLS.jamb;
+  if (r < 0.55)
+    return DOOR_WALL_CELLS.pistons;
+  if (r < 0.8)
+    return DOOR_WALL_CELLS.seal;
+  return DOOR_WALL_CELLS.sensor;
+}
+
+/** Which cell goes on a tile's face (`tile` is a Vec2 grid position): the exit hatch on exits, door-corridor panels inside doorways, otherwise a mix scattered by where the tile is. */
+export function wallCellFor(tile, d, exit = false, door = false, lock = null) {
   if (exit)
     return WALL_CELLS.exit;
+  if (door)
+    return doorWallCellFor(tile, d, lock);
   let h = Math.imul(tile.x * 73856093 ^ tile.y * 19349663 ^ d * 83492791, 2654435761);
   h ^= h >>> 15;
   const r = ((Math.imul(h, 2246822519) >>> 0) % 1000) / 1000;
@@ -869,22 +1171,24 @@ export function wallCellFor(tile, d, exit = false) {
 
 /**
  * The quads of one flat wall face, one per tile along it and per 64 units up it, each with its cell and the part of the
- * picture that fits. `face` is { axis, plane, from, to (tiles), base, top, tile (Vec2), d, exit }. Corners come back as in
+ * picture that fits. `face` is { axis, plane, from, to (tiles), base, top, tile (Vec2), d, exit, door, lock }. Corners come back as in
  * `faceCorners`: bottom-left, bottom-right, top-right, top-left.
  */
-export function wallFaceQuads({ axis, plane, from, to, base, top, tile, d, exit }) {
+export function wallFaceQuads({ axis, plane, from, to, base, top, tile, d, exit, door = false, lock = null }) {
   const out = [];
+  const uvFn = door ? doorWallCellUv : wallCellUv;
+  const seamCell = door ? DOOR_WALL_CELLS.seam : WALL_CELLS.seam;
   for (let a = from; a <= to; a++) {
     if (axis === 'x')
       scratchTile.setScalar(tile.x, a);
     else
       scratchTile.setScalar(a, tile.y);
-    const cell = wallCellFor(scratchTile, d, exit);
+    const cell = wallCellFor(scratchTile, d, exit, door, lock);
     for (let y0 = base, step = 0; y0 < top - 1e-6; y0 += TILE, step++) {
       const y1 = Math.min(top, y0 + TILE);
       const part = (y1 - y0) / TILE;
       // the first piece is the picture from the bottom; a shorter one above shows its top, so the trim stays at the top
-      const uv = step === 0 ? wallCellUv(cell, 0, part) : wallCellUv(WALL_CELLS.seam, 1 - part, 1);
+      const uv = step === 0 ? uvFn(cell, 0, part) : uvFn(seamCell, 1 - part, 1);
       const a0 = a * TILE;
       const a1 = a0 + TILE;
       const corners = axis === 'x'

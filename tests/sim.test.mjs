@@ -34,15 +34,15 @@ import { FACE_CELL_H, FACE_CELL_W, FACE_DEAD_FRAME, FACE_FRAME_COUNT, FACE_POSE_
 import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON_ORDER, WEAPON_SLOTS, WEAPON_TIMES, WEAPONS, SHOTGUN_PUMP, arsenalAtlas, weaponAtlas, weaponCellUv, weaponFrame, weaponPlacement } from '../src/weapon.js';
 import { ARSENAL_CELL, ARSENAL_FRAMES, CHAINSAW_TOOTH_PITCH, chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, KNIFE_ATTACKS, knifeAtlas, knifeMesh, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from '../src/arsenal.js';
 import { AMMO_FLASH_DURATION, FIRE_COOLDOWN } from '../src/game.js';
-import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DYNAMIC_LIGHT_ATTENUATION, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
-import { diagWallFaceQuads, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallCellUv, wallFaceQuads } from '../src/wall.js';
-import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
+import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DOOR_CEILING_CELL_COUNT, DOOR_CEILING_CELLS, doorCeilingAtlas, doorCeilingCellFor, doorCeilingCellUv, DYNAMIC_LIGHT_ATTENUATION, elevatorLightFactor, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
+import { diagWallFaceQuads, DOOR_WALL_CELL_COUNT, DOOR_WALL_CELLS, doorWallAtlas, doorWallCellFor, doorWallCellUv, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallCellUv, wallFaceQuads } from '../src/wall.js';
+import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorAtlas, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
 import { BARREL_ATLAS, BARREL_FIRE_FRAGMENT, BARREL_FIRE_VERTEX, BARREL_STAVE_COUNT, barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelFireMesh, barrelShrapnelFireMesh, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
 import { ACID_MIST_FRAGMENT, CRATE_CELL, CRATE_FRAGMENT, CRATE_FRAMES, FLOOR_CELL_COUNT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_BOULDER_BASE_INSET, MARS_BOULDER_CELL_COUNT, MARS_BOULDER_SLOPE, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, crateAtlas, crateMesh, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderMesh, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineMesh, teleporterMachineQuads, TILE_PIXELS } from '../src/floor.js';
 import { LIGHT_GLSL, PARTICLE_FRAGMENT, QuadBatch, SOLID_ALPHA, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, TEXTURED_VERTEX, texturedMesh } from '../src/quads.js';
 import { CELLS, GIB_VARIANTS, STEM_KINDS, TIP_HEIGHTS, TIP_KINDS, dripTime, wallDrips, wallDripQuads as wallDripQuadsVec, screenSplatQuads as screenSplatQuadsVec, createQuadTarget, bloodAtlas, CELL, cellUv, floorGibQuad as floorGibQuadVec, floorSplatQuad as floorSplatQuadVec, particleQuad, printQuad as printQuadVec, wallSplatQuad as wallSplatQuadVec } from '../src/bloodsprites.js';
-import { CEILING, CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
+import { BASE_FLOOR_LEVEL, CEILING, CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DOOR, EXIT, EYE, FLOOR, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { Fog } from '../src/fog.js';
 import { MONSTER_SKIN_CELL, MONSTER_SKIN_CELLS, MONSTER_SKIN_FRAMES, MONSTERS, monsterGoreSkinAtlas, monsterMesh, monsterParts, monsterSkinAtlas } from '../src/monsters.js';
 import { SHOTS, TitleDirector } from '../src/title.js';
@@ -1670,6 +1670,7 @@ const tests = {
   'closed doors block and open doors let the player through'() {
     const game = fresh();
     clearEnemies(game);
+    game.activateSwitch(game.switches[0]);
     game.player.angle = 0;
     game.player.body.setPosition(new Vec2(3 * 64 + 32, 3 * 64 + 32));
     run(game, 2, input({ forward: 1 }));
@@ -3177,6 +3178,7 @@ const tests = {
   'doors, pickups and the exit have sounds, and doors announce each direction once'() {
     const game = fresh();
     clearEnemies(game);
+    game.activateSwitch(game.switches[0]);
     const door = [...game.level.doors.values()].find((d) => d.x === 5 && d.y === 3);
     game.player.body.setPosition(new Vec2(4 * 64 + 40, 3 * 64 + 32));
     game.player.angle = 0;
@@ -5104,9 +5106,10 @@ const tests = {
     game.player.body.setPosition(new Vec2(blueDoor.center.x, blueDoor.center.y - 48));
     game.player.angle = Math.PI / 2;
     game.events.length = 0;
+    game.message.text = '';
     game.use();
     assert.equal(blueDoor.target, 0, 'blue door refuses to open without Blue keycard');
-    assert.ok(game.message.text.includes('Blue keycard'), 'HUD message tells player which keycard is needed');
+    assert.equal(game.message.text, '', 'no textual hint is shown when a locked door does not open');
     assert.ok(game.events.some((e) => e.type === 'locked'), 'locked door emits locked buzzer sound');
 
     // Touching the blue keycard pickup grants the key, increments itemsPicked, and lets the door open
@@ -10427,6 +10430,17 @@ const tests = {
     world.updateCamera(game);
     assert.ok(camera.up.x === 0 && camera.up.y === 1 && camera.up.z === 0, 'AC-7 up restored exactly');
     assert.equal(camera.fov, 60, 'AC-7 fov restored exactly');
+
+    game.state = 'paused';
+    game.shake = 0.38;
+    world.updateCamera(game);
+    const pausedPos = camera.position.clone();
+    world.updateCamera(game);
+    assert.deepEqual(
+      [camera.position.x, camera.position.y, camera.position.z],
+      [pausedPos.x, pausedPos.y, pausedPos.z],
+      'camera shake freezes while paused even when game.shake > 0'
+    );
   },
 
   'AC-7 muzzle light normalizes by weapon flash duration'() {
@@ -11784,7 +11798,7 @@ const tests = {
     game.update(1 / 60, input({ use: true }));
     assert.equal(door.target, 0);
     assert.equal(game.events.filter((e) => e.type === 'locked').length, 1);
-    assert.equal(game.message.text, 'You need a Red keycard to open this door.');
+    assert.equal(game.message.text, 'Prompt lock');
     game.player.keys.red = true;
     game.update(1 / 60, idle);
     assert.equal(game.useTarget.verb, 'OPEN');
@@ -17512,7 +17526,11 @@ const tests = {
     for (let i = 0; i < LEVELS.length; i++) {
       const game = fresh(i);
       const { level, elevator } = game;
+      const expectedFloorLevel = BASE_FLOOR_LEVEL + i;
+      assert.equal(level.floorLevel, expectedFloorLevel, `level ${i} (${level.name}) has floorLevel ${expectedFloorLevel}`);
       assert.ok(level.elevator, `level ${i} (${level.name}) has a starting elevator alcove`);
+      assert.equal(level.elevator.floorLevel, expectedFloorLevel, `level ${i} elevator has floorLevel ${expectedFloorLevel}`);
+      assert.equal(level.elevator.door.floorLevel, expectedFloorLevel, `level ${i} elevator door has floorLevel ${expectedFloorLevel}`);
       assert.equal(elevator.active, true, `level ${i} elevator starts active`);
       assert.equal(elevator.phase, 'arriving', `level ${i} elevator starts in arriving phase`);
       assert.equal(elevator.door, level.elevator.door, `level ${i} elevator references the alcove door`);
@@ -17526,7 +17544,41 @@ const tests = {
         assert.equal(level.indoor.has(level.elevator.tileIdx), true, 'Mars elevator cab is indoor');
         assert.equal(level.indoor.has(level.elevator.exitTileIdx), true, 'Mars airlock room outside elevator is indoor');
       }
+      const elevAtlas = elevatorDoorAtlas(expectedFloorLevel);
+      assert.equal(elevAtlas.frames, 4, 'elevator door atlas has 4 cells (1024x256 power-of-two for WebGL1 mipmap compatibility)');
+      assert.equal(elevAtlas.width & (elevAtlas.width - 1), 0, 'elevator door atlas width is a power of two');
+      assert.equal(elevAtlas.height & (elevAtlas.height - 1), 0, 'elevator door atlas height is a power of two');
+      assert.equal(elevAtlas.floorLevel, expectedFloorLevel);
+      // Verify the outer face (cell 2) differs from the inner cab face (cell 0) and differs between floor levels
+      let diffOuterInner = 0;
+      for (let y = 0; y < 256; y++)
+        for (let x = 0; x < 256; x++) {
+          const i0 = (y * elevAtlas.width + x) * 4;
+          const i2 = (y * elevAtlas.width + 2 * 256 + x) * 4;
+          if (elevAtlas.data[i0] !== elevAtlas.data[i2] || elevAtlas.data[i0 + 1] !== elevAtlas.data[i2 + 1] || elevAtlas.data[i0 + 2] !== elevAtlas.data[i2 + 2])
+            diffOuterInner++;
+        }
+      assert.ok(diffOuterInner > 5000, `level ${i} elevator outer face is visually distinct from standard inner door face`);
+      if (i > 0) {
+        const prevAtlas = elevatorDoorAtlas(expectedFloorLevel - 1);
+        let diffLevelText = 0;
+        for (let y = 0; y < 256; y++)
+          for (let x = 0; x < 256; x++) {
+            const idx = (y * elevAtlas.width + 2 * 256 + x) * 4;
+            if (elevAtlas.data[idx] !== prevAtlas.data[idx] || elevAtlas.data[idx + 1] !== prevAtlas.data[idx + 1] || elevAtlas.data[idx + 2] !== prevAtlas.data[idx + 2])
+              diffLevelText++;
+          }
+        assert.ok(diffLevelText > 50, `level ${i} outer elevator door displays its own floor level (${expectedFloorLevel}) distinct from level ${expectedFloorLevel - 1}`);
+      }
     }
+
+    // Verify elevatorDoorBox maps the exterior side (facing into the room) to cell 2 (u in [0.5, 0.75]) and interior side to cell 0 (u in [0, 0.25])
+    const geoOutPos = elevatorDoorBox(new Vec3(TILE - 0.8, TILE, ELEVATOR_DOOR_THICKNESS), false, 1, 4);
+    assert.ok(geoOutPos.uvs[0] > 0.5 && geoOutPos.uvs[0] < 0.75, '+X outward face maps to cell 2 (exterior elevator face)');
+    assert.ok(geoOutPos.uvs[12] < 0.25, '-X inward face maps to cell 0 (interior cab face)');
+    const geoOutNeg = elevatorDoorBox(new Vec3(TILE - 0.8, TILE, ELEVATOR_DOOR_THICKNESS), false, -1, 4);
+    assert.ok(geoOutNeg.uvs[0] < 0.25, '+X inward face maps to cell 0 when outwardDir is -1');
+    assert.ok(geoOutNeg.uvs[12] > 0.5 && geoOutNeg.uvs[12] < 0.75, '-X outward face maps to cell 2 when outwardDir is -1');
 
     const game = fresh(0);
     clearEnemies(game);
@@ -17560,6 +17612,11 @@ const tests = {
     assert.equal(door.open, 0, 'elevator door starts closed at t=0');
     assert.equal(door.body.active, true, 'closed elevator door keeps the player inside the cab during the ride');
     assert.equal(elevator.duration, ELEVATOR_RIDE_TIME, 'elevator ride lasts ELEVATOR_RIDE_TIME seconds');
+    const rideLightFactor = elevatorLightFactor(game);
+    assert.ok(rideLightFactor <= 0.25, 'ambient light inside the closed elevator cab is dimmed during the ride');
+    const titleGame = new Game();
+    assert.equal(titleGame.state, 'title');
+    assert.equal(elevatorLightFactor(titleGame), 1, 'home screen title animation keeps default 1.0 lighting even while player spawn is in the elevator');
 
     // Step 2.5s during the ride: elevator shakes slowly, plays elevator sound, and keeps the door shut
     const rideEvents = [];
@@ -17576,9 +17633,9 @@ const tests = {
     assert.equal(door.open, 0, 'elevator door stays closed during the ride');
     assert.equal(game.level.grid.getCell(game.player.pos), elevator.cabIdx, 'closed door keeps player inside cab during the ride');
 
-    // Finish the 4.2s ride and let the door slide open (~3.3s more)
+    // Finish the ELEVATOR_RIDE_TIME ride and let the door slide open (~1.6s more)
     const arrivalEvents = [];
-    const stepsArrival = Math.round(3.3 * 60);
+    const stepsArrival = Math.round((ELEVATOR_RIDE_TIME - 2.5 + 1.6) * 60);
     for (let i = 0; i < stepsArrival; i++) {
       game.update(1 / 60, idle);
       for (const e of game.events)
@@ -17589,9 +17646,12 @@ const tests = {
     assert.equal(elevator.phase, 'open', 'elevator transitions to open phase once the ride finishes');
     assert.equal(door.open, 1, 'elevator door opens completely into the first room after the ride');
     assert.equal(door.body.active, false, 'opened elevator door deactivates collision body so player can walk out');
+    const openCabLightFactor = elevatorLightFactor(game);
+    assert.ok(openCabLightFactor > rideLightFactor && openCabLightFactor < 0.5, 'elevator cab remains dimly lit when door opens');
 
     // Walk forward out of the elevator cab into the first room
     run(game, 0.75, input({ forward: 1 }));
+    assert.equal(elevatorLightFactor(game), 1, 'full room lighting restores once player steps out of the elevator cab');
     const playerTile = game.level.grid.getCell(game.player.pos);
     assert.notEqual(playerTile, elevator.cabIdx, 'player stepped out of the elevator cab into the first room');
     assert.equal(elevator.phase, 'locked', 'elevator locks behind the player after stepping into the first room');
@@ -17634,6 +17694,269 @@ const tests = {
     assert.equal(hud.optionsText, 'OPTIONS · F1');
     assert.equal(hud.unboundText, '');
     assert.equal(typeof hud.drawControlHints, 'function');
+  },
+
+  'E1M1 starting room exit doors stay closed and locked until the player activates the wall switch'() {
+    const game = fresh(0);
+    clearEnemies(game);
+    const eastDoor = game.level.doors.get(3 * game.level.width + 5);
+    const southDoor = game.level.doors.get(5 * game.level.width + 3);
+    assert.ok(eastDoor, 'E1M1 has East starting room exit door at (5, 3)');
+    assert.ok(southDoor, 'E1M1 has South starting room exit door at (3, 5)');
+    assert.equal(eastDoor.switchLocked, true, 'East door (5, 3) starts locked by the wall switch');
+    assert.equal(southDoor.switchLocked, true, 'South door (3, 5) starts locked by the wall switch');
+    assert.equal(game.switches.length, 1, 'E1M1 has a wall switch in the starting room');
+    const sw = game.switches[0];
+    assert.equal(sw.activated, false, 'wall switch starts unactivated');
+    assert.deepEqual([sw.x, sw.y], [4, 2], 'wall switch is mounted on the East wall at (4, 2)');
+
+    // Finish the elevator ride and step out into the starting room
+    run(game, ELEVATOR_RIDE_TIME + 1.6);
+    run(game, 0.75, input({ forward: 1 }));
+    assert.equal(game.elevator.phase, 'locked', 'player has exited the elevator into the starting room');
+
+    // Attempt to open East door (5, 3) before activating the wall switch
+    game.player.body.setPosition(new Vec2(4 * 64 + 32, 3 * 64 + 32));
+    game.player.angle = 0;
+    assert.equal(game.findUseTarget(), true, 'East door shows a use prompt');
+    assert.equal(game.useTarget.kind, 'door');
+    assert.equal(game.useTarget.verb, 'LOCKED', 'East door prompt shows LOCKED while switch is unactivated');
+    game.events.length = 0;
+    game.message.text = '';
+    game.use();
+    assert.equal(eastDoor.target, 0, 'East door target remains 0 when used before activating the switch');
+    assert.equal(eastDoor.open, 0, 'East door stays closed before activating the switch');
+    assert.ok(game.events.some((e) => e.type === 'locked'), 'using locked East door emits locked sound');
+    assert.equal(game.message.text, '', 'no textual hint is shown when a switch-locked door does not open');
+
+    // Attempt to open South door (3, 5) before activating the wall switch
+    game.player.body.setPosition(new Vec2(3 * 64 + 32, 4 * 64 + 32));
+    game.player.angle = Math.PI / 2;
+    assert.equal(game.findUseTarget(), true, 'South door shows a use prompt');
+    assert.equal(game.useTarget.kind, 'door');
+    assert.equal(game.useTarget.verb, 'LOCKED', 'South door prompt shows LOCKED while switch is unactivated');
+    game.events.length = 0;
+    game.use();
+    assert.equal(southDoor.target, 0, 'South door target remains 0 when used before activating the switch');
+    assert.equal(southDoor.open, 0, 'South door stays closed before activating the switch');
+    assert.ok(game.events.some((e) => e.type === 'locked'), 'using locked South door emits locked sound');
+
+    // Walk up to the wall switch at (4, 2) and activate it
+    game.player.body.setPosition(new Vec2(4 * 64 + 16, 2 * 64 + 32));
+    game.player.angle = 0;
+    assert.equal(game.findUseTarget(), true, 'looking at the wall switch shows a use prompt');
+    assert.equal(game.useTarget.kind, 'switch');
+    assert.equal(game.useTarget.verb, 'ACTIVATE');
+    assert.equal(sw.pull, 0, 'wall switch lever starts in the UP position (pull = 0)');
+    game.use();
+    assert.equal(sw.activated, true, 'wall switch is now activated');
+    run(game, 0.25);
+    assert.equal(sw.pull, 1, 'wall switch lever pulls down to the BOTTOM position (pull = 1)');
+    assert.equal(eastDoor.switchLocked, false, 'East door (5, 3) is unlocked by the switch');
+    assert.equal(southDoor.switchLocked, false, 'South door (3, 5) is unlocked by the switch');
+    assert.equal(eastDoor.target, 0, 'activating the switch only unlocks East door without auto-opening it');
+    assert.equal(southDoor.target, 0, 'activating the switch only unlocks South door without auto-opening it');
+    game.findUseTarget();
+    assert.notEqual(game.useTarget.kind, 'switch', 'activated wall switch no longer shows an activate prompt');
+
+    // Now press Use on East door (5, 3) and South door (3, 5) to open them
+    game.player.body.setPosition(new Vec2(4 * 64 + 32, 3 * 64 + 32));
+    game.player.angle = 0;
+    assert.equal(game.findUseTarget(), true);
+    assert.equal(game.useTarget.verb, 'OPEN', 'unlocked East door prompt shows OPEN');
+    game.use();
+    assert.equal(eastDoor.target, 1, 'East door opens when used after activating the wall switch');
+
+    game.player.body.setPosition(new Vec2(3 * 64 + 32, 4 * 64 + 32));
+    game.player.angle = Math.PI / 2;
+    assert.equal(game.findUseTarget(), true);
+    assert.equal(game.useTarget.verb, 'OPEN', 'unlocked South door prompt shows OPEN');
+    game.use();
+    assert.equal(southDoor.target, 1, 'South door opens when used after activating the wall switch');
+  },
+
+  'door-corridor walls use dedicated doorWallAtlas textures and never usual room wall textures'() {
+    const doorAtlasData = doorWallAtlas();
+    const roomAtlasData = wallAtlas();
+    const pow2 = (n) => (n & (n - 1)) === 0;
+    assert.equal(doorAtlasData.name, 'doorWall');
+    assert.equal(doorAtlasData.width, TILE_PIXELS * DOOR_WALL_CELL_COUNT);
+    assert.equal(doorAtlasData.height, TILE_PIXELS);
+    assert.ok(pow2(doorAtlasData.width) && pow2(doorAtlasData.height), 'doorWallAtlas dimensions are power-of-two');
+
+    for (let cell = 0; cell < DOOR_WALL_CELL_COUNT; cell++) {
+      let r = 0;
+      let b = 0;
+      let diffPixels = 0;
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const o = (y * doorAtlasData.width + cell * TILE_PIXELS + x) * 4;
+          assert.equal(doorAtlasData.data[o + 3], 255, 'doorWallAtlas texels are opaque');
+          r += doorAtlasData.data[o];
+          b += doorAtlasData.data[o + 2];
+          if (
+            doorAtlasData.data[o] !== roomAtlasData.data[o] ||
+            doorAtlasData.data[o + 1] !== roomAtlasData.data[o + 1] ||
+            doorAtlasData.data[o + 2] !== roomAtlasData.data[o + 2]
+          )
+            diffPixels++;
+        }
+      }
+      assert.ok(b > r, `doorWallAtlas cell ${cell} is cold blue-grey steel with rust left to the shader`);
+      assert.ok(diffPixels > 4000, `doorWallAtlas cell ${cell} is distinct from room wallAtlas cell ${cell}`);
+    }
+
+    // Unlocked door corridors cycle across all four dedicated vestibule cells (jamb, pistons, seal, sensor)
+    const seenDoorCells = new Set();
+    for (let y = 0; y < 20; y++)
+      for (let x = 0; x < 20; x++) {
+        const cell = wallCellFor(new Vec2(x, y), 0, false, true);
+        assert.equal(cell, doorWallCellFor(new Vec2(x, y), 0));
+        assert.ok(cell >= DOOR_WALL_CELLS.jamb && cell <= DOOR_WALL_CELLS.sensor);
+        seenDoorCells.add(cell);
+      }
+    assert.equal(seenDoorCells.size, 4, 'unlocked door corridors use all 4 dedicated door-corridor cells');
+
+    // Keycard-locked door corridors select their matching security lock cell
+    assert.equal(wallCellFor(new Vec2(3, 4), 1, false, true, 'red'), DOOR_WALL_CELLS.red);
+    assert.equal(wallCellFor(new Vec2(3, 4), 1, false, true, 'yellow'), DOOR_WALL_CELLS.yellow);
+    assert.equal(wallCellFor(new Vec2(3, 4), 1, false, true, 'blue'), DOOR_WALL_CELLS.blue);
+
+    // Tall door-corridor walls use DOOR_WALL_CELLS.seam on upper segments
+    const tallQuads = wallFaceQuads({
+      axis: 'x',
+      plane: 64,
+      from: 2,
+      to: 2,
+      base: 0,
+      top: 104,
+      tile: new Vec2(1, 2),
+      d: 1,
+      exit: false,
+      door: true,
+      lock: 'red',
+    });
+    assert.equal(tallQuads.length, 2);
+    assert.deepEqual(tallQuads[0].uv, doorWallCellUv(DOOR_WALL_CELLS.red, 0, 1));
+    assert.deepEqual(tallQuads[1].uv, doorWallCellUv(DOOR_WALL_CELLS.seam, 1 - (40 / 64), 1));
+
+    // World.buildStatic separates door-corridor wall faces into a doorWallAtlas batch
+    const level = new Level(LEVELS[0]);
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, level);
+      const indoorBatches = programs.filter(({ fragment }) => fragment === WALL_FRAGMENT).map(({ mesh }) => mesh);
+      const doorWallMeshes = indoorBatches.filter((mesh) => mesh.sharedAtlas?.name === 'doorWall');
+      const roomWallMeshes = indoorBatches.filter((mesh) => mesh.sharedAtlas?.name === 'wall');
+      assert.ok(doorWallMeshes.length > 0, 'buildStatic creates dedicated doorWallAtlas batches for door corridors');
+      assert.ok(roomWallMeshes.length > 0, 'buildStatic keeps room wallAtlas batches for normal room walls');
+
+      // Verify that the side walls of a non-secret doorway tile in E1M1 are in doorWallMeshes and not in roomWallMeshes
+      const sampleDoor = [...level.doors.values()].find((d) => !d.secret && !d.thin);
+      assert.ok(sampleDoor, 'E1M1 has a standard double door');
+      const x0 = sampleDoor.x * TILE;
+      const x1 = (sampleDoor.x + 1) * TILE;
+      const z0 = sampleDoor.y * TILE;
+      const z1 = (sampleDoor.y + 1) * TILE;
+      const hasQuadInDoorTile = (meshes) => meshes.some((mesh) => {
+        const v = mesh.vertices;
+        for (let i = 0; i < mesh.used * 18; i += 18) {
+          const xs = [v[i], v[i + 3], v[i + 6], v[i + 9], v[i + 12], v[i + 15]];
+          const zs = [v[i + 2], v[i + 5], v[i + 8], v[i + 11], v[i + 14], v[i + 17]];
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minZ = Math.min(...zs);
+          const maxZ = Math.max(...zs);
+          const onVerticalSide = (minX === maxX && (minX === x0 || minX === x1) && minZ === z0 && maxZ === z1);
+          const onHorizontalSide = (minZ === maxZ && (minZ === z0 || minZ === z1) && minX === x0 && maxX === x1);
+          if (onVerticalSide || onHorizontalSide)
+            return true;
+        }
+        return false;
+      });
+      assert.equal(hasQuadInDoorTile(doorWallMeshes), true, 'side walls inside doorway corridor are batched into doorWallMeshes');
+      assert.equal(hasQuadInDoorTile(roomWallMeshes), false, 'side walls inside doorway corridor are excluded from usual roomWallMeshes');
+    });
+  },
+
+  'door-corridor ceilings use dedicated doorCeilingAtlas textures and never usual room ceiling textures'() {
+    const doorCeilData = doorCeilingAtlas();
+    const roomCeilData = ceilingAtlas();
+    const pow2 = (n) => (n & (n - 1)) === 0;
+    assert.equal(doorCeilData.name, 'doorCeiling');
+    assert.equal(doorCeilData.width, TILE_PIXELS * DOOR_CEILING_CELL_COUNT);
+    assert.equal(doorCeilData.height, TILE_PIXELS);
+    assert.ok(pow2(doorCeilData.width) && pow2(doorCeilData.height), 'doorCeilingAtlas dimensions are power-of-two');
+
+    for (let cell = 0; cell < DOOR_CEILING_CELL_COUNT; cell++) {
+      let r = 0;
+      let b = 0;
+      let diffPixels = 0;
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const o = (y * doorCeilData.width + cell * TILE_PIXELS + x) * 4;
+          assert.equal(doorCeilData.data[o + 3], 255, 'doorCeilingAtlas texels are opaque');
+          r += doorCeilData.data[o];
+          b += doorCeilData.data[o + 2];
+          if (
+            doorCeilData.data[o] !== roomCeilData.data[o] ||
+            doorCeilData.data[o + 1] !== roomCeilData.data[o + 1] ||
+            doorCeilData.data[o + 2] !== roomCeilData.data[o + 2]
+          )
+            diffPixels++;
+        }
+      }
+      assert.ok(b > r, `doorCeilingAtlas cell ${cell} is dark blue-grey steel superstructure`);
+      assert.ok(diffPixels > 4000, `doorCeilingAtlas cell ${cell} is distinct from room ceilingAtlas cell ${cell}`);
+    }
+
+    // Unlocked door corridors cycle across all four dedicated soffit cells (lintel, hoist, seal, strobe)
+    const seenCells = new Set();
+    for (let y = 0; y < 20; y++)
+      for (let x = 0; x < 20; x++) {
+        const cell = ceilingCellFor(x, y, true);
+        assert.equal(cell, doorCeilingCellFor(x, y));
+        assert.ok(cell >= DOOR_CEILING_CELLS.lintel && cell <= DOOR_CEILING_CELLS.strobe);
+        seenCells.add(cell);
+      }
+    assert.equal(seenCells.size, 4, 'unlocked door corridors use all 4 dedicated door-corridor ceiling cells');
+
+    // Keycard-locked door corridors and 1-tile vestibules select their matching ceiling cell
+    assert.equal(ceilingCellFor(3, 4, true, 'red'), DOOR_CEILING_CELLS.red);
+    assert.equal(ceilingCellFor(3, 4, true, 'yellow'), DOOR_CEILING_CELLS.yellow);
+    assert.equal(ceilingCellFor(3, 4, true, 'blue'), DOOR_CEILING_CELLS.blue);
+    assert.equal(ceilingCellFor(3, 4, true, null, true), DOOR_CEILING_CELLS.vestibule);
+    assert.equal(doorCeilingCellUv(DOOR_CEILING_CELLS.red).length, 4);
+
+    // World.buildStatic separates door-corridor ceiling tiles into a doorCeilingAtlas batch
+    const level = new Level(LEVELS[0]);
+    withWallWorld((world, programs) => {
+      world.ceilingBatch = World.prototype.ceilingBatch;
+      World.prototype.buildStatic.call(world, level);
+      const ceilingBatches = programs.filter(({ fragment }) => fragment === CEILING_FRAGMENT).map(({ mesh }) => mesh);
+      const doorCeilingMeshes = ceilingBatches.filter((mesh) => mesh.sharedAtlas?.name === 'doorCeiling');
+      const roomCeilingMeshes = ceilingBatches.filter((mesh) => mesh.sharedAtlas?.name === 'ceiling');
+      assert.ok(doorCeilingMeshes.length > 0, 'buildStatic creates dedicated doorCeilingAtlas batches for door corridors');
+      assert.ok(roomCeilingMeshes.length > 0, 'buildStatic keeps room ceilingAtlas batches for normal room ceilings');
+
+      const sampleDoor = [...level.doors.values()].find((d) => !d.secret && !d.thin);
+      assert.ok(sampleDoor, 'E1M1 has a standard double door');
+      const x0 = sampleDoor.x * TILE;
+      const x1 = (sampleDoor.x + 1) * TILE;
+      const z0 = sampleDoor.y * TILE;
+      const z1 = (sampleDoor.y + 1) * TILE;
+      const hasCeilingTile = (meshes) => meshes.some((mesh) => {
+        const v = mesh.vertices;
+        for (let i = 0; i < mesh.used * 18; i += 18) {
+          const xs = [v[i], v[i + 3], v[i + 6], v[i + 9], v[i + 12], v[i + 15]];
+          const zs = [v[i + 2], v[i + 5], v[i + 8], v[i + 11], v[i + 14], v[i + 17]];
+          if (Math.min(...xs) === x0 && Math.max(...xs) === x1 && Math.min(...zs) === z0 && Math.max(...zs) === z1)
+            return true;
+        }
+        return false;
+      });
+      assert.equal(hasCeilingTile(doorCeilingMeshes), true, 'ceiling inside doorway corridor is batched into doorCeilingMeshes');
+      assert.equal(hasCeilingTile(roomCeilingMeshes), false, 'ceiling inside doorway corridor is excluded from usual roomCeilingMeshes');
+    });
   },
 };
 

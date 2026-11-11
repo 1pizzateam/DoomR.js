@@ -170,7 +170,7 @@ test('AC-7 main.js passes no scalar coordinates to spatial', () => {
 test('AC-8 elevatorStop delegates female robotic welcome voice to speak', () => {
   assert.match(importLine, /speak/);
   assert.match(source, /elevatorStop\(ctx,\s*out,\s*t,\s*\{\s*gender\s*=\s*'female'\s*\}/);
-  assert.match(source, /speak\(ctx,\s*out,\s*t\s*\+\s*0\.42,\s*'welcome',\s*\{\s*gender,\s*gain:\s*0\.38/);
+  assert.match(source, /speak\(ctx,\s*out,\s*t\s*\+\s*0\.42,\s*'welcome',\s*\{\s*gender,\s*gain:\s*0\.18/);
   const { ctx, created } = mockContext();
   const info = RECIPES.elevatorStop(ctx, node(), 0);
   assert.ok(info.duration > 1, 'elevatorStop duration includes the welcome speech');
@@ -179,7 +179,7 @@ test('AC-8 elevatorStop delegates female robotic welcome voice to speak', () => 
 
 test('AC-9 whoAreYou synthesizes "who are you ?" and triggers once when opening the first non-elevator door', () => {
   assert.match(source, /whoAreYou\(ctx,\s*out,\s*t,\s*\{\s*gender\s*=\s*'female'\s*\}/);
-  assert.match(source, /speak\(ctx,\s*out,\s*t\s*\+\s*0\.18,\s*'who are you \?',\s*\{\s*gender,\s*gain:\s*0\.38/);
+  assert.match(source, /speak\(ctx,\s*out,\s*t\s*\+\s*0\.18,\s*'who are you \?',\s*\{\s*gender,\s*gain:\s*0\.18/);
   const { ctx, created } = mockContext();
   const info = RECIPES.whoAreYou(ctx, node(), 0);
   assert.ok(info.duration > 0.8, 'whoAreYou duration covers the full sentence');
@@ -205,6 +205,26 @@ test('AC-9 whoAreYou synthesizes "who are you ?" and triggers once when opening 
   game.events.length = 0;
   game.updateDoors(1 / 60);
   assert.equal(game.events.filter((e) => e.type === 'whoAreYou').length, 0);
+});
+
+test('AC-10 elevatorAlert synthesizes cascading "system failure in sector 1..3" announcements during the elevator ride', () => {
+  assert.match(source, /elevatorAlert\(ctx,\s*out,\s*t,\s*\{\s*gender\s*=\s*'female'\s*\}/);
+  assert.match(source, /speak\(ctx,\s*out,\s*cursor\s*\+\s*0\.16,\s*`system failure in sector \$\{s\}`/);
+  const { ctx, created } = mockContext();
+  const info = RECIPES.elevatorAlert(ctx, node(), 0);
+  assert.ok(info.duration > 5, 'elevatorAlert duration covers all three sector failure sentences');
+  assert.equal(created.shapers.length, 3, 'elevatorAlert creates one vocal-cord waveshaper per sector announcement');
+
+  const game = new Game();
+  game.state = 'play';
+  const emitted = [];
+  for (let i = 0; i < 180; i++) {
+    game.events.length = 0;
+    game.updateElevator(1 / 60);
+    for (const e of game.events)
+      emitted.push(e.type);
+  }
+  assert.equal(emitted.filter((t) => t === 'elevatorAlert').length, 1);
 });
 
 process.exit(failed ? 1 : 0);

@@ -248,37 +248,41 @@ function rivets(t, inset) {
  */
 export function rust(t, rnd, amount, holes = 0) {
   const s = t.scale;
-  const patch = field(rnd, 22);
-  const fine = field(rnd, 5);
+  const patch = field(rnd, 16);
+  const medium = field(rnd, 7);
+  const fine = field(rnd, 3);
   const margin = 2 * s;
   for (let py = margin; py < t.height - margin; py++)
     for (let px = margin; px < t.width - margin; px++) {
       const x = px / s;
       const y = py / s;
-      const micro = s > 1 ? texelMicroGrain(px, py) * 0.08 : 0;
-      const n = patch(x, y) + (fine(x, y) - 0.5) * 0.25 + micro;
-      const edge = n - (1 - amount);
+      const jx = (fine(x + 11, y + 37) - 0.5) * 4.5;
+      const jy = (fine(x + 53, y + 19) - 0.5) * 4.5;
+      const micro = s > 1 ? texelMicroGrain(px, py) * 0.14 : (rnd() - 0.5) * 0.12;
+      const ridged = 1 - Math.abs(fine(x + 43, y + 11) * 2 - 1);
+      const n = patch(x + jx, y + jy) * 0.44 + medium(x + 17 + jx * 0.5, y + 29 + jy * 0.5) * 0.34 + ridged * 0.22 + micro;
+      const edge = n - (1 - amount * 0.88);
       if (edge <= 0)
         continue;
-      const depth = Math.min(1, edge * 4);
+      const depth = Math.min(1, edge * 4.2);
       let color = mix(RUST_DARK, RUST, fine(x + 40, y) * 0.8 + 0.2);
-      if (depth > 0.55 && fine(x, y + 31) > 0.45)
+      if (depth > 0.56 && fine(x, y + 31) > 0.46)
         color = mix(RUST, RUST_BRIGHT, (fine(x * 2, y * 2) - 0.3) * 1.2);
       if (holes && n > 1 - holes)
         color = mix(SHADOW, RUST_DARK, fine(x, y) * 0.3);
-      t.setRaw(px, py, color, 0.35 + depth * 0.6);
+      t.setRaw(px, py, color, 0.34 + depth * 0.59);
     }
-  // streaks run down from the thick places
+  // streaks run down from the thickest patches
   const lw = t.width / s;
   const lh = t.height / s;
-  for (let k = 0; k < 7; k++) {
+  for (let k = 0; k < 5; k++) {
     const x = 4 + Math.floor(rnd() * (lw - 8));
-    const y0 = 3 + Math.floor(rnd() * Math.max(1, lh - 20));
-    if (patch(x, y0) < 1 - amount * 0.9)
+    const y0 = 3 + Math.floor(rnd() * Math.max(1, lh - 18));
+    if (patch(x, y0) * 0.6 + medium(x + 17, y0 + 29) * 0.4 < 1 - amount * 0.85)
       continue;
-    const length = 4 + Math.floor(rnd() * 14);
+    const length = 4 + Math.floor(rnd() * 10);
     for (let d = 0; d < length; d++)
-      t.set(x, y0 + d, RUST_DARK, 0.55 * (1 - d / length));
+      t.set(x, y0 + d, RUST_DARK, 0.52 * (1 - d / length));
   }
 }
 
