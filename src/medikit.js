@@ -7,6 +7,7 @@
  *   - Cell 3 (HANDLE/BASE): Dark gunmetal steel & textured grip for the 3D carry handle arch and rubberized base.
  * - `medikitMesh()` builds the 3D geometry (main case + raised 3D top carry handle posts and crossbar).
  */
+import { Vec2, Vec3 } from '@1pizzateam/spock';
 
 export const MEDIKIT_CELL = 32;
 export const MEDIKIT_FRAMES = 4;
@@ -184,26 +185,41 @@ export function medikitAtlas() {
   return { name: 'medikit', data, width, height, cell: MEDIKIT_CELL, frames: MEDIKIT_FRAMES };
 }
 
-function pushBox(vertices, uvs, x0, y0, z0, x1, y1, z1, faces) {
-  const quads = [
-    [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], faces.front],
-    [[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], faces.back],
-    [[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], faces.right],
-    [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], faces.left],
-    [[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], faces.top],
-    [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], faces.bottom],
-  ];
-  const inset = 0.35 / (MEDIKIT_CELL * MEDIKIT_FRAMES);
-  for (const [c0, c1, c2, c3, cell] of quads) {
-    const u0 = cell / MEDIKIT_FRAMES + inset;
-    const u1 = (cell + 1) / MEDIKIT_FRAMES - inset;
-    const quadUvs = [[u0, 1], [u1, 1], [u1, 0], [u0, 0]];
-    const corners = [c0, c1, c2, c3];
-    for (const k of [0, 1, 2, 0, 2, 3]) {
-      vertices.push(...corners[k]);
-      uvs.push(...quadUvs[k]);
-    }
-  }
+const scratchBoxMin = new Vec3();
+const scratchBoxMax = new Vec3();
+const scratchCorner0 = new Vec3();
+const scratchCorner1 = new Vec3();
+const scratchCorner2 = new Vec3();
+const scratchCorner3 = new Vec3();
+const scratchUvMin = new Vec2();
+const scratchUvMax = new Vec2();
+const UV_INSET = 0.35 / (MEDIKIT_CELL * MEDIKIT_FRAMES);
+
+function pushQuad(vertices, uvs, c0, c1, c2, c3, uvMin, uvMax) {
+  vertices.push(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, c0.x, c0.y, c0.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z);
+  uvs.push(uvMin.x, uvMax.y, uvMax.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMin.y);
+}
+
+function pushCellQuad(vertices, uvs, c0, c1, c2, c3, cell) {
+  scratchUvMin.setScalar(cell / MEDIKIT_FRAMES + UV_INSET, 0);
+  scratchUvMax.setScalar((cell + 1) / MEDIKIT_FRAMES - UV_INSET, 1);
+  pushQuad(vertices, uvs, c0, c1, c2, c3, scratchUvMin, scratchUvMax);
+}
+
+/** Pushes the six faces of the box spanning the Vec3 `min` and `max`; `faces` maps each side to its atlas cell. */
+function pushBox(vertices, uvs, min, max, faces) {
+  const { x: x0, y: y0, z: z0 } = min;
+  const { x: x1, y: y1, z: z1 } = max;
+  const c0 = scratchCorner0;
+  const c1 = scratchCorner1;
+  const c2 = scratchCorner2;
+  const c3 = scratchCorner3;
+  pushCellQuad(vertices, uvs, c0.setScalar(x0, y0, z1), c1.setScalar(x1, y0, z1), c2.setScalar(x1, y1, z1), c3.setScalar(x0, y1, z1), faces.front);
+  pushCellQuad(vertices, uvs, c0.setScalar(x1, y0, z0), c1.setScalar(x0, y0, z0), c2.setScalar(x0, y1, z0), c3.setScalar(x1, y1, z0), faces.back);
+  pushCellQuad(vertices, uvs, c0.setScalar(x1, y0, z1), c1.setScalar(x1, y0, z0), c2.setScalar(x1, y1, z0), c3.setScalar(x1, y1, z1), faces.right);
+  pushCellQuad(vertices, uvs, c0.setScalar(x0, y0, z0), c1.setScalar(x0, y0, z1), c2.setScalar(x0, y1, z1), c3.setScalar(x0, y1, z0), faces.left);
+  pushCellQuad(vertices, uvs, c0.setScalar(x0, y1, z1), c1.setScalar(x1, y1, z1), c2.setScalar(x1, y1, z0), c3.setScalar(x0, y1, z0), faces.top);
+  pushCellQuad(vertices, uvs, c0.setScalar(x0, y0, z0), c1.setScalar(x1, y0, z0), c2.setScalar(x1, y0, z1), c3.setScalar(x0, y0, z1), faces.bottom);
 }
 
 /**
@@ -217,7 +233,7 @@ export function medikitMesh() {
   const hz = 5.5;
 
   // 1. Main armored medikit box
-  pushBox(vertices, uvs, -hx, 0, -hz, hx, hy, hz, {
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-hx, 0, -hz), scratchBoxMax.setScalar(hx, hy, hz), {
     front: MEDIKIT_CELLS.front,
     back: MEDIKIT_CELLS.front,
     left: MEDIKIT_CELLS.side,
@@ -235,9 +251,9 @@ export function medikitMesh() {
     top: MEDIKIT_CELLS.handle,
     bottom: MEDIKIT_CELLS.handle,
   };
-  pushBox(vertices, uvs, -4.2, hy, -1.1, -2.6, hy + 2.6, 1.1, hFaces);
-  pushBox(vertices, uvs, 2.6, hy, -1.1, 4.2, hy + 2.6, 1.1, hFaces);
-  pushBox(vertices, uvs, -4.2, hy + 1.8, -1.2, 4.2, hy + 3.2, 1.2, hFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-4.2, hy, -1.1), scratchBoxMax.setScalar(-2.6, hy + 2.6, 1.1), hFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(2.6, hy, -1.1), scratchBoxMax.setScalar(4.2, hy + 2.6, 1.1), hFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-4.2, hy + 1.8, -1.2), scratchBoxMax.setScalar(4.2, hy + 3.2, 1.2), hFaces);
 
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }

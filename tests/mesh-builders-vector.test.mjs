@@ -5,6 +5,10 @@ const read = (name) => readFileSync(new URL(`../src/${name}.js`, import.meta.url
 const barrelSrc = read('barrel');
 const monstersSrc = read('monsters');
 const arsenalSrc = read('arsenal');
+const weaponSrc = read('weapon');
+const explosionSrc = read('explosion');
+const doorSrc = read('door');
+const BOX_SOURCES = ['cache', 'medikit', 'powerups', 'keycard', 'ammo', 'armor'].map((n) => [n, read(n)]);
 
 function matchClose(src, open, openCh, closeCh) {
   let depth = 0;
@@ -67,6 +71,43 @@ const checks = [
         for (const span of callSpans(src, name))
           assert.doesNotMatch(span, ARRAY_ARG, `${name} call receives an array literal`);
     assert.doesNotMatch(extractFunction(arsenalSrc, 'pushQuad'), /c[0-3]\[\d\]/);
+  }],
+  ['AC-1 weapon mag2 helper removed', () => {
+    assert.doesNotMatch(weaponSrc, /function mag2\b/);
+    assert.doesNotMatch(weaponSrc, /\bmag2\(/);
+    assert.match(weaponSrc, /scratchVec2\.setScalar\([^)]*\)\.getMagnitude\(\)/);
+  }],
+  ['AC-5 mesh helpers take Vec3 corners and Vec2 UVs', () => {
+    for (const [name, src] of BOX_SOURCES) {
+      const quad = extractFunction(src, 'pushQuad');
+      assert.match(quad, /c0\.x/, `${name} pushQuad reads Vec3 corners`);
+      assert.doesNotMatch(quad, /c[0-3]\[\d\]/, `${name} pushQuad indexes arrays`);
+      assert.doesNotMatch(quad, /\.\.\./, `${name} pushQuad spreads arrays`);
+      for (const helper of ['pushQuad', 'pushBox', 'pushCellQuad', 'pushCrateTray', 'pushShellCylinder', 'pushRocketWarhead'])
+        for (const span of callSpans(src, helper))
+          assert.doesNotMatch(span, ARRAY_ARG, `${name} ${helper} call receives an array literal`);
+    }
+    for (const name of ['cache', 'medikit', 'powerups'])
+      assert.match(BOX_SOURCES.find(([n]) => n === name)[1], /function pushBox\(vertices, uvs, min, max, faces\)/);
+    const ammo = BOX_SOURCES.find(([n]) => n === 'ammo')[1];
+    assert.match(ammo, /function pushCrateTray\(vertices, uvs, halfExtents\)/);
+    assert.match(ammo, /function pushShellCylinder\(vertices, uvs, center, heightSpan,/);
+    assert.match(ammo, /function pushRocketWarhead\(vertices, uvs, center, profile,/);
+    for (const name of ['doorBox', 'doubleDoorBox', 'secretDoorBox']) {
+      const body = extractFunction(doorSrc, name);
+      assert.doesNotMatch(body, /\[\[/, `${name} builds nested coordinate arrays`);
+      assert.doesNotMatch(body, /vertices\.push\(\.\.\./, `${name} spreads corner arrays`);
+    }
+    assert.doesNotMatch(extractFunction(doorSrc, 'pushQuad'), /c[0-3]\[\d\]/);
+  }],
+  ['AC-8 explosion helpers take Vec3 and Vec2', () => {
+    const tri = extractFunction(explosionSrc, 'pushSmoothTri');
+    assert.doesNotMatch(tri, /\.p\[\d\]|\.n\[\d\]|uv[012]\[\d\]/);
+    assert.match(tri, /uv0\.x/);
+    const quad = extractFunction(explosionSrc, 'pushSmoothQuad');
+    assert.doesNotMatch(quad, /\[\s*u[01]\s*,\s*tv[01]\s*\]/);
+    assert.match(explosionSrc, /function buildLumpyDome\(radii,/);
+    assert.doesNotMatch(extractFunction(explosionSrc, 'evalSurfaceVertex'), /return \[|\[\d\]/);
   }],
 ];
 

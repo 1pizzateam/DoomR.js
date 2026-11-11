@@ -9,7 +9,7 @@
  * - The lid stops at about 80 degrees so a chest placed 14 units toward a wall (body back 5 units off the wall face) keeps every lid vertex at least 1 unit in front of the wall.
  * Everything here runs at build time, never per frame.
  */
-import { Vec3 } from '@1pizzateam/spock';
+import { Vec2, Vec3 } from '@1pizzateam/spock';
 
 export const CHEST_CELL = 32;
 export const CHEST_FRAMES = 4;
@@ -138,32 +138,47 @@ export function chestAtlas() {
   return { name: 'chest', data, width, height, cell: CHEST_CELL, frames: CHEST_FRAMES };
 }
 
-const QUAD_ORDER = [0, 1, 2, 0, 2, 3];
+const scratchBoxMin = new Vec3();
+const scratchBoxMax = new Vec3();
+const scratchCorner0 = new Vec3();
+const scratchCorner1 = new Vec3();
+const scratchCorner2 = new Vec3();
+const scratchCorner3 = new Vec3();
+const scratchUvMin = new Vec2();
+const scratchUvMax = new Vec2();
+const UV_INSET = 0.35 / (CHEST_CELL * CHEST_FRAMES);
 
-function pushQuad(vertices, uvs, corners, cell) {
-  const inset = 0.35 / (CHEST_CELL * CHEST_FRAMES);
-  const u0 = cell / CHEST_FRAMES + inset;
-  const u1 = (cell + 1) / CHEST_FRAMES - inset;
-  const quadUvs = [[u0, 1], [u1, 1], [u1, 0], [u0, 0]];
-  for (const k of QUAD_ORDER) {
-    vertices.push(...corners[k]);
-    uvs.push(...quadUvs[k]);
-  }
+function pushQuad(vertices, uvs, c0, c1, c2, c3, uvMin, uvMax) {
+  vertices.push(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, c0.x, c0.y, c0.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z);
+  uvs.push(uvMin.x, uvMax.y, uvMax.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMin.y);
 }
 
-function pushBox(vertices, uvs, x0, y0, z0, x1, y1, z1, faces) {
-  const quads = [
-    [[[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], faces.front],
-    [[[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]], faces.back],
-    [[[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]], faces.right],
-    [[[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], faces.left],
-    [[[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], faces.top],
-    [[[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], faces.bottom],
-  ];
-  for (const [corners, cell] of quads) {
-    if (cell !== undefined && cell !== null)
-      pushQuad(vertices, uvs, corners, cell);
-  }
+function pushCellQuad(vertices, uvs, c0, c1, c2, c3, cell) {
+  scratchUvMin.setScalar(cell / CHEST_FRAMES + UV_INSET, 0);
+  scratchUvMax.setScalar((cell + 1) / CHEST_FRAMES - UV_INSET, 1);
+  pushQuad(vertices, uvs, c0, c1, c2, c3, scratchUvMin, scratchUvMax);
+}
+
+/** Pushes the six faces of the box spanning the Vec3 `min` and `max`; `faces` maps each side to its atlas cell. */
+function pushBox(vertices, uvs, min, max, faces) {
+  const { x: x0, y: y0, z: z0 } = min;
+  const { x: x1, y: y1, z: z1 } = max;
+  const c0 = scratchCorner0;
+  const c1 = scratchCorner1;
+  const c2 = scratchCorner2;
+  const c3 = scratchCorner3;
+  if (faces.front !== undefined && faces.front !== null)
+    pushCellQuad(vertices, uvs, c0.setScalar(x0, y0, z1), c1.setScalar(x1, y0, z1), c2.setScalar(x1, y1, z1), c3.setScalar(x0, y1, z1), faces.front);
+  if (faces.back !== undefined && faces.back !== null)
+    pushCellQuad(vertices, uvs, c0.setScalar(x1, y0, z0), c1.setScalar(x0, y0, z0), c2.setScalar(x0, y1, z0), c3.setScalar(x1, y1, z0), faces.back);
+  if (faces.right !== undefined && faces.right !== null)
+    pushCellQuad(vertices, uvs, c0.setScalar(x1, y0, z1), c1.setScalar(x1, y0, z0), c2.setScalar(x1, y1, z0), c3.setScalar(x1, y1, z1), faces.right);
+  if (faces.left !== undefined && faces.left !== null)
+    pushCellQuad(vertices, uvs, c0.setScalar(x0, y0, z0), c1.setScalar(x0, y0, z1), c2.setScalar(x0, y1, z1), c3.setScalar(x0, y1, z0), faces.left);
+  if (faces.top !== undefined && faces.top !== null)
+    pushCellQuad(vertices, uvs, c0.setScalar(x0, y1, z1), c1.setScalar(x1, y1, z1), c2.setScalar(x1, y1, z0), c3.setScalar(x0, y1, z0), faces.top);
+  if (faces.bottom !== undefined && faces.bottom !== null)
+    pushCellQuad(vertices, uvs, c0.setScalar(x0, y0, z0), c1.setScalar(x1, y0, z0), c2.setScalar(x1, y0, z1), c3.setScalar(x0, y0, z1), faces.bottom);
 }
 
 /** Chest body standing on y = 0, centred on x/z, front facing local +Z; the top is open onto the glowing interior. */
@@ -173,7 +188,7 @@ export function chestBodyMesh() {
   const hx = CHEST_SIZE.x / 2;
   const hz = CHEST_SIZE.z / 2;
   const hy = CHEST_SIZE.y;
-  pushBox(vertices, uvs, -hx, 0, -hz, hx, hy, hz, {
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-hx, 0, -hz), scratchBoxMax.setScalar(hx, hy, hz), {
     front: CHEST_CELLS.latch,
     back: CHEST_CELLS.sidePanel,
     left: CHEST_CELLS.sidePanel,
@@ -181,8 +196,16 @@ export function chestBodyMesh() {
     bottom: CHEST_CELLS.sidePanel,
   });
   const y = hy - 2;
-  pushQuad(vertices, uvs, [[-hx + 2, y, hz - 2], [hx - 2, y, hz - 2], [hx - 2, y, -hz + 2], [-hx + 2, y, -hz + 2]], CHEST_CELLS.interiorGlow);
-  pushBox(vertices, uvs, -3, 9, hz, 3, 15, hz + 1.5, { front: CHEST_CELLS.latch, left: CHEST_CELLS.latch, right: CHEST_CELLS.latch, top: CHEST_CELLS.latch });
+  pushCellQuad(
+    vertices,
+    uvs,
+    scratchCorner0.setScalar(-hx + 2, y, hz - 2),
+    scratchCorner1.setScalar(hx - 2, y, hz - 2),
+    scratchCorner2.setScalar(hx - 2, y, -hz + 2),
+    scratchCorner3.setScalar(-hx + 2, y, -hz + 2),
+    CHEST_CELLS.interiorGlow
+  );
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-3, 9, hz), scratchBoxMax.setScalar(3, 15, hz + 1.5), { front: CHEST_CELLS.latch, left: CHEST_CELLS.latch, right: CHEST_CELLS.latch, top: CHEST_CELLS.latch });
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }
 
@@ -191,7 +214,7 @@ export function chestLidMesh() {
   const vertices = [];
   const uvs = [];
   const hx = CHEST_SIZE.x / 2 + 0.5;
-  pushBox(vertices, uvs, -hx, 0, 0, hx, LID_HEIGHT, LID_DEPTH, {
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-hx, 0, 0), scratchBoxMax.setScalar(hx, LID_HEIGHT, LID_DEPTH), {
     front: CHEST_CELLS.sidePanel,
     back: CHEST_CELLS.sidePanel,
     left: CHEST_CELLS.sidePanel,
@@ -199,7 +222,7 @@ export function chestLidMesh() {
     top: CHEST_CELLS.lidSeal,
     bottom: CHEST_CELLS.sidePanel,
   });
-  pushBox(vertices, uvs, -3, -5, LID_DEPTH - 1.5, 3, 0, LID_DEPTH, {
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-3, -5, LID_DEPTH - 1.5), scratchBoxMax.setScalar(3, 0, LID_DEPTH), {
     front: CHEST_CELLS.latch,
     left: CHEST_CELLS.latch,
     right: CHEST_CELLS.latch,

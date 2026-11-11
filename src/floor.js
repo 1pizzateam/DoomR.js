@@ -8,6 +8,12 @@ import teleporterShader from './shaders/teleporter.shadergun.json' with { type: 
 import marsDirtShader from './shaders/mars-dirt.shadergun.json' with { type: 'json' };
 
 const scratchPt = new Vec2();
+const scratchBoxMin = new Vec3();
+const scratchBoxMax = new Vec3();
+const scratchBoxOrigin = new Vec2();
+const scratchBoxHalfBottom = new Vec2();
+const scratchBoxHalfTop = new Vec2();
+const scratchBoxSpan = new Vec2();
 
 /**
  * The floor of an old space base: worn deck plates, grating, hatches, cable runs, inlaid light strips and the odd
@@ -367,9 +373,10 @@ export function floorCellUv(cell) {
  * Which cell is on a tile. Doorsteps are hazard stripes; the rest are scattered by a hash of where they are, so a room
  * is neither a grid of copies nor random noise, and the same level always looks the same.
  */
-export function floorCellFor(x, y, door = false) {
+export function floorCellFor(tile, door = false) {
   if (door)
     return FLOOR_CELLS.hazard;
+  const { x, y } = tile;
   let h = Math.imul(x * 73856093 ^ y * 19349663, 2654435761);
   h ^= h >>> 15;
   const r = ((Math.imul(h, 2246822519) >>> 0) % 1000) / 1000;
@@ -601,11 +608,13 @@ export function teleporterMachineQuads(center, size) {
   const ceilY = size.y;
   const quads = [];
 
-  const pushBox = (hx, hz, y0, y1, sideUv, capUv, capAtTop = true) => {
-    const x0 = cx - hx;
-    const x1 = cx + hx;
-    const z0 = cz - hz;
-    const z1 = cz + hz;
+  const pushBox = (min, max, sideUv, capUv, capAtTop = true) => {
+    const x0 = min.x;
+    const y0 = min.y;
+    const z0 = min.z;
+    const x1 = max.x;
+    const y1 = max.y;
+    const z1 = max.z;
     quads.push(
       { corners: [x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1], uv: sideUv },
       { corners: [x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0], uv: sideUv },
@@ -631,8 +640,8 @@ export function teleporterMachineQuads(center, size) {
   // 2. Two-tier stepped 3D quantum emitter pedestal on the floor
   const tier1Y = baseY + 2.2;
   const tier2Y = baseY + 3.6;
-  pushBox(25.5, 25.5, baseY, tier1Y, [0.1, 0.44, 0.9, 0.56], [0.08, 0.08, 0.92, 0.92], true);
-  pushBox(18.0, 18.0, tier1Y, tier2Y, [0.18, 0.46, 0.82, 0.54], [0.18, 0.18, 0.82, 0.82], true);
+  pushBox(scratchBoxMin.setScalar(cx - 25.5, baseY, cz - 25.5), scratchBoxMax.setScalar(cx + 25.5, tier1Y, cz + 25.5), [0.1, 0.44, 0.9, 0.56], [0.08, 0.08, 0.92, 0.92], true);
+  pushBox(scratchBoxMin.setScalar(cx - 18.0, tier1Y, cz - 18.0), scratchBoxMax.setScalar(cx + 18.0, tier2Y, cz + 18.0), [0.18, 0.46, 0.82, 0.54], [0.18, 0.18, 0.82, 0.82], true);
 
   // 3. Four corner quantum field-emitter pylons with glowing energy conduit strips
   const pylonTop = ceilY > 0 ? ceilY - 4.0 : baseY + 46.0;
@@ -684,8 +693,8 @@ export function teleporterMachineQuads(center, size) {
   if (ceilY > 0) {
     const hoodMid = ceilY - 2.6;
     const hoodLow = ceilY - 4.4;
-    pushBox(25.5, 25.5, hoodMid, ceilY, [0.1, 0.44, 0.9, 0.56], [0.08, 0.08, 0.92, 0.92], false);
-    pushBox(18.0, 18.0, hoodLow, hoodMid, [0.18, 0.46, 0.82, 0.54], [0.18, 0.18, 0.82, 0.82], false);
+    pushBox(scratchBoxMin.setScalar(cx - 25.5, hoodMid, cz - 25.5), scratchBoxMax.setScalar(cx + 25.5, ceilY, cz + 25.5), [0.1, 0.44, 0.9, 0.56], [0.08, 0.08, 0.92, 0.92], false);
+    pushBox(scratchBoxMin.setScalar(cx - 18.0, hoodLow, cz - 18.0), scratchBoxMax.setScalar(cx + 18.0, hoodMid, cz + 18.0), [0.18, 0.46, 0.82, 0.54], [0.18, 0.18, 0.82, 0.82], false);
   }
 
   return quads;
@@ -916,13 +925,14 @@ export function crateQuads(center = new Vec3(0, 0, 0), size = new Vec2(64, 26)) 
   const uvFrame = crateCellUv(CRATE_CELLS.frame);
   const uvTrim = crateCellUv(CRATE_CELLS.trim);
 
-  const pushBoxAt = (ox, oz, hx, hz, y0, y1, sideUv, capUv, includeBottom = false) => {
-    const x0 = cx + (ox - hx) * scaleXZ;
-    const x1 = cx + (ox + hx) * scaleXZ;
-    const z0 = cz + (oz - hz) * scaleXZ;
-    const z1 = cz + (oz + hz) * scaleXZ;
-    const by0 = baseY + y0 * scaleY;
-    const by1 = baseY + y1 * scaleY;
+  // min and max are the box corners in unscaled crate space
+  const pushBoxAt = (min, max, sideUv, capUv, includeBottom = false) => {
+    const x0 = cx + min.x * scaleXZ;
+    const x1 = cx + max.x * scaleXZ;
+    const z0 = cz + min.z * scaleXZ;
+    const z1 = cz + max.z * scaleXZ;
+    const by0 = baseY + min.y * scaleY;
+    const by1 = baseY + max.y * scaleY;
     quads.push(
       { corners: [x0, by0, z1, x1, by0, z1, x1, by1, z1, x0, by1, z1], uv: sideUv },
       { corners: [x1, by0, z0, x0, by0, z0, x0, by1, z0, x1, by1, z0], uv: sideUv },
@@ -935,10 +945,10 @@ export function crateQuads(center = new Vec3(0, 0, 0), size = new Vec2(64, 26)) 
   };
 
   // 1. Heavy grav-skid base pallet plinth (y = 0 .. 3.4)
-  pushBoxAt(0, 0, 31.2, 31.2, 0.0, 3.4, uvFrame, uvFrame, true);
+  pushBoxAt(scratchBoxMin.setScalar(0 - 31.2, 0.0, 0 - 31.2), scratchBoxMax.setScalar(0 + 31.2, 3.4, 0 + 31.2), uvFrame, uvFrame, true);
 
   // 2. Main armored octagonal/recessed cargo container core (y = 3.5 .. 22.8)
-  pushBoxAt(0, 0, 29.6, 29.6, 3.5, 22.8, uvSide, uvTop, false);
+  pushBoxAt(scratchBoxMin.setScalar(0 - 29.6, 3.5, 0 - 29.6), scratchBoxMax.setScalar(0 + 29.6, 22.8, 0 + 29.6), uvSide, uvTop, false);
 
   // 3. Four reinforced vertical corner bumper pillars (y = 0.1 .. 25.3, outer faces at ±31.9)
   const cornerCenters = [
@@ -948,26 +958,26 @@ export function crateQuads(center = new Vec3(0, 0, 0), size = new Vec2(64, 26)) 
     [-26.8, 26.8],
   ];
   for (const [ox, oz] of cornerCenters) {
-    pushBoxAt(ox, oz, 5.1, 5.1, 0.1, 25.3, uvFrame, uvFrame, false);
+    pushBoxAt(scratchBoxMin.setScalar(ox - 5.1, 0.1, oz - 5.1), scratchBoxMax.setScalar(ox + 5.1, 25.3, oz + 5.1), uvFrame, uvFrame, false);
     // 4. Corner tie-down / stacking lugs atop each corner pillar (y = 25.35 .. 26.0)
-    pushBoxAt(ox, oz, 3.6, 3.6, 25.35, 26.0, uvTrim, uvTrim, false);
+    pushBoxAt(scratchBoxMin.setScalar(ox - 3.6, 25.35, oz - 3.6), scratchBoxMax.setScalar(ox + 3.6, 26.0, oz + 3.6), uvTrim, uvTrim, false);
   }
 
   // 5. Four recessed side armor bulkheads & telemetry consoles (outer faces at ±31.85)
-  pushBoxAt(0, 30.8, 19.2, 1.05, 4.2, 22.1, uvSide, uvTrim, false);
-  pushBoxAt(0, -30.8, 19.2, 1.05, 4.2, 22.1, uvSide, uvTrim, false);
-  pushBoxAt(30.8, 0, 1.05, 19.2, 4.2, 22.1, uvSide, uvTrim, false);
-  pushBoxAt(-30.8, 0, 1.05, 19.2, 4.2, 22.1, uvSide, uvTrim, false);
+  pushBoxAt(scratchBoxMin.setScalar(0 - 19.2, 4.2, 30.8 - 1.05), scratchBoxMax.setScalar(0 + 19.2, 22.1, 30.8 + 1.05), uvSide, uvTrim, false);
+  pushBoxAt(scratchBoxMin.setScalar(0 - 19.2, 4.2, -30.8 - 1.05), scratchBoxMax.setScalar(0 + 19.2, 22.1, -30.8 + 1.05), uvSide, uvTrim, false);
+  pushBoxAt(scratchBoxMin.setScalar(30.8 - 1.05, 4.2, 0 - 19.2), scratchBoxMax.setScalar(30.8 + 1.05, 22.1, 0 + 19.2), uvSide, uvTrim, false);
+  pushBoxAt(scratchBoxMin.setScalar(-30.8 - 1.05, 4.2, 0 - 19.2), scratchBoxMax.setScalar(-30.8 + 1.05, 22.1, 0 + 19.2), uvSide, uvTrim, false);
 
   // 6. Beveled upper containment lid (y = 22.85 .. 24.85)
-  pushBoxAt(0, 0, 28.4, 28.4, 22.85, 24.85, uvFrame, uvTop, false);
+  pushBoxAt(scratchBoxMin.setScalar(0 - 28.4, 22.85, 0 - 28.4), scratchBoxMax.setScalar(0 + 28.4, 24.85, 0 + 28.4), uvFrame, uvTop, false);
 
   // 7. Two transverse hydraulic locking clamp bars across the lid (y = 24.9 .. 26.0)
-  pushBoxAt(-12.5, 0, 2.8, 29.2, 24.9, 26.0, uvTrim, uvTrim, false);
-  pushBoxAt(12.5, 0, 2.8, 29.2, 24.9, 26.0, uvTrim, uvTrim, false);
+  pushBoxAt(scratchBoxMin.setScalar(-12.5 - 2.8, 24.9, 0 - 29.2), scratchBoxMax.setScalar(-12.5 + 2.8, 26.0, 0 + 29.2), uvTrim, uvTrim, false);
+  pushBoxAt(scratchBoxMin.setScalar(12.5 - 2.8, 24.9, 0 - 29.2), scratchBoxMax.setScalar(12.5 + 2.8, 26.0, 0 + 29.2), uvTrim, uvTrim, false);
 
   // 8. Central UAC octagonal containment seal cap (y = 24.9 .. 25.85)
-  pushBoxAt(0, 0, 6.2, 6.2, 24.9, 25.85, uvTrim, uvTop, false);
+  pushBoxAt(scratchBoxMin.setScalar(0 - 6.2, 24.9, 0 - 6.2), scratchBoxMax.setScalar(0 + 6.2, 25.85, 0 + 6.2), uvTrim, uvTop, false);
 
   return quads;
 }
@@ -1418,7 +1428,15 @@ export function marsBoulderQuads(center, size = new Vec2(64, 26)) {
   const uvCap = marsBoulderCellUv(MARS_BOULDER_CELLS.cap, false);
 
   // Tapered rock frustum helper (wider base, narrower weathered top) with directional face shading
-  const pushRockMass = (ox, oz, hxBot, hzBot, hxTop, hzTop, y0, y1, southUv, northUv, westUv, eastUv, capUv) => {
+  const pushRockMass = (origin, halfBottom, halfTop, ySpan, southUv, northUv, westUv, eastUv, capUv) => {
+    const ox = origin.x;
+    const oz = origin.y;
+    const hxBot = halfBottom.x;
+    const hzBot = halfBottom.y;
+    const hxTop = halfTop.x;
+    const hzTop = halfTop.y;
+    const y0 = ySpan.x;
+    const y1 = ySpan.y;
     const bx0 = cx + (ox - hxBot) * scaleXZ;
     const bx1 = cx + (ox + hxBot) * scaleXZ;
     const bz0 = cz + (oz - hzBot) * scaleXZ;
@@ -1440,17 +1458,17 @@ export function marsBoulderQuads(center, size = new Vec2(64, 26)) {
 
   // Continuous 0.5-slope rock frustum across 3 geological strata tiers (half-width 31 -> 28 -> 22 -> 18 from y = 0 .. 26)
   // 1. Broad buried bedrock plinth emerging from Martian sand (y = 0 .. 6.0)
-  pushRockMass(0, 0, 31.0, 31.0, 28.0, 28.0, 0.0, 6.0, uvStrata, uvScoured, uvScoured, uvCrag, uvCap);
+  pushRockMass(scratchBoxOrigin.setScalar(0, 0), scratchBoxHalfBottom.setScalar(31.0, 31.0), scratchBoxHalfTop.setScalar(28.0, 28.0), scratchBoxSpan.setScalar(0.0, 6.0), uvStrata, uvScoured, uvScoured, uvCrag, uvCap);
   // 2. Main central jagged rock torso (y = 6.0 .. 18.0)
-  pushRockMass(0, 0, 28.0, 28.0, 22.0, 22.0, 6.0, 18.0, uvCrag, uvScoured, uvStrata, uvCrag, uvCap);
+  pushRockMass(scratchBoxOrigin.setScalar(0, 0), scratchBoxHalfBottom.setScalar(28.0, 28.0), scratchBoxHalfTop.setScalar(22.0, 22.0), scratchBoxSpan.setScalar(6.0, 18.0), uvCrag, uvScoured, uvStrata, uvCrag, uvCap);
   // 3. Upper weathered crag shoulder (y = 18.0 .. 26.0)
-  pushRockMass(0, 0, 22.0, 22.0, 18.0, 18.0, 18.0, 26.0, uvCrag, uvStrata, uvScoured, uvCrag, uvCap);
+  pushRockMass(scratchBoxOrigin.setScalar(0, 0), scratchBoxHalfBottom.setScalar(22.0, 22.0), scratchBoxHalfTop.setScalar(18.0, 18.0), scratchBoxSpan.setScalar(18.0, 26.0), uvCrag, uvStrata, uvScoured, uvCrag, uvCap);
   // 4. Northwest summit crag peak crowning the top plateau (y = 24.5 .. 26.8)
-  pushRockMass(-4.5, -3.5, 11.5, 10.5, 8.0, 7.5, 24.5, 26.8, uvCrag, uvStrata, uvScoured, uvCrag, uvCap);
+  pushRockMass(scratchBoxOrigin.setScalar(-4.5, -3.5), scratchBoxHalfBottom.setScalar(11.5, 10.5), scratchBoxHalfTop.setScalar(8.0, 7.5), scratchBoxSpan.setScalar(24.5, 26.8), uvCrag, uvStrata, uvScoured, uvCrag, uvCap);
   // 5. Southeast summit crag ridge crowning the top plateau (y = 24.2 .. 26.4)
-  pushRockMass(4.5, 4.0, 11.0, 10.5, 7.5, 7.0, 24.2, 26.4, uvCrag, uvScoured, uvStrata, uvStrata, uvCap);
+  pushRockMass(scratchBoxOrigin.setScalar(4.5, 4.0), scratchBoxHalfBottom.setScalar(11.0, 10.5), scratchBoxHalfTop.setScalar(7.5, 7.0), scratchBoxSpan.setScalar(24.2, 26.4), uvCrag, uvScoured, uvStrata, uvStrata, uvCap);
   // 6. Southwest fractured summit spur crowning the top plateau (y = 24.0 .. 26.2)
-  pushRockMass(-3.5, 4.5, 10.0, 9.5, 7.0, 6.5, 24.0, 26.2, uvStrata, uvScoured, uvScoured, uvCrag, uvCap);
+  pushRockMass(scratchBoxOrigin.setScalar(-3.5, 4.5), scratchBoxHalfBottom.setScalar(10.0, 9.5), scratchBoxHalfTop.setScalar(7.0, 6.5), scratchBoxSpan.setScalar(24.0, 26.2), uvStrata, uvScoured, uvScoured, uvCrag, uvCap);
 
   return quads;
 }

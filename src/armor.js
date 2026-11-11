@@ -53,13 +53,16 @@ const STEEL = [
   new Vec3(142, 164, 194),
 ];
 
-function pushQuad(vertices, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
-  const corners = [c0, c1, c2, c3];
-  const quadUvs = [[u0, v1], [u1, v1], [u1, v0], [u0, v0]];
-  for (const k of [0, 1, 2, 0, 2, 3]) {
-    vertices.push(...corners[k]);
-    uvs.push(...quadUvs[k]);
-  }
+const scratchCorner0 = new Vec3();
+const scratchCorner1 = new Vec3();
+const scratchCorner2 = new Vec3();
+const scratchCorner3 = new Vec3();
+const scratchUvMin = new Vec2();
+const scratchUvMax = new Vec2();
+
+function pushQuad(vertices, uvs, c0, c1, c2, c3, uvMin, uvMax) {
+  vertices.push(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, c0.x, c0.y, c0.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z);
+  uvs.push(uvMin.x, uvMax.y, uvMax.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMin.y);
 }
 
 function cellRange(cell) {
@@ -79,14 +82,14 @@ function boxMesh(size = new Vec3(1, 1, 1), frontCell = 0, backCell = 1, sideCell
   const vertices = [];
   const uvs = [];
   // Front (+Z) and Back (-Z)
-  pushQuad(vertices, uvs, [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz], uf.x, 0, uf.y, 1);
-  pushQuad(vertices, uvs, [hx, -hy, -hz], [-hx, -hy, -hz], [-hx, hy, -hz], [hx, hy, -hz], ub.x, 0, ub.y, 1);
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(-hx, -hy, hz), scratchCorner1.setScalar(hx, -hy, hz), scratchCorner2.setScalar(hx, hy, hz), scratchCorner3.setScalar(-hx, hy, hz), scratchUvMin.setScalar(uf.x, 0), scratchUvMax.setScalar(uf.y, 1));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(hx, -hy, -hz), scratchCorner1.setScalar(-hx, -hy, -hz), scratchCorner2.setScalar(-hx, hy, -hz), scratchCorner3.setScalar(hx, hy, -hz), scratchUvMin.setScalar(ub.x, 0), scratchUvMax.setScalar(ub.y, 1));
   // Right (+X) and Left (-X)
-  pushQuad(vertices, uvs, [hx, -hy, hz], [hx, -hy, -hz], [hx, hy, -hz], [hx, hy, hz], us.x, 0, us.y, 1);
-  pushQuad(vertices, uvs, [-hx, -hy, -hz], [-hx, -hy, hz], [-hx, hy, hz], [-hx, hy, -hz], us.x, 0, us.y, 1);
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(hx, -hy, hz), scratchCorner1.setScalar(hx, -hy, -hz), scratchCorner2.setScalar(hx, hy, -hz), scratchCorner3.setScalar(hx, hy, hz), scratchUvMin.setScalar(us.x, 0), scratchUvMax.setScalar(us.y, 1));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(-hx, -hy, -hz), scratchCorner1.setScalar(-hx, -hy, hz), scratchCorner2.setScalar(-hx, hy, hz), scratchCorner3.setScalar(-hx, hy, -hz), scratchUvMin.setScalar(us.x, 0), scratchUvMax.setScalar(us.y, 1));
   // Top (+Y) and Bottom (-Y)
-  pushQuad(vertices, uvs, [-hx, hy, hz], [hx, hy, hz], [hx, hy, -hz], [-hx, hy, -hz], ut.x, 0, ut.y, 1);
-  pushQuad(vertices, uvs, [-hx, -hy, -hz], [hx, -hy, -hz], [hx, -hy, hz], [-hx, -hy, hz], ut.x, 0, ut.y, 1);
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(-hx, hy, hz), scratchCorner1.setScalar(hx, hy, hz), scratchCorner2.setScalar(hx, hy, -hz), scratchCorner3.setScalar(-hx, hy, -hz), scratchUvMin.setScalar(ut.x, 0), scratchUvMax.setScalar(ut.y, 1));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(-hx, -hy, -hz), scratchCorner1.setScalar(hx, -hy, -hz), scratchCorner2.setScalar(hx, -hy, hz), scratchCorner3.setScalar(-hx, -hy, hz), scratchUvMin.setScalar(ut.x, 0), scratchUvMax.setScalar(ut.y, 1));
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }
 

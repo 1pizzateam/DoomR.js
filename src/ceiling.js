@@ -9,6 +9,7 @@ import ceilingConeShader from './shaders/ceiling-cone.shadergun.json' with { typ
 import marsSkyShader from './shaders/mars-sky.shadergun.json' with { type: 'json' };
 
 const scratchPt = new Vec2();
+const scratchTile = new Vec2();
 const scratchPixel = new Vec2();
 const scratchDir = new Vec3();
 const scratchNormal = new Vec3();
@@ -365,7 +366,8 @@ export function ceilingCellUv(cell) {
 }
 
 /** Which cell hangs over a tile: light fixtures spaced on a wide 5x4 grid, and structural bays/ducts/trusses across the rest. */
-export function ceilingCellFor(x, y) {
+export function ceilingCellFor(tile) {
+  const { x, y } = tile;
   if (x % 5 === 2 && y % 4 === 3)
     return CEILING_CELLS.light;
   let h = Math.imul(x * 73856093 ^ y * 19349663 ^ 5, 2654435761);
@@ -406,7 +408,7 @@ export function ceilingLightFixtures(level) {
       const idx = ty * level.width + tx;
       if ((level.kind[idx] !== FLOOR && level.kind[idx] !== DOOR && level.kind[idx] !== PILLAR && !level.diag[idx]) || level.arena?.has(idx))
         continue;
-      if (ceilingCellFor(tx, ty) !== CEILING_CELLS.light)
+      if (ceilingCellFor(scratchTile.setScalar(tx, ty)) !== CEILING_CELLS.light)
         continue;
       let h = Math.imul(tx * 73856093 ^ ty * 19349663 ^ 17, 2654435761);
       h = (h ^ (h >>> 15)) >>> 0;

@@ -364,7 +364,6 @@ export const EXPLOSION_3D_CELLS = {
   smoke: 3,
 };
 
-const scratchNormal = new Vec3();
 
 function valueNoise2d(x, y, seed) {
   const ix = Math.floor(x);
@@ -531,54 +530,67 @@ function cellUvBounds(cell) {
   return [cell * step + pad, (cell + 1) * step - pad];
 }
 
-function evalSurfaceVertex(uFrac, vFrac, evalPt, centerY = 0) {
-  const p = evalPt(uFrac, vFrac);
+const scratchSurfaceP = new Vec3();
+const scratchSurfacePu0 = new Vec3();
+const scratchSurfacePu1 = new Vec3();
+const scratchSurfacePv0 = new Vec3();
+const scratchSurfacePv1 = new Vec3();
+const scratchUvA = new Vec2();
+const scratchUvB = new Vec2();
+const scratchUvC = new Vec2();
+const scratchUvD = new Vec2();
+const scratchUvMin = new Vec2();
+const scratchUvMax = new Vec2();
+
+/** Evaluates the surface at (uFrac, vFrac) with `evalPt(uFrac, vFrac, out)`; writes the position and outward normal into the Vec3s `outPos` and `outNormal`. */
+function evalSurfaceVertex(uFrac, vFrac, evalPt, centerY, outPos, outNormal) {
+  evalPt(uFrac, vFrac, outPos);
   const epsU = 1 / 64;
   const epsV = 1 / 64;
   const vMid = Utils.clamp(vFrac, epsV, 1 - epsV);
-  const pu1 = evalPt((uFrac + epsU) % 1, vMid);
-  const pu0 = evalPt((uFrac - epsU + 1) % 1, vMid);
+  evalPt((uFrac + epsU) % 1, vMid, scratchSurfacePu1);
+  evalPt((uFrac - epsU + 1) % 1, vMid, scratchSurfacePu0);
   const vHi = Math.min(1, vFrac + epsV);
   const vLo = Math.max(0, vFrac - epsV);
-  const pv1 = evalPt(uFrac, vHi);
-  const pv0 = evalPt(uFrac, vLo);
+  evalPt(uFrac, vHi, scratchSurfacePv1);
+  evalPt(uFrac, vLo, scratchSurfacePv0);
 
-  const tx = pu1[0] - pu0[0];
-  const ty = pu1[1] - pu0[1];
-  const tz = pu1[2] - pu0[2];
-  const bx = pv1[0] - pv0[0];
-  const by = pv1[1] - pv0[1];
-  const bz = pv1[2] - pv0[2];
+  const tx = scratchSurfacePu1.x - scratchSurfacePu0.x;
+  const ty = scratchSurfacePu1.y - scratchSurfacePu0.y;
+  const tz = scratchSurfacePu1.z - scratchSurfacePu0.z;
+  const bx = scratchSurfacePv1.x - scratchSurfacePv0.x;
+  const by = scratchSurfacePv1.y - scratchSurfacePv0.y;
+  const bz = scratchSurfacePv1.z - scratchSurfacePv0.z;
 
   // Outward normal: cross(tangentV, tangentU) oriented outward from (0, centerY, 0)
-  scratchNormal.setScalar(
+  outNormal.setScalar(
     by * tz - bz * ty,
     bz * tx - bx * tz,
     bx * ty - by * tx
   );
-  if (scratchNormal.getMagnitude(true) > 1e-8) {
-    scratchNormal.normalize();
-    const dy = p[1] - centerY;
-    if (scratchNormal.x * p[0] + scratchNormal.y * dy + scratchNormal.z * p[2] < 0)
-      scratchNormal.scale(-1);
+  if (outNormal.getMagnitude(true) > 1e-8) {
+    outNormal.normalize();
+    const dy = outPos.y - centerY;
+    if (outNormal.x * outPos.x + outNormal.y * dy + outNormal.z * outPos.z < 0)
+      outNormal.scale(-1);
   } else
-    scratchNormal.setScalar(0, 1, 0);
-
-  return {
-    p,
-    n: [scratchNormal.x, scratchNormal.y, scratchNormal.z],
-  };
+    outNormal.setScalar(0, 1, 0);
 }
 
-function pushSmoothTri(vertices, normals, uvs, v0, v1, v2, uv0, uv1, uv2) {
-  vertices.push(v0.p[0], v0.p[1], v0.p[2], v1.p[0], v1.p[1], v1.p[2], v2.p[0], v2.p[1], v2.p[2]);
-  normals.push(v0.n[0], v0.n[1], v0.n[2], v1.n[0], v1.n[1], v1.n[2], v2.n[0], v2.n[1], v2.n[2]);
-  uvs.push(uv0[0], uv0[1], uv1[0], uv1[1], uv2[0], uv2[1]);
+function pushSmoothTri(vertices, normals, uvs, p0, p1, p2, n0, n1, n2, uv0, uv1, uv2) {
+  vertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+  normals.push(n0.x, n0.y, n0.z, n1.x, n1.y, n1.z, n2.x, n2.y, n2.z);
+  uvs.push(uv0.x, uv0.y, uv1.x, uv1.y, uv2.x, uv2.y);
 }
 
-function pushSmoothQuad(vertices, normals, uvs, v00, v10, v11, v01, u0, tv0, u1, tv1) {
-  pushSmoothTri(vertices, normals, uvs, v00, v01, v11, [u0, tv0], [u0, tv1], [u1, tv1]);
-  pushSmoothTri(vertices, normals, uvs, v00, v11, v10, [u0, tv0], [u1, tv1], [u1, tv0]);
+/** Two triangles over the corners `p00, p10, p11, p01` and their normals; `uvMin` and `uvMax` bound the cell's texture rectangle. */
+function pushSmoothQuad(vertices, normals, uvs, p00, p10, p11, p01, n00, n10, n11, n01, uvMin, uvMax) {
+  scratchUvA.copy(uvMin);
+  scratchUvB.setScalar(uvMin.x, uvMax.y);
+  scratchUvC.copy(uvMax);
+  scratchUvD.setScalar(uvMax.x, uvMin.y);
+  pushSmoothTri(vertices, normals, uvs, p00, p01, p11, n00, n01, n11, scratchUvA, scratchUvB, scratchUvC);
+  pushSmoothTri(vertices, normals, uvs, p00, p11, p10, n00, n11, n10, scratchUvA, scratchUvC, scratchUvD);
 }
 
 function buildParametricMesh(radialSegs, rings, cell, evalPt, centerY = 0) {
@@ -594,7 +606,9 @@ function buildParametricMesh(radialSegs, rings, cell, evalPt, centerY = 0) {
     const row = [];
     for (let s = 0; s <= radialSegs; s++) {
       const uFrac = (s % radialSegs) / radialSegs;
-      row.push(evalSurfaceVertex(uFrac, vFrac, evalPt, centerY));
+      const vertex = { p: new Vec3(), n: new Vec3() };
+      evalSurfaceVertex(uFrac, vFrac, evalPt, centerY, vertex.p, vertex.n);
+      row.push(vertex);
     }
     grid.push(row);
   }
@@ -605,19 +619,11 @@ function buildParametricMesh(radialSegs, rings, cell, evalPt, centerY = 0) {
     for (let s = 0; s < radialSegs; s++) {
       const u0 = Utils.lerp(cu0, cu1, s / radialSegs);
       const u1 = Utils.lerp(cu0, cu1, (s + 1) / radialSegs);
-      pushSmoothQuad(
-        vertices,
-        normals,
-        uvs,
-        grid[r][s],
-        grid[r][s + 1],
-        grid[r + 1][s + 1],
-        grid[r + 1][s],
-        u0,
-        tv0,
-        u1,
-        tv1
-      );
+      const v00 = grid[r][s];
+      const v10 = grid[r][s + 1];
+      const v11 = grid[r + 1][s + 1];
+      const v01 = grid[r + 1][s];
+      pushSmoothQuad(vertices, normals, uvs, v00.p, v10.p, v11.p, v01.p, v00.n, v10.n, v11.n, v01.n, scratchUvMin.setScalar(u0, tv0), scratchUvMax.setScalar(u1, tv1));
     }
   }
 
@@ -628,12 +634,13 @@ function buildParametricMesh(radialSegs, rings, cell, evalPt, centerY = 0) {
   };
 }
 
-function buildLumpyDome(rx, ry, rz, radialSegs, rings, cell, phaseSalt) {
+/** A lumpy half dome whose semi-axes are the Vec3 `radii`. */
+function buildLumpyDome(radii, radialSegs, rings, cell, phaseSalt) {
   return buildParametricMesh(
     radialSegs,
     rings,
     cell,
-    (uFrac, vFrac) => {
+    (uFrac, vFrac, out) => {
       const elev = vFrac * Trigo.halfpi;
       const azim = uFrac * Trigo.twopi;
       const cosE = Math.cos(elev);
@@ -643,10 +650,10 @@ function buildLumpyDome(rx, ry, rz, radialSegs, rings, cell, phaseSalt) {
         0.16 * Math.sin(azim * 3 + elev * 3.2 + phaseSalt) * cosE +
         0.11 * Math.cos(azim * 5 - elev * 4.1 + phaseSalt * 1.7) * cosE +
         0.06 * Math.sin(azim * 8 + elev * 5.0 - phaseSalt * 0.9) * cosE;
-      const x = Math.cos(azim) * cosE * rx * billow;
-      const y = sinE * ry * (1 + 0.1 * Math.sin(elev * 3 + phaseSalt) * cosE);
-      const z = Math.sin(azim) * cosE * rz * billow;
-      return [x, y, z];
+      const x = Math.cos(azim) * cosE * radii.x * billow;
+      const y = sinE * radii.y * (1 + 0.1 * Math.sin(elev * 3 + phaseSalt) * cosE);
+      const z = Math.sin(azim) * cosE * radii.z * billow;
+      out.setScalar(x, y, z);
     },
     0
   );
@@ -657,7 +664,7 @@ function buildLumpyDome(rx, ry, rz, radialSegs, rings, cell, phaseSalt) {
  * with smooth analytical per-vertex normals and floor-anchored base (`y >= 0`).
  */
 export function explosion3dMesh(size = new Vec3(1, 1, 1)) {
-  return buildLumpyDome(size.x, size.y, size.z, 28, 16, EXPLOSION_3D_CELLS.plume, 0.7);
+  return buildLumpyDome(size, 28, 16, EXPLOSION_3D_CELLS.plume, 0.7);
 }
 
 /** Pre-allocates a reusable pose structure for `explosion3dPose`. */
