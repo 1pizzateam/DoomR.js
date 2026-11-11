@@ -1,4 +1,4 @@
-import { Bezier, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Bezier, Rect, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 
 /**
@@ -35,6 +35,9 @@ const EDGE = 0.3;
 const RED = [232, 16, 44];
 const BONE = [238, 172, 138];
 const scratchPt = new Vec2();
+const scratchTangent = new Vec2();
+const scratchCornerMin = new Vec2();
+const scratchCornerMax = new Vec2();
 
 class Canvas {
   constructor() {
@@ -432,122 +435,77 @@ export function cellUv(cell) {
 // A mark is a flat quad. Its corners come back as 12 numbers (bottom-left, bottom-right, top-right, top-left, in 3D)
 // and its texture rectangle as [u0, v0, u1, v1]; null when nothing is left of it.
 
-/** A splat on the floor, turned any way round. `size` is the splat's, and the quad is 3.2 times as wide. */
+/** `out` when given, else a fresh mark quad: 12 corner numbers and a 4-number texture rectangle. */
+function markTarget(out) {
+  return out ?? { corners: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], uv: [0, 0, 0, 0] };
+}
+
+function setCorner(corners, i, x, y, z) {
+  corners[i] = x;
+  corners[i + 1] = y;
+  corners[i + 2] = z;
+}
+
+/** Writes the four corners of a square of half-size `half` turned by `cos`/`sin` about `pos` at `height`, with `shift` along its local y. */
+function setTurnedSquare(corners, pos, cos, sin, half, shift, height) {
+  const lo = -half + shift;
+  const hi = half + shift;
+  setCorner(corners, 0, pos.x + cos * -half - sin * lo, height, pos.y + sin * -half + cos * lo);
+  setCorner(corners, 3, pos.x + cos * half - sin * lo, height, pos.y + sin * half + cos * lo);
+  setCorner(corners, 6, pos.x + cos * half - sin * hi, height, pos.y + sin * half + cos * hi);
+  setCorner(corners, 9, pos.x + cos * -half - sin * hi, height, pos.y + sin * -half + cos * hi);
+}
+
+function setUv(uv, u0, v0, u1, v1) {
+  uv[0] = u0;
+  uv[1] = v0;
+  uv[2] = u1;
+  uv[3] = v1;
+}
+
+/** A splat on the floor, turned any way round. `size` is the splat's, and the quad is 3.2 times as wide. With `out` the quad is written into it. */
 export function floorSplatQuad({ pos, size, seed, height = 0.3 }, out = null) {
   const rnd = mulberry32(seed);
   const variant = Math.floor(rnd() * FLOOR_VARIANTS);
   const angle = rnd() * Trigo.twopi;
-  const half = size * 1.6;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  const px = pos.x;
-  const py = pos.y;
-  const ch = cos * half;
-  const sh = sin * half;
-  const cell = CELLS.floor + variant;
-  const u0 = cell / CELL_COUNT;
-  const u1 = (cell + 1) / CELL_COUNT;
-  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
-  const c = dest.corners;
-  c[0] = px - ch + sh;
-  c[1] = height;
-  c[2] = py - sh - ch;
-  c[3] = px + ch + sh;
-  c[4] = height;
-  c[5] = py + sh - ch;
-  c[6] = px + ch - sh;
-  c[7] = height;
-  c[8] = py + sh + ch;
-  c[9] = px - ch - sh;
-  c[10] = height;
-  c[11] = py - sh + ch;
-  const uv = dest.uv;
-  uv[0] = u0;
-  uv[1] = 0;
-  uv[2] = u1;
-  uv[3] = 1;
-  return dest;
+  const quad = markTarget(out);
+  setTurnedSquare(quad.corners, pos, Math.cos(angle), Math.sin(angle), size * 1.6, 0, height);
+  const uv = cellUv(CELLS.floor + variant);
+  setUv(quad.uv, uv[0], uv[1], uv[2], uv[3]);
+  return quad;
 }
 
-/** A persistent chunk of meat, bone, skull, or organ resting on the floor after an XDeath gibbing. */
+/** A persistent chunk of meat, bone, skull, or organ resting on the floor after an XDeath gibbing. With `out` the quad is written into it. */
 export function floorGibQuad({ pos, size, variant = 0, angle = 0, height = 0.36 }, out = null) {
-  const half = size;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  const px = pos.x;
-  const py = pos.y;
-  const ch = cos * half;
-  const sh = sin * half;
-  const cell = CELLS.gib + ((variant >>> 0) % GIB_VARIANTS);
-  const u0 = cell / CELL_COUNT;
-  const u1 = (cell + 1) / CELL_COUNT;
-  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
-  const c = dest.corners;
-  c[0] = px - ch + sh;
-  c[1] = height;
-  c[2] = py - sh - ch;
-  c[3] = px + ch + sh;
-  c[4] = height;
-  c[5] = py + sh - ch;
-  c[6] = px + ch - sh;
-  c[7] = height;
-  c[8] = py + sh + ch;
-  c[9] = px - ch - sh;
-  c[10] = height;
-  c[11] = py - sh + ch;
-  const uv = dest.uv;
-  uv[0] = u0;
-  uv[1] = 0;
-  uv[2] = u1;
-  uv[3] = 1;
-  return dest;
+  const quad = markTarget(out);
+  setTurnedSquare(quad.corners, pos, Math.cos(angle), Math.sin(angle), size, 0, height);
+  const uv = cellUv(CELLS.gib + ((variant >>> 0) % GIB_VARIANTS));
+  setUv(quad.uv, uv[0], uv[1], uv[2], uv[3]);
+  return quad;
 }
 
 /**
  * A shoe print. `strength` picks a filled, hatched print or just an outline, and a left foot is a mirrored right one.
- * Like the line version it is about 10.6 * 1.8 * scale long.
+ * Like the line version it is about 10.6 * 1.8 * scale long. With `out` the quad is written into it.
  */
 export function printQuad({ pos, angle, side, strength, scale }, out = null) {
   const size = scale * 1.8 * (0.75 + 0.25 * Math.min(1, strength));
   const half = (CELL / 2) * (size / PRINT_PIXELS);
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
   const offset = side * 0.3 * side * size;
-  const px = pos.x;
-  const py = pos.y;
-  const ch = cos * half;
-  const sh = sin * half;
-  const fy0 = -half + offset;
-  const fy1 = half + offset;
-  const cell = strength > 0.55 ? CELLS.printFilled : CELLS.printOutline;
-  const u0 = cell / CELL_COUNT;
-  const u1 = (cell + 1) / CELL_COUNT;
-  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
-  const c = dest.corners;
-  c[0] = px - ch - sin * fy0;
-  c[1] = 0.32;
-  c[2] = py - sh + cos * fy0;
-  c[3] = px + ch - sin * fy0;
-  c[4] = 0.32;
-  c[5] = py + sh + cos * fy0;
-  c[6] = px + ch - sin * fy1;
-  c[7] = 0.32;
-  c[8] = py + sh + cos * fy1;
-  c[9] = px - ch - sin * fy1;
-  c[10] = 0.32;
-  c[11] = py - sh + cos * fy1;
-  const uv = dest.uv;
-  uv[0] = u0;
-  uv[1] = side < 0 ? 1 : 0;
-  uv[2] = u1;
-  uv[3] = side < 0 ? 0 : 1;
-  return dest;
+  const quad = markTarget(out);
+  setTurnedSquare(quad.corners, pos, Math.cos(angle), Math.sin(angle), half, offset, 0.32);
+  const uv = cellUv(strength > 0.55 ? CELLS.printFilled : CELLS.printOutline);
+  if (side < 0)
+    setUv(quad.uv, uv[0], uv[3], uv[2], uv[1]);
+  else
+    setUv(quad.uv, uv[0], uv[1], uv[2], uv[3]);
+  return quad;
 }
 
 /**
  * A splat on a wall face, with its drips running down. It is cut where it leaves the face (the face runs `lo` and
  * `hi` along its tangent, from the splat's height `z` and up to `top`), so none hangs in the air past a corner,
- * an opening or the top of the wall.
+ * an opening or the top of the wall. With `out` the quad is written into it (and left untouched when nothing is left).
  */
 export function wallSplatQuad({ pos, normal, size, top, seed, lo = -Infinity, hi = Infinity, slope = 0 }, out = null) {
   const rnd = mulberry32(seed);
@@ -564,42 +522,26 @@ export function wallSplatQuad({ pos, normal, size, top, seed, lo = -Infinity, hi
   const cv1 = Math.min(v1, top - 0.6 - pos.z);
   if (cu0 >= cu1 || cv0 >= cv1)
     return null;
-  const px = pos.x;
-  const py = pos.y;
-  const pz = pos.z;
   const nx = normal.x;
   const ny = normal.y;
   const tx = -ny;
   const ty = nx;
+  const quad = markTarget(out);
+  const c = quad.corners;
   const n0 = 0.4 - slope * cv0;
   const n1 = 0.4 - slope * cv1;
-  const cell = CELLS.wall + variant;
-  const a0 = cell / CELL_COUNT;
-  const a1 = (cell + 1) / CELL_COUNT;
-  const du = a1 - a0;
-  const spanU = u1 - u0;
-  const spanV = v1 - v0;
-  const dest = out ?? { corners: new Array(12), uv: new Array(4) };
-  const c = dest.corners;
-  c[0] = px + tx * cu0 + nx * n0;
-  c[1] = pz + cv0;
-  c[2] = py + ty * cu0 + ny * n0;
-  c[3] = px + tx * cu1 + nx * n0;
-  c[4] = pz + cv0;
-  c[5] = py + ty * cu1 + ny * n0;
-  c[6] = px + tx * cu1 + nx * n1;
-  c[7] = pz + cv1;
-  c[8] = py + ty * cu1 + ny * n1;
-  c[9] = px + tx * cu0 + nx * n1;
-  c[10] = pz + cv1;
-  c[11] = py + ty * cu0 + ny * n1;
+  setCorner(c, 0, pos.x + tx * cu0 + nx * n0, pos.z + cv0, pos.y + ty * cu0 + ny * n0);
+  setCorner(c, 3, pos.x + tx * cu1 + nx * n0, pos.z + cv0, pos.y + ty * cu1 + ny * n0);
+  setCorner(c, 6, pos.x + tx * cu1 + nx * n1, pos.z + cv1, pos.y + ty * cu1 + ny * n1);
+  setCorner(c, 9, pos.x + tx * cu0 + nx * n1, pos.z + cv1, pos.y + ty * cu0 + ny * n1);
+  const uv = cellUv(CELLS.wall + variant);
+  const a0 = uv[0];
+  const b0 = uv[1];
+  const du = uv[2] - a0;
+  const dv = uv[3] - b0;
   // the cut takes the same share off the picture
-  const uv = dest.uv;
-  uv[0] = a0 + ((cu0 - u0) / spanU) * du;
-  uv[1] = (cv0 - v0) / spanV;
-  uv[2] = a0 + ((cu1 - u0) / spanU) * du;
-  uv[3] = (cv1 - v0) / spanV;
-  return dest;
+  setUv(quad.uv, a0 + ((cu0 - u0) / (u1 - u0)) * du, b0 + ((cv0 - v0) / (v1 - v0)) * dv, a0 + ((cu1 - u0) / (u1 - u0)) * du, b0 + ((cv1 - v0) / (v1 - v0)) * dv);
+  return quad;
 }
 
 // ---- drips ---------------------------------------------------------------------------------------------------------
@@ -656,15 +598,16 @@ export function dripTime(seed, size) {
 
 /** How far a drip has run, 0..1, `t` of the way through its time: some slow steadily, some stutter, some creep. */
 function progress(t, profile) {
+  const ease = (x) => Bezier.quadratic(0, 1, 1, x);
   if (profile === 0)
-    return Bezier.quadratic(0, 1, 1, t);
+    return ease(t);
   if (profile === 1) {
     // it runs, stops, then runs again
     if (t < 0.3)
-      return 0.5 * Bezier.quadratic(0, 1, 1, t / 0.3);
+      return 0.5 * ease(t / 0.3);
     if (t < 0.55)
       return 0.5;
-    return 0.5 + 0.5 * Bezier.quadratic(0, 1, 1, (t - 0.55) / 0.45);
+    return 0.5 + 0.5 * ease((t - 0.55) / 0.45);
   }
   if (profile === 2)
     return Bezier.cubic(0, 0, 1, 1, t);
@@ -702,25 +645,25 @@ function columns(cell) {
   return [a0 + share * STEM_FROM, a0 + share * STEM_TO];
 }
 
-/** Corner of a wall quad at (u, v) across and up the face, written into `corners[o..o + 2]`. */
-function writeCorner(corners, o, x, y, z, tx, ty, nx, ny, slope, u, v) {
+/** Corner of a wall quad at (u, v) across and up the face, written into `corners[o..o + 2]`; `position` is (x, y, height). */
+function writeCorner(corners, o, position, tangent, normal, slope, u, v) {
   const n = 0.45 - slope * v;
-  corners[o] = x + tx * u + nx * n;
-  corners[o + 1] = z + v;
-  corners[o + 2] = y + ty * u + ny * n;
+  corners[o] = position.x + tangent.x * u + normal.x * n;
+  corners[o + 1] = position.z + v;
+  corners[o + 2] = position.y + tangent.y * u + normal.y * n;
 }
 
 function dripSlot(target, i) {
   return target.quads[i] ?? (target.quads[i] = { corners: new Array(12).fill(0), uv: [0, 0, 0, 0] });
 }
 
-function pushDripQuad(target, x, y, z, tx, ty, nx, ny, slope, u0, v0, u1, v1, a0, b0, a1, b1) {
+function pushDripQuad(target, position, tangent, normal, slope, u0, v0, u1, v1, a0, b0, a1, b1) {
   const q = dripSlot(target, target.count++);
   const c = q.corners;
-  writeCorner(c, 0, x, y, z, tx, ty, nx, ny, slope, u0, v0);
-  writeCorner(c, 3, x, y, z, tx, ty, nx, ny, slope, u1, v0);
-  writeCorner(c, 6, x, y, z, tx, ty, nx, ny, slope, u1, v1);
-  writeCorner(c, 9, x, y, z, tx, ty, nx, ny, slope, u0, v1);
+  writeCorner(c, 0, position, tangent, normal, slope, u0, v0);
+  writeCorner(c, 3, position, tangent, normal, slope, u1, v0);
+  writeCorner(c, 6, position, tangent, normal, slope, u1, v1);
+  writeCorner(c, 9, position, tangent, normal, slope, u0, v1);
   const uv = q.uv;
   uv[0] = a0;
   uv[1] = b0;
@@ -738,13 +681,8 @@ function pushDripQuad(target, x, y, z, tx, ty, nx, ny, slope, u0, v0, u1, v1, a0
 export function wallDripQuads({ pos, normal, size, top, seed, age = 0, lo = -Infinity, hi = Infinity, slope = 0 }, target = null) {
   const out = target ?? createQuadTarget();
   out.count = 0;
-  const x = pos.x;
-  const y = pos.y;
   const z = pos.z;
-  const nx = normal.x;
-  const ny = normal.y;
-  const tx = -ny;
-  const ty = nx;
+  scratchTangent.setScalar(-normal.y, normal.x);
   const floor = 0.6 - z;
   const start = -size * 0.3;
   const count = fillDrips(seed, size, SCRATCH_DRIPS);
@@ -767,10 +705,10 @@ export function wallDripQuads({ pos, normal, size, top, seed, age = 0, lo = -Inf
     const bottom = head + px;
     for (let top2 = start; top2 > bottom + 1e-6; top2 -= segment) {
       const partBottom = Math.max(bottom, top2 - segment);
-      pushDripQuad(out, x, y, z, tx, ty, nx, ny, slope, drip.u - half, partBottom, drip.u + half, top2, s0, 1 - (top2 - partBottom) / segment, s1, 1);
+      pushDripQuad(out, pos, scratchTangent, normal, slope, drip.u - half, partBottom, drip.u + half, top2, s0, 1 - (top2 - partBottom) / segment, s1, 1);
     }
     columnsInto(CELLS.tips + drip.tip);
-    pushDripQuad(out, x, y, z, tx, ty, nx, ny, slope, drip.u - half, head + px - tipHeight, drip.u + half, head + px, COLS[0], 1 - TIP_HEIGHTS[drip.tip] / CELL, COLS[1], 1);
+    pushDripQuad(out, pos, scratchTangent, normal, slope, drip.u - half, head + px - tipHeight, drip.u + half, head + px, COLS[0], 1 - TIP_HEIGHTS[drip.tip] / CELL, COLS[1], 1);
   }
   if (target)
     return target;
@@ -830,7 +768,7 @@ export function particleQuad({ pos, gib, variant = 0, scale = 1, visualScale }, 
 
 /**
  * Blood on the player's view, as flat 2D quads in screen pixels: a starburst that grows out, and a drip that slides
- * down from it, all fading with `fade`. Each quad is `{ x0, y0, x1, y1, uv, fade }`, y down. It is the same atlas as
+ * down from it, all fading with `fade`. Each quad is `{ rect, uv, fade }` with a Rect, y down. It is the same atlas as
  * the blood in the world, so the same red pixels are on the glass. Without a `target` the quads are fresh and returned
  * as an array; with a `createQuadTarget()` they are written into it (overwritten by the next call, valid up to
  * `target.count`) and the target is returned.
@@ -844,7 +782,7 @@ export function screenSplatQuads({ pos, size, age, drip, seed }, viewportSize, f
   const cx = pos.x * viewportSize.x;
   const cy = pos.y * viewportSize.y;
   const burst = cellUv(CELLS.floor + Math.floor(rnd() * FLOOR_VARIANTS));
-  setScreenQuad(out, cx - half, cy - half, cx + half, cy + half, burst[0], burst[1], burst[2], burst[3], fade);
+  setScreenQuad(out, scratchCornerMin.setScalar(cx - half, cy - half), scratchCornerMax.setScalar(cx + half, cy + half), burst[0], burst[1], burst[2], burst[3], fade);
   const run = drip * Math.min(1, age * 0.9);
   if (run > 4) {
     // the drip on the glass is the ribbon kind, with a slanted or pointed tip; slender screen-pixel scale
@@ -859,11 +797,11 @@ export function screenSplatQuads({ pos, size, age, drip, seed }, viewportSize, f
     const segment = CELL * px * 2;
     for (let y0 = 0; y0 > -run + 1e-6; y0 -= segment) {
       const bottom = Math.max(-run, y0 - segment);
-      setScreenQuad(out, dx - half, top - y0, dx + half, top - bottom, s0, 1 - (y0 - bottom) / segment, s1, 1, fade);
+      setScreenQuad(out, scratchCornerMin.setScalar(dx - half, top - y0), scratchCornerMax.setScalar(dx + half, top - bottom), s0, 1 - (y0 - bottom) / segment, s1, 1, fade);
     }
     columnsInto(CELLS.tips + tip);
     const tipHeight = TIP_HEIGHTS[tip] * px * 2;
-    setScreenQuad(out, dx - half, top + run - px * 2, dx + half, top + run - px * 2 + tipHeight, COLS[0], 1 - TIP_HEIGHTS[tip] / CELL, COLS[1], 1, fade);
+    setScreenQuad(out, scratchCornerMin.setScalar(dx - half, top + run - px * 2), scratchCornerMax.setScalar(dx + half, top + run - px * 2 + tipHeight), COLS[0], 1 - TIP_HEIGHTS[tip] / CELL, COLS[1], 1, fade);
   }
   if (target)
     return target;
@@ -871,13 +809,11 @@ export function screenSplatQuads({ pos, size, age, drip, seed }, viewportSize, f
   return out.quads;
 }
 
-function setScreenQuad(target, x0, y0, x1, y1, u0, v0, u1, v1, fade) {
-  const q = target.quads[target.count] ?? (target.quads[target.count] = { x0: 0, y0: 0, x1: 0, y1: 0, uv: [0, 0, 0, 0], fade: 0 });
+function setScreenQuad(target, topLeft, bottomRight, u0, v0, u1, v1, fade) {
+  const q = target.quads[target.count] ?? (target.quads[target.count] = { rect: new Rect(), uv: [0, 0, 0, 0], fade: 0 });
   target.count++;
-  q.x0 = x0;
-  q.y0 = y0;
-  q.x1 = x1;
-  q.y1 = y1;
+  q.rect.topLeftCorner.copy(topLeft);
+  q.rect.bottomRightCorner.copy(bottomRight);
   q.uv[0] = u0;
   q.uv[1] = v0;
   q.uv[2] = u1;

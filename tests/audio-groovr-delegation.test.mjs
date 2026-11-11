@@ -121,11 +121,11 @@ test('AC-1 spatial delegates to spatial2D', () => {
   assert.doesNotMatch(spatialBody, /scratchRight|halfpi|\*\* 2/);
 });
 
-test('AC-2 groovr pinned to 0.1.0-alpha.4', () => {
+test('AC-2 groovr pinned to 0.1.0', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const installed = JSON.parse(readFileSync(new URL('../node_modules/@1pizzateam/groovr/package.json', import.meta.url), 'utf8'));
-  assert.equal(pkg.dependencies['@1pizzateam/groovr'], '0.1.0-alpha.4');
-  assert.equal(installed.version, '0.1.0-alpha.4');
+  assert.equal(pkg.dependencies['@1pizzateam/groovr'], '0.1.0');
+  assert.equal(installed.version, '0.1.0');
 });
 
 test('AC-3 pan follows side and facing', () => {

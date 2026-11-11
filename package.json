@@ -23,12 +23,12 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "start": "vite preview --host 0.0.0.0",
-    "test": "node tests/levels.test.mjs && node tests/sim.test.mjs && node tests/exports.test.mjs && node tests/arsenal-dead-code.test.mjs && node tests/render-allocations.test.mjs && node tests/lines.test.mjs && node tests/bumpr-zero-gc.test.mjs && node tests/add-static-box.test.mjs && node tests/mesh-buffers-stable.test.mjs && node tests/mesh-builders-vector.test.mjs && node tests/scene-node-vector-first.test.mjs && node tests/audio-groovr-delegation.test.mjs && node tests/main-menu.test.mjs && node tests/rubble.test.mjs"
+    "test": "node tests/levels.test.mjs && node tests/sim.test.mjs && node tests/exports.test.mjs && node tests/arsenal-dead-code.test.mjs && node tests/render-allocations.test.mjs && node tests/lines.test.mjs && node tests/bumpr-zero-gc.test.mjs && node tests/add-static-box.test.mjs && node tests/mesh-buffers-stable.test.mjs && node tests/mesh-builders-vector.test.mjs && node tests/scene-node-vector-first.test.mjs && node tests/audio-groovr-delegation.test.mjs && node tests/main-menu.test.mjs && node tests/rubble.test.mjs && node tests/perf-allocations-205.test.mjs"
   },
   "dependencies": {
     "@1pizzateam/bumpr": "1.3.0",
     "@1pizzateam/facer": "file:../FaceR.js",
-    "@1pizzateam/groovr": "0.1.0-alpha.4",
+    "@1pizzateam/groovr": "0.1.0",
     "@1pizzateam/loopr": "2.2.0",
     "@1pizzateam/roostr": "0.9.0",
     "@1pizzateam/spock": "4.6.0",

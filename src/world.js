@@ -1,3 +1,4 @@
+import { Rect } from '@1pizzateam/spock';
 import { CustomMesh, Cylinder, FullscreenQuad, Grid, Material, Mesh, PerspectiveCamera, Quat, Rand, Renderer, RenderTarget, Scene, Sprite, Texture, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { BLOOD } from './blood.js';
 import { RUBBLE, SURFACE } from './rubble.js';
@@ -141,37 +142,48 @@ function burnQuadOf(mark, out) {
   return mark.kind === SURFACE.WALL ? burnWallQuad(scratchBlastMark, out) : burnFlatQuad(scratchBlastMark, out);
 }
 const scratchMarkPos2 = new Vec2();
+// shared output of the mark adapters; only dissolving marks use it, as their quad is rebuilt and consumed every frame
+const scratchMarkQuad = { corners: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], uv: [0, 0, 0, 0] };
 const scratchFloorOpts = { pos: scratchMarkPos2, size: 0, seed: 0, height: undefined };
 const scratchGibOpts = { pos: scratchMarkPos2, size: 0, variant: undefined, angle: undefined, height: undefined };
 const scratchPrintOpts = { pos: scratchMarkPos2, angle: 0, side: 0, strength: 0, scale: 0 };
 const scratchSplatMark = { pos: new Vec3(), normal: new Vec2(), size: 0, top: 0, seed: 0, age: undefined, lo: undefined, hi: undefined, slope: undefined };
-const scratchSplatQuad = { corners: new Array(12).fill(0), uv: new Array(4).fill(0) };
 const scratchParticleOpts = { pos: new Vec3(), gib: false, variant: undefined, scale: undefined, visualScale: undefined };
 
-function floorSplatOf(mark, out = null) {
+// state of the one `syncViews` prune in flight, so its `forEach` callback is a single function instead of a closure per call
+const prune = { host: null, map: null, stamp: 0 };
+
+function pruneView(view, entity) {
+  if (view.stamp === prune.stamp)
+    return;
+  prune.host.discard(view.root);
+  prune.map.delete(entity);
+}
+
+function floorSplatOf(mark) {
   scratchMarkPos2.setScalar(mark.x, mark.y);
   scratchFloorOpts.size = mark.size;
   scratchFloorOpts.seed = mark.seed;
   scratchFloorOpts.height = mark.height;
-  return floorSplatQuad(scratchFloorOpts, out);
+  return floorSplatQuad(scratchFloorOpts, mark.dissolving ? scratchMarkQuad : null);
 }
 
-function floorGibOf(mark, out = null) {
+function floorGibOf(mark) {
   scratchMarkPos2.setScalar(mark.x, mark.y);
   scratchGibOpts.size = mark.size;
   scratchGibOpts.variant = mark.variant;
   scratchGibOpts.angle = mark.angle;
   scratchGibOpts.height = mark.height;
-  return floorGibQuad(scratchGibOpts, out);
+  return floorGibQuad(scratchGibOpts, mark.dissolving ? scratchMarkQuad : null);
 }
 
-function printOf(mark, out = null) {
+function printOf(mark) {
   scratchMarkPos2.setScalar(mark.x, mark.y);
   scratchPrintOpts.angle = mark.angle;
   scratchPrintOpts.side = mark.side;
   scratchPrintOpts.strength = mark.strength;
   scratchPrintOpts.scale = mark.scale;
-  return printQuad(scratchPrintOpts, out);
+  return printQuad(scratchPrintOpts, mark.dissolving ? scratchMarkQuad : null);
 }
 
 function fillWallOpts(mark) {
@@ -188,8 +200,8 @@ function fillWallOpts(mark) {
   return o;
 }
 
-function wallSplatOf(mark, out = null) {
-  return wallSplatQuad(fillWallOpts(mark), out);
+function wallSplatOf(mark) {
+  return wallSplatQuad(fillWallOpts(mark), mark.dissolving ? scratchMarkQuad : null);
 }
 
 function fillParticleOpts(p) {
@@ -252,13 +264,16 @@ const scratchEntity2d = new Vec2();
 const scratchParticleQuad = { corners: new Float32Array(12), uv: [0, 0, 0, 0] };
 const SECTOR_TILES = 16;
 
-function makeSectorBounds(sx, sy, width, rowCount) {
-  return {
-    x0: Math.max(0, sx - 1),
-    y0: Math.max(0, sy - 1),
-    x1: Math.min(width, sx + SECTOR_TILES + 1),
-    y1: Math.min(rowCount, sy + SECTOR_TILES + 1),
-  };
+const scratchTile = new Vec2();
+const scratchSectorTile = new Vec2();
+const scratchSectorGrid = new Vec2();
+
+/** The tile range a sector covers, one tile of margin each side and clamped to the grid, as a fresh Rect (chunks keep it). */
+function makeSectorBounds(sectorTile, gridSize) {
+  const bounds = new Rect();
+  bounds.topLeftCorner.setScalar(Math.max(0, sectorTile.x - 1), Math.max(0, sectorTile.y - 1));
+  bounds.bottomRightCorner.setScalar(Math.min(gridSize.x, sectorTile.x + SECTOR_TILES + 1), Math.min(gridSize.y, sectorTile.y + SECTOR_TILES + 1));
+  return bounds;
 }
 
 function partitionQuadsBySector(quads, sectorGrid, sectorWorldSize = SECTOR_TILES * TILE, width = Infinity, rowCount = Infinity) {
@@ -277,7 +292,7 @@ function partitionQuadsBySector(quads, sectorGrid, sectorWorldSize = SECTOR_TILE
         faces: [],
         center: new Vec2((scratchFog.x + 0.5) * sectorWorldSize, (scratchFog.y + 0.5) * sectorWorldSize),
         radius: sectorWorldSize * 0.85,
-        bounds: Number.isFinite(width) ? makeSectorBounds(scratchFog.x * SECTOR_TILES, scratchFog.y * SECTOR_TILES, width, rowCount) : null,
+        bounds: Number.isFinite(width) ? makeSectorBounds(scratchSectorTile.setScalar(scratchFog.x * SECTOR_TILES, scratchFog.y * SECTOR_TILES), scratchSectorGrid.setScalar(width, rowCount)) : null,
       };
       buckets.set(key, bucket);
     }
@@ -300,7 +315,7 @@ function partitionTrianglesBySector(vertices, sectorGrid, sectorWorldSize = SECT
         vertices: [],
         center: new Vec2((scratchFog.x + 0.5) * sectorWorldSize, (scratchFog.y + 0.5) * sectorWorldSize),
         radius: sectorWorldSize * 0.85,
-        bounds: Number.isFinite(width) ? makeSectorBounds(scratchFog.x * SECTOR_TILES, scratchFog.y * SECTOR_TILES, width, rowCount) : null,
+        bounds: Number.isFinite(width) ? makeSectorBounds(scratchSectorTile.setScalar(scratchFog.x * SECTOR_TILES, scratchFog.y * SECTOR_TILES), scratchSectorGrid.setScalar(width, rowCount)) : null,
       };
       buckets.set(key, bucket);
     }
@@ -339,10 +354,12 @@ function isChunkVisibleInFog(fog, bounds, levelWidth) {
   const visible = fog.visible;
   if (!visible || !(fog.exploredCount > 0))
     return true;
-  const { x0, y0, x1, y1 } = bounds;
-  for (let ty = y0; ty < y1; ty++) {
+  const { topLeftCorner, bottomRightCorner } = bounds;
+  const x1 = bottomRightCorner.x;
+  const y1 = bottomRightCorner.y;
+  for (let ty = topLeftCorner.y; ty < y1; ty++) {
     const row = ty * levelWidth;
-    for (let tx = x0; tx < x1; tx++)
+    for (let tx = topLeftCorner.x; tx < x1; tx++)
       if (visible[row + tx] === 1)
         return true;
   }
@@ -966,8 +983,8 @@ export class World {
     this.ambientLight = ambient;
     this.ceilingLights = pointLights;
     this.buildStatic(level);
-    for (const door of level.doors.values())
-      this.buildDoor(door);
+    for (let i = 0; i < level.doorsList.length; i++)
+      this.buildDoor(level.doorsList[i]);
     for (const crusher of level.crushers)
       this.buildCrusher(crusher);
     if (level.switches)
@@ -1268,7 +1285,7 @@ export class World {
       const sunk = scratchSplatMark;
       sunk.pos.setScalar(mark.x - mark.nx * inset, mark.y - mark.ny * inset, mark.z - drop);
       sunk.top = mark.top * height;
-      const quad = wallSplatQuad(sunk, scratchSplatQuad);
+      const quad = wallSplatQuad(sunk, scratchMarkQuad);
       if (quad)
         batch.quad(quad.corners, quad.uv);
       const drips = wallDripQuads(sunk, this.dripTarget);
@@ -1281,7 +1298,7 @@ export class World {
   /** A sprite's four corners are worked out once per mark and kept; dissolving marks on acid update dynamically. */
   cachedQuad(item, build) {
     if (item.dissolving)
-      return build(item, scratchSplatQuad) ?? false;
+      return build(item) ?? false;
     let quad = this.splatCache.get(item);
     if (quad === undefined) {
       quad = build(item) ?? false;
@@ -1589,7 +1606,8 @@ export class World {
     }
 
     // a doorway has no wall of its own, so its two open ends get a lintel from the door's height up to the roof
-    for (const door of level.doors.values()) {
+    for (let i = 0; i < level.doorsList.length; i++) {
+      const door = level.doorsList[i];
       if (door.thin)
         continue;
       const { x, y } = door;
@@ -1801,7 +1819,7 @@ export class World {
           }
         const center = new Vec2(((x0 + x1) * 0.5) * TILE, ((y0 + y1) * 0.5) * TILE);
         const radius = scratchCam2d.setScalar(x1 - x0, y1 - y0).getMagnitude() * TILE * 0.55;
-        const bounds = makeSectorBounds(x0, y0, width, rowCount);
+        const bounds = makeSectorBounds(scratchSectorTile.setScalar(x0, y0), scratchSectorGrid.setScalar(width, rowCount));
         const sec = { x0, y0, x1, y1, center, radius, bounds };
         if (hasFloor)
           floorSectors.push(sec);
@@ -1880,7 +1898,7 @@ export class World {
             fixtures: [],
             center: new Vec2((scratchFog.x + 0.5) * sectorWorldSize, (scratchFog.y + 0.5) * sectorWorldSize),
             radius: sectorWorldSize * 0.85,
-            bounds: makeSectorBounds(scratchFog.x * SECTOR_TILES, scratchFog.y * SECTOR_TILES, width, rowCount),
+            bounds: makeSectorBounds(scratchSectorTile.setScalar(scratchFog.x * SECTOR_TILES, scratchFog.y * SECTOR_TILES), scratchSectorGrid.setScalar(width, rowCount)),
           };
           coneBuckets.set(key, bucket);
         }
@@ -2003,9 +2021,9 @@ export class World {
           const corners = doorInfo.alongY
             ? [x0 + TILE, y, z0 + TILE, x0 + TILE, y, z0, x0, y, z0, x0, y, z0 + TILE]
             : [x0, y, z0 + TILE, x0 + TILE, y, z0 + TILE, x0 + TILE, y, z0, x0, y, z0];
-          batch.quad(corners, doorCeilingCellUv(doorCeilingCellFor(tx, ty, doorInfo.lock, doorInfo.vestibule)));
+          batch.quad(corners, doorCeilingCellUv(doorCeilingCellFor(scratchTile.setScalar(tx, ty), doorInfo.lock, doorInfo.vestibule)));
         } else {
-          batch.quad([x0, y, z0 + TILE, x0 + TILE, y, z0 + TILE, x0 + TILE, y, z0, x0, y, z0], ceilingCellUv(ceilingCellFor(tx, ty)));
+          batch.quad([x0, y, z0 + TILE, x0 + TILE, y, z0 + TILE, x0 + TILE, y, z0, x0, y, z0], ceilingCellUv(ceilingCellFor(scratchTile.setScalar(tx, ty))));
         }
       }
     }
@@ -2091,7 +2109,7 @@ export class World {
         const x1 = x0 + TILE;
         const z0 = ty * TILE;
         const z1 = z0 + TILE;
-        batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], floorCellUv(floorCellFor(tx, ty, kind === DOOR && !level.doors.get(idx)?.secret)));
+        batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], floorCellUv(floorCellFor(scratchTile.setScalar(tx, ty), kind === DOOR && !level.doors.get(idx)?.secret)));
       }
     return batch.end();
   }
@@ -2134,7 +2152,7 @@ export class World {
         const x1 = x0 + TILE;
         const z0 = ty * TILE;
         const z1 = z0 + TILE;
-        batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], floorCellUv(floorCellFor(tx, ty, false)));
+        batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], floorCellUv(floorCellFor(scratchTile.setScalar(tx, ty), false)));
       }
     return batch.end();
   }
@@ -3563,12 +3581,12 @@ export class World {
       view.stamp = stamp;
       update(entity, view);
     }
-    map.forEach((view, entity) => {
-      if (view.stamp !== stamp) {
-        this.discard(view.root);
-        map.delete(entity);
-      }
-    });
+    prune.host = this;
+    prune.map = map;
+    prune.stamp = stamp;
+    map.forEach(pruneView);
+    prune.host = null;
+    prune.map = null;
   }
 
   // ---- frame --------------------------------------------------------------
@@ -3666,7 +3684,9 @@ export class World {
     else if (this.crateMesh)
       this.crateMesh.setCustomUniform('time', time);
 
-    for (const door of game.level.doors.values()) {
+    const { doorsList } = game.level;
+    for (let i = 0; i < doorsList.length; i++) {
+      const door = doorsList[i];
       const view = this.doorViews.get(door);
       const height = 1 - door.open;
       const inRange = (!Number.isFinite(cullDistSq) || door.center.getDistance(scratchCam2d, true) <= cullDistSq) && (!occludeFog || occludeFog.canSeeNear(door.center));

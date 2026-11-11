@@ -5,7 +5,8 @@ const { MainMenu, MENU_PLAY, MENU_OPTIONS, MENU_NONE } = await import('../src/me
 const { Input, NAV_UP, NAV_DOWN, NAV_NONE } = await import('../src/input.js');
 const { Keymap } = await import('../src/keymap.js');
 const { Game } = await import('../src/game.js');
-const { Hud, layoutMainMenu } = await import('../src/hud.js');
+const { Hud, layoutControls, layoutMainMenu } = await import('../src/hud.js');
+const { Vec2 } = await import('@1pizzateam/spock');
 const mainSrc = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
 const makeInput = () => ({
@@ -66,7 +67,7 @@ const checks = [
     const hud = makeHud(800, 600);
     const input = makeInput();
     const m = new MainMenu(input, { hitAt: (p) => hud.menuHitAt(p) });
-    const L = layoutMainMenu(800, 600);
+    const L = layoutMainMenu(new Vec2(800, 600));
     input.mousePos = centerOf(L, 1);
     input.mouseMoved = true;
     m.update(false);
@@ -84,7 +85,7 @@ const checks = [
   ['AC-5 button rects do not overlap, keep 12px gap and 34px height at 320x480 and 960x600, and menuHitAt agrees with the drawn rects', () => {
     for (const [w, h] of [[320, 480], [960, 600]]) {
       const hud = makeHud(w, h);
-      const L = layoutMainMenu(w, h);
+      const L = layoutMainMenu(new Vec2(w, h));
       assert.ok(L.tops[1] - (L.tops[0] + L.buttonH) >= 12);
       assert.ok(L.buttonH >= 34);
       for (let i = 0; i < 2; i++) {
@@ -112,7 +113,7 @@ const checks = [
     const hud = makeHud(800, 600);
     const input = makeInput();
     const m = new MainMenu(input, { hitAt: (p) => hud.menuHitAt(p) });
-    input.mousePos = centerOf(layoutMainMenu(800, 600), 0);
+    input.mousePos = centerOf(layoutMainMenu(new Vec2(800, 600)), 0);
     input.taken.add('Click');
     input.taken.add('confirm');
     m.update(true);
@@ -185,6 +186,15 @@ const checks = [
       globalThis.document = prevDoc;
       globalThis.window = prevWin;
     }
+  }],
+  ['AC-4 layout functions accept a viewportSize Vec2', () => {
+    const src = readFileSync(new URL('../src/hud.js', import.meta.url), 'utf8');
+    assert.match(src, /layoutMainMenu = \(viewportSize\) =>/);
+    assert.match(src, /layoutControls = \(viewportSize\) =>/);
+    assert.match(src, /layoutHints = \(hints, viewportSize\) =>/);
+    const a = layoutMainMenu(new Vec2(1280, 760));
+    assert.ok(a && typeof a === 'object');
+    assert.ok(layoutControls(new Vec2(1280, 760)));
   }],
 ];
 

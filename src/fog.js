@@ -27,9 +27,11 @@ export function marsFogNearFar(level, pos, target = new Vec2(), nightVision = fa
   if (level.isOutdoor(pos))
     return target.copy(MARS_OUTDOOR_FOG);
   let airlockOpen = 0;
-  for (const door of level.doors.values())
+  for (let i = 0; i < level.doorsList.length; i++) {
+    const door = level.doorsList[i];
     if (!door.elevator && door.open > airlockOpen && level.doorTouchesIndoor(door.idx))
       airlockOpen = door.open;
+  }
   const mix = Utils.clamp(airlockOpen * 0.65, 0, 0.65);
   return target.setScalar(
     Utils.lerp(MARS_INDOOR_FOG.x, MARS_OUTDOOR_FOG.x, mix),
@@ -90,7 +92,8 @@ export class Fog {
     if (!level.doors || !level.doors.size)
       return 0;
     let hash = 0;
-    for (const idx of level.doors.keys()) {
+    for (let i = 0; i < level.doorsList.length; i++) {
+      const idx = level.doorsList[i].idx;
       const closed = level.heights[idx] >= level.baseHeight[idx] * 0.98 ? 1 : 0;
       hash = ((hash * 31) ^ (idx * 3 + closed)) | 0;
     }

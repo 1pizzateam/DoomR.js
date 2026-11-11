@@ -9,6 +9,7 @@ import ceilingConeShader from './shaders/ceiling-cone.shadergun.json' with { typ
 import marsSkyShader from './shaders/mars-sky.shadergun.json' with { type: 'json' };
 
 const scratchPt = new Vec2();
+const scratchTile = new Vec2();
 const scratchPixel = new Vec2();
 const scratchDir = new Vec3();
 const scratchNormal = new Vec3();
@@ -871,7 +872,8 @@ export function doorCeilingCellUv(cell) {
 }
 
 /** Picks a dedicated door-corridor ceiling cell (`lintel`, `hoist`, `seal`, `strobe`, `vestibule`, or keycard lock variant). */
-export function doorCeilingCellFor(x, y, lock = null, vestibule = false) {
+export function doorCeilingCellFor(tile, lock = null, vestibule = false) {
+  const { x, y } = tile;
   if (lock === 'red')
     return DOOR_CEILING_CELLS.red;
   if (lock === 'yellow')
@@ -893,9 +895,10 @@ export function doorCeilingCellFor(x, y, lock = null, vestibule = false) {
 }
 
 /** Which cell hangs over a tile: dedicated door-corridor soffits inside doorways, light fixtures on a 5x4 grid, and structural bays/ducts/trusses across the rest. */
-export function ceilingCellFor(x, y, door = false, lock = null, vestibule = false) {
+export function ceilingCellFor(tile, door = false, lock = null, vestibule = false) {
   if (door)
-    return doorCeilingCellFor(x, y, lock, vestibule);
+    return doorCeilingCellFor(tile, lock, vestibule);
+  const { x, y } = tile;
   if (x % 5 === 2 && y % 4 === 3)
     return CEILING_CELLS.light;
   let h = Math.imul(x * 73856093 ^ y * 19349663 ^ 5, 2654435761);
@@ -938,7 +941,7 @@ export function ceilingLightFixtures(level) {
         continue;
       if (level.kind[idx] === DOOR && !level.doors?.get(idx)?.secret)
         continue;
-      if (ceilingCellFor(tx, ty) !== CEILING_CELLS.light)
+      if (ceilingCellFor(scratchTile.setScalar(tx, ty)) !== CEILING_CELLS.light)
         continue;
       let h = Math.imul(tx * 73856093 ^ ty * 19349663 ^ 17, 2654435761);
       h = (h ^ (h >>> 15)) >>> 0;

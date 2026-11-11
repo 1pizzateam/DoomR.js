@@ -139,9 +139,12 @@ export const CHEST_LOCK_RINGS = 3;
 export const CHEST_LOCK_SPEEDS = Object.freeze([1.85, -2.35, 2.9]);
 export const CHEST_LOCK_GAP_HALF = Object.freeze([0.42, 0.36, 0.30]);
 
-function makeBody(pos, radius, { type = 'dynamic', mass = 1, sensor = false, category, mask, velocity }) {
+function makeBody(pos, radius, { type = 'dynamic', mass = 1, sensor = false, category, mask, velocity, heading = null, speed = 0 }) {
   const size = new Vec2(radius * 2, radius * 2);
   const body = new Physics(pos.clone(), velocity ?? new Vec2(), size, type === 'static' ? 0 : mass, 1, 0, 'circle', 0, sensor, category, mask, 0, type);
+  // the body keeps its velocity, so a heading and speed are written into the body's own vector
+  if (heading)
+    body.velocity.scaleVector(heading, speed);
   body.setCanSleep(false);
   return body;
 }
@@ -186,6 +189,9 @@ export class Game {
     this.blood = new Blood();
     this.rubble = new Rubble();
     this.blastTo = new Vec2();
+    this.rocketDir = new Vec2();
+    this.rocketFrom = new Vec2();
+    this.rocketTo = new Vec2();
     this.blastCheck = new Vec2();
     this.blastNormal = new Vec2();
     this.blastWall = new Vec3();
@@ -658,7 +664,8 @@ export class Game {
         x += run;
       }
     }
-    for (const door of level.doors.values()) {
+    for (let i = 0; i < level.doorsList.length; i++) {
+      const door = level.doorsList[i];
       const size = door.thin
         ? new Vec2(door.alongY ? TILE : door.thickness, door.alongY ? door.thickness : TILE)
         : new Vec2(TILE, TILE);
@@ -1070,12 +1077,12 @@ export class Game {
   }
 
   addShot(from, direction, speed, damage, owner = null) {
-    const velocity = new Vec2().scaleVector(direction, speed);
     const body = makeBody(from, 6, {
       sensor: true,
       category: CAT.SHOT,
       mask: CAT.WALL | CAT.PLAYER | CAT.ENEMY | CAT.BARREL,
-      velocity,
+      heading: direction,
+      speed,
     });
     if (owner?.body)
       body.ignoreCollisionWith(owner.body);
@@ -1234,8 +1241,8 @@ export class Game {
     } else if (directRef?.kind === 'barrel')
       this.hitBarrel(directRef, BARREL.hp, 0.02);
     else if ((!directRef || directRef.kind === 'wall') && shot.dir) {
-      const from = pos.clone().addScaledVector(shot.dir, -16);
-      const to = pos.clone().addScaledVector(shot.dir, 16);
+      const from = this.rocketFrom.copy(pos).addScaledVector(shot.dir, -16);
+      const to = this.rocketTo.copy(pos).addScaledVector(shot.dir, 16);
       const wallHit = this.scene.raycast(from, to, QUERY_WALL);
       if (wallHit) {
         const nx = Math.abs(wallHit.normal.x) > 0.9 ? Math.round(wallHit.normal.x) : wallHit.normal.x;
@@ -2243,8 +2250,8 @@ export class Game {
     player.flash = 0.14;
     player.recoil = 1.15;
 
-    const direction = new Vec2(1, 0).setRadian(player.angle);
-    const start = player.pos.clone().addScaledVector(direction, PLAYER_RADIUS + 8);
+    const direction = this.rocketDir.setScalar(1, 0).setRadian(player.angle);
+    const start = this.rocketFrom.copy(player.pos).addScaledVector(direction, PLAYER_RADIUS + 8);
     this.addRocket(start, direction);
   }
 
@@ -2285,7 +2292,9 @@ export class Game {
     let bestCache = null;
     let bestSwitch = null;
     let bestDistance = USE_RANGE;
-    for (const door of this.level.doors.values()) {
+    const { doorsList } = this.level;
+    for (let i = 0; i < doorsList.length; i++) {
+      const door = doorsList[i];
       if (door.elevator)
         continue;
       const toDoor = this.toPlayer.subVectors(door.center, player.pos);
@@ -2502,7 +2511,9 @@ export class Game {
         if (sw.activated && (sw.pull ?? 0) < 1)
           sw.pull = Math.min(1, (sw.pull ?? 0) + dt / 0.18);
       }
-    for (const door of this.level.doors.values()) {
+    const { doorsList } = this.level;
+    for (let i = 0; i < doorsList.length; i++) {
+      const door = doorsList[i];
       const doorTime = door.elevator ? 1.4 : 0.7;
       if (door.target && door.open < 1)
         this.level.setDoorOpen(door, Math.min(1, door.open + dt / doorTime));
@@ -2549,16 +2560,20 @@ export class Game {
     const start = ty * level.width + tx;
     // monsters cannot open doors, so the way through one only exists while it is open
     let doors = 0;
-    for (const door of level.doors.values())
-      doors = doors * 2 + (door.open > 0.5 ? 1 : 0);
+    for (let i = 0; i < level.doorsList.length; i++)
+      doors = doors * 2 + (level.doorsList[i].open > 0.5 ? 1 : 0);
     if (start === this.flowTile && doors === this.flowDoors)
       return;
     this.flowTile = start;
     this.flowDoors = doors;
     flow.fill(-1);
     flow[start] = 0;
-    const queue = [start];
-    for (let head = 0; head < queue.length; head++) {
+    if (!this.flowQueue || this.flowQueue.length < flow.length)
+      this.flowQueue = new Int32Array(flow.length);
+    const queue = this.flowQueue;
+    let tail = 0;
+    queue[tail++] = start;
+    for (let head = 0; head < tail; head++) {
       const idx = queue[head];
       const x = idx % level.width;
       const y = (idx - x) / level.width;
@@ -2577,7 +2592,7 @@ export class Game {
         if (flow[nidx] >= 0)
           continue;
         flow[nidx] = flow[idx] + 1;
-        queue.push(nidx);
+        queue[tail++] = nidx;
       }
     }
   }
@@ -3463,11 +3478,13 @@ export class Game {
       this.dust.push(particle);
     }
     let airlockOpen = false;
-    for (const door of level.doors.values())
+    for (let i = 0; i < level.doorsList.length; i++) {
+      const door = level.doorsList[i];
       if (!door.elevator && door.open > 0.05 && level.doorTouchesIndoor(door.idx)) {
         airlockOpen = true;
         break;
       }
+    }
     if (this.state === 'play' && (level.isOutdoor(player.pos) || airlockOpen)) {
       this.windTimer -= dt;
       if (this.windTimer <= 0) {

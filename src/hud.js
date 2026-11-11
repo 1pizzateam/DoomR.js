@@ -85,8 +85,9 @@ const AMMO_POOL_KEYS = Object.freeze([
   Object.freeze(['shells', AMMO_TYPES.shells]),
   Object.freeze(['rockets', AMMO_TYPES.rockets]),
 ]);
-const WEAPON_PLACE_OPTS = { width: 0, height: 0, bob: 0, moving: 0, recoil: 0, switchOffset: 0 };
-const WEAPON_RECT = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 };
+const WEAPON_PLACE_OPTS = { bob: 0, moving: 0, recoil: 0, switchOffset: 0 };
+const WEAPON_RECT = { rect: new Rect(), pixel: 0 };
+const scratchViewport = new Vec2();
 const FACE_VIEWPORT = new Vec2();
 const FACE_PLACEMENT = { rect: new Rect(), pixel: 0 };
 const WALL_LOWER = new Rect();
@@ -165,7 +166,8 @@ const MENU_LAYOUT = { width: -1, height: -1, buttonW: 0, buttonH: MENU_BUTTON_H,
 const MENU_FRAME = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 /** Shared by drawing and hit-testing so they never drift. */
-export const layoutMainMenu = (width, height) => {
+export const layoutMainMenu = (viewportSize) => {
+  const { x: width, y: height } = viewportSize;
   const L = MENU_LAYOUT;
   if (L.width === width && L.height === height)
     return L;
@@ -195,7 +197,8 @@ const HINTS_LAYOUT = {
   groupHeights: [0, 0, 0, 0],
 };
 
-const layoutHints = (hints, width, height) => {
+const layoutHints = (hints, viewportSize) => {
+  const { x: width, y: height } = viewportSize;
   const H = HINTS_LAYOUT;
   if (H.hintsRef === hints && H.width === width && H.height === height)
     return H;
@@ -250,7 +253,8 @@ const layoutHints = (hints, width, height) => {
   return H;
 };
 
-export const layoutControls = (width, height) => {
+export const layoutControls = (viewportSize) => {
+  const { x: width, y: height } = viewportSize;
   const L = CONTROLS_LAYOUT;
   L.boxW = Utils.clamp(width - 48, 360, 640);
   L.boxH = Math.max(CONTROLS_HEADER_H + CONTROLS_FOOTER_H + CONTROLS_ROW_H * 4, Math.min(height - 48, 760));
@@ -335,7 +339,7 @@ export class Hud {
       return hints.length * 20;
     }
 
-    const L = layoutHints(hints, this.width, this.height);
+    const L = layoutHints(hints, scratchViewport.setScalar(this.width, this.height));
     const rowH = 18;
     const headerH = 16;
     const capH = 14;
@@ -532,14 +536,13 @@ export class Hud {
       return;
     const def = WEAPONS[weapon] ?? WEAPONS.shotgun;
     const switchOffset = Math.min(1, (player.switchTimer ?? 0) / 0.22);
-    WEAPON_PLACE_OPTS.width = this.width;
-    WEAPON_PLACE_OPTS.height = this.height;
     WEAPON_PLACE_OPTS.bob = player.bob;
     WEAPON_PLACE_OPTS.moving = player.moving;
     WEAPON_PLACE_OPTS.recoil = player.recoil;
     WEAPON_PLACE_OPTS.switchOffset = switchOffset;
-    const placed = weaponPlacement(WEAPON_PLACE_OPTS, WEAPON_RECT);
-    setRectEdges(WEAPON_QUAD, placed.x0, placed.y0, placed.x1, placed.y1);
+    const placed = weaponPlacement(scratchViewport.setScalar(this.width, this.height), WEAPON_PLACE_OPTS, WEAPON_RECT);
+    const { topLeftCorner: placedTL, bottomRightCorner: placedBR } = placed.rect;
+    setRectEdges(WEAPON_QUAD, placedTL.x, placedTL.y, placedBR.x, placedBR.y);
     const isFiring = !player.dryFire && (player.switchTimer ?? 0) <= 0;
     const spinDown = player.spinDown ?? player.shootFace ?? 0;
     let elapsed =
@@ -571,7 +574,7 @@ export class Hud {
       const target = screenSplatQuads(scratchBloodSplat, scratchBloodViewport, fade, this.bloodQuads);
       for (let i = 0; i < target.count; i++) {
         const q = target.quads[i];
-        sprites.quad(setRectEdges(BLOOD_QUAD, q.x0, q.y0, q.x1, q.y1), q.uv, q.fade);
+        sprites.quad(setRectEdges(BLOOD_QUAD, q.rect.topLeftCorner.x, q.rect.topLeftCorner.y, q.rect.bottomRightCorner.x, q.rect.bottomRightCorner.y), q.uv, q.fade);
       }
     }
   }
@@ -1652,7 +1655,7 @@ export class Hud {
     const view = this.controlsView;
     if (!view?.open)
       return HIT_NONE;
-    const L = layoutControls(this.width, this.height);
+    const L = layoutControls(scratchViewport.setScalar(this.width, this.height));
     if (pos.x < L.boxX || pos.x > L.boxX + L.boxW || pos.y < L.boxY || pos.y > L.boxY + L.boxH)
       return HIT_NONE;
     if (pos.y >= L.labelsY - 16 && pos.y <= L.labelsY + 6)
@@ -1683,7 +1686,7 @@ export class Hud {
   }
 
   menuHitAt(pos) {
-    const L = layoutMainMenu(this.width, this.height);
+    const L = layoutMainMenu(scratchViewport.setScalar(this.width, this.height));
     if (pos.x < L.x || pos.x > L.x + L.buttonW)
       return -1;
     for (let i = 0; i < 2; i++)
@@ -1696,7 +1699,7 @@ export class Hud {
     const view = this.mainMenuView;
     if (!view)
       return;
-    const L = layoutMainMenu(this.width, this.height);
+    const L = layoutMainMenu(scratchViewport.setScalar(this.width, this.height));
     const cx = this.width / 2;
     const F = MENU_FRAME;
     for (let i = 0; i < view.items.length; i++) {
@@ -1727,7 +1730,7 @@ export class Hud {
   }
 
   drawControls(view, game) {
-    const L = layoutControls(this.width, this.height);
+    const L = layoutControls(scratchViewport.setScalar(this.width, this.height));
     view.visibleRows = L.visibleRows;
     const { boxX, boxY, boxW, boxH, rowsTop, footerTop } = L;
     const right = boxX + boxW;

@@ -1,4 +1,4 @@
-import { Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 
 /**
  * The shotgun ammo pickup as a 3D textured mesh:
@@ -410,13 +410,20 @@ export function rocketAmmoAtlas() {
   return { name: 'rockets', data, width, height, cell: AMMO_CELL, frames: AMMO_FRAMES };
 }
 
-function pushQuad(vertices, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
-  const corners = [c0, c1, c2, c3];
-  const quadUvs = [[u0, v1], [u1, v1], [u1, v0], [u0, v0]];
-  for (const k of [0, 1, 2, 0, 2, 3]) {
-    vertices.push(...corners[k]);
-    uvs.push(...quadUvs[k]);
-  }
+const scratchCorner0 = new Vec3();
+const scratchCorner1 = new Vec3();
+const scratchCorner2 = new Vec3();
+const scratchCorner3 = new Vec3();
+const scratchUvMin = new Vec2();
+const scratchUvMax = new Vec2();
+const scratchHalfExtents = new Vec3();
+const scratchCenter = new Vec2();
+const scratchSpan = new Vec2();
+const scratchProfile = new Vec3();
+
+function pushQuad(vertices, uvs, c0, c1, c2, c3, uvMin, uvMax) {
+  vertices.push(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, c0.x, c0.y, c0.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z);
+  uvs.push(uvMin.x, uvMax.y, uvMax.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMin.y);
 }
 
 function cellRange(cell) {
@@ -424,22 +431,27 @@ function cellRange(cell) {
   return [cell / AMMO_FRAMES + inset, (cell + 1) / AMMO_FRAMES - inset];
 }
 
-function pushCrateTray(vertices, uvs, hx, hy, hz) {
+/** `halfExtents` is the tray's half size in x, its height in y and its half depth in z. */
+function pushCrateTray(vertices, uvs, halfExtents) {
+  const { x: hx, y: hy, z: hz } = halfExtents;
   const [uf0, uf1] = cellRange(AMMO_CELLS.crateFront);
   const [us0, us1] = cellRange(AMMO_CELLS.crateSide);
   const [ut0, ut1] = cellRange(AMMO_CELLS.shellTop);
 
   // Outer walls of the open-top olive ordnance tray
-  pushQuad(vertices, uvs, [-hx, 0, hz], [hx, 0, hz], [hx, hy, hz], [-hx, hy, hz], uf0, 0, uf1, 1);
-  pushQuad(vertices, uvs, [hx, 0, -hz], [-hx, 0, -hz], [-hx, hy, -hz], [hx, hy, -hz], uf0, 0, uf1, 1);
-  pushQuad(vertices, uvs, [hx, 0, hz], [hx, 0, -hz], [hx, hy, -hz], [hx, hy, hz], us0, 0, us1, 1);
-  pushQuad(vertices, uvs, [-hx, 0, -hz], [-hx, 0, hz], [-hx, hy, hz], [-hx, hy, -hz], us0, 0, us1, 1);
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(-hx, 0, hz), scratchCorner1.setScalar(hx, 0, hz), scratchCorner2.setScalar(hx, hy, hz), scratchCorner3.setScalar(-hx, hy, hz), scratchUvMin.setScalar(uf0, 0), scratchUvMax.setScalar(uf1, 1));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(hx, 0, -hz), scratchCorner1.setScalar(-hx, 0, -hz), scratchCorner2.setScalar(-hx, hy, -hz), scratchCorner3.setScalar(hx, hy, -hz), scratchUvMin.setScalar(uf0, 0), scratchUvMax.setScalar(uf1, 1));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(hx, 0, hz), scratchCorner1.setScalar(hx, 0, -hz), scratchCorner2.setScalar(hx, hy, -hz), scratchCorner3.setScalar(hx, hy, hz), scratchUvMin.setScalar(us0, 0), scratchUvMax.setScalar(us1, 1));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(-hx, 0, -hz), scratchCorner1.setScalar(-hx, 0, hz), scratchCorner2.setScalar(-hx, hy, hz), scratchCorner3.setScalar(-hx, hy, -hz), scratchUvMin.setScalar(us0, 0), scratchUvMax.setScalar(us1, 1));
   // Bottom and recessed interior tray bed
-  pushQuad(vertices, uvs, [-hx, 0, -hz], [hx, 0, -hz], [hx, 0, hz], [-hx, 0, hz], us0, 0.5, us1, 0.95);
-  pushQuad(vertices, uvs, [-hx, hy - 1.2, hz], [hx, hy - 1.2, hz], [hx, hy - 1.2, -hz], [-hx, hy - 1.2, -hz], ut0, 0, ut1, 0.12);
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(-hx, 0, -hz), scratchCorner1.setScalar(hx, 0, -hz), scratchCorner2.setScalar(hx, 0, hz), scratchCorner3.setScalar(-hx, 0, hz), scratchUvMin.setScalar(us0, 0.5), scratchUvMax.setScalar(us1, 0.95));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(-hx, hy - 1.2, hz), scratchCorner1.setScalar(hx, hy - 1.2, hz), scratchCorner2.setScalar(hx, hy - 1.2, -hz), scratchCorner3.setScalar(-hx, hy - 1.2, -hz), scratchUvMin.setScalar(ut0, 0), scratchUvMax.setScalar(ut1, 0.12));
 }
 
-function pushShellCylinder(vertices, uvs, cx, cz, y0, y1, radius, sides = 8) {
+/** `center` is the shell axis (x, z) and `heightSpan` its bottom and top (y0, y1). */
+function pushShellCylinder(vertices, uvs, center, heightSpan, radius, sides = 8) {
+  const { x: cx, y: cz } = center;
+  const { x: y0, y: y1 } = heightSpan;
   const [us0, us1] = cellRange(AMMO_CELLS.shellSide);
   const [ut0, ut1] = cellRange(AMMO_CELLS.shellTop);
   const uMid = (ut0 + ut1) * 0.5;
@@ -458,7 +470,7 @@ function pushShellCylinder(vertices, uvs, cx, cz, y0, y1, radius, sides = 8) {
     // Cylindrical side wall of the shotgun shell
     const u0 = us0 + (us1 - us0) * t0;
     const u1 = us0 + (us1 - us0) * t1;
-    pushQuad(vertices, uvs, [x0, y0, z0], [x1, y0, z1], [x1, y1, z1], [x0, y1, z0], u0, 0, u1, 1);
+    pushQuad(vertices, uvs, scratchCorner0.setScalar(x0, y0, z0), scratchCorner1.setScalar(x1, y0, z1), scratchCorner2.setScalar(x1, y1, z1), scratchCorner3.setScalar(x0, y1, z0), scratchUvMin.setScalar(u0, 0), scratchUvMax.setScalar(u1, 1));
 
     // Star-crimped top cap triangle
     vertices.push(cx, y1, cz, x1, y1, z1, x0, y1, z0);
@@ -480,14 +492,14 @@ export function ammoMesh() {
   const hy = 7.2;
   const hz = 5.5;
 
-  pushCrateTray(vertices, uvs, hx, hy, hz);
+  pushCrateTray(vertices, uvs, scratchHalfExtents.setScalar(hx, hy, hz));
 
   // Two rows of four upright 12-gauge shells standing inside the tray
   const xs = [-5.4, -1.8, 1.8, 5.4];
   const zs = [-2.2, 2.2];
   for (const cz of zs)
     for (const cx of xs)
-      pushShellCylinder(vertices, uvs, cx, cz, hy - 1.5, 14.5, 1.48, 8);
+      pushShellCylinder(vertices, uvs, scratchCenter.setScalar(cx, cz), scratchSpan.setScalar(hy - 1.5, 14.5), 1.48, 8);
 
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }
@@ -503,46 +515,27 @@ export function bulletMesh() {
   const hy = 10.2;
   const hz = 4.6;
 
-  pushCrateTray(vertices, uvs, hx, hy, hz);
+  pushCrateTray(vertices, uvs, scratchHalfExtents.setScalar(hx, hy, hz));
 
   // Open hinged steel lid tilted back along the rear rim of the ammo can
   const [uf0, uf1] = cellRange(AMMO_CELLS.crateFront);
-  pushQuad(
-    vertices,
-    uvs,
-    [-hx, hy, -hz],
-    [hx, hy, -hz],
-    [hx, hy + 4.4, -hz - 2.2],
-    [-hx, hy + 4.4, -hz - 2.2],
-    uf0,
-    0,
-    uf1,
-    0.45
-  );
-  pushQuad(
-    vertices,
-    uvs,
-    [hx, hy, -hz],
-    [-hx, hy, -hz],
-    [-hx, hy + 4.4, -hz - 2.2],
-    [hx, hy + 4.4, -hz - 2.2],
-    uf0,
-    0,
-    uf1,
-    0.45
-  );
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(-hx, hy, -hz), scratchCorner1.setScalar(hx, hy, -hz), scratchCorner2.setScalar(hx, hy + 4.4, -hz - 2.2), scratchCorner3.setScalar(-hx, hy + 4.4, -hz - 2.2), scratchUvMin.setScalar(uf0, 0), scratchUvMax.setScalar(uf1, 0.45));
+  pushQuad(vertices, uvs, scratchCorner0.setScalar(hx, hy, -hz), scratchCorner1.setScalar(-hx, hy, -hz), scratchCorner2.setScalar(-hx, hy + 4.4, -hz - 2.2), scratchCorner3.setScalar(hx, hy + 4.4, -hz - 2.2), scratchUvMin.setScalar(uf0, 0), scratchUvMax.setScalar(uf1, 0.45));
 
   // Two dense rows of six 7.62mm brass cartridges inside the ammo can
   const xs = [-5.5, -3.3, -1.1, 1.1, 3.3, 5.5];
   const zs = [-1.6, 1.6];
   for (const cz of zs)
     for (const cx of xs)
-      pushShellCylinder(vertices, uvs, cx, cz, hy - 1.2, 15.2, 0.92, 6);
+      pushShellCylinder(vertices, uvs, scratchCenter.setScalar(cx, cz), scratchSpan.setScalar(hy - 1.2, 15.2), 0.92, 6);
 
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }
 
-function pushRocketWarhead(vertices, uvs, cx, cz, yBase, yShoulder, yTip, radius, sides = 8) {
+/** `center` is the rocket axis (x, z) and `profile` its base, shoulder and tip heights. */
+function pushRocketWarhead(vertices, uvs, center, profile, radius, sides = 8) {
+  const { x: cx, y: cz } = center;
+  const { x: yBase, y: yShoulder, z: yTip } = profile;
   const [us0, us1] = cellRange(AMMO_CELLS.shellSide);
   const [ut0, ut1] = cellRange(AMMO_CELLS.shellTop);
   const uMid = (ut0 + ut1) * 0.5;
@@ -561,7 +554,7 @@ function pushRocketWarhead(vertices, uvs, cx, cz, yBase, yShoulder, yTip, radius
     const u0 = us0 + (us1 - us0) * t0;
     const u1 = us0 + (us1 - us0) * t1;
     // Cylindrical rocket motor body
-    pushQuad(vertices, uvs, [x0, yBase, z0], [x1, yBase, z1], [x1, yShoulder, z1], [x0, yShoulder, z0], u0, 0, u1, 1);
+    pushQuad(vertices, uvs, scratchCorner0.setScalar(x0, yBase, z0), scratchCorner1.setScalar(x1, yBase, z1), scratchCorner2.setScalar(x1, yShoulder, z1), scratchCorner3.setScalar(x0, yShoulder, z0), scratchUvMin.setScalar(u0, 0), scratchUvMax.setScalar(u1, 1));
 
     // Conical high-explosive warhead nose cone
     vertices.push(cx, yTip, cz, x1, yShoulder, z1, x0, yShoulder, z0);
@@ -583,7 +576,7 @@ export function rocketAmmoMesh() {
   const hy = 6.8;
   const hz = 6.2;
 
-  pushCrateTray(vertices, uvs, hx, hy, hz);
+  pushCrateTray(vertices, uvs, scratchHalfExtents.setScalar(hx, hy, hz));
 
   // 5 upright finned warhead rockets arranged in a staggered 3 + 2 ordnance rack
   const positions = [
@@ -594,7 +587,7 @@ export function rocketAmmoMesh() {
     [2.8, 2.1],
   ];
   for (const [cx, cz] of positions)
-    pushRocketWarhead(vertices, uvs, cx, cz, hy - 1.4, 16.2, 20.6, 1.65, 8);
+    pushRocketWarhead(vertices, uvs, scratchCenter.setScalar(cx, cz), scratchProfile.setScalar(hy - 1.4, 16.2, 20.6), 1.65, 8);
 
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }

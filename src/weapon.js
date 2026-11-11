@@ -12,12 +12,12 @@
  * Frames are 192 x 256 pixels side by side in one atlas.
  */
 
-import { NumArray, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { NumArray, Rect, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 
 const scratchVec2 = new Vec2();
-function mag2(x, y) {
-  return scratchVec2.setScalar(x, y).getMagnitude();
-}
+const scratchPlaceSize = new Vec2();
+const scratchPlacePos = new Vec2();
+const defaultPlacement = { rect: new Rect(), pixel: 0 };
 
 export const WEAPON_CELL_W = 192;
 export const WEAPON_CELL_H = 256;
@@ -268,23 +268,28 @@ export function weaponFrame(elapsed, hasAmmo = true, weapon = 'shotgun', time = 
 }
 
 /**
- * Where the gun goes on a screen of `width` x `height` CSS pixels: a rectangle `{ x0, y0, x1, y1, pixel }`, y down.
+ * Where the gun goes on a screen of `viewportSize` (width in x, height in y) CSS pixels: `{ rect, pixel }` with a Rect, y down.
  * Pixels of the art are whole screen pixels, so it stays sharp. It sways as the player walks and rises with the kick;
  * it stands a few art pixels below the edge, so the kick never shows a gap under it.
- * The rectangle is written onto `out` (pass a reused scratch rect to avoid allocating) and `out` is returned.
+ * The rectangle is written onto `out` (pass a reused scratch to avoid allocating) and `out` is returned.
  */
-export function weaponPlacement({ width, height, bob = 0, moving = 0, recoil = 0, switchOffset = 0 }, out = { x0: 0, y0: 0, x1: 0, y1: 0, pixel: 0 }) {
-  const scale = Utils.clamp(height / 760, 0.7, 1.4);
+export function weaponPlacement(viewportSize, { bob = 0, moving = 0, recoil = 0, switchOffset = 0 } = {}, out = defaultPlacement) {
+  const scale = Utils.clamp(viewportSize.y / 760, 0.7, 1.4);
   const pixel = Math.max(2, Math.round(2 * scale));
   const sway = Math.sin(bob) * 14 * moving * scale;
   const rise = Math.abs(Math.cos(bob)) * 8 * moving * scale;
   const drop = Math.round(Utils.clamp(switchOffset, 0, 1) * H * pixel * 0.45);
-  const x0 = Math.round(width / 2 + sway - (W / 2) * pixel);
-  const y1 = Math.round(height + 16 + 8 * pixel + rise - recoil * 6 * pixel) + drop;
-  out.x0 = x0;
-  out.y0 = y1 - H * pixel;
-  out.x1 = x0 + W * pixel;
-  out.y1 = y1;
+  const x0 = Math.round(viewportSize.x / 2 + sway - (W / 2) * pixel);
+  const y1 = Math.round(viewportSize.y + 16 + 8 * pixel + rise - recoil * 6 * pixel) + drop;
+  const w = W * pixel;
+  const h = H * pixel;
+  const { rect } = out;
+  scratchPlaceSize.setScalar(w, h);
+  rect.setSize(scratchPlaceSize);
+  scratchPlacePos.setScalar(x0 + w * 0.5, y1 - h * 0.5);
+  rect.setPosition(scratchPlacePos);
+  rect.topLeftCorner.setScalar(x0, y1 - h);
+  rect.bottomRightCorner.setScalar(x0 + w, y1);
   out.pixel = pixel;
   return out;
 }
@@ -359,7 +364,7 @@ class Art {
   }
 
   line(x0, y0, x1, y1, color) {
-    const steps = Math.ceil(mag2(x1 - x0, y1 - y0)) || 1;
+    const steps = Math.ceil(scratchVec2.setScalar(x1 - x0, y1 - y0).getMagnitude()) || 1;
     for (let i = 0; i <= steps; i++)
       this.put(x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps, color);
   }
@@ -586,7 +591,7 @@ function drawCenteredGun(a, lit) {
     for (let x = CX - 9; x <= CX + 9; x++) {
       const dx = (x - CX) / 9;
       const dy = (y - MUZZLE_Y) / 2.2;
-      const d = mag2(dx, dy);
+      const d = scratchVec2.setScalar(dx, dy).getMagnitude();
       if (d <= 1.05) {
         if (d > 0.72)
           a.put(x, y, dy < 0 ? STEEL[6] : STEEL[2]);
@@ -891,7 +896,7 @@ function drawAngledPumpGun(a, pump = 1) {
   // Foreshortened elliptical muzzle crown & front brass bead sight at (topX, topY)
   for (let y = topY - 4; y <= topY + 5; y++)
     for (let x = topX - 11; x <= topX + 11; x++) {
-      const d = mag2((x - topX) / 8.0, (y - (topY + 1)) / 2.3);
+      const d = scratchVec2.setScalar((x - topX) / 8.0, (y - (topY + 1)) / 2.3).getMagnitude();
       if (d <= 1.05) {
         if (d > 0.78)
           a.put(x, y, STEEL[0]);
@@ -935,7 +940,7 @@ function applyFlashLight(a, cx, cy, strength) {
     for (let x = 0; x < W; x++) {
       if (!a.has(x, y))
         continue;
-      const dist = mag2(x - cx, (y - cy) * 1.15);
+      const dist = scratchVec2.setScalar(x - cx, (y - cy) * 1.15).getMagnitude();
       const k = Math.max(0, 1 - dist / 92) * 0.64 * strength;
       if (k <= 0)
         continue;
@@ -981,7 +986,7 @@ function drawFlash(a, size, cool, muzzleY = MUZZLE_Y) {
       const dx = rawDx / rx;
       const dy = rawDy / ry;
       const angle = Math.atan2(dy, dx);
-      const dist = mag2(dx, dy);
+      const dist = scratchVec2.setScalar(dx, dy).getMagnitude();
 
       // Volumetric Doom SHTFA0 / SHTFB0 flame lobes radiating around the muzzle axis:
       // - Wide horizontal blast wings (left & right)
@@ -1025,7 +1030,7 @@ function drawFlash(a, size, cool, muzzleY = MUZZLE_Y) {
   const coreRy = cool ? 5 : 8;
   for (let y = Math.floor(cy - coreRy); y <= muzzleY + 2; y++)
     for (let x = Math.floor(CX - coreRx); x <= Math.ceil(CX + coreRx); x++) {
-      const cd = mag2((x - CX) / coreRx, (y - (muzzleY - 1)) / coreRy);
+      const cd = scratchVec2.setScalar((x - CX) / coreRx, (y - (muzzleY - 1)) / coreRy).getMagnitude();
       if (cd <= 1) {
         const coreHeat = Math.min(1, 0.72 + (1 - cd) * 0.35);
         a.put(x, y, ramp(FIRE_RAMP, coreHeat, x, y));
@@ -1489,7 +1494,7 @@ function drawChaingunArt(frame) {
     const ry = 2.4 + p * 1.4;
     for (let dy = -Math.ceil(ry); dy <= Math.ceil(ry); dy++)
       for (let dx = -rx; dx <= rx; dx++) {
-        const d = mag2(dx / rx, dy / ry);
+        const d = scratchVec2.setScalar(dx / rx, dy / ry).getMagnitude();
         if (d >= 0.72 && d <= 1.04) {
           const u = (dx + rx) / (rx * 2);
           const edge = d > 0.92 || d < 0.78;
@@ -1527,7 +1532,7 @@ function drawChaingunArt(frame) {
     for (let x = cx - muzRx - 1; x <= cx + muzRx + 1; x++) {
       const dx = (x - cx) / muzRx;
       const dy = (y - topY) / muzRy;
-      const d = mag2(dx, dy);
+      const d = scratchVec2.setScalar(dx, dy).getMagnitude();
       if (d <= 1.06) {
         if (d > 0.84)
           a.put(x, y, dy < 0 ? STEEL[6] : STEEL[0]);
@@ -1676,7 +1681,7 @@ function drawChaingunArt(frame) {
     // Compact white-hot plasma/muzzle core right at the top firing barrel bore so the spinning barrels below stay 100% clear
     for (let dy = -4; dy <= 1; dy++)
       for (let dx = -5; dx <= 5; dx++) {
-        const d = mag2(dx / 5, dy / 3.5);
+        const d = scratchVec2.setScalar(dx / 5, dy / 3.5).getMagnitude();
         if (d <= 1)
           a.put(cx + dx, topY - 2 + dy, d < 0.55 ? FIRE_RAMP[5] : FIRE_RAMP[4]);
       }
@@ -1684,7 +1689,7 @@ function drawChaingunArt(frame) {
     applyFlashLight(a, cx, topY, 0.55);
     for (let dy = -3; dy <= 1; dy++)
       for (let dx = -4; dx <= 4; dx++) {
-        const d = mag2(dx / 4, dy / 2.8);
+        const d = scratchVec2.setScalar(dx / 4, dy / 2.8).getMagnitude();
         if (d <= 1)
           a.put(cx + dx, topY - 2 + dy, d < 0.5 ? FIRE_RAMP[5] : FIRE_RAMP[3]);
       }
@@ -1772,7 +1777,7 @@ function drawRocketArt(frame) {
     for (let x = Math.floor(CX - muzRx - 1); x <= Math.ceil(CX + muzRx + 1); x++) {
       const dx = (x - CX) / muzRx;
       const dy = (y - topY) / muzRy;
-      const d = mag2(dx, dy);
+      const d = scratchVec2.setScalar(dx, dy).getMagnitude();
       if (d <= 1.06) {
         if (d > 0.76)
           a.put(x, y, dy < 0 ? STEEL[6] : STEEL[2]);

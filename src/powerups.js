@@ -1,4 +1,4 @@
-import { Utils, Vec2 } from '@1pizzateam/spock';
+import { Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 
 /**
  * Classic Doom Supercharge Powerups as 3D textured meshes:
@@ -471,26 +471,41 @@ export function nightvisionAtlas() {
 
 // ---- 3D Geometry Builders --------------------------------------------------
 
-function pushBox(vertices, uvs, x0, y0, z0, x1, y1, z1, faces) {
-  const quads = [
-    [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], faces.front],
-    [[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], faces.back],
-    [[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], faces.right],
-    [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], faces.left],
-    [[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], faces.top],
-    [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], faces.bottom],
-  ];
-  const inset = 0.35 / (POWERUP_CELL * POWERUP_FRAMES);
-  for (const [c0, c1, c2, c3, cell] of quads) {
-    const u0 = cell / POWERUP_FRAMES + inset;
-    const u1 = (cell + 1) / POWERUP_FRAMES - inset;
-    const quadUvs = [[u0, 1], [u1, 1], [u1, 0], [u0, 0]];
-    const corners = [c0, c1, c2, c3];
-    for (const k of [0, 1, 2, 0, 2, 3]) {
-      vertices.push(...corners[k]);
-      uvs.push(...quadUvs[k]);
-    }
-  }
+const scratchBoxMin = new Vec3();
+const scratchBoxMax = new Vec3();
+const scratchCorner0 = new Vec3();
+const scratchCorner1 = new Vec3();
+const scratchCorner2 = new Vec3();
+const scratchCorner3 = new Vec3();
+const scratchUvMin = new Vec2();
+const scratchUvMax = new Vec2();
+const UV_INSET = 0.35 / (POWERUP_CELL * POWERUP_FRAMES);
+
+function pushQuad(vertices, uvs, c0, c1, c2, c3, uvMin, uvMax) {
+  vertices.push(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, c0.x, c0.y, c0.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z);
+  uvs.push(uvMin.x, uvMax.y, uvMax.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMax.y, uvMax.x, uvMin.y, uvMin.x, uvMin.y);
+}
+
+function pushCellQuad(vertices, uvs, c0, c1, c2, c3, cell) {
+  scratchUvMin.setScalar(cell / POWERUP_FRAMES + UV_INSET, 0);
+  scratchUvMax.setScalar((cell + 1) / POWERUP_FRAMES - UV_INSET, 1);
+  pushQuad(vertices, uvs, c0, c1, c2, c3, scratchUvMin, scratchUvMax);
+}
+
+/** Pushes the six faces of the box spanning the Vec3 `min` and `max`; `faces` maps each side to its atlas cell. */
+function pushBox(vertices, uvs, min, max, faces) {
+  const { x: x0, y: y0, z: z0 } = min;
+  const { x: x1, y: y1, z: z1 } = max;
+  const c0 = scratchCorner0;
+  const c1 = scratchCorner1;
+  const c2 = scratchCorner2;
+  const c3 = scratchCorner3;
+  pushCellQuad(vertices, uvs, c0.setScalar(x0, y0, z1), c1.setScalar(x1, y0, z1), c2.setScalar(x1, y1, z1), c3.setScalar(x0, y1, z1), faces.front);
+  pushCellQuad(vertices, uvs, c0.setScalar(x1, y0, z0), c1.setScalar(x0, y0, z0), c2.setScalar(x0, y1, z0), c3.setScalar(x1, y1, z0), faces.back);
+  pushCellQuad(vertices, uvs, c0.setScalar(x1, y0, z1), c1.setScalar(x1, y0, z0), c2.setScalar(x1, y1, z0), c3.setScalar(x1, y1, z1), faces.right);
+  pushCellQuad(vertices, uvs, c0.setScalar(x0, y0, z0), c1.setScalar(x0, y0, z1), c2.setScalar(x0, y1, z1), c3.setScalar(x0, y1, z0), faces.left);
+  pushCellQuad(vertices, uvs, c0.setScalar(x0, y1, z1), c1.setScalar(x1, y1, z1), c2.setScalar(x1, y1, z0), c3.setScalar(x0, y1, z0), faces.top);
+  pushCellQuad(vertices, uvs, c0.setScalar(x0, y0, z0), c1.setScalar(x1, y0, z0), c2.setScalar(x1, y0, z1), c3.setScalar(x0, y0, z1), faces.bottom);
 }
 
 /**
@@ -518,18 +533,18 @@ export function soulsphereMesh() {
   };
 
   // 1. Central core of the sphere
-  pushBox(vertices, uvs, -7.2, 5.5, -7.2, 7.2, 18.5, 7.2, orbFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-7.2, 5.5, -7.2), scratchBoxMax.setScalar(7.2, 18.5, 7.2), orbFaces);
   // 2. Front & back spherical bulges (bearing the soul face)
-  pushBox(vertices, uvs, -5.4, 7.2, 7.2, 5.4, 16.8, 9.0, orbFaces);
-  pushBox(vertices, uvs, -5.4, 7.2, -9.0, 5.4, 16.8, -7.2, orbFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-5.4, 7.2, 7.2), scratchBoxMax.setScalar(5.4, 16.8, 9.0), orbFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-5.4, 7.2, -9.0), scratchBoxMax.setScalar(5.4, 16.8, -7.2), orbFaces);
   // 3. Left & right lateral spherical caps
-  pushBox(vertices, uvs, -9.0, 7.2, -5.4, -7.2, 16.8, 5.4, orbFaces);
-  pushBox(vertices, uvs, 7.2, 7.2, -5.4, 9.0, 16.8, 5.4, orbFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-9.0, 7.2, -5.4), scratchBoxMax.setScalar(-7.2, 16.8, 5.4), orbFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(7.2, 7.2, -5.4), scratchBoxMax.setScalar(9.0, 16.8, 5.4), orbFaces);
   // 4. Upper & lower polar dome caps
-  pushBox(vertices, uvs, -5.2, 18.5, -5.2, 5.2, 20.6, 5.2, orbFaces);
-  pushBox(vertices, uvs, -5.2, 3.4, -5.2, 5.2, 5.5, 5.2, orbFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-5.2, 18.5, -5.2), scratchBoxMax.setScalar(5.2, 20.6, 5.2), orbFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-5.2, 3.4, -5.2), scratchBoxMax.setScalar(5.2, 5.5, 5.2), orbFaces);
   // 5. Floating equatorial plasma halo ring
-  pushBox(vertices, uvs, -10.4, 11.2, -1.8, 10.4, 12.8, 1.8, ringFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-10.4, 11.2, -1.8), scratchBoxMax.setScalar(10.4, 12.8, 1.8), ringFaces);
 
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }
@@ -545,7 +560,7 @@ export function berserkMesh() {
   const hz = 5.6;
 
   // 1. Main tactical stimulant case
-  pushBox(vertices, uvs, -hx, 0, -hz, hx, hy, hz, {
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-hx, 0, -hz), scratchBoxMax.setScalar(hx, hy, hz), {
     front: POWERUP_CELLS.front,
     back: POWERUP_CELLS.front,
     left: POWERUP_CELLS.side,
@@ -563,13 +578,13 @@ export function berserkMesh() {
     top: POWERUP_CELLS.trim,
     bottom: POWERUP_CELLS.trim,
   };
-  pushBox(vertices, uvs, -7.6, hy, -2.4, -5.2, hy + 2.4, 2.4, trimFaces);
-  pushBox(vertices, uvs, 5.2, hy, -2.4, 7.6, hy + 2.4, 2.4, trimFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-7.6, hy, -2.4), scratchBoxMax.setScalar(-5.2, hy + 2.4, 2.4), trimFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(5.2, hy, -2.4), scratchBoxMax.setScalar(7.6, hy + 2.4, 2.4), trimFaces);
 
   // 3. 3D center carry handle arch
-  pushBox(vertices, uvs, -3.8, hy, -1.1, -2.2, hy + 2.8, 1.1, trimFaces);
-  pushBox(vertices, uvs, 2.2, hy, -1.1, 3.8, hy + 2.8, 1.1, trimFaces);
-  pushBox(vertices, uvs, -3.8, hy + 2.0, -1.2, 3.8, hy + 3.4, 1.2, trimFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-3.8, hy, -1.1), scratchBoxMax.setScalar(-2.2, hy + 2.8, 1.1), trimFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(2.2, hy, -1.1), scratchBoxMax.setScalar(3.8, hy + 2.8, 1.1), trimFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-3.8, hy + 2.0, -1.2), scratchBoxMax.setScalar(3.8, hy + 3.4, 1.2), trimFaces);
 
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }
@@ -591,11 +606,11 @@ export function radsuitMesh() {
   };
 
   // 1. Heavy chemical-resistant left & right boots/legs
-  pushBox(vertices, uvs, -5.8, 0, -3.4, -1.2, 7.5, 3.4, trimFaces);
-  pushBox(vertices, uvs, 1.2, 0, -3.4, 5.8, 7.5, 3.4, trimFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-5.8, 0, -3.4), scratchBoxMax.setScalar(-1.2, 7.5, 3.4), trimFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(1.2, 0, -3.4), scratchBoxMax.setScalar(5.8, 7.5, 3.4), trimFaces);
 
   // 2. Sealed NBC hazmat torso & radiation badge
-  pushBox(vertices, uvs, -6.8, 7.5, -4.2, 6.8, 19.5, 4.2, {
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-6.8, 7.5, -4.2), scratchBoxMax.setScalar(6.8, 19.5, 4.2), {
     front: POWERUP_CELLS.front,
     back: POWERUP_CELLS.side,
     left: POWERUP_CELLS.side,
@@ -605,7 +620,7 @@ export function radsuitMesh() {
   });
 
   // 3. Domed hazmat helmet hood with gold visor on front
-  pushBox(vertices, uvs, -4.8, 19.5, -4.0, 4.8, 26.5, 4.4, {
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-4.8, 19.5, -4.0), scratchBoxMax.setScalar(4.8, 26.5, 4.4), {
     front: POWERUP_CELLS.front,
     back: POWERUP_CELLS.side,
     left: POWERUP_CELLS.side,
@@ -615,7 +630,7 @@ export function radsuitMesh() {
   });
 
   // 4. Dorsal oxygen breather pack
-  pushBox(vertices, uvs, -4.6, 9.5, -6.8, 4.6, 18.5, -4.2, {
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-4.6, 9.5, -6.8), scratchBoxMax.setScalar(4.6, 18.5, -4.2), {
     front: POWERUP_CELLS.side,
     back: POWERUP_CELLS.side,
     left: POWERUP_CELLS.side,
@@ -625,7 +640,7 @@ export function radsuitMesh() {
   });
 
   // 5. Left and right hazmat sleeves
-  pushBox(vertices, uvs, -9.4, 9.0, -3.0, -6.8, 18.5, 3.0, {
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-9.4, 9.0, -3.0), scratchBoxMax.setScalar(-6.8, 18.5, 3.0), {
     front: POWERUP_CELLS.side,
     back: POWERUP_CELLS.side,
     left: POWERUP_CELLS.side,
@@ -633,7 +648,7 @@ export function radsuitMesh() {
     top: POWERUP_CELLS.top,
     bottom: POWERUP_CELLS.trim,
   });
-  pushBox(vertices, uvs, 6.8, 9.0, -3.0, 9.4, 18.5, 3.0, {
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(6.8, 9.0, -3.0), scratchBoxMax.setScalar(9.4, 18.5, 3.0), {
     front: POWERUP_CELLS.side,
     back: POWERUP_CELLS.side,
     left: POWERUP_CELLS.side,
@@ -678,16 +693,16 @@ export function nightvisionMesh() {
   };
 
   // 1. Tactical visor brow housing
-  pushBox(vertices, uvs, -7.8, 6.5, -1.2, 7.8, 13.5, 3.6, bodyFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-7.8, 6.5, -1.2), scratchBoxMax.setScalar(7.8, 13.5, 3.6), bodyFaces);
   // 2. Twin forward-protruding binocular image-intensifier tubes
-  pushBox(vertices, uvs, -6.8, 7.2, 3.6, -1.4, 12.6, 8.6, lensFaces);
-  pushBox(vertices, uvs, 1.4, 7.2, 3.6, 6.8, 12.6, 8.6, lensFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-6.8, 7.2, 3.6), scratchBoxMax.setScalar(-1.4, 12.6, 8.6), lensFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(1.4, 7.2, 3.6), scratchBoxMax.setScalar(6.8, 12.6, 8.6), lensFaces);
   // 3. Top IR illuminator bridge module
-  pushBox(vertices, uvs, -2.4, 13.5, 0.2, 2.4, 15.6, 5.2, bodyFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-2.4, 13.5, 0.2), scratchBoxMax.setScalar(2.4, 15.6, 5.2), bodyFaces);
   // 4. Wrap-around tactical head strap & rear counterweight battery pack
-  pushBox(vertices, uvs, -8.2, 8.2, -7.2, -6.6, 11.8, -1.2, strapFaces);
-  pushBox(vertices, uvs, 6.6, 8.2, -7.2, 8.2, 11.8, -1.2, strapFaces);
-  pushBox(vertices, uvs, -6.6, 7.6, -8.4, 6.6, 12.4, -6.2, strapFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-8.2, 8.2, -7.2), scratchBoxMax.setScalar(-6.6, 11.8, -1.2), strapFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(6.6, 8.2, -7.2), scratchBoxMax.setScalar(8.2, 11.8, -1.2), strapFaces);
+  pushBox(vertices, uvs, scratchBoxMin.setScalar(-6.6, 7.6, -8.4), scratchBoxMax.setScalar(6.6, 12.4, -6.2), strapFaces);
 
   return { vertices: new Float32Array(vertices), uvs: new Float32Array(uvs) };
 }
