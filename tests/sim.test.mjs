@@ -1407,6 +1407,7 @@ const tests = {
     assert.ok(wraith, 'wraith enemy created');
     game.update(1 / 60, idle);
     game.events.length = 0;
+    wraith.state = 'idle';
     game.wake(wraith);
     assert.ok(game.events.some((e) => e.type === 'alert' && e.kind === 'wraith'), 'it should wail when it wakes');
     assert.ok(wraith.roar > 0, 'and stop to do it');
@@ -1723,6 +1724,7 @@ const tests = {
           }
           const cache = g.caches.find((c) => c.contents.includes(type));
           assert.ok(cache, `level ${level} has a cache holding ${type}`);
+          cache.locked = false;
           g.player.body.setPosition(cache.pos.clone());
           g.use();
           return { g, cache };
@@ -5670,7 +5672,10 @@ const tests = {
 
     for (let i = 0; i < LEVELS.length; i++) {
       const g = fresh(i);
-      assert.ok(g.pickups.some((p) => p.type === 'greenArmor'), `level ${i + 1} has a green security armor pickup`);
+      assert.ok(
+        g.pickups.some((p) => p.type === 'greenArmor') || g.caches.some((c) => c.contents.includes('greenArmor')),
+        `level ${i + 1} has a green security armor pickup or chest`
+      );
       assert.ok(g.pickups.some((p) => p.type === 'blueArmor'), `level ${i + 1} has a blue megaarmor pickup`);
     }
 
@@ -5680,7 +5685,7 @@ const tests = {
     assert.equal(game.player.armorType, null, 'player starts with no armor type');
 
     // Green Security Armor grants 100 armor and absorbs 33% (1/3) of incoming damage
-    const greenPickup = game.pickups.find((p) => p.type === 'greenArmor');
+    const greenPickup = game.addPickup('greenArmor', game.player.pos.clone(), false);
     game.events.length = 0;
     game.touch(greenPickup.body);
     assert.equal(game.player.armor, ARMOR_TYPES.green.points, 'green armor grants 100 armor points');
@@ -9534,7 +9539,7 @@ const tests = {
   },
 
   'AC-1 supply chests hold every authored chest once per level'() {
-    const expected = [14, 13, 13, 14, 11];
+    const expected = [15, 13, 13, 14, 11];
     const supply = new Set(CACHE_TYPES);
     for (let i = 0; i < LEVELS.length; i++) {
       const game = fresh(i);
@@ -10007,7 +10012,7 @@ const tests = {
 
   'AC-1 one supply chest per room holds every authored supply'() {
     const supply = new Set(CACHE_TYPES);
-    const expected = [14, 13, 13, 14, 11];
+    const expected = [15, 13, 13, 14, 11];
     for (let i = 0; i < LEVELS.length; i++) {
       const game = fresh(i);
       const { level } = game;
@@ -17215,11 +17220,15 @@ const tests = {
       assert.equal(hView.wreckSettled, true, 'metal wreck and shrapnel settle after 1.25s');
       const fireScaleAt2 = hView.wreckFire.scale.y;
       const lidFireScaleAt2 = hView.lidFire.scale.y;
+      horiz.deadTime = 7.0;
+      world.frameTime = 10.0;
+      world.updateBarrelView(horiz, hView);
+      assert.equal(hView.lidFire.active, true, 'lid shrapnel flame is still burning while it shrinks');
+      assert.ok(hView.lidFire.scale.y < lidFireScaleAt2, 'smaller shrapnel flames reduce over time');
       horiz.deadTime = 12.5;
       world.frameTime = 15.5;
       world.updateBarrelView(horiz, hView);
       assert.notEqual(hView.wreckFire.scale.y, fireScaleAt2, 'wreckFire continues animating after wreckSettled is true');
-      assert.ok(hView.lidFire.scale.y < lidFireScaleAt2, 'smaller shrapnel flames reduce over time');
 
       horiz.deadTime = 21.0;
       world.frameTime = 24.0;
@@ -17782,83 +17791,35 @@ const tests = {
     assert.equal(typeof hud.drawControlHints, 'function');
   },
 
-  'E1M1 starting room exit doors stay closed and locked until the player activates the wall switch'() {
+  'E1M1 starting room exit doors are no longer switch-locked and open freely'() {
     const game = fresh(0);
     clearEnemies(game);
     const eastDoor = game.level.doors.get(3 * game.level.width + 5);
     const southDoor = game.level.doors.get(5 * game.level.width + 3);
     assert.ok(eastDoor, 'E1M1 has East starting room exit door at (5, 3)');
     assert.ok(southDoor, 'E1M1 has South starting room exit door at (3, 5)');
-    assert.equal(eastDoor.switchLocked, true, 'East door (5, 3) starts locked by the wall switch');
-    assert.equal(southDoor.switchLocked, true, 'South door (3, 5) starts locked by the wall switch');
-    assert.equal(game.switches.length, 1, 'E1M1 has a wall switch in the starting room');
-    const sw = game.switches[0];
-    assert.equal(sw.activated, false, 'wall switch starts unactivated');
-    assert.deepEqual([sw.x, sw.y], [4, 2], 'wall switch is mounted on the East wall at (4, 2)');
+    assert.equal(game.switches.length, 0, 'E1M1 no longer has a wall switch in the starting room');
+    assert.ok(!eastDoor.switchLocked, 'East door (5, 3) is not switch-locked');
+    assert.ok(!southDoor.switchLocked, 'South door (3, 5) is not switch-locked');
 
     // Finish the elevator ride and step out into the starting room
     run(game, ELEVATOR_RIDE_TIME + 1.6);
     run(game, 0.75, input({ forward: 1 }));
     assert.equal(game.elevator.phase, 'locked', 'player has exited the elevator into the starting room');
 
-    // Attempt to open East door (5, 3) before activating the wall switch
     game.player.body.setPosition(new Vec2(4 * 64 + 32, 3 * 64 + 32));
     game.player.angle = 0;
     assert.equal(game.findUseTarget(), true, 'East door shows a use prompt');
-    assert.equal(game.useTarget.kind, 'door');
-    assert.equal(game.useTarget.verb, 'LOCKED', 'East door prompt shows LOCKED while switch is unactivated');
-    game.events.length = 0;
-    game.message.text = '';
+    assert.equal(game.useTarget.verb, 'OPEN', 'East door prompt shows OPEN');
     game.use();
-    assert.equal(eastDoor.target, 0, 'East door target remains 0 when used before activating the switch');
-    assert.equal(eastDoor.open, 0, 'East door stays closed before activating the switch');
-    assert.ok(game.events.some((e) => e.type === 'locked'), 'using locked East door emits locked sound');
-    assert.equal(game.message.text, '', 'no textual hint is shown when a switch-locked door does not open');
+    assert.equal(eastDoor.target, 1, 'East door opens when used');
 
-    // Attempt to open South door (3, 5) before activating the wall switch
     game.player.body.setPosition(new Vec2(3 * 64 + 32, 4 * 64 + 32));
     game.player.angle = Math.PI / 2;
     assert.equal(game.findUseTarget(), true, 'South door shows a use prompt');
-    assert.equal(game.useTarget.kind, 'door');
-    assert.equal(game.useTarget.verb, 'LOCKED', 'South door prompt shows LOCKED while switch is unactivated');
-    game.events.length = 0;
+    assert.equal(game.useTarget.verb, 'OPEN', 'South door prompt shows OPEN');
     game.use();
-    assert.equal(southDoor.target, 0, 'South door target remains 0 when used before activating the switch');
-    assert.equal(southDoor.open, 0, 'South door stays closed before activating the switch');
-    assert.ok(game.events.some((e) => e.type === 'locked'), 'using locked South door emits locked sound');
-
-    // Walk up to the wall switch at (4, 2) and activate it
-    game.player.body.setPosition(new Vec2(4 * 64 + 16, 2 * 64 + 32));
-    game.player.angle = 0;
-    assert.equal(game.findUseTarget(), true, 'looking at the wall switch shows a use prompt');
-    assert.equal(game.useTarget.kind, 'switch');
-    assert.equal(game.useTarget.verb, 'ACTIVATE');
-    assert.equal(sw.pull, 0, 'wall switch lever starts in the UP position (pull = 0)');
-    game.use();
-    assert.equal(sw.activated, true, 'wall switch is now activated');
-    run(game, 0.25);
-    assert.equal(sw.pull, 1, 'wall switch lever pulls down to the BOTTOM position (pull = 1)');
-    assert.equal(eastDoor.switchLocked, false, 'East door (5, 3) is unlocked by the switch');
-    assert.equal(southDoor.switchLocked, false, 'South door (3, 5) is unlocked by the switch');
-    assert.equal(eastDoor.target, 0, 'activating the switch only unlocks East door without auto-opening it');
-    assert.equal(southDoor.target, 0, 'activating the switch only unlocks South door without auto-opening it');
-    game.findUseTarget();
-    assert.notEqual(game.useTarget.kind, 'switch', 'activated wall switch no longer shows an activate prompt');
-
-    // Now press Use on East door (5, 3) and South door (3, 5) to open them
-    game.player.body.setPosition(new Vec2(4 * 64 + 32, 3 * 64 + 32));
-    game.player.angle = 0;
-    assert.equal(game.findUseTarget(), true);
-    assert.equal(game.useTarget.verb, 'OPEN', 'unlocked East door prompt shows OPEN');
-    game.use();
-    assert.equal(eastDoor.target, 1, 'East door opens when used after activating the wall switch');
-
-    game.player.body.setPosition(new Vec2(3 * 64 + 32, 4 * 64 + 32));
-    game.player.angle = Math.PI / 2;
-    assert.equal(game.findUseTarget(), true);
-    assert.equal(game.useTarget.verb, 'OPEN', 'unlocked South door prompt shows OPEN');
-    game.use();
-    assert.equal(southDoor.target, 1, 'South door opens when used after activating the wall switch');
+    assert.equal(southDoor.target, 1, 'South door opens when used');
   },
 
   'door-corridor walls use dedicated doorWallAtlas textures and never usual room wall textures'() {
