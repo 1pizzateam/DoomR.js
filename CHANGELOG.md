@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Breakable textures (#212): overlapping blast damage on walls, doors, floors and ceilings now layers newest over oldest with every scorch backdrop under all damage, replacing the flickering depth ties; bullet holes still draw over blasts. Visual only, with no change to damage, the Rubble ledger or the atlas.
+
 ### Added
 
 - Jump prompt (#193): a JUMP keycap under the crosshair, in the player's own bound jump key, whenever the player is inside an acid pit; shares the use-prompt fade, GREEN tint and rebinding-aware label; purely informational, with no change to acid damage or physics.

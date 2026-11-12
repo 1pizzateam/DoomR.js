@@ -45,6 +45,13 @@ const lumsOf = (pixels) => {
   return out.sort((a, b) => a - b);
 };
 
+function blastWorld() {
+  const quads = [];
+  const batch = { begin() { return this; }, quad(c) { quads.push(c); }, end() {} };
+  const entries = (n) => Array.from({ length: n }, () => ({ gen: -1, ok: false, burnOk: false, quad: { corners: new Array(12).fill(0), uv: new Array(8).fill(0) }, burn: { corners: new Array(12).fill(0), uv: new Array(8).fill(0) } }));
+  return { quads, world: { blasts: batch, blastQuads: [entries(RUBBLE.wall), entries(RUBBLE.floor), entries(RUBBLE.ceiling)] } };
+}
+
 const checks = [
   ['AC-1 ledger records scalar marks, bumps version and evicts the oldest at the cap', () => {
     const rubble = new Rubble();
@@ -332,7 +339,8 @@ const checks = [
   ['AC-6 door blast marks keep the mark variant and syncDoorMarks does not allocate', () => {
     const source = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
     const body = methodBody(source, 'syncDoorMarks');
-    assert.ok(body.includes('bm.variant = mark.variant'));
+    assert.ok(body.includes('fillDoorBlast(mark'));
+    assert.ok(source.slice(source.indexOf('function fillDoorBlast')).split('\n}\n')[0].includes('bm.variant = mark.variant'));
     assert.ok(!/\bnew\b|=>|\{\}|\[\]/.test(body), 'syncDoorMarks allocates nothing');
     const out = { corners: new Array(12), uv: new Array(4) };
     const mark = { pos: new Vec3(128, 100, 30), normal: new Vec2(1, 0), top: 64, seed: 5, tier: 1, lo: -30, hi: 30, slope: 0, size: 30, variant: 3 };
@@ -405,6 +413,123 @@ const checks = [
     const stubbed = run(true);
     assert.equal(first.next, stubbed.next);
     assert.equal(first.health, stubbed.health);
+  }],
+  ['AC-1 oldest slot is index 0 until the ring wraps then the cursor', () => {
+    const rubble = new Rubble();
+    const normal = new Vec2(1, 0);
+    const span = { lo: -20, hi: 20, top: 64, slope: 0, door: null };
+    for (let i = 0; i < 5; i++)
+      rubble.addWall(new Vec3(i, 10, 30), normal, 0.5, span);
+    assert.equal(rubble.oldest(SURFACE.WALL), 0);
+    assert.equal(rubble.oldest(SURFACE.FLOOR), 0);
+    for (let i = 5; i < RUBBLE.wall + 5; i++)
+      rubble.addWall(new Vec3(i, 10, 30), normal, 0.5, span);
+    const n = rubble.length(SURFACE.WALL);
+    const start = rubble.oldest(SURFACE.WALL);
+    assert.equal(start, rubble.cursors[SURFACE.WALL]);
+    for (let j = 1; j < n; j++)
+      assert.ok(rubble.slots[SURFACE.WALL][(start + j) % n].x > rubble.slots[SURFACE.WALL][(start + j - 1) % n].x);
+  }],
+  ['AC-2 syncBlasts emits all scorch before all damage, oldest first', () => {
+    const rubble = new Rubble();
+    const { world, quads } = blastWorld();
+    const span = { lo: -1000, hi: 1000, top: 64, slope: 0, door: null };
+    for (let i = 0; i < RUBBLE.wall + 4; i++)
+      rubble.addWall(new Vec3(100 + i * 2, 10, 30), new Vec2(0, 1), 0.5, span);
+    rubble.addFloor(new Vec3(50, 50, 0), 0.5);
+    rubble.addCeiling(new Vec3(60, 60, 64), 0.5);
+    World.prototype.syncBlasts.call(world, rubble);
+    const half = quads.length / 2;
+    assert.ok(half > 0 && Number.isInteger(half));
+    const burnSet = new Set();
+    for (let k = 0; k < 3; k++)
+      for (const e of world.blastQuads[k])
+        if (e.burnOk)
+          burnSet.add(e.burn.corners);
+    for (let i = 0; i < quads.length; i++)
+      assert.equal(burnSet.has(quads[i]), i < half, `quad ${i} is in the right pass`);
+    const wallScorch = quads.slice(0, half).filter((c) => Math.abs(c[2] - 10) < 1);
+    assert.ok(wallScorch.length > 2, 'wall scorch quads found');
+    const xs = wallScorch.map((c) => Math.min(c[0], c[3], c[6], c[9]));
+    for (let i = 1; i < xs.length; i++)
+      assert.ok(xs[i] >= xs[i - 1], 'wall scorch oldest first');
+  }],
+  ['AC-3 syncBlasts skips door marks and keeps the gen cache', () => {
+    const rubble = new Rubble();
+    const { world, quads } = blastWorld();
+    const normal = new Vec2(0, 1);
+    const span = { lo: -1000, hi: 1000, top: 64, slope: 0, door: null };
+    rubble.addWall(new Vec3(100, 10, 30), normal, 0.5, span);
+    rubble.addWall(new Vec3(300, 10, 30), normal, 0.5, { ...span, door: {} });
+    rubble.addWall(new Vec3(500, 10, 30), normal, 0.5, span);
+    World.prototype.syncBlasts.call(world, rubble);
+    const perMark = quads.length;
+    assert.ok(perMark >= 2 && perMark <= 4, 'two walls emit, the door one does not');
+    const gens = world.blastQuads[SURFACE.WALL].map((e) => e.gen);
+    assert.equal(gens[1], -1, 'door slot is never built');
+    quads.length = 0;
+    World.prototype.syncBlasts.call(world, rubble);
+    assert.deepEqual(world.blastQuads[SURFACE.WALL].map((e) => e.gen), gens);
+    assert.equal(quads.length, perMark);
+    const before = world.blastQuads[SURFACE.WALL][0].quad.corners.slice();
+    rubble.slots[SURFACE.WALL][0].x = 700;
+    rubble.slots[SURFACE.WALL][0].gen++;
+    World.prototype.syncBlasts.call(world, rubble);
+    const after = world.blastQuads[SURFACE.WALL].map((e) => e.gen);
+    assert.notEqual(after[0], gens[0]);
+    assert.equal(after[2], gens[2]);
+    assert.notDeepEqual(world.blastQuads[SURFACE.WALL][0].quad.corners, before);
+  }],
+  ['AC-4 syncDoorMarks orders scorch then damage and keeps the newest 12', () => {
+    const rubble = new Rubble();
+    const door = { open: 0, idx: 0, secret: false };
+    const span = { lo: -1000, hi: 1000, top: 64, slope: 0, door };
+    for (let i = 0; i < 14; i++)
+      rubble.addWall(new Vec3(100 + i * 20, 50, 30), new Vec2(0, 1), 0.5, span);
+    rubble.addWall(new Vec3(900, 50, 30), new Vec2(0, 1), 0.5, { ...span, door: null });
+    const quads = [];
+    const record = { begin() { return this; }, quad(c) { quads.push(c.slice()); }, end() {}, show() {} };
+    const none = { begin() { return this; }, quad() {}, end() {}, show() {} };
+    const mock = { level: { baseHeight: [20] }, doorMarks: new Map(), doorBatch: (cap) => (cap === 24 ? record : none), doorSplatBatch: () => none };
+    World.prototype.syncDoorMarks.call(mock, door, { holes: [], walls: [], holesVersion: 1, version: 1, dripping: false }, true, rubble);
+    assert.equal(quads.length, 24);
+    const minX = (c) => Math.min(c[0], c[3], c[6], c[9]);
+    const scorch = quads.slice(0, 12).map(minX);
+    const damage = quads.slice(12).map(minX);
+    for (const list of [scorch, damage])
+      for (let i = 1; i < list.length; i++)
+        assert.ok(list[i] > list[i - 1], 'oldest to newest');
+    assert.ok(Math.max(...scorch) > Math.max(...damage) - 60 && Math.min(...scorch) < Math.min(...damage), 'scorch is wider than damage');
+    assert.ok(Math.min(...scorch) > 100 + 20 * 2 - 60, 'the two oldest door marks are dropped');
+  }],
+  ['AC-5 blast batches disable depth writes while holes keep them', () => {
+    const src = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+    assert.ok(src.includes('this.blasts.setDepthWrite(false)'));
+    assert.ok(src.includes('blastBatch.setDepthWrite'));
+    assert.ok(!/holes[A-Za-z]*\.setDepthWrite\(false\)/.test(src));
+    assert.ok(!/this\.holes[A-Za-z]*\.setDepthWrite/.test(src));
+  }],
+  ['AC-6 quad offsets are unchanged and below the bullet hole layer', () => {
+    const wall = { pos: new Vec3(100, 50, 30), normal: new Vec2(0, 1), top: 64, lo: -1000, hi: 1000, slope: 0, size: 30, variant: 0, ceiling: false };
+    const dist = (q) => q.corners[2] - 50;
+    const blast = blastWallQuad(wall);
+    const burn = burnWallQuad(wall);
+    assert.ok(Math.abs(Math.abs(dist(blast)) - 0.15) < 1e-6);
+    assert.ok(Math.abs(Math.abs(dist(burn)) - 0.1) < 1e-6);
+    for (const ceiling of [false, true]) {
+      const flat = { pos: new Vec3(100, 50, ceiling ? 64 : 0), size: 30, variant: 0, ceiling };
+      const base = ceiling ? 64 : 0;
+      assert.ok(Math.abs(Math.abs(blastFlatQuad(flat).corners[1] - base) - 0.15) < 1e-6);
+      assert.ok(Math.abs(Math.abs(burnFlatQuad(flat).corners[1] - base) - 0.1) < 1e-6);
+    }
+    assert.ok(0.1 < 0.15 && 0.15 < 0.25);
+  }],
+  ['AC-7 syncBlasts and syncDoorMarks stay allocation free and use ring order', () => {
+    const src = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+    const blasts = methodBody(src, 'syncBlasts');
+    assert.ok(!/\bnew\b|=>|\{\}|\[\]|\bfunction\b/.test(blasts));
+    assert.ok(blasts.includes('oldest('));
+    assert.ok(!/\bnew\b|=>|\{\}|\[\]/.test(methodBody(src, 'syncDoorMarks')));
   }],
 ];
 

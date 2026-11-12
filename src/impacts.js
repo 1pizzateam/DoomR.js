@@ -26,7 +26,9 @@ const BLAST_BASES = 2;
 const BLAST_SPAN = BLAST_TIERS * BLAST_BASES;
 // the burn backdrop is this many times wider than the damage it sits under, and a little deeper in the surface
 const BURN_SCALE = 1.9;
+// like BLAST_OFFSET, only keeps the scorch off its face and below the holes; its place under the damage comes from draw order
 const BURN_OFFSET = 0.1;
+// the flat scorch lift likewise only clears the surface; draw order puts it under the damage
 const BURN_LIFT = 0.1;
 const SLASH_CELL = HOLE_VARIANTS + SPARK_FRAMES * SPARK_VARIANTS;
 // three damage tiers of two paintings per surface: cell = surface start + tier * 2 + base, so an editor can mirror the layout
@@ -46,9 +48,12 @@ const EDGE = 0.3;
 // a hole is a square this many world units across: the crater is a quarter of it, so about 3 units, and its cracks reach
 // a little further
 const HOLE_SIZE = 16;
-// blast marks sit a little closer to the face than bullet holes do, so a hole shot into a blast still shows
+// blast marks sit off their face and below bullet holes (0.25), so a hole shot into a blast still shows; overlap between
+// blast marks is decided by draw order in World.syncBlasts and World.syncDoorMarks (scorch pass, then damage pass, oldest
+// first, depth writes off), not by this offset
 const BLAST_OFFSET = 0.15;
-// a flat blast mark hovers this far off the floor or ceiling so it does not fight the surface for depth
+// a flat blast mark hovers this far off the floor or ceiling so it does not fight the surface for depth; layering between
+// overlapping marks is by draw order, not by this lift
 const FLAT_LIFT = 0.15;
 const CEILING_HEIGHT = 64;
 const MIN_SPAN = 1e-3;
