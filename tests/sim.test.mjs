@@ -11805,9 +11805,9 @@ const tests = {
     assert.equal(door.target, 1);
     assert.equal(door.revealed, true);
     game.update(1 / 60, idle);
-    assert.equal(game.useTarget.promptable, true);
-    assert.equal(game.useTarget.verb, 'CLOSE');
-    assert.ok(game.usePrompt.fade > 0);
+    assert.equal(game.useTarget.kind, null);
+    assert.equal(game.useTarget.promptable, false);
+    assert.equal(game.usePrompt.fade, 0);
   },
 
   'AC-4 use prompt: a locked door shows LOCKED with its colour'() {
@@ -18056,6 +18056,183 @@ const tests = {
     assert.equal(game.message.text, 'Picked up the Security Armor.');
     assert.equal(cache.contents.length, 0);
     assert.equal(cache.items[0].state, 'flying');
+  },
+
+  'AC-1 secret push-wall doors bypass 4s auto-close timer and remain permanently open'() {
+    const game = new Game();
+    game.load({ name: 'Secret door auto-close test', rows: ['#######', '#.....#', '#..S..#', '#..P..#', '#######'] });
+    game.state = 'play';
+    const door = [...game.level.doors.values()].find((d) => d.secret);
+    assert.ok(door, 'secret push-wall door exists');
+    assert.equal(door.target, 0);
+    assert.equal(door.open, 0);
+
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 48));
+    game.player.angle = -Math.PI / 2;
+
+    game.use();
+    assert.equal(door.target, 1);
+    assert.equal(door.revealed, true);
+
+    run(game, 0.8);
+    assert.equal(door.open, 1, 'door reaches fully open state');
+    assert.equal(door.target, 1);
+    assert.equal(door.body.isActive(), false, 'door collision body is deactivated');
+
+    for (let t = 0; t < 5.0; t += 1 / 60) {
+      game.update(1 / 60, idle);
+      assert.equal(door.target, 1, 'target remains 1 indefinitely');
+      assert.equal(door.open, 1, 'open remains 1 indefinitely');
+      assert.equal(door.timer, 0, 'timer remains 0 for secret doors');
+      assert.equal(door.body.isActive(), false, 'collision body remains inactive');
+    }
+  },
+
+  'AC-2 opened secret doors are skipped during use targeting allowing transparent pass-through'() {
+    const game = new Game();
+    game.load({
+      name: 'Secret door pass-through test',
+      rows: [
+        '#######',
+        '#.....#',
+        '#..=..#',
+        '#..S..#',
+        '#..P..#',
+        '#######',
+      ],
+      chests: [{ x: 3, y: 2, contents: ['ammo'] }],
+    });
+    game.state = 'play';
+    const door = [...game.level.doors.values()].find((d) => d.secret);
+    assert.ok(door, 'secret push-wall door exists');
+    const cache = game.caches[0];
+    assert.ok(cache, 'supply chest exists behind secret door');
+
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 48));
+    game.player.angle = -Math.PI / 2;
+
+    assert.equal(game.findUseTarget(), false);
+    assert.equal(game.useTarget.kind, 'door');
+    assert.equal(game.useTarget.door, door);
+    assert.equal(game.useTarget.promptable, false);
+
+    game.use();
+    assert.equal(door.target, 1);
+    assert.equal(door.revealed, true);
+    run(game, 0.8);
+    assert.equal(door.open, 1);
+
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 24));
+    assert.equal(game.findUseTarget(), true);
+    assert.equal(game.useTarget.kind, 'cache', 'interaction ray targets cache behind opened secret door');
+    assert.equal(game.useTarget.cache, cache);
+    assert.equal(game.useTarget.promptable, true);
+    assert.notEqual(game.useTarget.verb, 'CLOSE', 'does not prompt CLOSE');
+  },
+
+  'AC-3 pressing use facing opened secret door does not toggle door shut'() {
+    const game = new Game();
+    game.load({ name: 'Secret door no toggle test', rows: ['#######', '#.....#', '#..S..#', '#..P..#', '#######'] });
+    game.state = 'play';
+    const door = [...game.level.doors.values()].find((d) => d.secret);
+    assert.ok(door);
+
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 48));
+    game.player.angle = -Math.PI / 2;
+
+    game.use();
+    assert.equal(door.target, 1);
+    run(game, 0.8);
+    assert.equal(door.open, 1);
+
+    game.events.length = 0;
+    game.use();
+
+    assert.equal(door.target, 1, 'door target remains 1');
+    assert.equal(door.open, 1, 'door open remains 1');
+    assert.equal(game.events.some((e) => e.type === 'doorClose'), false, 'no doorClose event emitted');
+
+    run(game, 0.5, input({ use: true }));
+    assert.equal(door.target, 1, 'door target stays 1');
+    assert.equal(door.open, 1, 'door open stays 1');
+    assert.equal(game.events.some((e) => e.type === 'doorClose'), false, 'no doorClose event during input loop');
+  },
+
+  'AC-4 non-secret blast doors retain 4-second auto-close timer and manual close toggle'() {
+    const game = new Game();
+    game.load({ name: 'Standard door test', rows: ['#######', '#.....#', '#..D..#', '#..P..#', '#######'] });
+    game.state = 'play';
+    const door = [...game.level.doors.values()].find((d) => !d.secret && !d.elevator);
+    assert.ok(door, 'standard door exists');
+    assert.equal(door.secret, false);
+
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 64));
+    game.player.angle = -Math.PI / 2;
+
+    game.use();
+    assert.equal(door.target, 1);
+    run(game, 0.8);
+    assert.equal(door.open, 1);
+
+    run(game, 4.5);
+    assert.equal(door.target, 0, 'standard door target resets to 0 after 4s auto-close timer');
+    run(game, 0.8);
+    assert.equal(door.open, 0, 'standard door closes fully');
+
+    game.use();
+    assert.equal(door.target, 1);
+    run(game, 0.8);
+    assert.equal(door.open, 1);
+
+    assert.equal(game.findUseTarget(), true);
+    assert.equal(game.useTarget.kind, 'door');
+    assert.equal(game.useTarget.verb, 'CLOSE');
+
+    game.use();
+    assert.equal(door.target, 0, 'standard door manually toggles to target 0');
+    run(game, 0.8);
+    assert.equal(door.open, 0, 'standard door reaches fully closed');
+  },
+
+  'AC-5 door-backed secret rooms emit discovery chime and doorOpen sound once on first transition'() {
+    const game = fresh(0);
+    const secretIndex = game.level.secretDoorByRoom.findIndex((doorIdx) => doorIdx >= 0);
+    assert.ok(secretIndex >= 0, 'level 0 has a door-backed secret room');
+    const doorIdx = game.level.secretDoorByRoom[secretIndex];
+    const door = game.level.doors.get(doorIdx);
+    assert.ok(door, 'secret door found');
+    assert.equal(door.secret, true);
+
+    game.player.body.setPosition(new Vec2(door.center.x, door.center.y + 48));
+    game.player.angle = -Math.PI / 2;
+
+    game.events.length = 0;
+    game.use();
+    assert.equal(door.target, 1);
+    assert.equal(door.revealed, true);
+
+    game.update(1 / 60, idle);
+    assert.equal(game.events.filter((e) => e.type === 'doorOpen').length, 1, 'doorOpen emitted');
+    assert.equal(game.events.filter((e) => e.type === 'secret').length, 1, 'secret discovery chime emitted');
+
+    game.events.length = 0;
+    run(game, 5.0);
+
+    assert.equal(door.open, 1, 'door remains open');
+    assert.equal(door.target, 1, 'door target remains 1');
+    assert.equal(game.events.some((e) => e.type === 'secret'), false, 'no duplicate secret chimes emitted');
+    assert.equal(game.events.some((e) => e.type === 'doorClose'), false, 'no doorClose sound emitted');
+  },
+
+  'AC-6 changelog records permanent open state for secret doors'() {
+    const log = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+    const unreleased = log.slice(log.indexOf('## Unreleased') + 1);
+    const nextH2 = unreleased.indexOf('\n## ');
+    const section = nextH2 < 0 ? unreleased : unreleased.slice(0, nextH2);
+    assert.ok(section.includes('### Fixed'), 'Unreleased has Fixed subsection');
+    assert.ok(section.includes('Secret push-wall doors remain permanently open once activated'), 'records permanent open state');
+    assert.ok(section.includes('#210'), 'records issue #210');
+    assert.ok(section.includes('no longer auto-close after 4 seconds or prompt to close'), 'records auto-close and prompt removal');
   },
 };
 
