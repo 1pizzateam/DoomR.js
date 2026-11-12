@@ -2416,7 +2416,7 @@ export class Game {
     const { doorsList } = this.level;
     for (let i = 0; i < doorsList.length; i++) {
       const door = doorsList[i];
-      if (door.elevator)
+      if (door.elevator || (door.secret && (door.target || door.revealed || door.open > 0)))
         continue;
       const toDoor = this.toPlayer.subVectors(door.center, player.pos);
       const distance = toDoor.getMagnitude();
@@ -2538,6 +2538,8 @@ export class Game {
     }
     if (target.kind === 'door') {
       const best = target.door;
+      if (best.secret && (best.target || best.revealed || best.open > 0))
+        return;
       if ((best.lock && !this.player.keys?.[best.lock]) || best.switchLocked) {
         this.emit('locked', best.center);
         return;
@@ -2646,7 +2648,7 @@ export class Game {
           this.level.setDoorOpen(door, Math.max(0, door.open - dt / doorTime));
       }
       door.body.setActive(door.open < 0.55);
-      if (door.open >= 1) {
+      if (!door.secret && door.open >= 1) {
         door.timer += dt;
         if (door.timer > 4) {
           door.target = 0;
