@@ -137,7 +137,7 @@ export const CACHE_LID_TIME = 0.35;
 export const CACHE_LOOT_TIME = 0.68;
 export const CACHE_LOOT_STAGGER = CACHE_LOOT_TIME * 0.5;
 export const CHEST_LOCK_RINGS = 3;
-export const CHEST_LOCK_SPEEDS = Object.freeze([1.85, -2.35, 2.9]);
+export const CHEST_LOCK_SPEEDS = Object.freeze([1.85, -3.40, 5.80]);
 export const CHEST_LOCK_GAP_HALF = Object.freeze([0.42, 0.36, 0.30]);
 
 function makeBody(pos, radius, { type = 'dynamic', mass = 1, sensor = false, category, mask, velocity, heading = null, speed = 0 }) {
