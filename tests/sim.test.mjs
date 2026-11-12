@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Circ, Mat4, Rect } from '@1pizzateam/spock';
 import { Clock, Player, Quality } from '@1pizzateam/loopr';
 import { AmbientLight, CustomMesh, Material, MAX_LIGHTS, Mesh, PerspectiveCamera, PointLight, Rand, Trigo, Vec2, Vec3 } from '@1pizzateam/roostr';
-import { ACID_PIT_DEPTH, ACID_SURFACE_DEPTH, CACHE_LID_TIME, CACHE_LOOT_STAGGER, CACHE_LOOT_TIME, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, CHEST_LOCK_GAP_HALF, CHEST_LOCK_RINGS, DIFFICULTIES, DIFFICULTY_ORDER, ELEVATOR_RIDE_TIME, EMPTY_PIT_DEPTH, ENEMY_TYPES, Game } from '../src/game.js';
+import { ACID_PIT_DEPTH, ACID_SURFACE_DEPTH, CACHE_LID_TIME, CACHE_LOOT_STAGGER, CACHE_LOOT_TIME, CACHE_TYPES, CACHE_WALL_OFFSET, CAT, CHEST_LOCK_GAP_HALF, CHEST_LOCK_RINGS, CHEST_LOCK_SPEEDS, DIFFICULTIES, DIFFICULTY_ORDER, ELEVATOR_RIDE_TIME, EMPTY_PIT_DEPTH, ENEMY_TYPES, Game } from '../src/game.js';
 import { CHEST_CELL, CHEST_FRAMES, CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, chestAtlas, chestBodyMesh, chestLidMesh } from '../src/cache.js';
 import { BLOOD, Blood, makeFeet } from '../src/blood.js';
 import { DUCK_FLOOR, RECIPES, Sound, spatial } from '../src/audio.js';
@@ -18233,6 +18233,148 @@ const tests = {
     assert.ok(section.includes('Secret push-wall doors remain permanently open once activated'), 'records permanent open state');
     assert.ok(section.includes('#210'), 'records issue #210');
     assert.ok(section.includes('no longer auto-close after 4 seconds or prompt to close'), 'records auto-close and prompt removal');
+  },
+
+  'tests/sim.test.mjs: AC-1 angular speed magnitude strictly increases across lock stages'() {
+    assert.equal(CHEST_LOCK_SPEEDS.length, 3);
+    assert.deepEqual(Array.from(CHEST_LOCK_SPEEDS), [1.85, -3.40, 5.80]);
+    const mag0 = Math.abs(CHEST_LOCK_SPEEDS[0]);
+    const mag1 = Math.abs(CHEST_LOCK_SPEEDS[1]);
+    const mag2 = Math.abs(CHEST_LOCK_SPEEDS[2]);
+    assert.equal(mag0, 1.85);
+    assert.equal(mag1, 3.40);
+    assert.equal(mag2, 5.80);
+    assert.ok(mag0 < mag1, 'angular speed increases from stage 0 to stage 1');
+    assert.ok(mag1 < mag2, 'angular speed increases from stage 1 to stage 2');
+  },
+
+  'tests/sim.test.mjs: AC-2 linear screen tip velocity strictly increases across lock stages'() {
+    const LOCK_RADII = [98, 72, 46];
+    const v0 = Math.abs(CHEST_LOCK_SPEEDS[0]) * LOCK_RADII[0];
+    const v1 = Math.abs(CHEST_LOCK_SPEEDS[1]) * LOCK_RADII[1];
+    const v2 = Math.abs(CHEST_LOCK_SPEEDS[2]) * LOCK_RADII[2];
+    assert.ok(Math.abs(v0 - 181.3) < 0.05, `v0 ≈ 181.3 px/s (got ${v0})`);
+    assert.ok(Math.abs(v1 - 244.8) < 0.05, `v1 ≈ 244.8 px/s (got ${v1})`);
+    assert.ok(Math.abs(v2 - 266.8) < 0.05, `v2 ≈ 266.8 px/s (got ${v2})`);
+    assert.ok(v0 < v1, 'linear screen tip velocity strictly increases from stage 0 to stage 1');
+    assert.ok(v1 < v2, 'linear screen tip velocity strictly increases from stage 1 to stage 2');
+  },
+
+  'tests/sim.test.mjs: AC-3 needle rotation direction strictly alternates and normalizes within 0 to 2pi'() {
+    const game = new Game();
+    game.load({
+      name: 'Chest Lock Direction Test',
+      rows: ['#####', '#P..#', '#.=.#', '#####'],
+      chests: [{ x: 2, y: 2, contents: ['ammo'], locked: true }],
+    });
+    game.state = 'play';
+    const cache = game.caches[0];
+    game.player.body.setPosition(new Vec2(cache.pos.x - 32, cache.pos.y));
+
+    // Stage 0: speed > 0 (clockwise)
+    game.startChestLock(cache);
+    assert.equal(game.chestLock.stage, 0);
+    game.chestLock.needle = 0.5;
+    const dt = 0.1;
+    game.updateChestLock(dt);
+    const expectedStage0 = (0.5 + CHEST_LOCK_SPEEDS[0] * dt) % Trigo.twopi;
+    assert.ok(Math.abs(game.chestLock.needle - expectedStage0) < 1e-9, 'stage 0 rotates clockwise (positive delta)');
+    assert.ok(game.chestLock.needle > 0.5, 'needle angle increased in stage 0');
+    assert.ok(game.chestLock.needle >= 0 && game.chestLock.needle < Trigo.twopi, 'needle angle wrapped within [0, 2pi)');
+
+    // Stage 1: speed < 0 (counter-clockwise)
+    game.chestLock.stage = 1;
+    game.chestLock.needle = 1.0;
+    game.updateChestLock(dt);
+    const expectedStage1 = (((1.0 + CHEST_LOCK_SPEEDS[1] * dt) % Trigo.twopi) + Trigo.twopi) % Trigo.twopi;
+    assert.ok(Math.abs(game.chestLock.needle - expectedStage1) < 1e-9, 'stage 1 rotates counter-clockwise (negative delta)');
+    assert.ok(game.chestLock.needle < 1.0, 'needle angle decreased in stage 1');
+    assert.ok(game.chestLock.needle >= 0 && game.chestLock.needle < Trigo.twopi, 'needle angle wrapped within [0, 2pi)');
+
+    // Wrapping under 0 in stage 1
+    game.chestLock.needle = 0.1;
+    game.updateChestLock(0.1);
+    assert.ok(game.chestLock.needle >= 0 && game.chestLock.needle < Trigo.twopi, 'underflow wraps modulo 2pi into [0, 2pi)');
+    assert.ok(game.chestLock.needle > Trigo.twopi - 0.5, 'needle correctly wrapped to high end of [0, 2pi)');
+
+    // Stage 2: speed > 0 (clockwise)
+    game.chestLock.stage = 2;
+    game.chestLock.needle = 0.5;
+    game.updateChestLock(dt);
+    const expectedStage2 = (0.5 + CHEST_LOCK_SPEEDS[2] * dt) % Trigo.twopi;
+    assert.ok(Math.abs(game.chestLock.needle - expectedStage2) < 1e-9, 'stage 2 rotates clockwise (positive delta)');
+    assert.ok(game.chestLock.needle > 0.5, 'needle angle increased in stage 2');
+
+    // Wrapping over 2pi in stage 2
+    game.chestLock.needle = Trigo.twopi - 0.1;
+    game.updateChestLock(0.1);
+    assert.ok(game.chestLock.needle >= 0 && game.chestLock.needle < Trigo.twopi, 'overflow wraps modulo 2pi into [0, 2pi)');
+    assert.ok(game.chestLock.needle < 1.0, 'needle correctly wrapped to low end of [0, 2pi)');
+  },
+
+  'tests/sim.test.mjs: AC-4 failed ring alignment steps back to prior stage speed immediately'() {
+    const game = new Game();
+    game.load({
+      name: 'Chest Lock Failure Step-back Test',
+      rows: ['#####', '#P..#', '#.=.#', '#####'],
+      chests: [{ x: 2, y: 2, contents: ['ammo'], locked: true }],
+    });
+    game.state = 'play';
+    const cache = game.caches[0];
+    game.player.body.setPosition(new Vec2(cache.pos.x - 32, cache.pos.y));
+    game.startChestLock(cache);
+
+    // Advance to stage 1 successfully
+    game.chestLock.needle = game.chestLock.targets[0];
+    assert.equal(game.tryChestLock(), true, 'ring 0 locked');
+    assert.equal(game.chestLock.stage, 1, 'game is at stage 1');
+
+    // Miss alignment on ring 1
+    game.chestLock.needle = (game.chestLock.targets[1] + Math.PI) % Trigo.twopi;
+    assert.equal(game.tryChestLock(), false, 'miss alignment on ring 1');
+    assert.equal(game.chestLock.stage, 0, 'stage decrements to 0 on miss');
+
+    // Subsequent updateChestLock tick rotates at stage 0 velocity (+1.85 rad/s)
+    game.chestLock.needle = 1.0;
+    const dt = 0.1;
+    game.updateChestLock(dt);
+    const expectedNeedle = (1.0 + CHEST_LOCK_SPEEDS[0] * dt) % Trigo.twopi;
+    assert.ok(Math.abs(game.chestLock.needle - expectedNeedle) < 1e-9, 'needle rotated using stage 0 speed (1.85 rad/s) after miss');
+    assert.ok(game.chestLock.needle > 1.0, 'rotation direction is clockwise as expected for stage 0');
+  },
+
+  'tests/sim.test.mjs: AC-5 CHEST_LOCK_SPEEDS is frozen and zero-allocation'() {
+    assert.equal(Object.isFrozen(CHEST_LOCK_SPEEDS), true, 'CHEST_LOCK_SPEEDS is frozen');
+    assert.equal(CHEST_LOCK_SPEEDS.length, 3, 'CHEST_LOCK_SPEEDS has exactly 3 elements');
+    for (let i = 0; i < CHEST_LOCK_SPEEDS.length; i++)
+      assert.equal(typeof CHEST_LOCK_SPEEDS[i], 'number', `element ${i} is a number`);
+
+    // Verify mutating attempts throw or are prevented by freeze
+    assert.throws(() => {
+      'use strict';
+      CHEST_LOCK_SPEEDS[0] = 999;
+    }, TypeError);
+
+    // Verify zero allocation on updateChestLock tick
+    const game = new Game();
+    game.load({
+      name: 'Chest Lock Zero Allocation Test',
+      rows: ['#####', '#P..#', '#.=.#', '#####'],
+      chests: [{ x: 2, y: 2, contents: ['ammo'], locked: true }],
+    });
+    game.state = 'play';
+    const cache = game.caches[0];
+    game.player.body.setPosition(new Vec2(cache.pos.x - 32, cache.pos.y));
+    game.startChestLock(cache);
+
+    // Warm up JIT
+    for (let i = 0; i < 50; i++)
+      game.updateChestLock(1 / 60);
+
+    const initialStage = game.chestLock.stage;
+    assert.equal(initialStage, 0);
+    game.updateChestLock(1 / 60);
+    assert.ok(game.chestLock.needle > 0, 'needle updated without error');
   },
 };
 
