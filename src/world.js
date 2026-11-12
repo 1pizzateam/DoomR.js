@@ -118,6 +118,24 @@ function wallHoleQuad(mark, out = null) {
 const DOOR_BLASTS = 12;
 const scratchBlastMark = { pos: scratchHolePos, normal: scratchHoleNormal, top: 0, seed: 0, tier: 0, lo: 0, hi: 0, slope: 0, size: 0, ceiling: false, variant: 0 };
 
+/** Fills the shared scratch blast mark from a door-bound wall mark, shifted by the door's inset and drop. */
+function fillDoorBlast(mark, inset, drop, height) {
+  const bm = scratchBlastMark;
+  bm.pos.x = mark.x - mark.nx * inset;
+  bm.pos.y = mark.y - mark.ny * inset;
+  bm.pos.z = mark.z - drop;
+  bm.normal.x = mark.nx;
+  bm.normal.y = mark.ny;
+  bm.top = mark.top * height;
+  bm.seed = mark.seed;
+  bm.tier = mark.tier;
+  bm.lo = mark.lo;
+  bm.hi = mark.hi;
+  bm.slope = mark.slope;
+  bm.size = mark.size;
+  bm.variant = mark.variant;
+}
+
 /** Builds the quad of a stored blast mark into `out`; null when nothing of it is left. */
 function blastQuadOf(mark, out) {
   const bm = scratchBlastMark;
@@ -1064,6 +1082,8 @@ export class World {
     // blast damage is drawn over the bullet holes, in the same impact texture
     this.blasts = new QuadBatch(this.gl, { capacity: (RUBBLE.wall + RUBBLE.floor + RUBBLE.ceiling) * 2, atlas: this.impactPixels, sharedTexture: sharedImpactTex });
     this.blasts.sharedAtlas = this.impactPixels;
+    // blast decals are layered by age in syncBlasts, not by depth
+    this.blasts.setDepthWrite(false);
     this.sharedTexturedMeshes.push(this.blasts);
     this.scene.addMesh(this.blasts);
     this.rubbleVersion = -1;
@@ -1154,23 +1174,29 @@ export class World {
   /** Blast damage on walls, floor and ceiling goes in one buffer; the marks on doors are handled by syncDoorMarks. */
   syncBlasts(rubble) {
     const batch = this.blasts.begin();
-    for (let kind = 0; kind < 3; kind++) {
-      const slots = rubble.slots[kind];
-      const cached = this.blastQuads[kind];
-      for (let i = 0; i < rubble.lengths[kind]; i++) {
-        const mark = slots[i];
-        if (mark.door)
-          continue;
-        const entry = cached[i];
-        if (entry.gen !== mark.gen) {
-          entry.gen = mark.gen;
-          entry.ok = blastQuadOf(mark, entry.quad) !== null;
-          entry.burnOk = burnQuadOf(mark, entry.burn) !== null;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let kind = 0; kind < 3; kind++) {
+        const slots = rubble.slots[kind];
+        const cached = this.blastQuads[kind];
+        const count = rubble.lengths[kind];
+        const start = rubble.oldest(kind);
+        for (let j = 0; j < count; j++) {
+          const i = (start + j) % count;
+          const mark = slots[i];
+          if (mark.door)
+            continue;
+          const entry = cached[i];
+          if (pass === 0) {
+            if (entry.gen !== mark.gen) {
+              entry.gen = mark.gen;
+              entry.ok = blastQuadOf(mark, entry.quad) !== null;
+              entry.burnOk = burnQuadOf(mark, entry.burn) !== null;
+            }
+            if (entry.burnOk)
+              batch.quad(entry.burn.corners, entry.burn.uv);
+          } else if (entry.ok)
+            batch.quad(entry.quad.corners, entry.quad.uv);
         }
-        if (entry.burnOk)
-          batch.quad(entry.burn.corners, entry.burn.uv);
-        if (entry.ok)
-          batch.quad(entry.quad.corners, entry.quad.uv);
       }
     }
     batch.end();
@@ -1193,10 +1219,13 @@ export class World {
       return;
     }
     if (!marks) {
+      const blastBatch = this.doorBatch(DOOR_BLASTS * 2, this.impactPixels);
+      // decals are layered by age, not by depth; the optional call tolerates the batch stubs of headless tests
+      blastBatch.setDepthWrite?.(false);
       marks = {
         holes: this.doorBatch(BLOOD.doorHoles, this.impactPixels),
         splats: this.doorSplatBatch(),
-        blasts: this.doorBatch(DOOR_BLASTS * 2, this.impactPixels),
+        blasts: blastBatch,
         holesOpen: -1,
         holesVersion: -1,
         blastsOpen: -1,
@@ -1254,32 +1283,25 @@ export class World {
       const blasts = marks.blasts.begin();
       if (rubble) {
         const walls = rubble.slots[SURFACE.WALL];
-        let placed = 0;
-        for (let i = 0; i < rubble.lengths[SURFACE.WALL] && placed < DOOR_BLASTS; i++) {
-          const mark = walls[i];
-          if (mark.door !== door)
-            continue;
-          const bm = scratchBlastMark;
-          bm.pos.x = mark.x - mark.nx * inset;
-          bm.pos.y = mark.y - mark.ny * inset;
-          bm.pos.z = mark.z - drop;
-          bm.normal.x = mark.nx;
-          bm.normal.y = mark.ny;
-          bm.top = mark.top * height;
-          bm.seed = mark.seed;
-          bm.tier = mark.tier;
-          bm.lo = mark.lo;
-          bm.hi = mark.hi;
-          bm.slope = mark.slope;
-          bm.size = mark.size;
-          bm.variant = mark.variant;
-          const burn = burnWallQuad(bm, scratchHoleQuad);
-          if (burn)
-            blasts.quad(burn.corners, burn.uv);
-          const quad = blastWallQuad(bm, scratchHoleQuad);
-          if (quad) {
-            blasts.quad(quad.corners, quad.uv);
-            placed++;
+        const count = rubble.lengths[SURFACE.WALL];
+        const start = rubble.oldest(SURFACE.WALL);
+        let mine = 0;
+        for (let j = 0; j < count; j++)
+          if (walls[j].door === door)
+            mine++;
+        const skip = Math.max(0, mine - DOOR_BLASTS);
+        for (let pass = 0; pass < 2; pass++) {
+          let seen = 0;
+          for (let j = 0; j < count; j++) {
+            const mark = walls[(start + j) % count];
+            if (mark.door !== door)
+              continue;
+            if (seen++ < skip)
+              continue;
+            fillDoorBlast(mark, inset, drop, height);
+            const quad = pass === 0 ? burnWallQuad(scratchBlastMark, scratchHoleQuad) : blastWallQuad(scratchBlastMark, scratchHoleQuad);
+            if (quad)
+              blasts.quad(quad.corners, quad.uv);
           }
         }
       }

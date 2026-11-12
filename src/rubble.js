@@ -61,6 +61,11 @@ export class Rubble {
     return this.lengths[kind];
   }
 
+  /** Index of the oldest live slot of a ring: 0 until it wraps, then the cursor; the j-th oldest is (oldest + j) % length. */
+  oldest(kind) {
+    return this.lengths[kind] < CAPS[kind] ? 0 : this.cursors[kind];
+  }
+
   next(kind, severity) {
     const slot = this.slots[kind][this.cursors[kind]];
     this.cursors[kind] = (this.cursors[kind] + 1) % CAPS[kind];
