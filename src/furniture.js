@@ -108,6 +108,20 @@ export const SINK_WALL_OFFSET = 18;
 export const SINK_HP = 1;
 export const SINK_SHARD_COUNT = 5;
 
+const PLANT_POT = { x: 0, width: 64, height: 64 };
+const PLANT_FOLIAGE = { x: 64, width: 64, height: 64 };
+const PLANT_STEM = { x: 128, width: 64, height: 64 };
+const PLANT_SOIL = { x: 192, width: 64, height: 64 };
+
+export const PLANT_CELL = 64;
+export const PLANT_FRAMES = 4;
+export const PLANT_ATLAS = { width: 256, height: 64 };
+export const PLANT_SIZE = new Vec3(20, 36, 20);
+export const PLANT_RADIUS = 12;
+export const PLANT_WALL_OFFSET = 16;
+export const PLANT_HP = 1;
+export const PLANT_SHARD_COUNT = 5;
+
 export const FURNITURE_VERTEX = `
 attribute vec3 aVertexPosition;
 attribute vec3 aVertexNormal;
@@ -3315,6 +3329,261 @@ export function createSinkBreakPose() {
  */
 export function sinkBreakPose(elapsed, seed = 0, target = createSinkBreakPose()) {
   return dispenserBreakPose(elapsed, seed + 3.1, target);
+}
+
+export const buildConferenceTable = tableMesh;
+export const buildKitchenSink = sinkMesh;
+
+const POT_TERRACOTTA = [142, 68, 42];
+const POT_LIGHT = [178, 92, 58];
+const POT_DARK = [98, 46, 28];
+const POT_RIM = [162, 82, 52];
+const FOLIAGE_GREEN = [38, 108, 48];
+const FOLIAGE_LIGHT = [62, 148, 68];
+const FOLIAGE_DARK = [22, 68, 30];
+const STEM_BROWN = [64, 82, 42];
+const STEM_LIGHT = [86, 112, 58];
+const SOIL_DARK = [32, 22, 18];
+const SOIL_BASE = [48, 34, 26];
+const SOIL_LIGHT = [68, 52, 40];
+
+function drawPlantPot(rnd) {
+  const t = new Tile(PLANT_POT.width, PLANT_POT.height);
+  plate(t, 0, 0, PLANT_POT.width, PLANT_POT.height, rnd, POT_TERRACOTTA);
+  t.rect(2, 4, 60, 10, POT_RIM, 0.9);
+  for (let x = 3; x < 61; x++) {
+    t.set(x, 4, POT_LIGHT, 0.7);
+    t.set(x, 13, POT_DARK, 0.8);
+  }
+  for (let y = 15; y < 58; y++) {
+    const taper = Math.floor(((y - 15) / 43) * 6);
+    const x0 = 4 + taper;
+    const x1 = 60 - taper;
+    for (let x = x0; x < x1; x++) {
+      const sheen = Math.sin(((x - x0) / (x1 - x0)) * Trigo.pi) * 0.28;
+      t.set(x, y, POT_LIGHT, sheen);
+    }
+  }
+  t.rect(8, 58, 48, 5, POT_DARK, 0.85);
+  return t;
+}
+
+function drawPlantFoliage(rnd) {
+  const t = new Tile(PLANT_FOLIAGE.width, PLANT_FOLIAGE.height);
+  plate(t, 0, 0, PLANT_FOLIAGE.width, PLANT_FOLIAGE.height, rnd, FOLIAGE_GREEN);
+  for (let y = 2; y < 62; y++)
+    for (let x = 2; x < 62; x++) {
+      const vein = Math.abs(x - 32) < 2 ? 0.35 : 0;
+      const wave = Math.sin((x / 62) * Trigo.twopi * 2 + (y / 62) * Trigo.twopi) * 0.2;
+      t.set(x, y, FOLIAGE_LIGHT, vein + wave);
+    }
+  for (let y = 4; y < 60; y += 4) {
+    t.rect(4, y, 6, 2, FOLIAGE_DARK, 0.8);
+    t.rect(54, y, 6, 2, FOLIAGE_DARK, 0.8);
+  }
+  return t;
+}
+
+function drawPlantStem(rnd) {
+  const t = new Tile(PLANT_STEM.width, PLANT_STEM.height);
+  plate(t, 0, 0, PLANT_STEM.width, PLANT_STEM.height, rnd, STEM_BROWN);
+  for (let x = 6; x < 58; x += 6)
+    for (let y = 0; y < 64; y++)
+      t.set(x, y, STEM_LIGHT, 0.4);
+  for (let y = 12; y < 64; y += 14)
+    t.rect(2, y, 60, 3, FOLIAGE_DARK, 0.7);
+  return t;
+}
+
+function drawPlantSoil(rnd) {
+  const t = new Tile(PLANT_SOIL.width, PLANT_SOIL.height);
+  plate(t, 0, 0, PLANT_SOIL.width, PLANT_SOIL.height, rnd, SOIL_BASE);
+  for (let y = 2; y < 62; y++)
+    for (let x = 2; x < 62; x++) {
+      const noise = rnd();
+      if (noise > 0.85)
+        t.set(x, y, SOIL_LIGHT, 0.5);
+      else if (noise < 0.25)
+        t.set(x, y, SOIL_DARK, 0.6);
+    }
+  return t;
+}
+
+/**
+ * Returns the power-of-two RGBA texture atlas (256 x 64) for the 3D Office Plant furniture prop.
+ */
+export function plantAtlas() {
+  const { width, height } = PLANT_ATLAS;
+  const data = new Uint8Array(width * height * 4);
+  const blit = (tile, x0) => {
+    for (let y = 0; y < tile.height; y++)
+      for (let x = 0; x < tile.width; x++) {
+        const i = (y * tile.width + x) * 3;
+        const o = (y * width + x0 + x) * 4;
+        for (let k = 0; k < 3; k++)
+          data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
+        data[o + 3] = 255;
+      }
+  };
+  blit(drawPlantPot(mulberry32(8701)), PLANT_POT.x);
+  blit(drawPlantFoliage(mulberry32(8702)), PLANT_FOLIAGE.x);
+  blit(drawPlantStem(mulberry32(8703)), PLANT_STEM.x);
+  blit(drawPlantSoil(mulberry32(8704)), PLANT_SOIL.x);
+  return {
+    name: 'plant',
+    data,
+    width,
+    height,
+    pot: PLANT_POT,
+    foliage: PLANT_FOLIAGE,
+    stem: PLANT_STEM,
+    soil: PLANT_SOIL,
+  };
+}
+
+/**
+ * Builds the 3D Office Plant mesh standing on `y = 0`, centered on `x/z`:
+ * - Terracotta planter pot (`y = 0..15.0`) with tapered base, outer rim, and potting soil.
+ * - Central and branching stems rising from the soil (`y = 14.0..26.0`).
+ * - Layered foliage leaves / fronds (`y = 20.0..36.0`).
+ */
+export function buildOfficePlant() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = PLANT_ATLAS.width;
+  const inset = 0.35 / W;
+  const potU0 = PLANT_POT.x / W + inset;
+  const potU1 = (PLANT_POT.x + PLANT_POT.width) / W - inset;
+  const folU0 = PLANT_FOLIAGE.x / W + inset;
+  const folU1 = (PLANT_FOLIAGE.x + PLANT_FOLIAGE.width) / W - inset;
+  const stemU0 = PLANT_STEM.x / W + inset;
+  const stemU1 = (PLANT_STEM.x + PLANT_STEM.width) / W - inset;
+  const soilU0 = PLANT_SOIL.x / W + inset;
+  const soilU1 = (PLANT_SOIL.x + PLANT_SOIL.width) / W - inset;
+  const soilUC = (soilU0 + soilU1) * 0.5;
+  const soilUR = (soilU1 - soilU0) * 0.45;
+
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  // 1. Terracotta Planter Pot (y = 0 .. 15.0)
+  pushFrustumRing(vertices, normals, uvs, 0, 13.0, 6.2, 8.5, potU0, potU1, 0.2, 0.9, 12);
+  pushFrustumRing(vertices, normals, uvs, 13.0, 15.0, 8.8, 8.8, potU0, potU1, 0.05, 0.2, 12);
+  const potBottomCenter = (potU0 + potU1) * 0.5;
+  const potBottomRadius = (potU1 - potU0) * 0.4;
+  pushTopDisc(vertices, normals, uvs, 0, 6.2, potBottomCenter, 0.5, potBottomRadius, 0.4, 12);
+
+  // 2. Potting Soil Disc at y = 14.0
+  pushTopDisc(vertices, normals, uvs, 14.0, 8.0, soilUC, 0.5, soilUR, 0.45, 12);
+
+  // 3. Stems (y = 14.0 .. 26.0)
+  const stemFaces = {
+    front: uvRect(stemU0, 0.1, stemU1, 0.9),
+    back: uvRect(stemU0, 0.1, stemU1, 0.9),
+    left: uvRect(stemU0, 0.1, stemU1, 0.9),
+    right: uvRect(stemU0, 0.1, stemU1, 0.9),
+    top: uvRect(stemU0, 0.02, stemU1, 0.1),
+    bottom: uvRect(stemU0, 0.9, stemU1, 0.98),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(-1.0, 14.0, -1.0), new Vec3(1.0, 26.0, 1.0), stemFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-4.5, 18.0, -1.0), new Vec3(-0.8, 22.0, 1.0), stemFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(0.8, 20.0, -1.0), new Vec3(4.5, 24.0, 1.0), stemFaces);
+
+  // 4. Foliage Leaves (y = 20.0 .. 36.0)
+  const leafFaces = {
+    front: uvRect(folU0, 0.05, folU1, 0.95),
+    back: uvRect(folU0, 0.05, folU1, 0.95),
+    left: uvRect(folU0, 0.05, folU1, 0.95),
+    right: uvRect(folU0, 0.05, folU1, 0.95),
+    top: uvRect(folU0, 0.05, folU1, 0.95),
+    bottom: uvRect(folU0, 0.05, folU1, 0.95),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(-7.5, 22.0, -4.0), new Vec3(-1.5, 29.0, 4.0), leafFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(1.5, 23.0, -4.0), new Vec3(7.5, 30.0, 4.0), leafFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-4.0, 24.0, 1.5), new Vec3(4.0, 31.0, 7.5), leafFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-4.0, 25.0, -7.5), new Vec3(4.0, 32.0, -1.5), leafFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-3.5, 27.0, -3.5), new Vec3(3.5, 36.0, 3.5), leafFaces);
+
+  return {
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  };
+}
+
+/** Pre-allocates a reusable pose structure for `plantBreakPose`. */
+export function createPlantBreakPose() {
+  return createDispenserBreakPose();
+}
+
+/**
+ * Computes the 3D transforms for a destroyed Office Plant's wreck, spilled potting soil,
+ * broken pot fragments, and flying foliage shards at `elapsed` seconds after destruction,
+ * writing into `target` with zero allocations.
+ */
+export function plantBreakPose(elapsed, seed = 0, target = createPlantBreakPose()) {
+  const t = Math.max(0, elapsed);
+  const jolt = t < 0.18 ? Math.sin((t / 0.18) * Trigo.pi) : 0;
+  target.wreckScale.setScalar(1 + jolt * 0.1, 1 - jolt * 0.08, 1 + jolt * 0.1);
+  target.wreckRot.setScalar(jolt * 0.05 * Math.sin(seed * 3), 0, jolt * 0.05 * Math.cos(seed * 3));
+
+  const soilSpread = Utils.smoothstep(0, 0.45, t);
+  const sScale = 0.2 + 0.8 * soilSpread;
+  target.puddleScale.setScalar(sScale, 1, sScale);
+
+  const topDuration = 0.8;
+  const topSpread = Math.sin(seed * 2.3 + 0.5) * 0.8;
+  const topDist = 12 + ((Math.cos(seed * 3.7) + 1) * 0.5) * 6;
+  writeBallisticArc(
+    target.carboyTop.pos,
+    target.carboyTop.rot,
+    0,
+    18.0,
+    0,
+    Math.sin(topSpread) * topDist,
+    1.5,
+    Math.cos(topSpread) * topDist,
+    Trigo.pi * 2.2,
+    topSpread + Trigo.pi * 0.6,
+    Trigo.pi * 1.2,
+    0.1,
+    topSpread + 0.3,
+    0.1,
+    t / topDuration,
+    10,
+  );
+
+  for (let i = 0; i < PLANT_SHARD_COUNT; i++) {
+    const shard = target.shards[i];
+    const hash = Math.sin(seed * 2.5 + i * 3.14) * 0.5 + 0.5;
+    const fan = ((i / PLANT_SHARD_COUNT) * Trigo.twopi) + (hash - 0.5) * 0.4;
+    const startX = Math.cos(fan) * 6;
+    const startY = 8.0 + hash * 6.0;
+    const startZ = Math.sin(fan) * 6;
+    const dist = 10 + hash * 10;
+    const duration = 0.55 + hash * 0.25;
+    const peakLift = 8 + (1 - hash) * 8;
+    writeBallisticArc(
+      shard.pos,
+      shard.rot,
+      startX,
+      startY,
+      startZ,
+      Math.cos(fan) * dist,
+      0.8,
+      Math.sin(fan) * dist,
+      Trigo.pi * (2 + hash),
+      fan + Trigo.pi * 0.5,
+      Trigo.pi * 1.5,
+      0.15,
+      fan,
+      0.2,
+      t / duration,
+      peakLift,
+    );
+  }
+  return target;
 }
 
 export const SHADOW_ATLAS = { width: 128, height: 64 };
