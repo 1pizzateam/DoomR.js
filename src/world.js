@@ -373,7 +373,7 @@ export function registerStaticChunk(chunks, mesh, fallbackCenter, fallbackRadius
   return mesh;
 }
 
-function isChunkVisibleInFog(fog, bounds, levelWidth) {
+export function isChunkVisibleInFog(fog, bounds, levelWidth) {
   const visible = fog.visible;
   if (!visible || !(fog.exploredCount > 0))
     return true;
@@ -3014,6 +3014,10 @@ export class World {
 
   buildFurnitureView(furniture) {
     return this.buildFurniture(furniture);
+  }
+
+  updateFurniture(furniture, view) {
+    return this.updateFurnitureView(furniture, view);
   }
 
   updateFurnitureView(furniture, view) {

@@ -41,7 +41,7 @@ const MARINE_CARTRIDGE_URL = new URL('./models/doom_marine.facer.json', import.m
 
 let savedMarine = null;
 
-async function loadSavedMarine() {
+export async function loadSavedMarine() {
   try {
     const res = await fetch(MARINE_CARTRIDGE_URL, { cache: 'no-store' });
     savedMarine = res.ok ? await res.json() : null;

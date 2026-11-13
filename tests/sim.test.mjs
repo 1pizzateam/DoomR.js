@@ -46,7 +46,7 @@ import { BASE_FLOOR_LEVEL, CEILING, CROUCH_EYE, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_
 import { Fog } from '../src/fog.js';
 import { MONSTER_SKIN_CELL, MONSTER_SKIN_CELLS, MONSTER_SKIN_FRAMES, MONSTERS, monsterGoreSkinAtlas, monsterMesh, monsterParts, monsterSkinAtlas } from '../src/monsters.js';
 import { SHOTS, TitleDirector } from '../src/title.js';
-import { EXPLOSION_3D_FRAGMENT, EXPLOSION_3D_VERTEX, explosionWidth, LINE_FRAGMENT, LINE_VERTEX, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, MONSTER_FRAGMENT, marsFogNearFar, registerStaticChunk, SPARK_PARTICLE_FRAGMENT, SPRITE_FRAGMENT, World } from '../src/world.js';
+import { EXPLOSION_3D_FRAGMENT, EXPLOSION_3D_VERTEX, explosionWidth, isChunkVisibleInFog, LINE_FRAGMENT, LINE_VERTEX, MARS_AMBIENT_COLOR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, MONSTER_FRAGMENT, marsFogNearFar, registerStaticChunk, SPARK_PARTICLE_FRAGMENT, SPRITE_FRAGMENT, World } from '../src/world.js';
 import { MEDIKIT_CELL, MEDIKIT_CELLS, MEDIKIT_FRAMES, medikitAtlas, medikitMesh } from '../src/medikit.js';
 import { AMMO_CELL, AMMO_CELLS, AMMO_FRAMES, AMMO_TYPES, ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from '../src/ammo.js';
 import { KEYCARD_CELL, KEYCARD_CELLS, KEYCARD_FRAMES, keycardAtlas, keycardMesh } from '../src/keycard.js';
@@ -56,9 +56,9 @@ import { FIREBALL_CELL, FIREBALL_FRAMES, fireballAtlas } from '../src/fireball.j
 import { GRENADE_CELL, GRENADE_FRAMES, GRENADE_SCALE, GRENADE_START, grenadeAtlas, grenadeParts, skinGrenadeCylinder } from '../src/grenade.js';
 import { Hud, SCREEN_BLOOD_ALPHA, layoutControls } from '../src/hud.js';
 import { Input } from '../src/input.js';
-import { registerBaseHead, deserializeBaseHead, registerHairStyle, deserializeHairStyle, registerAtlasPainter, registerFaceProfile, deserializeFaceProfile } from '@1pizzateam/facer';
+import { registerBaseHead, deserializeBaseHead, registerHairStyle, deserializeHairStyle, registerAtlasPainter, registerFaceProfile, deserializeFaceProfile, createDefaultCartridge } from '@1pizzateam/facer';
 import { paintFaceAtlas } from '../src/skin/atlas.js';
-import '../src/head.js';
+import { HeadView, loadSavedMarine, marineCartridge } from '../src/head.js';
 registerAtlasPainter(paintFaceAtlas);
 // FaceR bundles no heads: register the marine's head asset from src/heads before any HeadView is built
 registerFaceProfile(deserializeFaceProfile(JSON.parse(
@@ -69,7 +69,7 @@ registerHairStyle(deserializeHairStyle(JSON.parse(
   readFileSync(new URL('../src/hair/buzz_fade.facerhair.json', import.meta.url), 'utf8'))));
 import { Overlay } from '../src/overlay.js';
 import { ACTIONS, CONTROLS_STORAGE_KEY, CONTROLS_VERSION, CONTROL_GROUPS, DEFAULT_HINT_LINES, Keymap, LAYOUT_STORAGE_KEY, MAX_SLOTS, PRESETS, RESERVED_CODES } from '../src/keymap.js';
-import { ControlsMenu, HIT_BACK, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP, TONE_RED } from '../src/controls.js';
+import { ControlsMenu, FOOTER_BACK, FOOTER_LABELS, FOOTER_RESET, HIT_BACK, HIT_LABELS, HIT_NONE, HIT_RESET_ALL, HIT_SCROLL_DOWN, HIT_SCROLL_UP, TONE_RED } from '../src/controls.js';
 import { NAV_DOWN, NAV_LEFT, NAV_NONE, NAV_RIGHT, NAV_UP, RAW_RING_SIZE } from '../src/input.js';
 
 // Scalar fixtures to the vector options of the blood quad generators
@@ -18376,6 +18376,434 @@ const tests = {
     game.updateChestLock(1 / 60);
     assert.ok(game.chestLock.needle > 0, 'needle updated without error');
   },
+
+  'AC-1 setCutaway toggles mesh visibility, camera clip planes, and fog parameters'() {
+    const makeMockMesh = () => {
+      let active = true;
+      return {
+        isActive: () => active,
+        setActive: () => { active = true; },
+        setInactive: () => { active = false; },
+      };
+    };
+    const mockWorld = Object.assign(Object.create(World.prototype), {
+      cutaway: false,
+      cutawayNearFar: new Vec2(6, 8000),
+      skyMesh: makeMockMesh(),
+      ceilingMesh: makeMockMesh(),
+      ceilingMeshes: [makeMockMesh(), makeMockMesh()],
+      roofSolidMesh: makeMockMesh(),
+      lightConesMesh: makeMockMesh(),
+      lightConesMeshes: [makeMockMesh()],
+      wallTopsMesh: makeMockMesh(),
+      staticChunks: [
+        { mesh: makeMockMesh(), hideInCutaway: true },
+        { mesh: makeMockMesh(), hideInCutaway: false },
+      ],
+      level: { planet: 'phobos' },
+      ambientLight: {
+        color: new Vec3(),
+        setColor(c) { this.color.copy(c); },
+      },
+      viewportSize: new Vec2(800, 600),
+      camera: {
+        nearFar: new Vec2(),
+        setNearFar(nf) { this.nearFar.copy(nf); },
+        setProjectionMatrix() {},
+      },
+      fogNearFar: new Vec2(100, 1500),
+      scene: {
+        fogColor: null,
+        fogNear: 0,
+        fogFar: 0,
+        setFog(c, n, f) {
+          this.fogColor = c;
+          this.fogNear = n;
+          this.fogFar = f;
+        },
+      },
+    });
+    mockWorld.wallTopsMesh.setInactive();
+
+    mockWorld.setCutaway(true, new Vec2(10, 5000));
+    assert.equal(mockWorld.cutaway, true);
+    assert.equal(mockWorld.cutawayNearFar.x, 10);
+    assert.equal(mockWorld.cutawayNearFar.y, 5000);
+    assert.equal(mockWorld.skyMesh.isActive(), false);
+    assert.equal(mockWorld.ceilingMesh.isActive(), false);
+    assert.ok(mockWorld.ceilingMeshes.every((m) => !m.isActive()));
+    assert.equal(mockWorld.roofSolidMesh.isActive(), false);
+    assert.equal(mockWorld.lightConesMesh.isActive(), false);
+    assert.ok(mockWorld.lightConesMeshes.every((m) => !m.isActive()));
+    assert.equal(mockWorld.wallTopsMesh.isActive(), true);
+    assert.equal(mockWorld.staticChunks[0].mesh.isActive(), false);
+    assert.equal(mockWorld.staticChunks[1].mesh.isActive(), true);
+    assert.equal(mockWorld.camera.nearFar.x, 10);
+    assert.equal(mockWorld.camera.nearFar.y, 5000);
+    assert.equal(mockWorld.scene.fogNear, 5000 * 0.65);
+    assert.equal(mockWorld.scene.fogFar, 5000 * 1.25);
+
+    mockWorld.setCutaway(false);
+    assert.equal(mockWorld.cutaway, false);
+    assert.equal(mockWorld.skyMesh.isActive(), true);
+    assert.equal(mockWorld.ceilingMesh.isActive(), true);
+    assert.ok(mockWorld.ceilingMeshes.every((m) => m.isActive()));
+    assert.equal(mockWorld.roofSolidMesh.isActive(), true);
+    assert.equal(mockWorld.lightConesMesh.isActive(), true);
+    assert.ok(mockWorld.lightConesMeshes.every((m) => m.isActive()));
+    assert.equal(mockWorld.wallTopsMesh.isActive(), false);
+    assert.equal(mockWorld.camera.nearFar.x, 6);
+    assert.equal(mockWorld.camera.nearFar.y, 2400);
+    assert.equal(mockWorld.scene.fogNear, 100);
+    assert.equal(mockWorld.scene.fogFar, 1500);
+
+    mockWorld.level.planet = 'mars';
+    mockWorld.setCutaway(false);
+    assert.ok(mockWorld.ambientLight.color.equals(MARS_AMBIENT_COLOR));
+    mockWorld.setCutaway(true);
+    assert.ok(mockWorld.ambientLight.color.equals(new Vec3(0.95, 1.0, 1.08)));
+  },
+
+  'AC-2 isChunkVisibleInFog culls unexplored chunks and retains visible chunks'() {
+    const boundsA = new Rect();
+    boundsA.topLeftCorner.setScalar(0, 0);
+    boundsA.bottomRightCorner.setScalar(4, 4);
+
+    const boundsB = new Rect();
+    boundsB.topLeftCorner.setScalar(5, 5);
+    boundsB.bottomRightCorner.setScalar(9, 9);
+
+    const levelWidth = 10;
+    const fog = {
+      visible: new Uint8Array(100),
+      exploredCount: 0,
+    };
+
+    assert.equal(isChunkVisibleInFog({ visible: null, exploredCount: 0 }, boundsA, levelWidth), true);
+    assert.equal(isChunkVisibleInFog(fog, boundsA, levelWidth), true);
+
+    fog.exploredCount = 10;
+    assert.equal(isChunkVisibleInFog(fog, boundsA, levelWidth), false);
+    assert.equal(isChunkVisibleInFog(fog, boundsB, levelWidth), false);
+
+    fog.visible[2 * levelWidth + 2] = 1;
+    assert.equal(isChunkVisibleInFog(fog, boundsA, levelWidth), true);
+    assert.equal(isChunkVisibleInFog(fog, boundsB, levelWidth), false);
+
+    fog.visible[7 * levelWidth + 7] = 1;
+    assert.equal(isChunkVisibleInFog(fog, boundsB, levelWidth), true);
+  },
+
+  'AC-3 buildFurniture and updateFurniture construct and animate prop sub-meshes'() {
+    const origAddProgram = Mesh.prototype.addProgram;
+    Mesh.prototype.addProgram = function() { return true; };
+    try {
+      const addedMeshes = [];
+      const world = Object.assign(Object.create(World.prototype), {
+        gl: {
+          NEAREST_MIPMAP_NEAREST: 9984,
+          NEAREST: 9728,
+          UNSIGNED_SHORT: 5123,
+          createBuffer: () => ({}),
+          bindBuffer() {},
+          bufferData() {},
+          bufferSubData() {},
+        },
+        sharedTexture: () => ({}),
+        sharedTexturedMeshes: [],
+        scene: { addMesh: (m) => addedMeshes.push(m) },
+        furnitureViews: new Map(),
+        frameTime: 1.0,
+        frameCullDistSq: Infinity,
+        frameOccludeFog: null,
+      });
+
+      const dispenser = { type: 'dispenser', pos: new Vec2(64, 64), angle: 0, gone: false, hurt: 0 };
+      const dView = world.buildFurniture(dispenser);
+      assert.equal(dView.type, 'dispenser');
+      assert.ok(dView.root instanceof Mesh);
+      assert.ok(dView.intact instanceof Mesh);
+      assert.ok(dView.wreck instanceof Mesh);
+      assert.ok(dView.puddle instanceof Mesh);
+      assert.ok(dView.carboyTop instanceof Mesh);
+      assert.equal(dView.shards.length, 5);
+      assert.equal(addedMeshes.includes(dView.root), true);
+      assert.equal(world.furnitureViews.get(dispenser), dView);
+
+      assert.equal(dView.root.isActive(), true);
+      assert.equal(dView.intact.isActive(), true);
+      assert.equal(dView.wreck.isActive(), false);
+
+      dispenser.hurt = 0.1;
+      world.updateFurniture(dispenser, dView);
+      assert.equal(dView.intactSettled, false);
+
+      dispenser.hurt = 0;
+      world.updateFurniture(dispenser, dView);
+      assert.equal(dView.intactSettled, true);
+
+      dispenser.gone = true;
+      dispenser.deadTime = 0.2;
+      world.updateFurniture(dispenser, dView);
+      assert.equal(dView.wasGone, true);
+      assert.equal(dView.intact.isActive(), false);
+      assert.equal(dView.wreck.isActive(), true);
+      assert.equal(dView.puddle.isActive(), true);
+      assert.equal(dView.carboyTop.isActive(), true);
+      assert.ok(dView.shards.every((s) => s.isActive()));
+      assert.equal(dView.wreckSettled, false);
+
+      dispenser.deadTime = 1.2;
+      world.updateFurniture(dispenser, dView);
+      assert.equal(dView.wreckSettled, true);
+
+      const desk = { type: 'desk', pos: new Vec2(128, 128), angle: 1.0, gone: false, hurt: 0 };
+      const deskView = world.buildFurniture(desk);
+      assert.equal(deskView.type, 'desk');
+      assert.equal(deskView.shards.length, 5);
+      world.updateFurniture(desk, deskView);
+      assert.equal(deskView.root.isActive(), true);
+      assert.equal(deskView.intact.isActive(), true);
+
+      desk.gone = true;
+      desk.deadTime = 0.5;
+      world.updateFurniture(desk, deskView);
+      assert.equal(deskView.intact.isActive(), false);
+      assert.equal(deskView.wreck.isActive(), true);
+    } finally {
+      Mesh.prototype.addProgram = origAddProgram;
+    }
+  },
+
+  'AC-4 HeadView render sets scissor viewport and delegates to scene'() {
+    const gl = makeMockGL();
+    const hv = new HeadView(gl);
+    hv.resize(320, 200, 640, 400);
+
+    const rect = new Rect();
+    rect.topLeftCorner.setScalar(100, 150);
+    rect.bottomRightCorner.setScalar(140, 180);
+    hv.place(rect);
+
+    assert.equal(hv.visible, true);
+    assert.equal(hv.x, 200);
+    assert.equal(hv.y, 40);
+    assert.equal(hv.w, 80);
+    assert.equal(hv.h, 60);
+
+    let cleared = false;
+    let rendered = false;
+    let renderedTime = -1;
+    hv.scene.clear = (c, d) => {
+      cleared = true;
+      assert.equal(c, false);
+      assert.equal(d, true);
+    };
+    hv.scene.render = (cam, t) => {
+      rendered = true;
+      renderedTime = t;
+      assert.equal(cam, hv.camera);
+    };
+
+    hv.render(4.5);
+    assert.equal(cleared, true);
+    assert.equal(rendered, true);
+    assert.equal(renderedTime, 4.5);
+    assert.ok(gl.scissorCalls.some((c) => c.x === 200 && c.y === 40 && c.w === 80 && c.h === 60));
+    assert.ok(gl.enabled.includes(gl.SCISSOR_TEST));
+    assert.ok(gl.disabled.includes(gl.SCISSOR_TEST));
+
+    hv.hide();
+    cleared = false;
+    rendered = false;
+    hv.render(5.0);
+    assert.equal(cleared, false);
+    assert.equal(rendered, false);
+  },
+
+  'AC-5 HeadView update handles alternating pain impulses, shot holds, and powerup grins'() {
+    const gl = makeMockGL();
+    const hv = new HeadView(gl);
+
+    const impulses = [];
+    hv.facer.triggerImpulse = (name, weight, dir) => {
+      impulses.push({ name, weight, dir: dir ? dir.clone() : null });
+    };
+    const shootings = [];
+    hv.facer.setShooting = (v) => {
+      shootings.push(v);
+    };
+
+    const player = { health: 100, hurt: 0, shootFace: 0, soulFlash: 0, berserkTimer: 0 };
+
+    player.hurt = 0.1;
+    hv.update(player, 0.2);
+    assert.equal(impulses.length, 1);
+    assert.equal(impulses[0].name, 'pain');
+    assert.equal(impulses[0].dir.x, 1);
+
+    player.hurt = 0;
+    hv.update(player, 0.25);
+
+    player.hurt = 0.15;
+    hv.update(player, 0.5);
+    assert.equal(impulses.length, 2);
+    assert.equal(impulses[1].name, 'pain');
+    assert.equal(impulses[1].dir.x, -1);
+
+    player.hurt = 0;
+    player.shootFace = 0.42;
+    hv.update(player, 1.0);
+    assert.equal(shootings[shootings.length - 1], true);
+
+    hv.update(player, 1.10);
+    assert.equal(shootings[shootings.length - 1], true);
+
+    hv.update(player, 1.25);
+    assert.equal(shootings[shootings.length - 1], false);
+
+    impulses.length = 0;
+    player.soulFlash = 0.5;
+    hv.update(player, 1.30);
+    assert.ok(impulses.some((imp) => imp.name === 'evilGrin'));
+
+    impulses.length = 0;
+    player.soulFlash = 0.4;
+    hv.update(player, 1.35);
+    assert.equal(impulses.length, 0);
+
+    player.soulFlash = 0;
+    hv.update(player, 1.40);
+    player.berserkTimer = 19;
+    hv.update(player, 1.45);
+    assert.ok(impulses.some((imp) => imp.name === 'evilGrin'));
+  },
+
+  async 'AC-6 marineCartridge and loadSavedMarine hydrate cartridge JSON or use fallback proportions'() {
+    const origFetch = globalThis.fetch;
+    try {
+      const sampleCartridge = createDefaultCartridge('Saved Marine', 'saved_marine');
+      sampleCartridge.proportions.jawScale.setScalar(1.25, 1.25, 1.25);
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => sampleCartridge,
+      });
+      await loadSavedMarine();
+      const hydrated = marineCartridge();
+      assert.ok(hydrated, 'cartridge hydrated from saved JSON');
+      assert.equal(hydrated.proportions.jawScale.x, 1.25);
+
+      globalThis.fetch = async () => {
+        throw new Error('Network error');
+      };
+      await loadSavedMarine();
+      const fallback = marineCartridge();
+      assert.ok(fallback, 'cartridge built from fallback procedural proportions');
+      assert.equal(fallback.proportions.jawScale.x, 1.06);
+
+      globalThis.fetch = async () => ({
+        ok: false,
+        json: async () => ({}),
+      });
+      await loadSavedMarine();
+      const fallback404 = marineCartridge();
+      assert.equal(fallback404.proportions.jawScale.x, 1.06);
+    } finally {
+      globalThis.fetch = origFetch;
+      await loadSavedMarine();
+    }
+  },
+
+  'AC-7 ControlsMenu footer Enter and HIT_LABELS click cycle layout and toast'() {
+    withRig((inp) => {
+      let currentHit = HIT_NONE;
+      const menu = new ControlsMenu(inp.keymap, inp, { hitAt: () => currentHit });
+      const game = fakeGame();
+      menu.open('title');
+      const v = menu.view;
+
+      const initialOverride = inp.keymap.override;
+      v.footerFocus = FOOTER_LABELS;
+      inp.pushRaw('keydown', 'Enter', 'Enter', false);
+      menu.update(0.016, game);
+
+      assert.notEqual(inp.keymap.override, initialOverride);
+      assert.equal(v.toastText, inp.keymap.statusText);
+      assert.equal(v.toastTone, 1);
+      assert.equal(game.events[game.events.length - 1], 'keycard');
+
+      const nextOverride = inp.keymap.override;
+      currentHit = HIT_LABELS;
+      inp.pushRaw('buttondown', 'Mouse0', '', false);
+      menu.update(0.016, game);
+
+      assert.notEqual(inp.keymap.override, nextOverride);
+      assert.equal(v.footerFocus, FOOTER_LABELS);
+      assert.equal(v.toastText, inp.keymap.statusText);
+      assert.equal(v.toastTone, 1);
+    });
+  },
+
+  'AC-8 ControlsMenu scroll buttons, reset cancellation, and returnState'() {
+    withRig((inp, rig) => {
+      let currentHit = HIT_NONE;
+      const menu = new ControlsMenu(inp.keymap, inp, { hitAt: () => currentHit });
+      const game = fakeGame();
+
+      menu.open('play');
+      assert.equal(menu.returnState, 'play');
+      menu.open('intermission');
+      assert.equal(menu.returnState, 'intermission');
+      menu.open('title');
+      assert.equal(menu.returnState, 'title');
+
+      const v = menu.view;
+
+      v.scroll = 6;
+      currentHit = HIT_SCROLL_DOWN;
+      inp.pushRaw('buttondown', 'Mouse0', '', false);
+      menu.update(0.016, game);
+      assert.equal(v.scroll, 9);
+
+      currentHit = HIT_SCROLL_UP;
+      inp.pushRaw('buttondown', 'Mouse0', '', false);
+      menu.update(0.016, game);
+      assert.equal(v.scroll, 6);
+
+      menu.scrollBy(v.lines.length + 50);
+      const maxScroll = v.scroll;
+      currentHit = HIT_SCROLL_DOWN;
+      inp.pushRaw('buttondown', 'Mouse0', '', false);
+      menu.update(0.016, game);
+      assert.equal(v.scroll, maxScroll);
+
+      v.mode = 'confirmReset';
+      v.confirmTime = 2.0;
+      menu.toast('Confirm Reset', 2);
+      assert.ok(v.toastTime > 0);
+
+      rig.down({ code: 'Escape', key: 'Escape' });
+      menu.update(0.016, game);
+      rig.up({ code: 'Escape', key: 'Escape' });
+      menu.update(0.016, game);
+
+      assert.equal(v.mode, 'browse');
+      assert.equal(v.toastTime, 0);
+
+      v.mode = 'confirmReset';
+      currentHit = HIT_NONE;
+      inp.pushRaw('buttondown', 'Mouse0', '', false);
+      menu.update(0.016, game);
+      assert.equal(v.mode, 'browse');
+
+      v.mode = 'confirmReset';
+      rig.down({ code: 'KeyA', key: 'a' });
+      menu.update(0.016, game);
+      rig.up({ code: 'KeyA', key: 'a' });
+      menu.update(0.016, game);
+      assert.equal(v.mode, 'browse');
+    });
+  },
 };
 
 function pausedHud() {
@@ -18431,6 +18859,91 @@ const memoryStorage = (initial = {}) => {
 };
 
 const fakeGame = () => ({ zero: new Vec2(), events: [], emit(type) { this.events.push(type); } });
+
+const makeMockGL = () => ({
+  drawingBufferWidth: 800,
+  drawingBufferHeight: 600,
+  DEPTH_TEST: 2929,
+  LEQUAL: 515,
+  CULL_FACE: 2884,
+  BACK: 1029,
+  CCW: 2305,
+  SCISSOR_TEST: 3089,
+  BLEND: 3042,
+  TEXTURE_2D: 3553,
+  TEXTURE0: 33984,
+  TEXTURE_MAG_FILTER: 10240,
+  TEXTURE_MIN_FILTER: 10241,
+  TEXTURE_WRAP_S: 10242,
+  TEXTURE_WRAP_T: 10243,
+  LINEAR: 9729,
+  CLAMP_TO_EDGE: 33071,
+  RGBA: 6408,
+  UNSIGNED_BYTE: 5121,
+  UNSIGNED_SHORT: 5123,
+  UNPACK_FLIP_Y_WEBGL: 37440,
+  STATIC_DRAW: 35044,
+  DYNAMIC_DRAW: 35048,
+  ARRAY_BUFFER: 34962,
+  ELEMENT_ARRAY_BUFFER: 34963,
+  FLOAT: 5126,
+  TRIANGLES: 4,
+  VIEWPORT: 2978,
+  scissorCalls: [],
+  viewportCalls: [],
+  enabled: [],
+  disabled: [],
+  enable(cap) { this.enabled.push(cap); },
+  disable(cap) { this.disabled.push(cap); },
+  depthFunc() {},
+  depthMask() {},
+  blendFunc() {},
+  blendEquation() {},
+  cullFace() {},
+  frontFace() {},
+  createBuffer: () => ({}),
+  bindBuffer() {},
+  bufferData() {},
+  bufferSubData() {},
+  createTexture: () => ({}),
+  bindTexture() {},
+  pixelStorei() {},
+  texParameteri() {},
+  texImage2D() {},
+  generateMipmap() {},
+  activeTexture() {},
+  createProgram: () => ({}),
+  createShader: () => ({}),
+  shaderSource() {},
+  compileShader() {},
+  getShaderParameter: () => true,
+  attachShader() {},
+  detachShader() {},
+  linkProgram() {},
+  getProgramParameter: () => true,
+  getUniformLocation: () => ({}),
+  getAttribLocation: () => 0,
+  getParameter: () => new Int32Array([0, 0, 800, 600]),
+  useProgram() {},
+  uniform1i() {},
+  uniform1f() {},
+  uniform2f() {},
+  uniform3f() {},
+  uniform4f() {},
+  uniformMatrix4fv() {},
+  enableVertexAttribArray() {},
+  vertexAttribPointer() {},
+  scissor(x, y, w, h) { this.scissorCalls.push({ x, y, w, h }); },
+  viewport(x, y, w, h) { this.viewportCalls.push({ x, y, w, h }); },
+  clear() {},
+  clearColor() {},
+  drawArrays() {},
+  drawElements() {},
+  deleteTexture() {},
+  deleteBuffer() {},
+  deleteProgram() {},
+  deleteShader() {},
+});
 
 const withRig = (fn, storage = null) => {
   const prevDoc = globalThis.document;
