@@ -537,7 +537,7 @@ export class Level {
   }
 
   findRoomDoors(room) {
-    if (!Number.isInteger(room) || room < 0)
+    if (!Number.isInteger(room) || room < 0 || (this.roomCount != null && room >= this.roomCount))
       return [];
     const found = [];
     for (const door of this.doors.values()) {
@@ -559,6 +559,8 @@ export class Level {
   }
 
   createSwitch(x, y, wallSide = null, doorDefs = null) {
+    if (!this.inBounds(x, y))
+      return null;
     const idx = y * this.width + x;
     if (this.kind[idx] !== FLOOR)
       return null;

@@ -3,7 +3,7 @@ import { Vec2, Vec3 } from '@1pizzateam/spock';
 import { LEVELS } from '../src/levels.js';
 import { CEILING, DESK_WALL_OFFSET, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DISPENSER_WALL_OFFSET, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from '../src/cache.js';
-import { createDeskBreakPose, createDispenserBreakPose, DESK_ATLAS, DESK_HP, DESK_SHARD_COUNT, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, DISPENSER_ATLAS, DISPENSER_HP, DISPENSER_SHARD_COUNT, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, FURNITURE_VERTEX, SHADOW_ATLAS, SHADOW_FRAGMENT, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad, writeWallShadowQuad } from '../src/furniture.js';
+import { buildConferenceTable, buildKitchenSink, buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createPlantBreakPose, createSinkBreakPose, createTableBreakPose, DESK_ATLAS, DESK_HP, DESK_SHARD_COUNT, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, DISPENSER_ATLAS, DISPENSER_HP, DISPENSER_SHARD_COUNT, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, FURNITURE_VERTEX, plantAtlas, plantBreakPose, SHADOW_ATLAS, SHADOW_FRAGMENT, SHADOW_VERTEX, shadowAtlas, sinkAtlas, sinkBreakPose, tableAtlas, tableBreakPose, writeFloorShadowQuad, writeWallShadowQuad } from '../src/furniture.js';
 import { Game } from '../src/game.js';
 
 console.log('# file: tests/levels.test.mjs');
@@ -524,6 +524,234 @@ try {
 } catch (error) {
   failed = true;
   console.log(`FAIL ${orientTestName}\n     ${error.message}`);
+}
+
+const furnitureAtlasAc1TestName = 'AC-1: tableAtlas, plantAtlas, and sinkAtlas generate 256x64 RGBA buffers';
+try {
+  for (const [name, fn, expectedSubtiles] of [
+    ['table', tableAtlas, ['top', 'frame', 'chair', 'tray']],
+    ['plant', plantAtlas, ['pot', 'foliage', 'stem', 'soil']],
+    ['sink', sinkAtlas, ['front', 'side', 'top', 'water']],
+  ]) {
+    const atlas = fn();
+    assert.equal(atlas.name, name, `${name} atlas name matches`);
+    assert.equal(atlas.width, 256, `${name} atlas width is 256`);
+    assert.equal(atlas.height, 64, `${name} atlas height is 64`);
+    assert.equal(atlas.width & (atlas.width - 1), 0, `${name} atlas width is power of two`);
+    assert.equal(atlas.height & (atlas.height - 1), 0, `${name} atlas height is power of two`);
+    assert.ok(atlas.data instanceof Uint8Array, `${name} atlas data is Uint8Array`);
+    assert.equal(atlas.data.length, 256 * 64 * 4, `${name} atlas buffer is 65536 bytes`);
+    for (const key of expectedSubtiles) {
+      assert.ok(atlas[key] && typeof atlas[key].x === 'number', `${name} contains subtile ${key}`);
+      assert.equal(atlas[key].width, 64, `${name} subtile ${key} width is 64`);
+      assert.equal(atlas[key].height, 64, `${name} subtile ${key} height is 64`);
+    }
+  }
+  console.log(`ok   ${furnitureAtlasAc1TestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${furnitureAtlasAc1TestName}\n     ${error.message}`);
+}
+
+const furnitureMeshAc2TestName = 'AC-2: buildConferenceTable, buildOfficePlant, and buildKitchenSink generate 3D mesh geometries';
+try {
+  for (const [name, fn, expectedMinVerts, expectedMinY, expectedMaxY] of [
+    ['conferenceTable', buildConferenceTable, 300, 0, 30.0],
+    ['officePlant', buildOfficePlant, 300, 0, 36.0],
+    ['kitchenSink', buildKitchenSink, 300, 0, 36.0],
+  ]) {
+    const mesh = fn();
+    assert.ok(mesh.vertices instanceof Float32Array && mesh.vertices.length >= expectedMinVerts, `${name} vertices is non-empty Float32Array`);
+    assert.ok(mesh.normals instanceof Float32Array, `${name} normals is Float32Array`);
+    assert.ok(mesh.uvs instanceof Float32Array, `${name} uvs is Float32Array`);
+    assert.equal(mesh.normals.length, mesh.vertices.length, `${name} normal count matches vertex float count`);
+    assert.equal(mesh.uvs.length, (mesh.vertices.length / 3) * 2, `${name} uv count matches vertex count * 2`);
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = 1; i < mesh.vertices.length; i += 3) {
+      const y = mesh.vertices[i];
+      if (y < minY)
+        minY = y;
+      if (y > maxY)
+        maxY = y;
+    }
+    assert.equal(minY, expectedMinY, `${name} base rests on y = ${expectedMinY}`);
+    assert.ok(maxY <= expectedMaxY + 1e-3, `${name} height does not exceed expectedMaxY`);
+    assert.ok(maxY >= expectedMinY + 10, `${name} height is non-trivial`);
+  }
+  console.log(`ok   ${furnitureMeshAc2TestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${furnitureMeshAc2TestName}\n     ${error.message}`);
+}
+
+const furnitureBreakPoseAc3TestName = 'AC-3: tableBreakPose, plantBreakPose, and sinkBreakPose update pose transforms in-place';
+try {
+  const targetTable = createTableBreakPose();
+  const targetPlant = createPlantBreakPose();
+  const targetSink = createSinkBreakPose();
+
+  for (const [name, breakPoseFn, target] of [
+    ['table', tableBreakPose, targetTable],
+    ['plant', plantBreakPose, targetPlant],
+    ['sink', sinkBreakPose, targetSink],
+  ]) {
+    for (const elapsed of [0, 0.1, 0.5, 1.2]) {
+      const result = breakPoseFn(elapsed, 42, target);
+      assert.equal(result, target, `${name}BreakPose mutates target in-place`);
+      assert.ok(Number.isFinite(target.wreckScale.x) && Number.isFinite(target.wreckScale.y) && Number.isFinite(target.wreckScale.z));
+      assert.ok(Number.isFinite(target.wreckRot.x) && Number.isFinite(target.wreckRot.y) && Number.isFinite(target.wreckRot.z));
+      assert.ok(Number.isFinite(target.puddleScale.x) && Number.isFinite(target.puddleScale.z));
+      assert.ok(Number.isFinite(target.carboyTop.pos.x) && Number.isFinite(target.carboyTop.pos.y) && Number.isFinite(target.carboyTop.pos.z));
+      assert.ok(Array.isArray(target.shards) && target.shards.length >= 5);
+      for (let i = 0; i < target.shards.length; i++) {
+        assert.ok(Number.isFinite(target.shards[i].pos.x) && Number.isFinite(target.shards[i].pos.y) && Number.isFinite(target.shards[i].pos.z));
+        assert.ok(Number.isFinite(target.shards[i].rot.x) && Number.isFinite(target.shards[i].rot.y) && Number.isFinite(target.shards[i].rot.z));
+      }
+    }
+  }
+  console.log(`ok   ${furnitureBreakPoseAc3TestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${furnitureBreakPoseAc3TestName}\n     ${error.message}`);
+}
+
+const shadowQuadAc4TestName = 'AC-4: shadowAtlas, writeFloorShadowQuad, and writeWallShadowQuad across wall sides 0..3';
+try {
+  const sAtlas = shadowAtlas();
+  assert.equal(sAtlas.width, 128);
+  assert.equal(sAtlas.height, 64);
+  assert.equal(sAtlas.data.length, 128 * 64 * 4);
+
+  const floorCorners = new Float32Array(12);
+  const floorRes = writeFloorShadowQuad(floorCorners, new Vec3(100, 0, 200), new Vec2(0.5, 0.5), new Vec3(12, 14, 28));
+  assert.equal(floorRes, floorCorners);
+  for (let i = 0; i < 12; i++)
+    assert.ok(Number.isFinite(floorCorners[i]), `floorCorners[${i}] is finite`);
+  assert.equal(floorCorners[1], 0);
+  assert.equal(floorCorners[4], 0);
+  assert.equal(floorCorners[7], 0);
+  assert.equal(floorCorners[10], 0);
+
+  const wallCorners = new Float32Array(12);
+  const tileCoords = new Vec2(4, 5);
+  const wallBounds = new Vec3(16, 28, 0);
+  for (const wallSide of [0, 1, 2, 3]) {
+    const wallRes = writeWallShadowQuad(wallCorners, tileCoords, wallSide, wallBounds);
+    assert.equal(wallRes, wallCorners);
+    for (let i = 0; i < 12; i++)
+      assert.ok(Number.isFinite(wallCorners[i]), `wallSide ${wallSide} wallCorners[${i}] is finite`);
+    assert.equal(wallCorners[1], 0, `wallSide ${wallSide} corner 0 bottomY is 0`);
+    assert.equal(wallCorners[4], 0, `wallSide ${wallSide} corner 1 bottomY is 0`);
+    assert.equal(wallCorners[7], 28, `wallSide ${wallSide} corner 2 topY is 28`);
+    assert.equal(wallCorners[10], 28, `wallSide ${wallSide} corner 3 topY is 28`);
+    if (wallSide === 0 || wallSide === 2) {
+      const expectedX = wallSide === 2 ? tileCoords.x * 64 + 0.14 : (tileCoords.x + 1) * 64 - 0.14;
+      assert.ok(Math.abs(wallCorners[0] - expectedX) < 1e-4);
+      assert.ok(Math.abs(wallCorners[3] - expectedX) < 1e-4);
+      assert.ok(Math.abs(wallCorners[6] - expectedX) < 1e-4);
+      assert.ok(Math.abs(wallCorners[9] - expectedX) < 1e-4);
+    } else {
+      const expectedZ = wallSide === 3 ? tileCoords.y * 64 + 0.14 : (tileCoords.y + 1) * 64 - 0.14;
+      assert.ok(Math.abs(wallCorners[2] - expectedZ) < 1e-4);
+      assert.ok(Math.abs(wallCorners[5] - expectedZ) < 1e-4);
+      assert.ok(Math.abs(wallCorners[8] - expectedZ) < 1e-4);
+      assert.ok(Math.abs(wallCorners[11] - expectedZ) < 1e-4);
+    }
+  }
+  console.log(`ok   ${shadowQuadAc4TestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${shadowQuadAc4TestName}\n     ${error.message}`);
+}
+
+const roomDoorsAc5TestName = 'AC-5: findRoomDoors returns bounding passage doors and handles invalid room IDs';
+try {
+  const sampleLevel = new Level({
+    name: 'DoorTest',
+    rows: [
+      '#######',
+      '#..D..#',
+      '#..P..#',
+      '#######',
+    ],
+  });
+  for (const badRoomId of [-1, -99, 1.5, NaN, null, undefined, '0', 999])
+    assert.deepEqual(sampleLevel.findRoomDoors(badRoomId), [], `findRoomDoors(${badRoomId}) returns empty array`);
+
+  const multiDoorLevel = new Level({
+    name: 'MixedDoors',
+    rows: [
+      '#########',
+      '#...D...#',
+      '#...U...#',
+      '#...P...#',
+      '#...X...#',
+      '#########',
+    ],
+  });
+  const room0Doors = multiDoorLevel.findRoomDoors(0);
+  assert.ok(Array.isArray(room0Doors));
+  assert.equal(room0Doors.length, 1, 'only standard passage door is returned');
+  for (const door of room0Doors) {
+    assert.ok(!door.elevator, 'elevator door excluded from findRoomDoors');
+    assert.ok(!door.secret, 'secret door excluded from findRoomDoors');
+    assert.ok(!door.lock, 'locked door excluded from findRoomDoors');
+  }
+  console.log(`ok   ${roomDoorsAc5TestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${roomDoorsAc5TestName}\n     ${error.message}`);
+}
+
+const createSwitchAc6TestName = 'AC-6: createSwitch without doorDefs resolves room doors and locks them';
+try {
+  const switchLevel = new Level({
+    name: 'SwitchTest',
+    rows: [
+      '#########',
+      '#...D...#',
+      '#...P...#',
+      '#.......#',
+      '#########',
+    ],
+  });
+  const door = switchLevel.doors.get(1 * switchLevel.width + 4);
+  assert.ok(door, 'door exists at (4, 1)');
+  assert.equal(door.switchLocked, false, 'door is not switchLocked before createSwitch');
+
+  const sw = switchLevel.createSwitch(1, 2, 2, null);
+  assert.ok(sw, 'switch was created');
+  assert.ok(sw.doors.length > 0, 'switch resolved room doors');
+  assert.ok(sw.doors.includes(door), 'resolved room doors include the bounding passage door');
+  assert.equal(door.switchLocked, true, 'bounding passage door is marked switchLocked = true');
+  console.log(`ok   ${createSwitchAc6TestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${createSwitchAc6TestName}\n     ${error.message}`);
+}
+
+const switchValidationAc7TestName = 'AC-7: createSwitch boundary validation on non-floor and non-wall tiles';
+try {
+  const boundaryLevel = new Level({
+    name: 'BoundaryTest',
+    rows: [
+      '#########',
+      '#.......#',
+      '#...P...#',
+      '#.......#',
+      '#########',
+    ],
+  });
+  assert.equal(boundaryLevel.createSwitch(0, 0, 0), null, 'createSwitch on wall tile returns null');
+  assert.equal(boundaryLevel.createSwitch(-1, 2), null, 'createSwitch at negative X returns null');
+  assert.equal(boundaryLevel.createSwitch(2, -1), null, 'createSwitch at negative Y returns null');
+  assert.equal(boundaryLevel.createSwitch(20, 2), null, 'createSwitch beyond width returns null');
+  assert.equal(boundaryLevel.createSwitch(4, 2, null), null, 'createSwitch on floor tile with no adjacent wall returns null');
+  console.log(`ok   ${switchValidationAc7TestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${switchValidationAc7TestName}\n     ${error.message}`);
 }
 
 process.exit(failed ? 1 : 0);
