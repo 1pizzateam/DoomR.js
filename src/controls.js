@@ -19,9 +19,9 @@ const TIMER_EPSILON = 0.01;
 
 const MENU_SOUND = Object.freeze({ visible: true });
 const SCROLL_STEP = 3;
-const FOOTER_RESET = 0;
-const FOOTER_BACK = 1;
-const FOOTER_LABELS = 2;
+export const FOOTER_RESET = 0;
+export const FOOTER_BACK = 1;
+export const FOOTER_LABELS = 2;
 
 /** Headless controller for the CONTROLS page: draws nothing, owns the page state the Hud reads from `view`. */
 export class ControlsMenu {
