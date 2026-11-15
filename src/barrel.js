@@ -1,6 +1,6 @@
 import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
-import { field, mix, plate, rivet, rust, SHADOW, Tile } from './floor.js';
+import { blitTile, field, mix, plate, rivet, rust, SHADOW, Tile } from './floor.js';
 
 const scratchPt = new Vec2();
 const scratchUvA = new Vec2();
@@ -366,12 +366,24 @@ function drawSide(rnd) {
   flameLabel(t, 32, 42);
   flameLabel(t, 96, 42);
 
+  // relief: rolling hoops stand proud, the rims are lipped, the hazard band is a sunk painted strip, labels sit on top
+  t.pipe(0, 13, SIDE.width, 5, 1.5, true);
+  t.pipe(0, 52, SIDE.width, 5, 1.5, true);
+  t.relief(0, 0, SIDE.width, 5, 1.1, 1.2);
+  t.relief(0, 58, SIDE.width, 6, 1.1, 1.2);
+  t.relief(0, 21, SIDE.width, 11, -0.35, 0.6);
+  for (const cx of [32, 96])
+    t.relief(cx - 12, 34, 24, 17, 0.35, 0.5);
+
   // weld seams, where the sheet meets itself
   for (const x of [0, 64])
     for (let y = 5; y < 58; y++) {
       t.set(x, y, PAINT_DARK, 0.9);
       t.set(x + 1, y, PAINT_LIGHT, 0.25);
     }
+  // the sheet's weld seams are raised beads
+  for (const x of [0, 64])
+    t.groove(x + 1, 6, x + 1, 57, 2.2, -0.9);
   // dents and scrapes
   for (let k = 0; k < 14; k++) {
     const x = Math.floor(rnd() * SIDE.width);
@@ -379,6 +391,10 @@ function drawSide(rnd) {
     const length = 3 + Math.floor(rnd() * 8);
     for (let d = 0; d < length; d++)
       t.set(x + d, y + (d >> 2), k % 2 ? PAINT_LIGHT : PAINT_DARK, 0.5);
+    if (k % 3 === 0)
+      t.dome(x + length / 2, y + 1, 3.5, -0.9);
+    else
+      t.groove(x, y, x + length, y + (length >> 2), 1, 0.35);
   }
   rust(t, rnd, 0.3);
   return t;
@@ -401,6 +417,20 @@ function drawLid(rnd) {
       else if (d > 22.6 && d <= 23.6)
         t.set(x, y, PAINT_LIGHT, 0.5);
     }
+  // relief: the chime rim round the edge, a pressed ring, two screw bungs
+  const H = t.ensureRelief();
+  for (let y = 0; y < LID.height; y++)
+    for (let x = 0; x < LID.width; x++) {
+      const d = scratchPt.setScalar(x - cx, y - cy).getMagnitude();
+      if (d > 27 && d <= 32)
+        H[y * LID.width + x] += 1.4 * Math.sin(Math.PI * Math.min(1, (32 - d) / 5));
+      else if (d > 21 && d <= 23.6)
+        H[y * LID.width + x] -= 0.7;
+    }
+  t.dome(22, 30, 5.5, 1.3);
+  t.dome(44, 38, 3.5, 1.3);
+  t.groove(22 - 5, 30, 22 + 5, 30, 1.2, 0.6);
+  t.groove(22, 30 - 5, 22, 30 + 5, 1.2, 0.6);
   // two bungs
   for (const [bx, by, r] of [[22, 30, 7], [44, 38, 4.5]]) {
     for (let y = 0; y < LID.height; y++)
@@ -452,20 +482,28 @@ function drawChar(rnd) {
 export function barrelAtlas() {
   const { width, height } = BARREL_ATLAS;
   const data = new Uint8Array(width * height * 4);
-  const blit = (tile, x0) => {
-    for (let y = 0; y < tile.height; y++)
-      for (let x = 0; x < tile.width; x++) {
-        const i = (y * tile.width + x) * 3;
-        const o = (y * width + x0 + x) * 4;
-        for (let k = 0; k < 3; k++)
-          data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
-        data[o + 3] = 255;
-      }
-  };
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
   blit(drawSide(mulberry32(31337)), SIDE.x);
   blit(drawLid(mulberry32(4242)), LID.x);
   blit(drawChar(mulberry32(7)), CHAR.x);
-  return { name: 'barrel', data, width, height, side: SIDE, lid: LID, char: CHAR };
+  return {
+    name: 'barrel',
+    data,
+    relief,
+    width,
+    height,
+    cell: 64,
+    // the side wraps round the barrel as one 128 px piece (about 60 units round), so it is filtered as one; a texel of the
+    // lid and the scorched end is a fraction of a unit
+    regions: [
+      { x: SIDE.x, width: SIDE.width, height: SIDE.height, units: 0.6 },
+      { x: LID.x, width: LID.width, height: LID.height, units: 0.5 },
+      { x: CHAR.x, width: CHAR.width, height: CHAR.height, units: 0.5 },
+    ], side: SIDE,
+    lid: LID,
+    char: CHAR,
+  };
 }
 
 /**

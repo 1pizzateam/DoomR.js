@@ -4,6 +4,7 @@ import { BLOOD } from './blood.js';
 import { RUBBLE, SURFACE } from './rubble.js';
 import { ACID_SURFACE_DEPTH, EMPTY_PIT_DEPTH } from './game.js';
 import { BARREL_FIRE_FRAGMENT, BARREL_FIRE_VERTEX, barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelFireMesh, barrelShrapnelFireMesh, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
+import { MAX_CHUNKS, MergedBlood, TEX as FLOOR_BLOOD_TEX } from './bloodfloor.js';
 import { bloodAtlas, createQuadTarget, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
 import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorAtlas, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
 import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, doorCeilingAtlas, doorCeilingCellFor, doorCeilingCellUv, elevatorLightFactor, MARS_SKY_FRAGMENT, MARS_SKY_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, marsSkyAtlas, marsSkyMesh, updateCeilingLights } from './ceiling.js';
@@ -17,7 +18,8 @@ import { FOG_FAR, FOG_NEAR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, mar
 import { faceCorners, quadTriangles } from './lines.js';
 import { MONSTERS, monsterGoreSkinAtlas, monsterParts, monsterSkinAtlas } from './monsters.js';
 import { Overlay } from './overlay.js';
-import { PARTICLE_FRAGMENT, PARTICLE_VERTEX, QuadBatch, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, texturedMesh } from './quads.js';
+import { buildDetailNormal, buildLevelAo, buildMaterialMaps, buildNoiseTexture } from './pbr.js';
+import { PARTICLE_FRAGMENT, PARTICLE_VERTEX, QuadBatch, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, enableMeshPbr, texturedMesh } from './quads.js';
 import { blastFlatQuad, blastWallQuad, burnFlatQuad, burnWallQuad, holeQuad, IMPACT_CELLS, impactAtlas, SPARK_FRAMES, SPARK_VARIANTS } from './impacts.js';
 import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
@@ -91,6 +93,8 @@ const DOWN_FRAGMENT = postDownsampleShader.fragment;
 const GLOW_FRAGMENT = postGlowShader.fragment;
 
 const MARS_SKY_VEC = new Vec3(0.46, 0.18, 0.06);
+/** How much brighter than its base ambient colour the lit room is, once the player is out of the elevator cab. */
+const ROOM_LIGHT_GAIN = 1.35;
 export const MARS_AMBIENT_COLOR = new Vec3(1.04, 0.86, 0.72);
 export const MARS_DUST_TINT = new Vec3(1.2, 7.5, 1.8);
 export { MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar };
@@ -404,6 +408,134 @@ export function explosionWidth(effect) {
   return 120;
 }
 
+/** Smooth sampling for the surfaces with physically based shading: trilinear mipmaps, sharpened at grazing angles. */
+function pbrTextureOptions(gl) {
+  return { magFilter: gl.LINEAR, minFilter: gl.LINEAR_MIPMAP_LINEAR, generateMipmaps: true, anisotropy: 8 };
+}
+
+let detailNormalAtlas = null;
+
+/** The fine-grain normal map laid over every wall, floor and ceiling; it repeats, and is the same for all of them. */
+function detailNormal() {
+  detailNormalAtlas ??= buildDetailNormal();
+  return detailNormalAtlas;
+}
+
+/** The occlusion map is read smoothly and as it is: no mipmaps, no repeat. */
+function aoTextureOptions(gl) {
+  return { magFilter: gl.LINEAR, minFilter: gl.LINEAR };
+}
+
+let rustNoiseAtlas = null;
+
+/** The tiling noise texture that the rust shader reads, the same for every surface. */
+function rustNoise() {
+  rustNoiseAtlas ??= buildNoiseTexture();
+  return rustNoiseAtlas;
+}
+
+function noiseTextureOptions(gl) {
+  return { magFilter: gl.LINEAR, minFilter: gl.LINEAR, wrapS: gl.REPEAT, wrapT: gl.REPEAT };
+}
+
+function detailTextureOptions(gl) {
+  return { magFilter: gl.LINEAR, minFilter: gl.LINEAR_MIPMAP_LINEAR, wrapS: gl.REPEAT, wrapT: gl.REPEAT, generateMipmaps: true, anisotropy: 4 };
+}
+
+const materialMapCache = new WeakMap();
+
+/**
+ * The blood atlas is painted at 128 texels a cell, with soft anti-aliased edges and lit highlights, so it is sampled smoothly.
+ * No mipmaps: the atlas is not a power of two wide (WebGL1 cannot mipmap that: it samples black). Anisotropy keeps the
+ * splats on the floor sharp at a grazing angle.
+ */
+function bloodTextureOptions(gl) {
+  return { magFilter: gl.LINEAR, minFilter: gl.LINEAR, anisotropy: 8 };
+}
+
+/** Merged floor blood sits where floor splats always have: a hair above the floor. */
+const FLOOR_BLOOD_HEIGHT = 0.3;
+/** and merged wall blood a hair in front of its face, where wall splats have always been. */
+const WALL_BLOOD_LIFT = 0.42;
+
+/** A tile of merged floor blood: smooth, unflipped (its rows are in world order), and updated in place as blood lands. */
+function floorBloodTextureOptions(gl) {
+  return { magFilter: gl.LINEAR, minFilter: gl.LINEAR, flipY: false };
+}
+
+/** The normal and AO / roughness / metalness atlases of `atlas`, built once and then shared. */
+function materialMaps(atlas) {
+  let maps = materialMapCache.get(atlas);
+  if (!maps) {
+    maps = buildMaterialMaps(atlas);
+    materialMapCache.set(atlas, maps);
+  }
+  return maps;
+}
+
+/** Puts the material maps of `atlas` on `batch`, and remembers them so a lost GPU context can give them back. */
+function attachMaterialMaps(world, batch, atlas) {
+  const maps = materialMaps(atlas);
+  const opts = pbrTextureOptions(world.gl);
+  const ao = world.levelAoAtlas ? world.sharedTexture(world.levelAoAtlas, aoTextureOptions(world.gl)) : null;
+  batch.setPbrTextures(
+    world.sharedTexture(maps.normal, opts),
+    world.sharedTexture(detailNormal(), detailTextureOptions(world.gl)),
+    ao,
+    world.sharedTexture(rustNoise(), noiseTextureOptions(world.gl))
+  );
+  if (world.aoInvSize)
+    batch.setCustomUniform?.('aoInvSize', world.aoInvSize);
+  batch.pbrAo = world.levelAoAtlas ?? null;
+  batch.pbrMaps = maps;
+  batch.pbrOptions = opts;
+  batch.setCustomUniform?.('hasPbr', world.pbrEnabled === false ? 0 : 1);
+  batch.setCustomUniform?.('parallax', world.parallaxEnabled === false ? 0 : 1);
+  if (!world.sharedTexturedMeshes.includes(batch))
+    world.sharedTexturedMeshes.push(batch);
+}
+
+/**
+ * Doors are drawn with the wall shader but have no material maps. They still read the rust noise from its texture (the
+ * hashed noise costs several times as much, and a door can fill the screen), so the noise texture goes on them alone:
+ * `hasPbr` stays off and `hasNoise` is on.
+ */
+function attachRustNoise(world, mesh) {
+  enableMeshPbr(mesh).setPbrTextures(null, null, null, world.sharedTexture(rustNoise(), noiseTextureOptions(world.gl)));
+  mesh.setCustomUniform?.('hasPbr', 0);
+  mesh.pbrNoiseOnly = true;
+  if (!world.sharedTexturedMeshes.includes(mesh))
+    world.sharedTexturedMeshes.push(mesh);
+  return mesh;
+}
+
+/**
+ * Draws `mesh` with back faces culled. The world draws everything with culling off, which costs a door dearly: it is two
+ * slabs with a face on each side, all heavily shaded, and the ones turned away or hidden behind the near face would be
+ * drawn too, several times over a large part of the screen.
+ */
+function cullBackFaces(mesh) {
+  const base = mesh.renderSelf;
+  mesh.renderSelf = function (projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame) {
+    const gl = this.context;
+    if (typeof gl.enable !== 'function' || !this.isActive() || this.blendMode !== blendMode)
+      return base.call(this, projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame);
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.BACK);
+    const result = base.call(this, projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame);
+    gl.disable(gl.CULL_FACE);
+    return result;
+  };
+  return mesh;
+}
+
+/** A furniture, barrel or chest mesh drawn with the furniture shader: gives it the material maps of its `atlas`. */
+function pbrMesh(world, mesh, atlas) {
+  if (atlas?.relief || atlas?.cell)
+    attachMaterialMaps(world, enableMeshPbr(mesh), atlas);
+  return mesh;
+}
+
 /** RoostR scene for the 3D world: wall faces, doors, enemies, pickups and projectiles are all line meshes. */
 export class World {
   /** `events.onLost` and `events.onRestored` fire when the browser drops and gives back the GPU context. */
@@ -537,7 +669,8 @@ export class World {
       byOptions = new Map();
       this.textureCache.set(atlas, byOptions);
     }
-    const key = `${magFilter}|${minFilter}|${wrapS}|${wrapT}|${generateMipmaps ? 1 : 0}|${flipY ? 1 : 0}`;
+    const anisotropy = options.anisotropy ?? 0;
+    const key = `${magFilter}|${minFilter}|${wrapS}|${wrapT}|${generateMipmaps ? 1 : 0}|${flipY ? 1 : 0}|${anisotropy}`;
     let tex = byOptions.get(key);
     if (!tex) {
       tex = Texture.create(atlas.data, gl, {
@@ -549,9 +682,41 @@ export class World {
         generateMipmaps,
         flipY,
       });
+      if (anisotropy > 1 && tex)
+        this.setAnisotropy(tex, anisotropy);
       byOptions.set(key, tex);
     }
     return tex;
+  }
+
+  /** Asks for anisotropic filtering on `tex`, where the GPU has it; on a spare texture unit, so the draw state is left alone. */
+  setAnisotropy(tex, level) {
+    const { gl } = this;
+    const ext = gl.getExtension?.('EXT_texture_filter_anisotropic');
+    if (!ext || typeof gl.texParameterf !== 'function')
+      return;
+    const max = gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+    gl.activeTexture(gl.TEXTURE7);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(level, max));
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+
+  /** Switches parallax occlusion of walls, floors and ceilings on or off: the most expensive part of the shading. */
+  setParallax(enabled) {
+    this.parallaxEnabled = Boolean(enabled);
+    for (const mesh of this.sharedTexturedMeshes)
+      if (mesh.pbrMaps)
+        mesh.setCustomUniform('parallax', this.parallaxEnabled ? 1 : 0);
+  }
+
+  /** Switches the physically based shading of walls, floors and ceilings on or off: to compare, or to save fill rate. */
+  setPbr(enabled) {
+    this.pbrEnabled = Boolean(enabled);
+    for (const mesh of this.sharedTexturedMeshes)
+      if (mesh.pbrMaps)
+        mesh.setCustomUniform('hasPbr', this.pbrEnabled ? 1 : 0);
   }
 
   /** Binds a shared GPU `WebGLTexture` to `mesh` and records the binding so WebGL context recovery can restore it. */
@@ -666,6 +831,15 @@ export class World {
       const atlas = mesh.activeAtlas ?? mesh.sharedAtlas;
       if (atlas && typeof mesh.setSharedTexture === 'function')
         mesh.setSharedTexture(this.sharedTexture(atlas, mesh.sharedTexOptions ?? {}));
+      if (mesh.pbrNoiseOnly)
+        mesh.setPbrTextures(null, null, null, this.sharedTexture(rustNoise(), noiseTextureOptions(this.gl)));
+      else if (mesh.pbrMaps)
+        mesh.setPbrTextures(
+          this.sharedTexture(mesh.pbrMaps.normal, mesh.pbrOptions),
+          this.sharedTexture(detailNormal(), detailTextureOptions(this.gl)),
+          mesh.pbrAo ? this.sharedTexture(mesh.pbrAo, aoTextureOptions(this.gl)) : null,
+          this.sharedTexture(rustNoise(), noiseTextureOptions(this.gl))
+        );
     }
     this.overlay.restore();
     this.lost = false;
@@ -917,11 +1091,12 @@ export class World {
     };
   }
 
-  doorBatch(capacity, atlas, material) {
-    const sharedTexture = this.sharedTexture(atlas);
+  doorBatch(capacity, atlas, material, texOptions = {}) {
+    const sharedTexture = this.sharedTexture(atlas, texOptions);
     const batch = new QuadBatch(this.gl, { capacity, atlas, sharedTexture, material });
     if (sharedTexture) {
       batch.sharedAtlas = atlas;
+      batch.sharedTexOptions = texOptions;
       this.sharedTexturedMeshes.push(batch);
     }
     this.scene.addMesh(batch);
@@ -929,7 +1104,7 @@ export class World {
   }
 
   doorSplatBatch() {
-    return this.doorBatch(BLOOD.doorSplats * 37, this.bloodTexture, this.splatMaterial());
+    return this.doorBatch(BLOOD.doorSplats * 37, this.bloodTexture, this.splatMaterial(), bloodTextureOptions(this.gl));
   }
 
   /** The tint of blood that has landed: a little darker than what is still in the air. */
@@ -1018,7 +1193,8 @@ export class World {
 
     // blood: droplets move every frame, splats are rewritten only when the game adds or drops one
     this.bloodTexture ??= bloodAtlas();
-    const sharedBloodTex = this.sharedTexture(this.bloodTexture);
+    const bloodTexOpts = bloodTextureOptions(this.gl);
+    const sharedBloodTex = this.sharedTexture(this.bloodTexture, bloodTexOpts);
     this.droplets = new QuadBatch(this.gl, {
       capacity: BLOOD.particles,
       atlas: this.bloodTexture,
@@ -1073,6 +1249,7 @@ export class World {
     this.scene.addMesh(this.shadows);
     for (const b of [this.droplets, this.dust, this.splatters, this.drips]) {
       b.sharedAtlas = this.bloodTexture;
+      b.sharedTexOptions = bloodTexOpts;
       this.sharedTexturedMeshes.push(b);
     }
     this.holes.sharedAtlas = this.impactPixels;
@@ -1095,6 +1272,12 @@ export class World {
     this.scene.addMesh(this.splatters);
     this.scene.addMesh(this.drips);
     this.splatVersion = -1;
+    // blood poured into shared tiles of the floor and of each wall face, so blood that overlaps runs together (bloodfloor.js)
+    this.floorBlood = new MergedBlood(this.bloodTexture);
+    this.floorBloodViews = new Map();
+    this.looseFloor = [];
+    // wall splats whose drips have finished and that have been poured into their face's tiles
+    this.mergedWalls = new WeakSet();
     this.doorMarks = new Map();
     this.buildKnife();
     this.buildChainsaw();
@@ -1431,17 +1614,26 @@ export class World {
   syncSplatSprites(blood) {
     const batch = this.splatters.begin();
     for (const splat of blood.floor) {
+      // what stays is drawn by the merged floor blood; only what dissolves has a quad of its own
+      if (this.floorBlood && !splat.dissolving)
+        continue;
       const quad = this.cachedQuad(splat, floorSplatOf);
       if (quad)
         batch.quad(quad.corners, quad.uv);
     }
+    if (this.looseFloor)
+      for (const splat of this.looseFloor) {
+        const quad = this.cachedQuad(splat, floorSplatOf);
+        if (quad)
+          batch.quad(quad.corners, quad.uv);
+      }
     for (const gib of blood.gibs) {
       const quad = this.cachedQuad(gib, floorGibOf);
       if (quad)
         batch.quad(quad.corners, quad.uv);
     }
     for (const splat of blood.walls)
-      if (!splat.door) {
+      if (!splat.door && !this.mergedWalls?.has(splat)) {
         const quad = this.cachedQuad(splat, wallSplatOf);
         if (quad)
           batch.quad(quad.corners, quad.uv);
@@ -1461,9 +1653,11 @@ export class World {
 
   /** The drips of every splat on a wall: running ones are redrawn every frame, finished ones are kept as they ended. */
   syncDrips(blood) {
+    if (this.floorBlood)
+      this.bakeWalls(blood);
     const batch = this.drips.begin();
     for (const splat of blood.walls) {
-      if (splat.door)
+      if (splat.door || this.mergedWalls?.has(splat))
         continue;
       if (splat.age >= splat.dripTime) {
         let quads = this.dripCache.get(splat);
@@ -1482,8 +1676,129 @@ export class World {
     batch.end();
   }
 
+  /** Pours the new floor splats into the merged blood. */
+  pourFloorBlood(blood) {
+    const { floorBlood } = this;
+    const { stamps } = blood;
+    if (!stamps?.length)
+      return;
+    for (let i = 0; i < stamps.length; i++) {
+      const st = stamps[i];
+      // out of tiles: that splat is drawn as a quad of its own
+      if (!floorBlood.stamp(st.x, st.y, st.size, st.seed)) {
+        this.looseFloor.push(st);
+        if (this.looseFloor.length > BLOOD.floor)
+          this.looseFloor.shift();
+        this.splatVersion = -1;
+      }
+    }
+    stamps.length = 0;
+  }
+
+  /** Lights the tiles that changed and puts them on the GPU. */
+  flushMergedBlood() {
+    const { floorBlood } = this;
+    if (!floorBlood.changed.size)
+      return;
+    for (const chunk of floorBlood.flush()) {
+      if (this.floorBloodViews.has(chunk.key))
+        this.uploadFloorBlood(chunk);
+      else
+        this.addFloorBloodView(chunk);
+      chunk.dirty = null;
+    }
+  }
+
+  /**
+   * Pours wall splats whose drips have stopped, and their drips, into the tiles of their face, so they run together with
+   * the blood already there. Running ones stay quads: they move. Doors, diagonal faces and boulders keep their quads.
+   */
+  bakeWalls(blood) {
+    const mb = this.floorBlood;
+    // a splat and its drips span up to a handful of tiles: when there is not room for them, leave them as quads
+    if (mb.chunks.size > MAX_CHUNKS - 10)
+      return;
+    for (const splat of blood.walls) {
+      if (splat.door || splat.slope || splat.age < splat.dripTime || this.mergedWalls.has(splat))
+        continue;
+      const axisX = Math.abs(splat.nx) > 0.99 && Math.abs(splat.ny) < 0.01;
+      const axisY = Math.abs(splat.ny) > 0.99 && Math.abs(splat.nx) < 0.01;
+      if (!axisX && !axisY)
+        continue;
+      const nx = axisX ? Math.sign(splat.nx) : 0;
+      const ny = axisY ? Math.sign(splat.ny) : 0;
+      const surface = mb.wall(nx, ny, Math.round(axisX ? splat.x : splat.y));
+      const opts = fillWallOpts(splat);
+      const quad = wallSplatQuad(opts);
+      if (quad)
+        this.pourWallQuad(surface, quad);
+      for (const drip of wallDripQuads(opts))
+        this.pourWallQuad(surface, drip);
+      this.mergedWalls.add(splat);
+      this.splatVersion = -1;
+    }
+  }
+
+  /** A quad lying on a wall face, poured into that face's tiles: its extent along the face and up it is read off its corners. */
+  pourWallQuad(surface, quad) {
+    const c = quad.corners;
+    let uMin = Infinity;
+    let uMax = -Infinity;
+    let vMin = Infinity;
+    let vMax = -Infinity;
+    for (let k = 0; k < 12; k += 3) {
+      const u = c[k] * surface.tx + c[k + 2] * surface.ty;
+      uMin = Math.min(uMin, u);
+      uMax = Math.max(uMax, u);
+      vMin = Math.min(vMin, c[k + 1]);
+      vMax = Math.max(vMax, c[k + 1]);
+    }
+    // a stem that narrows has a bottom edge shorter than its top (corners 0-3 are the bottom, 6-9 the top)
+    const span = uMax - uMin || 1;
+    const bottom = Math.abs((c[3] - c[0]) * surface.tx + (c[5] - c[2]) * surface.ty) / span;
+    const top = Math.abs((c[6] - c[9]) * surface.tx + (c[8] - c[11]) * surface.ty) / span;
+    this.floorBlood.stampRect(surface, uMin, uMax, vMin, vMax, quad.uv, bottom || 1, top || 1);
+  }
+
+  /** One quad over a tile, with the tile's own texture. */
+  addFloorBloodView(chunk) {
+    const opts = floorBloodTextureOptions(this.gl);
+    const sharedTexture = this.sharedTexture(chunk.atlas, opts);
+    const batch = new QuadBatch(this.gl, { capacity: 1, atlas: chunk.atlas, sharedTexture, material: this.splatMaterial() });
+    batch.sharedAtlas = chunk.atlas;
+    batch.sharedTexOptions = opts;
+    this.sharedTexturedMeshes.push(batch);
+    const quad = batch.begin();
+    quad.quad(this.floorBlood.chunkCorners(chunk, FLOOR_BLOOD_HEIGHT, WALL_BLOOD_LIFT), [0, 0, 1, 1]);
+    batch.end();
+    this.scene.addMesh(batch);
+    this.floorBloodViews.set(chunk.key, batch);
+  }
+
+  /** Re-uploads the rows of a tile that changed. */
+  uploadFloorBlood(chunk) {
+    const { gl } = this;
+    if (typeof gl.texSubImage2D !== 'function' || !chunk.dirty)
+      return;
+    const tex = this.sharedTexture(chunk.atlas, floorBloodTextureOptions(gl));
+    if (!tex)
+      return;
+    const { r0, r1 } = chunk.dirty;
+    // on a spare texture unit, so the draw state is left alone; the data is stored unflipped, so the rows go up as they are
+    const flip = gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.activeTexture(gl.TEXTURE7);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, r0, FLOOR_BLOOD_TEX, r1 - r0 + 1, gl.RGBA, gl.UNSIGNED_BYTE, chunk.atlas.data.subarray(r0 * FLOOR_BLOOD_TEX * 4, (r1 + 1) * FLOOR_BLOOD_TEX * 4));
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, flip);
+  }
+
   syncBlood(blood, dust = null, fog = null, effects = null, rubble = null) {
     this.syncParticleSprites(blood, dust, fog, effects);
+    if (this.floorBlood)
+      this.pourFloorBlood(blood);
 
     if (blood.holesVersion !== this.holesVersion) {
       this.holesVersion = blood.holesVersion;
@@ -1501,6 +1816,9 @@ export class World {
       this.dripsLive = blood.dripping;
       this.syncDrips(blood);
     }
+
+    if (this.floorBlood)
+      this.flushMergedBlood();
 
     if (blood.version === this.splatVersion)
       return;
@@ -1701,6 +2019,11 @@ export class World {
   /** One outline quad per flat wall face; the hiding faces sit just behind them. */
   buildStatic(level) {
     const { width, rowCount, kind, baseHeight, faceIds } = level;
+    // the plan of the level as an occlusion map, which the walls, floors and ceilings are shaded with
+    if (level.kind && width && rowCount) {
+      this.levelAoAtlas = buildLevelAo(level);
+      this.aoInvSize = new Vec2(1 / (width * TILE), 1 / (rowCount * TILE));
+    }
     const groups = new Map();
 
     for (let idx = 0; idx < kind.length; idx++) {
@@ -2202,7 +2525,8 @@ export class World {
     const y0Bound = bounds ? bounds.y0 : 0;
     const x1Bound = bounds ? bounds.x1 : level.width;
     const y1Bound = bounds ? bounds.y1 : level.rowCount;
-    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
+    // smooth sampling: the relief and the shine come from the material maps, not from hard-edged texels
+    const texOpts = pbrTextureOptions(gl);
     const sharedTexture = this.sharedTexture(atlas, texOpts);
     const batch = new QuadBatch(gl, {
       capacity: Math.max(1, (x1Bound - x0Bound) * (y1Bound - y0Bound)),
@@ -2216,6 +2540,7 @@ export class World {
       batch.sharedAtlas = atlas;
       batch.sharedTexOptions = texOpts;
       this.sharedTexturedMeshes.push(batch);
+      attachMaterialMaps(this, batch, atlas);
     }
     const isCorridorDoor = (tx, ty) => {
       if (!level.inBounds(tx, ty))
@@ -2280,7 +2605,8 @@ export class World {
       this.wallPixels ??= wallAtlas();
       atlas = this.wallPixels;
     }
-    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
+    // Mars rock keeps its own look; the steel walls get smooth sampling and material maps
+    const texOpts = marsRock ? { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST } : pbrTextureOptions(gl);
     const sharedTexture = this.sharedTexture(atlas, texOpts);
     const batch = new QuadBatch(gl, {
       capacity: Math.max(1, faces.length),
@@ -2296,6 +2622,8 @@ export class World {
       batch.sharedAtlas = atlas;
       batch.sharedTexOptions = texOpts;
       this.sharedTexturedMeshes.push(batch);
+      if (!marsRock)
+        attachMaterialMaps(this, batch, atlas);
     }
     batch.begin();
     for (const face of faces)
@@ -2312,7 +2640,7 @@ export class World {
     const y0Bound = bounds ? bounds.y0 : 0;
     const x1Bound = bounds ? bounds.x1 : level.width;
     const y1Bound = bounds ? bounds.y1 : level.rowCount;
-    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
+    const texOpts = pbrTextureOptions(gl);
     const sharedTexture = this.sharedTexture(this.floorPixels, texOpts);
     const batch = new QuadBatch(gl, {
       capacity: Math.max(1, (x1Bound - x0Bound) * (y1Bound - y0Bound)),
@@ -2322,13 +2650,14 @@ export class World {
       // rust is worked out in the shader, from where each pixel is in the world, so it carries on across tiles
       vertex: FLOOR_VERTEX,
       fragment: FLOOR_FRAGMENT,
-      // mipmaps keep the far floor from shimmering; close up the texels stay crisp
+      // trilinear mipmaps and anisotropy keep the far floor from shimmering and the grazing floor sharp
       textureOptions: texOpts,
     });
     if (sharedTexture) {
       batch.sharedAtlas = this.floorPixels;
       batch.sharedTexOptions = texOpts;
       this.sharedTexturedMeshes.push(batch);
+      attachMaterialMaps(this, batch, this.floorPixels);
     }
     // just under the blood, so it sits on the floor
     const y = -0.2;
@@ -2849,6 +3178,10 @@ export class World {
     const root = new Mesh(gl, geometry);
     const doorDiffuse = door.elevator ? new Vec3(0.72, 0.76, 0.82) : new Vec3(1, 1, 1);
     root.addProgram(DOOR_VERTEX, isSecret ? WALL_FRAGMENT : DOOR_FRAGMENT, new Material({ diffuse: doorDiffuse }));
+    // doors share the wall shader program, which keeps its uniforms between draws: say plainly that they have no material maps
+    attachRustNoise(this, root);
+    if (!door.elevator)
+      cullBackFaces(root);
     this.bindAtlasTexture(root, atlas, {
       magFilter: gl.NEAREST,
       minFilter: gl.NEAREST_MIPMAP_NEAREST,
@@ -2870,6 +3203,8 @@ export class World {
     geometry.setPrimitive('TRIANGLES');
     const root = new Mesh(gl, geometry);
     root.addProgram(DOOR_VERTEX, DOOR_FRAGMENT, new Material({ diffuse: new Vec3(0.92, 0.72, 0.68) }));
+    // doors share the wall shader program, which keeps its uniforms between draws: say plainly that they have no material maps
+    attachRustNoise(this, root);
     this.bindAtlasTexture(root, this.doorPixels, {
       magFilter: gl.NEAREST,
       minFilter: gl.NEAREST_MIPMAP_NEAREST,
@@ -2901,6 +3236,7 @@ export class World {
         material,
         textureOptions: texOpts,
       });
+      pbrMesh(this, mesh, atlas);
       if (sharedTexture) {
         mesh.sharedAtlas = atlas;
         mesh.sharedTexOptions = texOpts;
@@ -2970,6 +3306,7 @@ export class World {
         material,
         textureOptions: texOpts,
       });
+      pbrMesh(this, mesh, atlas);
       if (sharedTexture) {
         mesh.sharedAtlas = atlas;
         mesh.sharedTexOptions = texOpts;
@@ -3302,6 +3639,7 @@ export class World {
         material,
         textureOptions: texOpts,
       });
+      pbrMesh(this, mesh, atlas);
       if (sharedTexture) {
         mesh.sharedAtlas = atlas;
         mesh.sharedTexOptions = texOpts;
@@ -3486,6 +3824,7 @@ export class World {
       material: skinMaterial,
       textureOptions: texOpts,
     });
+    pbrMesh(this, intact, this.barrelPixels);
     if (sharedBarrelTex) {
       intact.sharedAtlas = this.barrelPixels;
       intact.sharedTexOptions = texOpts;
@@ -3549,6 +3888,7 @@ export class World {
         material: wreckMaterial,
         textureOptions: texOpts,
       });
+      pbrMesh(this, mesh, this.barrelPixels);
       if (sharedBarrelTex) {
         mesh.sharedAtlas = this.barrelPixels;
         mesh.sharedTexOptions = texOpts;
@@ -4020,7 +4360,9 @@ export class World {
       if (this.ambientLight) {
         const baseAmbient = isMars ? MARS_AMBIENT_COLOR : CEILING_AMBIENT_COLOR;
         const elevLight = elevatorLightFactor(game);
-        this.ambientLight.setColor(scratchPos.scaleVector(baseAmbient, elevLight));
+        // the tone curve of the PBR shading flattens dark scenes, so the cab is dimmed with the square of the factor and the
+        // room is a little brighter than its base colour: stepping out of the elevator is a clear change of light
+        this.ambientLight.setColor(scratchPos.scaleVector(baseAmbient, elevLight * elevLight * (isMars ? 1 : ROOM_LIGHT_GAIN)));
       }
       marsFogNearFar(game.level, player.pos, scratchFog, nvgActive);
       this.fogNearFar.setScalar(
@@ -4196,6 +4538,13 @@ export class World {
     this.updateShotgun(game);
     this.updateRocketLauncher(game);
     updateCeilingLights(this.ceilingLights, this.lightFixtures, this.camera.position, time, game, cullDist, occludeFog);
+    const cabLight = this.cutaway ? 1 : elevatorLightFactor(game);
+    if (cabLight < 1) {
+      // inside the cab the ceiling fixtures are dimmed as well, not only the ambient light
+      const cabGain = cabLight * cabLight;
+      for (let i = 0; i < this.ceilingLights.length; i++)
+        this.ceilingLights[i].diffuse.scaleVector(this.ceilingLights[i].diffuse, cabGain);
+    }
     this.syncShadows(game, occludeFog);
     this.syncBlood(game.blood, game.dust, occludeFog, game.effects, game.rubble);
 

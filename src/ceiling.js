@@ -3,8 +3,8 @@ import { Trigo, Utils } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 import { GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile, TILE_PIXELS } from './floor.js';
 import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
-import { SOLID_TEXTURED_FRAGMENT } from './quads.js';
 import { WEAPONS } from './weapon.js';
+import ceilingPbrShader from './shaders/ceiling-pbr.shadergun.json' with { type: 'json' };
 import ceilingConeShader from './shaders/ceiling-cone.shadergun.json' with { type: 'json' };
 import marsSkyShader from './shaders/mars-sky.shadergun.json' with { type: 'json' };
 
@@ -133,6 +133,15 @@ function cofferBase(t, rnd, cavityColor = COFFER) {
     }
   }
 
+  // Height: raised girder frame, deep sunken coffer well with a sloped rim
+  t.relief(0, 0, 64, 6, 0.8, 1);
+  t.relief(0, 58, 64, 6, 0.8, 1);
+  t.relief(0, 6, 6, 52, 0.8, 1);
+  t.relief(58, 6, 6, 52, 0.8, 1);
+  t.relief(6, 6, 52, 52, -3, 2);
+  for (const [gx, gy] of [[2, 2], [54, 2], [2, 54], [54, 54]])
+    t.relief(gx, gy, 8, 8, 0.6, 0.8);
+
   // Corner gusset plates with 45° beveled inner edge and structural bolts on the perimeter girder
   for (const [gx, gy] of [[2, 2], [54, 2], [2, 54], [54, 54]]) {
     const px0 = gx * s;
@@ -171,12 +180,17 @@ function drawPanels(t, rnd) {
         t.setRaw(px, py, mix(GIRDER, FLANGE, 0.22), 0.95);
     }
   }
+  t.relief(6, 28, 52, 8, 1.5, 1);
   for (const x of [12, 22, 31, 40, 50])
     rivet(t, x, 31);
 
   // Fine high-resolution acoustic micro-louver slats inside both upper and lower coffer bays
   for (const [y0, y1] of [[10, 26], [38, 54]]) {
     t.rect(10, y0, 44, y1 - y0, VOID, 0.82);
+    t.relief(10, y0, 44, y1 - y0, -0.6, 1);
+    for (let y = y0 + 1.6; y < y1 - 1; y += 2)
+      t.groove(11, y, 53, y, 0.8, -0.4);
+    t.relief(30, y0, 4, y1 - y0, 1, 0.5);
     const pitch = 2 * s;
     for (let py = (y0 + 1) * s; py < (y1 - 1) * s; py++) {
       const phase = (py - (y0 + 1) * s) % pitch;
@@ -211,6 +225,7 @@ function drawRibs(t, rnd) {
   const s = t.scale;
   // Two 3D cylindrical horizontal tie-rods deep inside the plenum
   for (const ty of [18.5, 45.5]) {
+    t.pipe(8, ty - 2, 48, 4, 1.8, true);
     const rPx = 2.0 * s;
     const cy = ty * s;
     for (let dy = -Math.ceil(rPx); dy <= Math.ceil(rPx); dy++) {
@@ -228,6 +243,10 @@ function drawRibs(t, rnd) {
   for (const x of [11, 24, 37, 50]) {
     const px0 = (x - 2) * s;
     const pw = 7 * s;
+    t.relief(x - 2, 4, 7, 56, 2.2, 0.8);
+    t.groove(x + 1.5, 4, x + 1.5, 60, 2, 0.5);
+    for (const y of [10, 31, 51])
+      t.relief(x - 2, y, 7, 3, 0.8, 0.5);
     for (let py = 4 * s; py < 60 * s; py++)
       for (let dx = 0; dx < pw; dx++) {
         const u = dx / (pw - 1);
@@ -260,6 +279,7 @@ function drawDuct(t, rnd) {
   const s = t.scale;
   // Twin 3D cylindrical armored conduit pipes alongside the main trunk
   for (const yc of [11.5, 52.5]) {
+    t.pipe(6, yc - 2, 52, 4, 2.2, true);
     const rPx = 2.0 * s;
     for (let dy = -Math.ceil(rPx); dy <= Math.ceil(rPx); dy++) {
       const cyl = Math.sqrt(Math.max(0, 1 - (dy / rPx) ** 2));
@@ -270,6 +290,8 @@ function drawDuct(t, rnd) {
     }
   }
   // Main cylindrical overhead HVAC trunk (y = 17..47) with spiral lock-rib seams
+  t.pipe(4, 16.5, 56, 30, 2.6, true);
+  t.groove(4, 31.5, 60, 31.5, 0.8, 0.5);
   for (let py = 17 * s; py < 47 * s; py++) {
     const ly = (py + 0.5) / s - 0.5;
     const norm = (ly - 31.5) / 15;
@@ -293,6 +315,7 @@ function drawDuct(t, rnd) {
   for (const x of [12, 30, 48]) {
     const px0 = x * s;
     const pw = 4 * s;
+    t.relief(x, 15, 4, 34, 0.6, 0.5);
     for (let py = 15 * s; py < 49 * s; py++) {
       const ly = (py + 0.5) / s - 0.5;
       const cyl = Math.sqrt(Math.max(0, 1 - ((ly - 31.5) / 17.5) ** 2));
@@ -315,6 +338,27 @@ function drawGrille(t, rnd) {
   const cx = 31.5;
   const cy = 31.5;
   const s = t.scale;
+  t.dome(cx + 0.5, cy + 0.5, 21, -1.2);
+  for (let a = 0; a < 48; a++) {
+    const a0 = (a / 48) * Trigo.twopi;
+    const a1 = ((a + 1) / 48) * Trigo.twopi;
+    t.groove(cx + 0.5 + Math.cos(a0) * 19.6, cy + 0.5 + Math.sin(a0) * 19.6, cx + 0.5 + Math.cos(a1) * 19.6, cy + 0.5 + Math.sin(a1) * 19.6, 2.4, -1.2);
+  }
+  t.dome(cx + 0.5, cy + 0.5, 5.4, 2.2);
+  {
+    const H = t.ensureRelief();
+    for (let py = 10 * s; py < 54 * s; py++)
+      for (let px = 10 * s; px < 54 * s; px++) {
+        const dx = (px + 0.5) / s - 0.5 - cx;
+        const dy = (py + 0.5) / s - 0.5 - cy;
+        const r = Math.hypot(dx, dy);
+        if (r < 5.4 || r >= 18.2)
+          continue;
+        const phase = ((((Math.atan2(dy, dx) + r * 0.095) * 8) / Trigo.twopi) + 10) % 1;
+        if (phase < 0.62)
+          H[py * t.width + px] += 0.9 * (1 - phase / 0.62) * Math.sin(((r - 5.4) / 12.8) * Trigo.pi);
+      }
+  }
   // Deep circular/octagonal exhaust well with 8 curved 3D-shaded aerodynamic impeller blades
   for (let py = 10 * s; py < 54 * s; py++)
     for (let px = 10 * s; px < 54 * s; px++) {
@@ -350,6 +394,9 @@ function drawGrille(t, rnd) {
     }
   // Crisp protective grating bars & central cross-beam across the turbine well
   for (let x = 14; x <= 50; x += 6) {
+    const half = Math.sqrt(Math.max(0, 19.8 ** 2 - (x + 0.5 - cx) ** 2));
+    if (half > 0)
+      t.groove(x + 0.5, cy - half, x + 0.5, cy + half, 1.2, -1.2);
     const px0 = x * s;
     for (let py = 12 * s; py < 52 * s; py++) {
       const y = (py + 0.5) / s - 0.5;
@@ -363,6 +410,7 @@ function drawGrille(t, rnd) {
       t.setRaw(px0 + s + 2, py, VOID, 0.9);
     }
   }
+  t.relief(12, 30, 40, 3, 1.2, 0.5);
   for (let py = 30 * s; py < 33 * s; py++)
     for (let px = 12 * s; px < 52 * s; px++) {
       const topHi = py < 30 * s + 2;
@@ -378,6 +426,10 @@ function drawLight(t, rnd) {
   const s = t.scale;
   // Outer recessed troffer housing (6..58, 15..49) with beveled steel frame
   t.rect(6, 15, 52, 34, VOID, 0.96);
+  t.relief(6, 15, 52, 34, 1, 0.8);
+  t.relief(8, 18, 48, 28, -2, 0.8);
+  t.relief(8, 18, 2.2, 28, 1, 0.4);
+  t.relief(53.8, 18, 2.2, 28, 1, 0.4);
   for (let px = 6 * s; px < 58 * s; px++) {
     for (let k = 0; k < s; k++) {
       t.setRaw(px, 16 * s + k, k < 2 ? VOID : FLANGE, k < 2 ? 0.95 : 0.65);
@@ -408,6 +460,7 @@ function drawLight(t, rnd) {
   // Crisp thin aluminum parabolic cross-baffles dividing the troffer into bays
   for (const x of [19, 31, 43]) {
     const px0 = x * s + 1;
+    t.groove(x + 1.5, 18, x + 1.5, 46, 1.5, -1);
     for (let py = 18 * s; py < 46 * s; py++) {
       t.setRaw(px0 - 1, py, mix(GIRDER, GLOW, 0.35), 0.72);
       t.setRaw(px0, py, FLANGE, 0.85);
@@ -422,7 +475,9 @@ function drawTruss(t, rnd) {
   cofferBase(t, rnd, VOID);
   const s = t.scale;
   // Background conduit bundle running across the dark plenum
+  const H = t.ensureRelief();
   for (const yc of [29.5, 33.5]) {
+    t.pipe(8, yc - 1, 48, 2, 1.2, true);
     for (let dy = -s; dy <= s; dy++) {
       const cyl = 1 - Math.abs(dy) / (s + 1);
       const col = mix(VOID, mix(GIRDER, FLANGE, 0.45), cyl * 0.8);
@@ -441,6 +496,7 @@ function drawTruss(t, rnd) {
       if (d <= 3.5) {
         // I-beam profile: bright raised outer flanges (d in 1.7..3.0) and recessed web center (d < 1.7)
         const flange = d >= 1.65 && d <= 2.95 ? 0.78 : d < 0.75 ? 0.55 : 0.26;
+        H[py * t.width + px] += d >= 1.65 && d <= 2.95 ? 1.9 : d < 0.75 ? 1.0 : 1.4;
         t.setRaw(px, py, mix(GIRDER, FLANGE, flange), 0.96);
       } else if (d <= 4.8) {
         t.setRaw(px, py, VOID, (1 - (d - 3.5) / 1.3) * 0.92);
@@ -456,6 +512,7 @@ function drawTruss(t, rnd) {
       if (dx + dy > 9.8)
         continue;
       const edge = Math.max(dx, dy) > 6.2 || dx + dy > 9.0;
+      H[py * t.width + px] += edge ? 0.8 : 1.6;
       const hi = (px < 27 * s || py < 27 * s) && !edge;
       t.setRaw(px, py, edge ? VOID : hi ? FLANGE : mix(GIRDER, FLANGE, 0.36), 0.96);
     }
@@ -469,6 +526,12 @@ function drawPipes(t, rnd) {
   const s = t.scale;
   t.rect(10, 10, 44, 44, VOID, 0.85);
   // Three parallel 3D cylindrical overhead pipes running along X with specular highlights and ring seams
+  t.relief(10, 10, 44, 44, -0.8, 1);
+  for (const [yc, rad] of [[17, 4], [31, 6], [46, 4]]) {
+    t.pipe(6, yc - rad, 52, rad * 2, rad === 6 ? 3 : 2.2, true);
+    for (let x = 6; x < 58; x += 6)
+      t.groove(x, yc - rad, x, yc + rad, 0.5, 0.4);
+  }
   for (const [yc, rad] of [[17, 4], [31, 6], [46, 4]])
     for (let pdy = -rad * s - 2; pdy <= rad * s + 2; pdy++) {
       const dy = pdy / s;
@@ -492,6 +555,7 @@ function drawPipes(t, rnd) {
   for (const x of [16, 46]) {
     const px0 = x * s;
     const pw = 4 * s;
+    t.relief(x, 11, 4, 42, 1.2, 0.5);
     for (let py = 11 * s; py < 53 * s; py++)
       for (let dx = 0; dx < pw; dx++) {
         const col = dx < 2 ? FLANGE : dx >= pw - 2 ? VOID : mix(GIRDER, FLANGE, 0.48);
@@ -501,6 +565,8 @@ function drawPipes(t, rnd) {
     rivet(t, x + 1, 49);
   }
   // Central manifold box (26..38, 22..40) with a circular high-resolution cyan telemetry gauge
+  t.relief(26, 22, 12, 18, 1.5, 0.6);
+  t.dome(32, 31, 3.4, 0.8);
   for (let py = 22 * s; py < 40 * s; py++)
     for (let px = 26 * s; px < 38 * s; px++) {
       const border = px < 26 * s + 2 || px >= 38 * s - 2 || py < 22 * s + 2 || py >= 40 * s - 2;
@@ -531,6 +597,7 @@ function drawHatch(t, rnd) {
   // Recessed octagonal service hatch well (11..53, 11..53) with 45° corner chamfers
   const h0 = 11 * s;
   const h1 = 53 * s;
+  const H = t.ensureRelief();
   for (let py = h0; py < h1; py++)
     for (let px = h0; px < h1; px++) {
       const dx = Math.abs(px - 32 * s + 0.5) / s;
@@ -538,6 +605,7 @@ function drawHatch(t, rnd) {
       const oct = Math.max(dx, dy, (dx + dy) * 0.76);
       if (oct > 21.0)
         continue;
+      H[py * t.width + px] += oct >= 19.0 ? 1.2 : oct >= 18.0 ? -0.8 : 0.4;
       if (oct >= 19.0)
         t.setRaw(px, py, VOID, 0.94);
       else if (oct >= 18.0) {
@@ -548,6 +616,9 @@ function drawHatch(t, rnd) {
       }
     }
   // Reinforcement cross-ribs and central lock boss
+  t.relief(15, 30, 34, 4, 0.8, 0.4);
+  t.relief(30, 15, 4, 34, 0.8, 0.4);
+  t.relief(26, 26, 12, 12, 1.2, 0.5);
   for (let py = 30 * s; py < 34 * s; py++)
     for (let px = 15 * s; px < 49 * s; px++)
       t.setRaw(px, py, py < 30 * s + 2 ? FLANGE : py >= 34 * s - 2 ? VOID : GIRDER, 0.92);
@@ -561,6 +632,7 @@ function drawHatch(t, rnd) {
     }
   // Four heavy 3D dog-clamps on the hatch edges
   for (const [cx, cy, w, h] of [[29, 11, 6, 4], [29, 49, 6, 4], [11, 29, 4, 6], [49, 29, 4, 6]]) {
+    t.relief(cx, cy, w, h, 1.5, 0.5);
     for (let dy = 0; dy < h * s; dy++)
       for (let dx = 0; dx < w * s; dx++) {
         const hi = dx < 2 || dy < 2;
@@ -573,6 +645,7 @@ function drawHatch(t, rnd) {
     const lcx = lx * s;
     const lcy = 32 * s;
     const lRad = 1.4 * s;
+    t.dome(lx, 32, 1.4, 0.5);
     for (let dy = -Math.ceil(lRad) - 2; dy <= Math.ceil(lRad) + 2; dy++)
       for (let dx = -Math.ceil(lRad) - 2; dx <= Math.ceil(lRad) + 2; dx++) {
         const r = Math.hypot(dx, dy) / lRad;
@@ -590,6 +663,7 @@ const DRAW = [drawPanels, drawRibs, drawDuct, drawGrille, drawLight, drawTruss, 
 export function ceilingAtlas() {
   const width = SIZE * 8;
   const data = new Uint8Array(width * SIZE * 4);
+  const relief = new Float32Array(width * SIZE);
   DRAW.forEach((draw, cell) => {
     const t = new Tile(SIZE, SIZE, SIZE / 64);
     draw(t, mulberry32(4400 + cell * 7919));
@@ -600,9 +674,11 @@ export function ceilingAtlas() {
         for (let k = 0; k < 3; k++)
           data[o + k] = Utils.clamp(Math.round(t.pixels[i + k]), 0, 255);
         data[o + 3] = 255;
+        if (t.heights)
+          relief[y * width + cell * SIZE + x] = t.heights[y * SIZE + x];
       }
   });
-  return { name: 'ceiling', data, width, height: SIZE, cell: SIZE, frames: 8 };
+  return { name: 'ceiling', data, relief, width, height: SIZE, cell: SIZE, frames: 8 };
 }
 
 export function ceilingCellUv(cell) {
@@ -622,6 +698,18 @@ function doorCeilingBase(t, rnd) {
   const s = t.scale;
   cofferBase(t, rnd, COFFER);
 
+  // Height: header lips and wall-header girders raised, seal channels and vestibule bay sunk
+  t.relief(0, 2, 6, 60, 1, 0.8);
+  t.relief(58, 2, 6, 60, 1, 0.8);
+  t.relief(14, 0, 36, 6, 1, 0.8);
+  t.relief(14, 58, 36, 6, 1, 0.8);
+  t.relief(14, 6, 36, 52, -0.4, 1.5);
+  for (const tx0 of [6, 50]) {
+    t.relief(tx0, 2, 8, 60, -0.6, 0.8);
+    t.groove(tx0 + 0.5, 2, tx0 + 0.5, 62, 1, -0.8);
+    t.groove(tx0 + 7.5, 2, tx0 + 7.5, 62, 1, -0.8);
+    t.groove(tx0 + 4, 2, tx0 + 4, 62, 2.4, 1);
+  }
   // Outer doorway header architrave lips (x = 0..6 and x = 58..64)
   for (const [jx0, jx1] of [[0, 6], [58, 64]]) {
     for (let py = 2 * s; py < 62 * s; py++)
@@ -673,12 +761,18 @@ function drawDoorCeilingLintel(t, rnd) {
   const s = t.scale;
   for (const [y0, y1] of [[8, 28], [36, 56]]) {
     t.rect(16, y0, 32, y1 - y0, VOID, 0.9);
+    t.relief(16, y0, 32, y1 - y0, -0.4, 0.8);
+    for (let x = 17; x < 46; x += 5)
+      t.relief(x, y0 + 1, 2, y1 - y0 - 2, 0.8, 0.4);
     for (let py = (y0 + 1) * s; py < (y1 - 1) * s; py++)
       for (let px = 17 * s; px < 47 * s; px++) {
         const rib = ((px - 17 * s) % (5 * s)) < 2 * s;
         t.setRaw(px, py, rib ? mix(GIRDER, FLANGE, 0.42) : COFFER, 0.94);
       }
   }
+  t.relief(14, 28, 36, 8, 1.8, 0.8);
+  for (const lx of [19, 43])
+    t.relief(lx, 30, 2, 4, -0.6, 0.3);
   // Central axial spine girder (y = 28..36, x = 14..50) with twin green door-clearance status lamps
   for (let py = 28 * s; py < 36 * s; py++)
     for (let px = 14 * s; px < 50 * s; px++) {
@@ -698,7 +792,11 @@ function drawDoorCeilingHoist(t, rnd) {
   const s = t.scale;
   t.rect(16, 8, 32, 48, VOID, 0.92);
   // Twin cylindrical overhead drive shafts spanning between the two door header tracks (y = 18 and y = 46)
+  t.relief(16, 8, 32, 48, -0.4, 1);
   for (const yc of [18, 46]) {
+    t.pipe(14, yc - 4, 36, 8, 2.5, true);
+    for (const cxc of [20, 44])
+      t.relief(cxc - 1.5, yc - 4.5, 3, 9, 0.6, 0.4);
     const rad = 4 * s;
     for (let dy = -rad; dy <= rad; dy++) {
       const norm = dy / rad;
@@ -713,6 +811,8 @@ function drawDoorCeilingHoist(t, rnd) {
     }
   }
   // Central synchronizing gearbox housing (x = 25..39, y = 12..52) with cyan pressure beacon
+  t.relief(25, 12, 14, 40, 2, 0.8);
+  t.dome(32, 32, 3, 0.8);
   for (let py = 12 * s; py < 52 * s; py++)
     for (let px = 25 * s; px < 39 * s; px++) {
       const border = px < 25 * s + 2 || px >= 39 * s - 2 || py < 12 * s + 2 || py >= 52 * s - 2;
@@ -730,6 +830,8 @@ function drawDoorCeilingSeal(t, rnd) {
   const s = t.scale;
   // Ribbed upper compression seal cushions bordering the two door tracks (x = 15..18 and x = 46..49)
   for (const gx0 of [15, 46])
+    t.relief(gx0, 7, 3, 50, 1.2, 0.5);
+  for (const gx0 of [15, 46])
     for (let py = 7 * s; py < 57 * s; py++) {
       const notch = ((py >> 2) % 3) === 0;
       const col = notch ? VOID : mix(GIRDER, FLANGE, 0.48);
@@ -738,6 +840,9 @@ function drawDoorCeilingSeal(t, rnd) {
     }
   // Central air-curtain purge grille (x = 20..44, y = 10..54)
   t.rect(20, 10, 24, 44, VOID, 0.94);
+  t.relief(20, 10, 24, 44, -0.4, 0.8);
+  for (let y = 12.9; y < 52; y += 3)
+    t.groove(22, y, 42, y, 0.9, -0.7);
   for (let py = 12 * s; py < 52 * s; py++) {
     const slat = ((py - 12 * s) % (3 * s)) < 1.8 * s;
     for (let px = 22 * s; px < 42 * s; px++)
@@ -752,6 +857,12 @@ function drawDoorCeilingSeal(t, rnd) {
 function drawDoorCeilingStrobe(t, rnd) {
   doorCeilingBase(t, rnd);
   const s = t.scale;
+  for (const lx0 of [16.5, 43.5]) {
+    t.relief(lx0, 9, 4, 46, -0.5, 0.6);
+    for (let y = 9; y < 55; y += 7)
+      t.relief(lx0, y, 4, 1, 1.2, 0.3);
+  }
+  t.dome(32, 32, 7.5, 2.5);
   // Twin recessed linear threshold light bars flanking the two door header tracks (x = 16.5..20.5 and x = 43.5..47.5)
   for (const lx0 of [16.5, 43.5]) {
     const px0 = Math.round(lx0 * s);
@@ -787,6 +898,11 @@ function drawDoorCeilingStrobe(t, rnd) {
 function drawDoorCeilingLock(t, rnd, accent) {
   doorCeilingBase(t, rnd);
   const s = t.scale;
+  for (const sx0 of [15, 46])
+    t.relief(sx0, 8, 3, 48, 0.8, 0.4);
+  t.relief(21, 14, 22, 36, -0.4, 0.8);
+  t.relief(23, 16, 18, 32, 1, 0.5);
+  t.relief(26, 24, 12, 16, -0.6, 0.4);
   // Security keycard light rails running alongside both overhead door header tracks (x = 15..18 and x = 46..49)
   for (const sx0 of [15, 46])
     for (let py = 8 * s; py < 56 * s; py++) {
@@ -816,6 +932,8 @@ function drawDoorCeilingVestibule(t, rnd) {
   doorCeilingBase(t, rnd);
   const s = t.scale;
   t.rect(16, 8, 32, 48, VOID, 0.92);
+  t.relief(16, 8, 32, 48, -0.4, 1);
+  const H = t.ensureRelief();
   for (let py = 9 * s; py < 55 * s; py++)
     for (let px = 17 * s; px < 47 * s; px++) {
       const lx = (px + 0.5) / s;
@@ -824,8 +942,12 @@ function drawDoorCeilingVestibule(t, rnd) {
       const d2 = Math.abs((lx - 17) * 1.45 - (55 - ly));
       const d = Math.min(d1, d2);
       if (d <= 2.6)
+        H[py * t.width + px] += d < 1.1 ? 1.8 : 1.3;
+      if (d <= 2.6)
         t.setRaw(px, py, mix(GIRDER, FLANGE, d < 1.1 ? 0.68 : 0.32), 0.96);
     }
+  for (const [bx, by] of [[19, 12], [43, 12], [19, 50], [43, 50]])
+    t.dome(bx + 1, by + 1, 1.2, 0.7);
   for (const [bx, by] of [[19, 12], [43, 12], [19, 50], [43, 50]])
     for (let py = by * s; py < (by + 2) * s; py++)
       for (let px = bx * s; px < (bx + 2) * s; px++)
@@ -850,6 +972,7 @@ const DOOR_CEILING_DRAW = [
 export function doorCeilingAtlas() {
   const width = SIZE * DOOR_CEILING_CELL_COUNT;
   const data = new Uint8Array(width * SIZE * 4);
+  const relief = new Float32Array(width * SIZE);
   DOOR_CEILING_DRAW.forEach((draw, cell) => {
     const t = new Tile(SIZE, SIZE, SIZE / 64);
     draw(t, mulberry32(41000 + cell * 6733));
@@ -860,9 +983,11 @@ export function doorCeilingAtlas() {
         for (let k = 0; k < 3; k++)
           data[o + k] = Utils.clamp(Math.round(t.pixels[i + k]), 0, 255);
         data[o + 3] = 255;
+        if (t.heights)
+          relief[y * width + cell * SIZE + x] = t.heights[y * SIZE + x];
       }
   });
-  return { name: 'doorCeiling', data, width, height: SIZE, cell: SIZE, frames: DOOR_CEILING_CELL_COUNT };
+  return { name: 'doorCeiling', data, relief, width, height: SIZE, cell: SIZE, frames: DOOR_CEILING_CELL_COUNT };
 }
 
 /** Texture coordinates of a door-corridor ceiling cell (`0..DOOR_CEILING_CELL_COUNT-1`). */
@@ -924,7 +1049,7 @@ export function ceilingCellFor(tile, door = false, lock = null, vestibule = fals
  * Instead it deepens the recessed overhead coffer cavities, shades girder seams with dark industrial soot, and keeps
  * the fluorescent light diffusers and cyan status beacons crisp and self-lit.
  */
-export const CEILING_FRAGMENT = SOLID_TEXTURED_FRAGMENT;
+export const CEILING_FRAGMENT = ceilingPbrShader.fragment;
 
 
 /**
@@ -1036,6 +1161,8 @@ export function collectDynamicLights(game, cameraPos, time = 0, maxRadius = Infi
   if (Array.isArray(game.shots))
     for (let i = 0; i < game.shots.length; i++) {
       const shot = game.shots[i];
+      if (shot.kind === 'grenade')
+        continue;
       if (fog && !fog.canSeeNear(shot.pos))
         continue;
       const entry = acquireDynamicLight(dynamicLightCount);

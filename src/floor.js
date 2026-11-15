@@ -46,6 +46,23 @@ function texelMicroGrain(px, py) {
   return (((Math.imul(h, 1911520717) >>> 0) % 1000) / 1000) - 0.5;
 }
 
+/**
+ * Copies a drawn `tile` into the RGBA `data` of an atlas `atlasWidth` texels wide at column `x0`, and its authored
+ * relief (if any) into the atlas's `relief` field at the same place.
+ */
+export function blitTile(data, relief, atlasWidth, tile, x0) {
+  for (let y = 0; y < tile.height; y++)
+    for (let x = 0; x < tile.width; x++) {
+      const i = (y * tile.width + x) * 3;
+      const o = (y * atlasWidth + x0 + x) * 4;
+      for (let k = 0; k < 3; k++)
+        data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
+      data[o + 3] = 255;
+      if (tile.heights)
+        relief[y * atlasWidth + x0 + x] = tile.heights[y * tile.width + x];
+    }
+}
+
 /** A small RGB picture to draw on; the barrel shares it. */
 export class Tile {
   constructor(width = TILE_PIXELS, height = TILE_PIXELS, scale = 1) {
@@ -76,6 +93,81 @@ export class Tile {
     for (let dy = 0; dy < s; dy++)
       for (let dx = 0; dx < s; dx++)
         this.setRaw(px0 + dx, py0 + dy, color, amount);
+  }
+
+  /**
+   * The relief of the picture: a height in world units for every texel (0 = the flat surface, + raised, - sunk), made
+   * only when something is drawn into it. Shapes are given in the same 64-unit space as `rect`, and add to each other.
+   * The material maps are built from it, so the grooves, plates and rivets drawn here have real depth under the light.
+   */
+  ensureRelief() {
+    this.heights ??= new Float32Array(this.width * this.height);
+    return this.heights;
+  }
+
+  /** Raises (amount > 0) or sinks (amount < 0) a rectangle; `edge` is the width of its sloped rim, in world units. */
+  relief(x0, y0, w, h, amount, edge = 0.8) {
+    const s = this.scale;
+    const H = this.ensureRelief();
+    const px0 = Math.round(x0 * s);
+    const py0 = Math.round(y0 * s);
+    const px1 = Math.round((x0 + w) * s);
+    const py1 = Math.round((y0 + h) * s);
+    const rim = Math.max(1, edge * s);
+    for (let py = Math.max(0, py0); py < Math.min(this.height, py1); py++)
+      for (let px = Math.max(0, px0); px < Math.min(this.width, px1); px++) {
+        const d = Math.min(px - px0 + 0.5, px1 - px - 0.5, py - py0 + 0.5, py1 - py - 0.5);
+        H[py * this.width + px] += amount * Utils.smoothstep(0, rim, d);
+      }
+  }
+
+  /** A round bump (rivet, bolt head, boss) or, with a negative amount, a round dent. */
+  dome(cx, cy, radius, amount) {
+    const s = this.scale;
+    const H = this.ensureRelief();
+    const pcx = cx * s;
+    const pcy = cy * s;
+    const pr = radius * s;
+    for (let py = Math.max(0, Math.floor(pcy - pr)); py <= Math.min(this.height - 1, Math.ceil(pcy + pr)); py++)
+      for (let px = Math.max(0, Math.floor(pcx - pr)); px <= Math.min(this.width - 1, Math.ceil(pcx + pr)); px++) {
+        const d = Math.hypot(px + 0.5 - pcx, py + 0.5 - pcy) / pr;
+        if (d < 1)
+          H[py * this.width + px] += amount * Math.sqrt(1 - d * d);
+      }
+  }
+
+  /** A groove (seam, scratch, slot) along a line, `width` wide and `depth` deep, rounded across; `depth` < 0 makes a ridge. */
+  groove(x0, y0, x1, y1, width, depth) {
+    const s = this.scale;
+    const H = this.ensureRelief();
+    const ax = x0 * s;
+    const ay = y0 * s;
+    const bx = x1 * s;
+    const by = y1 * s;
+    const half = Math.max(0.75, (width * s) / 2);
+    const len2 = Math.max((bx - ax) ** 2 + (by - ay) ** 2, 1e-6);
+    for (let py = Math.max(0, Math.floor(Math.min(ay, by) - half)); py <= Math.min(this.height - 1, Math.ceil(Math.max(ay, by) + half)); py++)
+      for (let px = Math.max(0, Math.floor(Math.min(ax, bx) - half)); px <= Math.min(this.width - 1, Math.ceil(Math.max(ax, bx) + half)); px++) {
+        const u = Utils.clamp(((px + 0.5 - ax) * (bx - ax) + (py + 0.5 - ay) * (by - ay)) / len2, 0, 1);
+        const d = Math.hypot(px + 0.5 - (ax + (bx - ax) * u), py + 0.5 - (ay + (by - ay) * u)) / half;
+        if (d < 1)
+          H[py * this.width + px] -= depth * Math.sqrt(1 - d * d);
+      }
+  }
+
+  /** A round pipe or rod filling the rectangle: lengthwise along X (`alongX`) or along Y, `amount` high at its crest. */
+  pipe(x0, y0, w, h, amount, alongX = true) {
+    const s = this.scale;
+    const H = this.ensureRelief();
+    const px0 = Math.round(x0 * s);
+    const py0 = Math.round(y0 * s);
+    const px1 = Math.round((x0 + w) * s);
+    const py1 = Math.round((y0 + h) * s);
+    for (let py = Math.max(0, py0); py < Math.min(this.height, py1); py++)
+      for (let px = Math.max(0, px0); px < Math.min(this.width, px1); px++) {
+        const t = alongX ? ((py + 0.5 - py0) / (py1 - py0)) * 2 - 1 : ((px + 0.5 - px0) / (px1 - px0)) * 2 - 1;
+        H[py * this.width + px] += amount * Math.sqrt(Math.max(0, 1 - t * t));
+      }
   }
 
   get(x, y) {
@@ -138,6 +230,8 @@ export function plate(t, x0, y0, w, h, rnd, base = METAL) {
     w /= s;
     h /= s;
   }
+  // a plate stands proud of what is around it, with a chamfered rim
+  t.relief(x0, y0, w, h, 0.7, 1.1);
   for (let y = y0; y < y0 + h; y++)
     for (let x = x0; x < x0 + w; x++) {
       const grain = (rnd() - 0.5) * 7 + (((x >> 2) + (y >> 2)) % 2 ? 1.5 : 0);
@@ -209,6 +303,7 @@ export function plate(t, x0, y0, w, h, rnd, base = METAL) {
 
 export function rivet(t, x, y) {
   const s = t.scale;
+  t.dome(x + 1.5, y + 1.5, 1.65, 0.9);
   if (s === 1) {
     t.rect(x, y, 3, 3, mix(METAL, LIGHT, 0.55));
     t.set(x, y, LIGHT);
@@ -325,6 +420,12 @@ function deckPlateDetail(t, x0, y0, w, h) {
   const py0 = (y0 + 4) * s;
   const px1 = (x0 + w - 4) * s;
   const py1 = (y0 + h - 4) * s;
+  const H = t.ensureRelief();
+  // the inner border is a sunk groove
+  t.groove(x0 + 4, y0 + 4, x0 + w - 4, y0 + 4, 1.4, 0.8);
+  t.groove(x0 + 4, y0 + h - 4, x0 + w - 4, y0 + h - 4, 1.4, 0.8);
+  t.groove(x0 + 4, y0 + 4, x0 + 4, y0 + h - 4, 1.4, 0.8);
+  t.groove(x0 + w - 4, y0 + 4, x0 + w - 4, y0 + h - 4, 1.4, 0.8);
   // Recessed inner border groove
   for (let px = px0; px < px1; px++) {
     t.setRaw(px, py0, SHADOW, 0.62);
@@ -348,6 +449,7 @@ function deckPlateDetail(t, x0, y0, w, h) {
       const v = alt ? cellX + cellY - 15 : cellX - cellY;
       if (Math.abs(u) <= 1 && Math.abs(v) <= 4) {
         t.setRaw(px, py, u <= 0 ? LIGHT : SHADOW, u <= 0 ? 0.22 : 0.28);
+        H[py * t.width + px] += 0.45 * (1 - Math.abs(u) * 0.3);
       }
     }
 }
@@ -377,6 +479,9 @@ function drawGrating(t, rnd) {
       t.setRaw(58 * s + k, i, k < 2 ? SHADOW : LIGHT, k < 2 ? 0.65 : 0.72);
     }
   }
+  // the grating frame is a raised bezel, and everything inside it is open to the pit below
+  t.relief(5, 5, 54, 54, -2.4, 1.4);
+  const H = t.ensureRelief();
   // High-definition diamond-mesh industrial grating over a dark sub-floor pit with deep I-beam joists
   for (let py = g0; py < g1; py++)
     for (let px = g0; px < g1; px++) {
@@ -395,6 +500,8 @@ function drawGrating(t, rnd) {
         const jitter = (((px * 13 ^ py * 29) & 7) - 3.5) * 0.015;
         const col = mix(SHADOW, mix(METAL, LIGHT, 0.72), Utils.clamp(shade + jitter, 0.08, 0.96));
         t.setRaw(px, py, col, 0.98);
+        // the bars stand up round-topped, a little above the frame
+        H[py * t.width + px] = 0.5 + profile * 0.6;
       } else {
         // Deep pit void with two dimly lit sub-floor support girders at y = 21 and y = 43
         const joistDist = Math.min(Math.abs(ly - 21), Math.abs(ly - 43));
@@ -425,6 +532,29 @@ function drawHatch(t, rnd) {
       const dx = x - cx;
       const dy = y - cy;
       const d = scratchPt.setScalar(dx, dy).getMagnitude();
+      // the relief of the hatch: raised collar, sunk gasket channel, raised rim, ribbed cover, handwheel on top
+      let lift = 0;
+      if (d < 24.2 && d >= 22.0)
+        lift = 0.8;
+      else if (d < 22.0 && d >= 19.2)
+        lift = -1.1;
+      else if (d < 19.2 && d >= 17.2)
+        lift = 0.9;
+      else if (d < 17.2) {
+        const ribY0 = Math.abs(((y + 4) % 6) - 3);
+        lift = 0.2 + (Math.min(Math.abs(dx), Math.abs(dy)) < 1.35 ? 0.5 : ribY0 < 1.1 ? 0.3 : 0);
+      }
+      if (d <= 10.6) {
+        const ang0 = Math.atan2(dy, dx);
+        const spokeD = Math.abs(Math.sin(ang0 * 3)) * d;
+        if (d < 3.6)
+          lift += 1.4 * Math.sqrt(Math.max(0, 1 - (d / 3.6) ** 2));
+        else if (d >= 7.8 && d <= 10.2)
+          lift += 1.2 * Math.sqrt(Math.max(0, 1 - ((d - 9.0) / 1.25) ** 2));
+        else if (d >= 3.2 && d <= 8.4 && spokeD < 1.05)
+          lift += 0.9 * Math.sqrt(Math.max(0, 1 - spokeD ** 2 / 1.1));
+      }
+      t.ensureRelief()[py * t.width + px] += lift;
       if (d < 24.2 && d >= 22.0) {
         // Outer machined collar bevel
         const bevelAmt = (dx + dy) / (d + 0.01) < 0 ? 0.55 : 0.15;
@@ -496,6 +626,9 @@ function drawPatched(t, rnd) {
       if (px < px0 || px >= px0 + pw || py < py0 || py >= py0 + ph)
         t.setRaw(px, py, SHADOW, 0.68);
   plate(t, x0, y0, w, h, rnd, mix(METAL, LIGHT, 0.24));
+  // the weld bead is a ridge all round the patch
+  for (const [ax, ay, bx, by] of [[x0, y0, x0 + w, y0], [x0, y0 + h, x0 + w, y0 + h], [x0, y0, x0, y0 + h], [x0 + w, y0, x0 + w, y0 + h]])
+    t.groove(ax, ay, bx, by, 1.5, -0.7);
   // Native-resolution rippled TIG-weld bead around the entire patch perimeter
   for (let dx = -2; dx <= pw + 1; dx++) {
     const ripple = Math.sin(dx * 0.85) * 0.5 + 0.5;
@@ -540,8 +673,11 @@ function drawCracked(t, rnd) {
       const cx = Math.round((prevX + (x - prevX) * f) * s + jitter);
       const cy = y * s + sub;
       for (let dx = -4; dx <= 5; dx++) {
-        if (dx >= -1 && dx <= 1)
+        if (dx >= -1 && dx <= 1) {
           t.setRaw(cx + dx, cy, SHADOW, 0.98);
+          if (cx + dx >= 0 && cx + dx < t.width && cy >= 0 && cy < t.height)
+            t.ensureRelief()[cy * t.width + cx + dx] -= dx === 0 ? 1.6 : 1.0;
+        }
         else if (dx === 2 || dx === 3)
           t.setRaw(cx + dx, cy, SHADOW, dx === 2 ? 0.72 : 0.38);
         else if (dx === -2 || dx === -3)
@@ -566,6 +702,8 @@ function drawCracked(t, rnd) {
         const rx = Math.round((ox + (px - ox) * f) * s);
         const ry = Math.round((oy + (py - oy) * f) * s);
         t.setRaw(rx, ry, SHADOW, 0.92 * fade);
+        if (rx >= 0 && rx < t.width && ry >= 0 && ry < t.height)
+          t.ensureRelief()[ry * t.width + rx] -= 1.2 * fade;
         t.setRaw(rx + 1, ry, SHADOW, 0.58 * fade);
         t.setRaw(rx, ry + 1, LIGHT, 0.38 * fade);
       }
@@ -579,8 +717,13 @@ function drawCracked(t, rnd) {
     for (let dy = -Math.ceil(ry) - 1; dy <= Math.ceil(ry) + 1; dy++)
       for (let dx = -Math.ceil(rx) - 1; dx <= Math.ceil(rx) + 1; dx++) {
         const d = Math.hypot(dx / rx, dy / ry);
-        if (d <= 0.85)
+        if (d <= 0.85) {
           t.setRaw(cx + dx, cy + dy, SHADOW, 0.9);
+          const hx = Math.round(cx + dx);
+          const hy = Math.round(cy + dy);
+          if (hx >= 0 && hx < t.width && hy >= 0 && hy < t.height)
+            t.ensureRelief()[hy * t.width + hx] -= 1.3 * (1 - d * 0.4);
+        }
         else if (d <= 1.2)
           t.setRaw(cx + dx, cy + dy, dx + dy > 0 ? LIGHT : SHADOW, 0.45);
       }
@@ -590,6 +733,7 @@ function drawCracked(t, rnd) {
 function drawConduit(t, rnd) {
   drawPlain(t, rnd);
   const s = t.scale;
+  t.relief(0, 16, 64, 30, -1.6, 1.0);
   // Recessed dark cable trench across y = 16..46
   for (let py = 16 * s; py < 46 * s; py++)
     for (let px = 0; px < t.width; px++) {
@@ -609,6 +753,8 @@ function drawConduit(t, rnd) {
         const norm = dy / rPx;
         if (Math.abs(norm) <= 1.0) {
           const nz = Math.sqrt(Math.max(0, 1 - norm * norm));
+          if (px >= 0 && px < t.width && py >= 0 && py < t.height)
+            t.ensureRelief()[py * t.width + px] += (rad * 1.1) * nz * (1 + rib * 0.6);
           const spec = Math.max(0, -norm * 0.55 + nz * 0.65) + rib;
           const col = spec > 0.62
             ? mix(METAL, LIGHT, Math.min(1, 0.38 + (spec - 0.62) * 1.45))
@@ -625,6 +771,7 @@ function drawConduit(t, rnd) {
     const py0 = 15 * s;
     const pw = 5 * s;
     const ph = 33 * s;
+    t.relief(x, 15, 5, 33, 2.4, 0.6);
     for (let py = py0; py < py0 + ph; py++)
       for (let px = px0 - 2; px < px0 + pw + 2; px++) {
         if (px < px0 || px >= px0 + pw) {
@@ -661,6 +808,8 @@ function drawHazard(t, rnd) {
       const stripeDist = Math.min(band, Math.abs(band - 1), 2 - band) * 9 * s;
       const stripe = band < 1.0;
       const tread = (((px % 12) === (py % 12)) || ((px + py) % 12 === 0)) && (px % 12 > 2) && (px % 12 < 9);
+      if (tread && px >= 0 && py >= 0)
+        t.ensureRelief()[py * t.width + px] += 0.4;
       if (!stripe) {
         if (stripeDist < 1.5)
           t.setRaw(px, py, SHADOW, 0.75);
@@ -678,6 +827,8 @@ function drawHazard(t, rnd) {
       const edgeAlpha = Math.min(1, stripeDist * 0.75) * 0.92;
       t.setRaw(px, py, col, edgeAlpha);
     }
+  t.groove(3, 5.8, 61, 5.8, 1.6, 0.9);
+  t.groove(3, 58.2, 61, 58.2, 1.6, 0.9);
   // Recessed steel threshold rails top & bottom
   for (let px = 3 * s; px < 61 * s; px++)
     for (let k = 0; k < s; k++) {
@@ -692,6 +843,7 @@ function drawLights(t, rnd) {
   drawPlain(t, rnd);
   const s = t.scale;
   for (const y of [14, 49]) {
+    t.relief(4, y - 3, 56, 7, -1.2, 0.7);
     // Dark recessed steel bezel housing around each floor light strip
     const py0 = (y - 3) * s;
     const py1 = (y + 4) * s;
@@ -730,6 +882,7 @@ export function floorAtlas() {
   const width = TILE_PIXELS * FLOOR_CELL_COUNT;
   const height = TILE_PIXELS;
   const data = new Uint8Array(width * height * 4);
+  const relief = new Float32Array(width * height);
   DRAW.forEach((draw, cell) => {
     const tile = new Tile(TILE_PIXELS, TILE_PIXELS, TILE_PIXELS / 64);
     draw(tile, mulberry32(7000 + cell * 104729));
@@ -740,9 +893,11 @@ export function floorAtlas() {
         for (let k = 0; k < 3; k++)
           data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
         data[o + 3] = 255;
+        if (tile.heights)
+          relief[y * width + cell * TILE_PIXELS + x] = tile.heights[y * TILE_PIXELS + x];
       }
   });
-  return { name: 'floor', data, width, height, cell: TILE_PIXELS, frames: FLOOR_CELL_COUNT };
+  return { name: 'floor', data, relief, width, height, cell: TILE_PIXELS, frames: FLOOR_CELL_COUNT };
 }
 
 /** Texture coordinates of a cell: [u0, v0, u1, v1], with v1 at the top of the image. A hair inside, so mipmaps do not bleed. */

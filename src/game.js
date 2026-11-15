@@ -137,7 +137,7 @@ export const CACHE_LID_TIME = 0.35;
 export const CACHE_LOOT_TIME = 0.68;
 export const CACHE_LOOT_STAGGER = CACHE_LOOT_TIME * 0.5;
 export const CHEST_LOCK_RINGS = 3;
-export const CHEST_LOCK_SPEEDS = Object.freeze([1.85, -3.40, 5.80]);
+export const CHEST_LOCK_SPEEDS = Object.freeze([2.10, -3.00, 4.75]);
 export const CHEST_LOCK_GAP_HALF = Object.freeze([0.42, 0.36, 0.30]);
 
 function makeBody(pos, radius, { type = 'dynamic', mass = 1, sensor = false, category, mask, velocity, heading = null, speed = 0 }) {
@@ -969,7 +969,7 @@ export class Game {
     lock.needle = 0;
     lock.missFlash = 0;
     lock.hitFlash = 0;
-    const base = ((cache.idx * 73) % 100) / 100 * Trigo.twopi;
+    const base = Math.random() * Trigo.twopi;
     lock.targets[0] = (base + 1.15) % Trigo.twopi;
     lock.targets[1] = (base + 3.25) % Trigo.twopi;
     lock.targets[2] = (base + 5.15) % Trigo.twopi;

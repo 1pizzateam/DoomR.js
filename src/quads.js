@@ -79,7 +79,7 @@ export const PARTICLE_FRAGMENT = particleLitShader.fragment;
  * which it owns) from them, with what was last filled.
  */
 export class QuadBatch extends RoostrQuadBatch {
-  constructor(gl, { capacity, atlas, sharedTexture = null, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, vertex = TEXTURED_VERTEX, fragment = SOLID_TEXTURED_FRAGMENT }) {
+  constructor(gl, { capacity, atlas, sharedTexture = null, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, vertex = TEXTURED_VERTEX, fragment = SOLID_TEXTURED_FRAGMENT, pbr = null }) {
     super(gl, {
       capacity,
       vertexShader: vertex,
@@ -89,8 +89,95 @@ export class QuadBatch extends RoostrQuadBatch {
       texture: sharedTexture ? undefined : atlas?.data,
       textureOptions: sharedTexture ? undefined : { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions },
     });
+    this.pbrTextures = null;
+    if (pbr)
+      this.setPbrTextures(pbr.normal, pbr.detail, pbr.ao, pbr.noise);
+  }
+
+  /**
+   * Turns on physically based shading for this batch: `normal` is the GPU texture of the material atlas (normal x and
+   * y, height, AO; laid out like the colour atlas, see `pbr.js`), `detail` the fine-grain normal map, `ao` the level's
+   * occlusion map and `noise` the rust noise. RoostR binds one texture per mesh, so these sit on texture units 1 to 4
+   * and are bound in `renderSelf`, just before the draw.
+   */
+  setPbrTextures(normal, detail = null, ao = null, noise = null) {
+    installPbrTextures(this, normal, detail, ao, noise);
+  }
+
+  renderSelf(projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame) {
+    bindPbrMaps(this, blendMode);
+    return super.renderSelf(projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame);
   }
 }
+
+function installPbrTextures(mesh, normal, detail, ao, noise) {
+  if (!mesh.pbrTextures && typeof mesh.addCustomUniform === 'function') {
+    mesh.addCustomUniform('hasPbr', 'uniform1i', 1);
+    mesh.addCustomUniform('hasNoise', 'uniform1i', 1);
+    mesh.addCustomUniform('normalSampler', 'uniform1i', 1);
+    mesh.addCustomUniform('detailSampler', 'uniform1i', 2);
+    mesh.addCustomUniform('aoSampler', 'uniform1i', 3);
+    mesh.addCustomUniform('noiseSampler', 'uniform1i', 4);
+    mesh.addCustomUniform('aoInvSize', 'uniform2f', new Vec2(0, 0));
+    mesh.addCustomUniform('parallax', 'uniform1f', 1);
+  }
+  mesh.pbrTextures = { normal, detail, ao, noise };
+}
+
+/** Binds the material maps on units 1 to 4, just before the mesh draws. */
+function bindPbrMaps(mesh, blendMode) {
+  const pbr = mesh.pbrTextures;
+  const gl = mesh.context;
+  if (!pbr || !mesh.isActive() || mesh.blendMode !== blendMode || typeof gl.activeTexture !== 'function')
+    return;
+  const bound = boundUnits(gl);
+  let switched = bindUnit(gl, bound, 1, pbr.normal);
+  switched = bindUnit(gl, bound, 2, pbr.detail) || switched;
+  switched = bindUnit(gl, bound, 3, pbr.ao) || switched;
+  switched = bindUnit(gl, bound, 4, pbr.noise) || switched;
+  if (switched)
+    gl.activeTexture(gl.TEXTURE0);
+}
+
+/**
+ * Gives a plain mesh (barrel, chest, furniture) the same material maps a QuadBatch can have: afterwards it has
+ * `setPbrTextures` and binds them just before each draw. Returns the mesh.
+ */
+export function enableMeshPbr(mesh) {
+  if (mesh.setPbrTextures)
+    return mesh;
+  mesh.pbrTextures = null;
+  mesh.setPbrTextures = (normal, detail = null, ao = null, noise = null) => installPbrTextures(mesh, normal, detail, ao, noise);
+  const base = mesh.renderSelf;
+  mesh.renderSelf = function (projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame) {
+    bindPbrMaps(this, blendMode);
+    return base.call(this, projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame);
+  };
+  return mesh;
+}
+
+/** The texture last bound on each extra unit of a context, so batches that share maps do not bind them again. */
+const boundUnitsOfContext = new WeakMap();
+
+function boundUnits(gl) {
+  let units = boundUnitsOfContext.get(gl);
+  if (!units) {
+    units = [];
+    boundUnitsOfContext.set(gl, units);
+  }
+  return units;
+}
+
+/** Binds `texture` on texture `unit` unless it is already there; returns whether the active unit was changed. */
+function bindUnit(gl, bound, unit, texture) {
+  if (bound[unit] === texture)
+    return false;
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  bound[unit] = texture;
+  return true;
+}
+
 
 /**
  * A mesh of any geometry with a texture on it, drawn like the batches above: the picture times the material colour,

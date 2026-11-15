@@ -1,16 +1,19 @@
 import { Bezier, Rect, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
+import { PRINT_UNIT, RES, SCALE, TIP_HEIGHTS, paintDrop, paintFloorSplatCell, paintGib, paintPrint, paintStem, paintTip, paintWallSplatCell } from './bloodpaint.js';
 
 /**
- * Blood as 2D sprites: one small pixel-art atlas, drawn here in code like the wraith's, and the functions that
+ * Blood as 2D sprites: one high definition atlas, painted in code by bloodpaint.js, and the functions that
  * place a cell of it in the world: flat on the floor, flat on a wall, or facing the camera. They only compute
  * corners and texture coordinates, so they stay headless and tested; the world puts them in a RoostR mesh.
  *
- * The atlas is a single row of 32 x 32 cells: floor splats, wall splats, footprints, droplets, gibs, and the stems and tips of drips.
- * Pixels are red already (brighter where the blood is fresher), so the mesh only has to dim them.
+ * The atlas is a single row of 128 x 128 texel cells: floor splats, wall splats, footprints, droplets, gibs, and the stems and tips of drips.
+ * The texels are lit and red already (wet highlights, thin blood bright, thick blood dark), so the mesh only has to dim them.
  */
 
 export const CELL = 32;
+/** Texels across one cell of the atlas: the cells are painted at 4 texels to a unit of the CELL grid. */
+export const CELL_TEXELS = RES;
 const FLOOR_VARIANTS = 6;
 const WALL_VARIANTS = 4;
 export const GIB_VARIANTS = 5;
@@ -32,356 +35,20 @@ const CELL_COUNT = CELLS.tips + TIP_KINDS;
 
 // marks stop this far short of the edge of a face, so none sits right on a corner
 const EDGE = 0.3;
-const RED = [232, 16, 44];
-const BONE = [238, 172, 138];
-const scratchPt = new Vec2();
 const scratchTangent = new Vec2();
 const scratchCornerMin = new Vec2();
 const scratchCornerMax = new Vec2();
 
-class Canvas {
-  constructor() {
-    this.light = new Float32Array(CELL * CELL);
-    this.bone = new Uint8Array(CELL * CELL);
-  }
+// The atlas is painted at 128 texels a cell (see bloodpaint.js); CELL stays the 32-unit grid that the marks, drips and
+// footprints are laid out in, so every size and offset below is unchanged.
+export { TIP_HEIGHTS };
+const PRINT_PIXELS = PRINT_UNIT / SCALE;
 
-  put(x, y, light, isBone = 0) {
-    x = Math.round(x);
-    y = Math.round(y);
-    if (x >= 0 && y >= 0 && x < CELL && y < CELL && light > this.light[y * CELL + x]) {
-      this.light[y * CELL + x] = light;
-      this.bone[y * CELL + x] = isBone;
-    }
-  }
-
-  /** Overwrites, for where an outline must stay dark inside a bright shape. */
-  set(x, y, light, isBone = 0) {
-    x = Math.round(x);
-    y = Math.round(y);
-    if (x >= 0 && y >= 0 && x < CELL && y < CELL) {
-      this.light[y * CELL + x] = light;
-      this.bone[y * CELL + x] = isBone;
-    }
-  }
-
-  line(x0, y0, x1, y1, light, isBone = 0) {
-    const steps = Math.ceil(scratchPt.setScalar(x1 - x0, y1 - y0).getMagnitude() * 1.5) || 1;
-    for (let i = 0; i <= steps; i++)
-      this.put(x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps, light, isBone);
-  }
-
-  /** A blob: dim inside, bright rim, optionally a bright highlight. */
-  blob(cx, cy, radius, light = 0.9, isBone = 0) {
-    for (let y = Math.floor(cy - radius - 1); y <= Math.ceil(cy + radius + 1); y++)
-      for (let x = Math.floor(cx - radius - 1); x <= Math.ceil(cx + radius + 1); x++) {
-        const d = scratchPt.setScalar(x - cx, y - cy).getMagnitude();
-        if (d <= radius - 0.9)
-          this.put(x, y, (x + y) % 2 ? light * 0.36 : light * 0.24, isBone);
-        else if (d <= radius + 0.2)
-          this.put(x, y, light, isBone);
-      }
-  }
-
-  polygon(points, rim, fill, hatch = false) {
-    const inside = (x, y) => {
-      let hit = false;
-      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-        const [xi, yi] = points[i];
-        const [xj, yj] = points[j];
-        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
-          hit = !hit;
-      }
-      return hit;
-    };
-    if (fill > 0)
-      for (let y = 0; y < CELL; y++)
-        for (let x = 0; x < CELL; x++)
-          if (inside(x, y))
-            this.put(x, y, hatch && x % 3 === 0 ? fill * 1.6 : (x + y) % 2 ? fill * 0.8 : fill * 0.55);
-    for (let i = 0; i < points.length; i++) {
-      const [x0, y0] = points[i];
-      const [x1, y1] = points[(i + 1) % points.length];
-      this.line(x0, y0, x1, y1, rim);
-    }
-  }
-}
-
-const mid = (CELL - 1) / 2;
-
-/** A ragged pool with rays running out of it, and droplets that came off beyond their tips. */
-function drawFloorSplat(c, variant, rnd) {
-  const radius = 4.5 + (variant % 3) * 1.6 + rnd();
-  const phase = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
-  const edge = (angle) => radius * (0.78 + 0.16 * Math.sin(angle * 3 + phase[0]) + 0.12 * Math.sin(angle * 5 + phase[1]) + 0.1 * Math.sin(angle * 2 + phase[2]));
-  for (let y = 0; y < CELL; y++)
-    for (let x = 0; x < CELL; x++) {
-      const d = scratchPt.setScalar(x - mid, y - mid).getMagnitude();
-      const r = edge(Math.atan2(y - mid, x - mid));
-      if (d <= r - 1)
-        c.put(x, y, (x + y) % 2 ? 0.34 : 0.2);
-      else if (d <= r + 0.3)
-        c.put(x, y, 0.95);
-    }
-  const rays = 6 + Math.floor(rnd() * 5) + (variant > 3 ? 2 : 0);
-  for (let i = 0; i < rays; i++) {
-    const angle = rnd() * Trigo.twopi;
-    const from = edge(angle) * 0.6;
-    const tip = radius + 2 + rnd() * 7;
-    c.line(mid + Math.cos(angle) * from, mid + Math.sin(angle) * from, mid + Math.cos(angle) * tip, mid + Math.sin(angle) * tip, 0.85);
-    if (rnd() < 0.7) {
-      const beyond = tip + 1.5 + rnd() * 2;
-      c.blob(mid + Math.cos(angle) * beyond, mid + Math.sin(angle) * beyond, 0.9 + rnd() * 0.8, 1);
-    }
-  }
-  const drops = 2 + Math.floor(rnd() * 4);
-  for (let i = 0; i < drops; i++) {
-    const angle = rnd() * Trigo.twopi;
-    const distance = radius + 5 + rnd() * 6;
-    c.blob(mid + Math.cos(angle) * distance, mid + Math.sin(angle) * distance, 0.8 + rnd() * 1.1, 0.95);
-  }
-}
-
-/** A splat on a wall: the burst only. Its drips are separate sprites that run down it (see `wallDripQuads`). */
-function drawWallSplat(c, variant, rnd) {
-  const cx = mid;
-  const cy = mid;
-  const radius = 3.2 + (variant % 2) * 1.2 + rnd();
-  for (let y = 0; y < CELL; y++)
-    for (let x = 0; x < CELL; x++) {
-      const d = scratchPt.setScalar((x - cx) * 0.9, (y - cy) * 1.1).getMagnitude();
-      const r = radius * (0.85 + 0.25 * Math.sin(Math.atan2(y - cy, x - cx) * 3 + variant));
-      if (d <= r - 1)
-        c.put(x, y, (x + y) % 2 ? 0.34 : 0.2);
-      else if (d <= r + 0.3)
-        c.put(x, y, 0.95);
-    }
-  const rays = 7 + Math.floor(rnd() * 5);
-  for (let i = 0; i < rays; i++) {
-    const angle = rnd() * Trigo.twopi;
-    const tip = radius + 2 + rnd() * 7;
-    c.line(cx + Math.cos(angle) * radius * 0.6, cy + Math.sin(angle) * radius * 0.6, cx + Math.cos(angle) * tip, cy + Math.sin(angle) * tip, 0.85);
-    if (rnd() < 0.5)
-      c.blob(cx + Math.cos(angle) * (tip + 1.5), cy + Math.sin(angle) * (tip + 1.5), 0.8 + rnd() * 0.6, 1);
-  }
-}
-
-// the shape of a shoe, in the units of printVertices, with the toe towards +x
-const HEEL = [[-5.2, 0], [-4.6, -1.3], [-3.4, -1.6], [-2.4, -1.2], [-2.2, 0], [-2.4, 1.2], [-3.4, 1.6], [-4.6, 1.3]];
-const FOREFOOT = [[-1, -1.6], [1, -2.3], [3.4, -2.4], [5, -1.4], [5.4, 0.2], [4.6, 1.8], [2.6, 2.6], [0.2, 2.4], [-1, 1.4]];
-/** Pixels of the atlas per unit of printVertices' foot, so the foot fills about 24 of the 32 pixels. */
-const PRINT_PIXELS = 2.26;
-
-function drawPrint(c, filled) {
-  const at = ([x, y]) => [mid + x * PRINT_PIXELS, mid + y * PRINT_PIXELS];
-  for (const shape of [HEEL, FOREFOOT])
-    c.polygon(shape.map(at), filled ? 0.95 : 0.8, filled ? 0.38 : 0);
-  if (filled)
-    for (const x of [0.4, 2.2, 3.9]) {
-      const [x0, y0] = at([x, -1.9]);
-      const [x1, y1] = at([x, 1.9]);
-      c.line(x0, y0, x1, y1, 0.85);
-    }
-}
-
-function drawDrop(c) {
-  c.polygon(
-    [
-      [mid - 9, mid - 3],
-      [mid - 4, mid - 10],
-      [mid + 3, mid - 9],
-      [mid + 10, mid - 4],
-      [mid + 9, mid + 4],
-      [mid + 3, mid + 10],
-      [mid - 5, mid + 9],
-      [mid - 10, mid + 3],
-    ],
-    0.98,
-    0.72
-  );
-  c.blob(mid, mid, 6.2, 0.96, 0);
-  c.blob(mid - 1.5, mid - 1.5, 3.8, 1.0, 0);
-  c.line(mid - 12, mid - 5, mid + 12, mid + 5, 0.92, 0);
-  c.line(mid - 6, mid + 12, mid + 7, mid - 12, 0.9, 0);
-  c.blob(mid + 9, mid - 8, 2.8, 0.95, 0);
-  c.blob(mid - 9, mid + 7, 2.6, 0.92, 0);
-  c.blob(mid + 7, mid + 9, 2.4, 0.9, 0);
-  c.blob(mid - 8, mid - 9, 2.2, 0.9, 0);
-  c.put(mid - 2, mid - 2, 1, 0);
-  c.put(mid - 1, mid - 2, 1, 0);
-  c.put(mid - 2, mid - 1, 1, 0);
-  c.put(mid - 1, mid - 1, 1, 0);
-}
-
-// A drip is a stem running down and a small tip at its end. The stems are drawn to repeat every 32 pixels top to bottom,
-// in the middle 12 columns of their cell, so a stem of any length is a stack of them. The tips are 4 to 9 pixels tall, from the
+// A drip is a stem running down and a small tip at its end. The stems repeat every 32 units top to bottom, in the
+// middle 12 columns of their cell, so a stem of any length is a stack of them. The tips are 6 to 9 units tall, from the
 // top of their cell, and narrow, pointed or ragged, never a round blob.
 const STEM_FROM = 10;
 const STEM_TO = 22;
-
-/** Edge pixels are bright and the inside is darker and dithered, like the rest of the blood. */
-function edged(c, x0, x1, y) {
-  for (let x = x0; x <= x1; x++)
-    c.put(x, y, x === x0 || x === x1 ? 0.95 : (x + y) % 2 ? 0.46 : 0.3);
-}
-
-const STEMS = [
-  // a thread: two pixels wide
-  (c) => {
-    for (let y = 0; y < CELL; y++) {
-      c.put(15, y, 0.9);
-      c.put(16, y, y % 5 === 0 ? 0.3 : 0.55);
-    }
-  },
-  // a ribbon: four wide, sleek and wet
-  (c) => {
-    for (let y = 0; y < CELL; y++)
-      edged(c, 14, 17, y);
-  },
-  // wavy: two wide, swaying from side to side as it runs
-  (c) => {
-    for (let y = 0; y < CELL; y++) {
-      const x = Math.round(15 + 1.5 * Math.sin((y / 32) * Trigo.twopi));
-      edged(c, x, x + 1, y);
-    }
-  },
-  // beaded: a thread with a small bead of blood every ten pixels or so
-  (c) => {
-    for (let y = 0; y < CELL; y++) {
-      c.put(15, y, 0.9);
-      c.put(16, y, 0.5);
-    }
-    for (const by of [5, 16, 27])
-      for (let dy = -2; dy <= 2; dy++) {
-        const half = dy === 0 ? 2 : 1;
-        edged(c, 15 - half + 1, 16 + half - 1, by + dy);
-      }
-  },
-  // dry-brush: four wide and broken, where the blood did not quite cover the steel
-  (c) => {
-    for (let y = 0; y < CELL; y++)
-      for (let x = 14; x <= 17; x++) {
-        const gap = ((y * 5 + x * 3) % 9) < 3 && x > 14 && x < 17;
-        if (!gap)
-          c.put(x, y, x === 14 || x === 17 ? 0.9 : (x + y) % 2 ? 0.5 : 0.32);
-      }
-  },
-  // a double: two thin threads side by side, joined here and there
-  (c) => {
-    for (let y = 0; y < CELL; y++) {
-      c.put(14, y, 0.9);
-      c.put(17, y, 0.9);
-      if (y % 16 === 7 || y % 16 === 8)
-        for (let x = 15; x <= 16; x++)
-          c.put(x, y, 0.55);
-    }
-  },
-];
-
-// The ends of a drip, each a list of rows as [first column, width] from column 14, with the stem ending at the top.
-const TIP_SHAPES = [
-  // a sliver: a narrow teardrop with a point
-  [[1, 2], [1, 2], [1, 3], [1, 3], [1, 2], [1, 2], [1, 1], [1, 1]],
-  // a slant: leaning to one side as it dries
-  [[1, 2], [1, 2], [1, 2], [2, 2], [2, 2], [2, 1]],
-  // a needle: the stem simply thins to a point
-  [[1, 2], [1, 2], [1, 2], [1, 2], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1]],
-  // frayed: handled apart, it splits into threads of different lengths
-  null,
-];
-
-/** The height in pixels of each tip. */
-export const TIP_HEIGHTS = [8, 6, 9, 7];
-
-function drawTip(c, kind) {
-  const shape = TIP_SHAPES[kind];
-  if (shape) {
-    shape.forEach(([from, width], row) => {
-      for (let x = from; x < from + width; x++) {
-        const edge = x === from || x === from + width - 1 || row === shape.length - 1;
-        c.put(14 + x, row, edge ? 0.95 : (x + row) % 2 ? 0.46 : 0.3);
-      }
-    });
-    return;
-  }
-  for (const [x, length] of [[14, 4], [15, 6], [16, 7], [17, 3]])
-    for (let row = 0; row < length; row++)
-      c.put(x, row, row === length - 1 ? 0.95 : x % 2 ? 0.55 : 0.8);
-}
-
-/**
- * Five gruesome gib variants for XDeath carnage:
- * 0: Jagged torn chunk of striated muscle & protruding bone
- * 1: Shattered ribcage arc with 3 curved white ribs & bloody spine column
- * 2: Cracked demon skull / jawbone fragment with jagged teeth
- * 3: Ruptured organ / eyeball with trailing optic nerve & blood clots
- * 4: Severed clawed limb / mangled meat slab with bone stump
- */
-function drawGib(c, variant, rnd) {
-  if (variant === 0) {
-    const points = [];
-    const sides = 8;
-    for (let i = 0; i < sides; i++) {
-      const angle = (i / sides) * Trigo.twopi;
-      const radius = 6.5 + rnd() * 6;
-      points.push([mid + Math.cos(angle) * radius, mid + Math.sin(angle) * radius]);
-    }
-    c.polygon(points, 1, 0.45, true);
-    c.line(mid - 5, mid - 2, mid + 6, mid + 3, 0.95, 1);
-    c.line(mid - 5, mid - 1, mid + 6, mid + 4, 0.85, 1);
-    c.line(mid - 2, mid + 4, mid + 4, mid - 4, 0.8);
-  } else if (variant === 1) {
-    // shattered ribcage with spine and 3 curved white ribs soaked in gore
-    c.blob(mid, mid, 8.5, 0.88);
-    for (let dy = -8; dy <= 8; dy++) {
-      c.put(mid - 6, mid + dy, 0.96, 1);
-      c.put(mid - 5, mid + dy, 0.88, 1);
-    }
-    for (const ry of [-6, 0, 6])
-      for (let t = 0; t <= 14; t++) {
-        const rx = mid - 5 + t;
-        const y = mid + ry + Math.sin((t / 14) * Trigo.pi) * 2.4;
-        c.put(rx, y, 0.96, 1);
-        c.put(rx, y + 1, 0.82, 1);
-      }
-  } else if (variant === 2) {
-    // cracked demon jawbone / skull shard with jagged teeth
-    c.blob(mid, mid + 1, 8.2, 0.86);
-    c.polygon([[7, 10], [24, 9], [22, 16], [11, 22], [6, 17]], 0.96, 0.55);
-    for (let x = 8; x <= 23; x++) {
-      c.put(x, 10, 0.96, 1);
-      c.put(x, 11, 0.9, 1);
-      c.put(x, 12, 0.82, 1);
-    }
-    for (const tx of [9, 13, 17, 21])
-      for (let ty = 13; ty <= 18; ty++) {
-        c.put(tx, ty, 0.98, 1);
-        if (ty < 17)
-          c.put(tx + 1, ty, 0.85, 1);
-      }
-  } else if (variant === 3) {
-    // ruptured eyeball / organ with trailing arterial nerve cord
-    c.blob(mid - 2, mid - 2, 7.2, 0.92);
-    c.blob(mid - 2.5, mid - 2.5, 4.2, 0.96, 1);
-    c.blob(mid - 3, mid - 3, 1.8, 0.45, 0);
-    for (let i = 0; i <= 12; i++) {
-      const tx = mid + 2 + i * 0.85;
-      const ty = mid + 2 + i * 0.75 + Math.sin(i * 0.7) * 1.5;
-      c.blob(tx, ty, Math.max(0.8, 2.4 - i * 0.14), 0.9);
-    }
-  } else {
-    // severed clawed hand / mangled flesh chunk with protruding arm bone
-    c.blob(mid - 1, mid + 2, 7.4, 0.88);
-    for (let i = 0; i <= 8; i++) {
-      c.put(6 + i, 23 - i, 0.96, 1);
-      c.put(7 + i, 23 - i, 0.9, 1);
-    }
-    for (const [tx, ty] of [[25, 8], [27, 15], [24, 22]]) {
-      c.line(mid, mid + 1, tx, ty, 0.96, 1);
-      c.line(mid, mid + 2, tx - 1, ty, 0.86, 1);
-      c.blob(tx, ty, 1.3, 0.95, 0);
-    }
-  }
-}
 
 let atlas = null;
 
@@ -389,39 +56,44 @@ let atlas = null;
 export function bloodAtlas() {
   if (atlas)
     return atlas;
-  const width = CELL * CELL_COUNT;
-  const height = CELL;
+  const cellPx = RES;
+  const width = cellPx * CELL_COUNT;
+  const height = cellPx;
   const data = new Uint8Array(width * height * 4);
+  const layers = [];
   for (let cell = 0; cell < CELL_COUNT; cell++) {
-    const c = new Canvas();
     const rnd = mulberry32(1000 + cell * 7919);
-    if (cell < FLOOR_VARIANTS)
-      drawFloorSplat(c, cell, rnd);
-    else if (cell < CELLS.printFilled)
-      drawWallSplat(c, cell - FLOOR_VARIANTS, rnd);
+    let pixels;
+    if (cell < FLOOR_VARIANTS) {
+      const painted = paintFloorSplatCell(cell, rnd);
+      pixels = painted.pixels;
+      layers[cell] = painted.layers;
+    }
+    else if (cell < CELLS.printFilled) {
+      const painted = paintWallSplatCell(cell - FLOOR_VARIANTS, rnd);
+      pixels = painted.pixels;
+      layers[cell] = painted.layers;
+    }
     else if (cell <= CELLS.printOutline)
-      drawPrint(c, cell === CELLS.printFilled);
+      pixels = paintPrint(cell === CELLS.printFilled);
     else if (cell === CELLS.drop)
-      drawDrop(c);
-    else if (cell >= CELLS.stems && cell < CELLS.tips)
-      STEMS[cell - CELLS.stems](c);
-    else if (cell >= CELLS.tips)
-      drawTip(c, cell - CELLS.tips);
+      pixels = paintDrop();
+    else if (cell >= CELLS.stems && cell < CELLS.tips) {
+      const painted = paintStem(cell - CELLS.stems);
+      pixels = painted.pixels;
+      layers[cell] = painted.layers;
+    } else if (cell >= CELLS.tips) {
+      const painted = paintTip(cell - CELLS.tips);
+      pixels = painted.pixels;
+      layers[cell] = painted.layers;
+    }
     else
-      drawGib(c, cell - CELLS.gib, rnd);
-    for (let y = 0; y < CELL; y++)
-      for (let x = 0; x < CELL; x++) {
-        const idx = y * CELL + x;
-        const light = Math.min(1, c.light[idx]);
-        const pal = c.bone[idx] ? BONE : RED;
-        const o = (y * width + cell * CELL + x) * 4;
-        data[o] = Math.round(pal[0] * light);
-        data[o + 1] = Math.round(pal[1] * light);
-        data[o + 2] = Math.round(pal[2] * light);
-        data[o + 3] = light > 0 ? 255 : 0;
-      }
+      pixels = paintGib(cell - CELLS.gib, rnd);
+    for (let y = 0; y < cellPx; y++)
+      data.set(pixels.subarray(y * cellPx * 4, (y + 1) * cellPx * 4), (y * width + cell * cellPx) * 4);
   }
-  atlas = { name: 'blood', data, width, height, cell: CELL, frames: CELL_COUNT };
+  // `layers[cell]` keeps the unlit height, coverage, colour and gloss of the splats and drips, for MergedBlood to merge
+  atlas = { name: 'blood', data, width, height, cell: cellPx, frames: CELL_COUNT, layers };
   return atlas;
 }
 
@@ -463,11 +135,15 @@ function setUv(uv, u0, v0, u1, v1) {
   uv[3] = v1;
 }
 
+/** Which of the floor pictures a splat is, and how it is turned: worked out from its seed, so the quad and the merged floor agree. */
+export function floorSplatPlacement(seed) {
+  const rnd = mulberry32(seed);
+  return { variant: Math.floor(rnd() * FLOOR_VARIANTS), angle: rnd() * Trigo.twopi };
+}
+
 /** A splat on the floor, turned any way round. `size` is the splat's, and the quad is 3.2 times as wide. With `out` the quad is written into it. */
 export function floorSplatQuad({ pos, size, seed, height = 0.3 }, out = null) {
-  const rnd = mulberry32(seed);
-  const variant = Math.floor(rnd() * FLOOR_VARIANTS);
-  const angle = rnd() * Trigo.twopi;
+  const { variant, angle } = floorSplatPlacement(seed);
   const quad = markTarget(out);
   setTurnedSquare(quad.corners, pos, Math.cos(angle), Math.sin(angle), size * 1.6, 0, height);
   const uv = cellUv(CELLS.floor + variant);
@@ -567,7 +243,7 @@ function fillDrips(seed, size, out) {
   for (let i = 0; i < count; i++) {
     const d = out[i] ?? (out[i] = { u: 0, length: 0, delay: 0, duration: 0, pixel: 0, stem: 0, tip: 0, profile: 0 });
     const stub = rnd() < 0.25;
-    d.u = (rnd() - 0.5) * size * 1.1;
+    d.u = (rnd() - 0.5) * size * 1.5;
     d.length = stub ? 4 + rnd() * 6 : 9 + rnd() * (14 + size * 3);
     d.delay = rnd() * 1.1;
     d.duration = 1.8 + rnd() * 4.2;
@@ -582,6 +258,54 @@ function fillDrips(seed, size, out) {
 
 const SCRATCH_DRIPS = [];
 const COLS = [0, 0];
+
+// Where the blood of each wall splat ends along its bottom: for every column of its 32-unit cell, the row (from the
+// top) below which no solid body is left, so a drip can come out of the body instead of out of thin air.
+const BODY_ROWS = [];
+
+function bodyRows(variant) {
+  if (BODY_ROWS[variant])
+    return BODY_ROWS[variant];
+  const layers = bloodAtlas().layers[CELLS.wall + variant];
+  const n = CELL_TEXELS;
+  const per = n / CELL;
+  let top = 0;
+  for (let i = 0; i < layers.H.length; i++)
+    top = Math.max(top, layers.H[i]);
+  const rows = new Array(CELL).fill(CELL / 2);
+  for (let col = 0; col < CELL; col++) {
+    let low = -1;
+    for (let y = 0; y < n; y++)
+      for (let x = col * per; x < (col + 1) * per; x++) {
+        const i = y * n + x;
+        if (layers.cov[i] > 0.9 && layers.H[i] > top * 0.4)
+          low = Math.max(low, y);
+      }
+    // columns without a body are left at the middle: a drip is never started where there is none
+    rows[col] = low < 0 ? CELL / 2 : low / per;
+  }
+  BODY_ROWS[variant] = rows;
+  return rows;
+}
+
+/** The height, above the hit and in wall units, where a stem of half-width `half` at `u` leaves the body of the splat. */
+function bodyBottom(variant, size, u, half) {
+  const rows = bodyRows(variant);
+  const pixel = size / 10;
+  const first = Math.max(0, Math.floor(CELL / 2 + (u - half) / pixel));
+  const last = Math.min(CELL - 1, Math.floor(CELL / 2 + (u + half) / pixel));
+  // the highest lower edge across the stem, so the whole top of the stem lies inside the body
+  let row = 0;
+  if (last < first)
+    row = CELL / 2;
+  else {
+    row = Infinity;
+    for (let c = first; c <= last; c++)
+      row = Math.min(row, rows[c]);
+  }
+  // a little inside the body, so the stem's soft top is hidden in it
+  return (CELL / 2 - row) * pixel + pixel * 2.5;
+}
 
 /** How long, in seconds, until every drip of a splat has stopped. */
 export function dripTime(seed, size) {
@@ -657,13 +381,17 @@ function dripSlot(target, i) {
   return target.quads[i] ?? (target.quads[i] = { corners: new Array(12).fill(0), uv: [0, 0, 0, 0] });
 }
 
-function pushDripQuad(target, position, tangent, normal, slope, u0, v0, u1, v1, a0, b0, a1, b1) {
+// a stem is this much narrower at its end than where it leaves the splat
+const TAPER = 0.5;
+
+/** A quad on the wall: `half` wide about `centre` at its bottom and `halfTop` at its top, so a stem can narrow as it runs. */
+function pushDripQuad(target, position, tangent, normal, slope, centre, half, halfTop, v0, v1, a0, b0, a1, b1) {
   const q = dripSlot(target, target.count++);
   const c = q.corners;
-  writeCorner(c, 0, position, tangent, normal, slope, u0, v0);
-  writeCorner(c, 3, position, tangent, normal, slope, u1, v0);
-  writeCorner(c, 6, position, tangent, normal, slope, u1, v1);
-  writeCorner(c, 9, position, tangent, normal, slope, u0, v1);
+  writeCorner(c, 0, position, tangent, normal, slope, centre - half, v0);
+  writeCorner(c, 3, position, tangent, normal, slope, centre + half, v0);
+  writeCorner(c, 6, position, tangent, normal, slope, centre + halfTop, v1);
+  writeCorner(c, 9, position, tangent, normal, slope, centre - halfTop, v1);
   const uv = q.uv;
   uv[0] = a0;
   uv[1] = b0;
@@ -684,7 +412,7 @@ export function wallDripQuads({ pos, normal, size, top, seed, age = 0, lo = -Inf
   const z = pos.z;
   scratchTangent.setScalar(-normal.y, normal.x);
   const floor = 0.6 - z;
-  const start = -size * 0.3;
+  const variant = Math.floor(mulberry32(seed)() * WALL_VARIANTS);
   const count = fillDrips(seed, size, SCRATCH_DRIPS);
   for (let i = 0; i < count; i++) {
     const drip = SCRATCH_DRIPS[i];
@@ -693,6 +421,7 @@ export function wallDripQuads({ pos, normal, size, top, seed, age = 0, lo = -Inf
       continue;
     const px = drip.pixel;
     const half = ((STEM_TO - STEM_FROM) / 2) * px;
+    const start = bodyBottom(variant, size, drip.u, half);
     if (drip.u - half < lo + EDGE || drip.u + half > hi - EDGE || start > top - 0.6 - z)
       continue;
     const tipHeight = TIP_HEIGHTS[drip.tip] * px;
@@ -703,12 +432,16 @@ export function wallDripQuads({ pos, normal, size, top, seed, age = 0, lo = -Inf
     const s1 = COLS[1];
     const segment = CELL * px;
     const bottom = head + px;
+    // it narrows steadily from where it leaves the splat to where it ends; the end is wider than a hairline
+    const run = Math.max(1e-6, start - bottom);
+    const narrowing = (y) => 1 - (1 - TAPER) * Math.min(1, Math.max(0, (start - y) / run));
     for (let top2 = start; top2 > bottom + 1e-6; top2 -= segment) {
       const partBottom = Math.max(bottom, top2 - segment);
-      pushDripQuad(out, pos, scratchTangent, normal, slope, drip.u - half, partBottom, drip.u + half, top2, s0, 1 - (top2 - partBottom) / segment, s1, 1);
+      pushDripQuad(out, pos, scratchTangent, normal, slope, drip.u, half * narrowing(partBottom), half * narrowing(top2), partBottom, top2, s0, 1 - (top2 - partBottom) / segment, s1, 1);
     }
     columnsInto(CELLS.tips + drip.tip);
-    pushDripQuad(out, pos, scratchTangent, normal, slope, drip.u - half, head + px - tipHeight, drip.u + half, head + px, COLS[0], 1 - TIP_HEIGHTS[drip.tip] / CELL, COLS[1], 1);
+    const end = half * narrowing(bottom);
+    pushDripQuad(out, pos, scratchTangent, normal, slope, drip.u, end, end, head + px - tipHeight, head + px, COLS[0], 1 - TIP_HEIGHTS[drip.tip] / CELL, COLS[1], 1);
   }
   if (target)
     return target;

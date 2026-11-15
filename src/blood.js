@@ -14,6 +14,7 @@ export const BLOOD = {
   doorSplats: 24,
   prints: 360,
   splats: 40,
+  stamps: 4000,
   gravity: 620,
   stride: 26,
 };
@@ -61,6 +62,8 @@ export class Blood {
     this.pool = [];
     this.spawnBuf = [];
     this.floor = [];
+    // floor splats the renderer has yet to pour into the merged floor blood (see bloodfloor.js); it empties this each frame
+    this.stamps = [];
     this.gibs = [];
     this.walls = [];
     this.ceiling = [];
@@ -468,6 +471,12 @@ export class Blood {
         ? { x, y, size, baseSize: size, seed, dissolving: true, age: 0, life: 1.3 + Math.min(2.0, size * 0.12), height: 0.28 }
         : { x, y, size, seed }
     );
+    // blood that stays is merged with the blood already there; what dissolves in acid keeps its own quad
+    if (!dissolving) {
+      this.stamps.push({ x, y, size, seed });
+      if (this.stamps.length > BLOOD.stamps)
+        this.stamps.shift();
+    }
     if (this.floor.length > BLOOD.floor)
       this.floor.shift();
     this.version++;

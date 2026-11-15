@@ -3,7 +3,7 @@ import { Vec2, Vec3 } from '@1pizzateam/spock';
 import { LEVELS } from '../src/levels.js';
 import { CEILING, DESK_WALL_OFFSET, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DISPENSER_WALL_OFFSET, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from '../src/cache.js';
-import { buildConferenceTable, buildKitchenSink, buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createPlantBreakPose, createSinkBreakPose, createTableBreakPose, DESK_ATLAS, DESK_HP, DESK_SHARD_COUNT, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, DISPENSER_ATLAS, DISPENSER_HP, DISPENSER_SHARD_COUNT, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, FURNITURE_VERTEX, plantAtlas, plantBreakPose, SHADOW_ATLAS, SHADOW_FRAGMENT, SHADOW_VERTEX, shadowAtlas, sinkAtlas, sinkBreakPose, tableAtlas, tableBreakPose, writeFloorShadowQuad, writeWallShadowQuad } from '../src/furniture.js';
+import { buildConferenceTable, buildKitchenSink, buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createPlantBreakPose, createSinkBreakPose, createTableBreakPose, DESK_ATLAS, DESK_HP, DESK_SHARD_COUNT, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, DISPENSER_ATLAS, DISPENSER_HP, DISPENSER_SHARD_COUNT, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, FURNITURE_VERTEX, PLANT_SHARD_COUNT, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, SHADOW_ATLAS, SHADOW_FRAGMENT, SHADOW_VERTEX, shadowAtlas, sinkAtlas, sinkBreakPose, tableAtlas, tableBreakPose, writeFloorShadowQuad, writeWallShadowQuad } from '../src/furniture.js';
 import { Game } from '../src/game.js';
 
 console.log('# file: tests/levels.test.mjs');
@@ -583,6 +583,41 @@ try {
 } catch (error) {
   failed = true;
   console.log(`FAIL ${furnitureMeshAc2TestName}\n     ${error.message}`);
+}
+
+const plantWreckSetTestName = 'AC-2b: the office plant has a wreck, a soil spill and shrapnel that stay inside their atlas and footprint';
+try {
+  const checkBuffers = (name, mesh) => {
+    assert.ok(mesh.vertices instanceof Float32Array && mesh.vertices.length > 0, `${name} has vertices`);
+    assert.equal(mesh.normals.length, mesh.vertices.length, `${name} normals match vertices`);
+    assert.equal(mesh.uvs.length, (mesh.vertices.length / 3) * 2, `${name} uvs match vertices`);
+    assert.ok(mesh.vertices.every(Number.isFinite) && mesh.uvs.every((u) => u >= 0 && u <= 1), `${name} is finite with uvs in the atlas`);
+  };
+  const wreck = plantWreckMesh();
+  checkBuffers('plant wreck', wreck);
+  let top = 0;
+  let reach = 0;
+  for (let i = 0; i < wreck.vertices.length; i += 3) {
+    top = Math.max(top, wreck.vertices[i + 1]);
+    reach = Math.max(reach, Math.hypot(wreck.vertices[i], wreck.vertices[i + 2]));
+    assert.ok(wreck.vertices[i + 1] >= 0, 'plant wreck stays above the floor');
+  }
+  assert.ok(top > 8 && top < 16, `plant wreck is a stump, not the whole plant (top ${top})`);
+  assert.ok(reach <= 9, `plant wreck stays inside the pot's footprint (reach ${reach})`);
+  const soil = plantDebrisMesh();
+  checkBuffers('plant soil spill', soil);
+  for (let i = 1; i < soil.vertices.length; i += 3)
+    assert.ok(Math.abs(soil.vertices[i] - 0.12) < 1e-6, 'the soil spill lies flat on the floor');
+  const shrapnel = plantShrapnelParts();
+  checkBuffers('plant crown', shrapnel.carboyTop);
+  assert.equal(shrapnel.shards.length, PLANT_SHARD_COUNT, 'one shard mesh for each pose shard');
+  shrapnel.shards.forEach((shard, i) => checkBuffers(`plant shard ${i}`, shard));
+  const pose = plantBreakPose(0.3, 1);
+  assert.equal(pose.shards.length, shrapnel.shards.length, 'the break pose drives every shard mesh');
+  console.log(`ok   ${plantWreckSetTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${plantWreckSetTestName}\n     ${error.message}`);
 }
 
 const furnitureBreakPoseAc3TestName = 'AC-3: tableBreakPose, plantBreakPose, and sinkBreakPose update pose transforms in-place';

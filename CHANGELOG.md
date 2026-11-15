@@ -8,6 +8,9 @@
 
 ### Added
 
+- Blood (HD): the blood atlas is painted at 128 texels a cell (wet highlights, thickness-based colour, clots, soft edges) instead of 32 px dithered pixel art, and sampled smoothly.
+- Blood (merging): blood that stays is poured into shared 32-unit world tiles (`bloodfloor.js`), one set for the floor and one per axis-aligned wall face, so overlapping splats and drips run together into one deeper, wet surface lit once, with no seams or stacked outlines. Wall splats are poured in once their drips have stopped. Splats that dissolve in acid, doors, diagonal faces, boulders, and anything past the tile cap keep their own quads. Visual only.
+- Blood (drips): wall drips now leave the splat where its body actually ends along the bottom, read off the painted splat, instead of from a fixed height in its middle, and they spread across the whole splat. The double stem lost its rung-like joins. Visual only.
 - Jump prompt (#193): a JUMP keycap under the crosshair, in the player's own bound jump key, whenever the player is inside an acid pit; shares the use-prompt fade, GREEN tint and rebinding-aware label; purely informational, with no change to acid damage or physics.
 - Breakable textures (#191): explosions now leave blast-damaged walls, floor and ceiling in three damage tiers by distance and power (scuffed and cracked, chipped and exposed, blown out with rubble), line-of-sight gated, skipped on slime, acid, pits, sky and sunken doors, permanent until the level reloads, kept in a dedicated capped ledger that never evicts bullet holes; purely visual with no change to damage.
 - Grenade limit (#190): every level starts with 6 grenades (reset on each load, never carried over); each throw spends one, a HUD counter shows the remaining count, and an empty throw is refused with a `No grenades` message and dry click.

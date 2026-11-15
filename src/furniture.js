@@ -27,7 +27,7 @@
  *     under-sink cabinet, ribbed drainboard, deep recessed wash basin with soapy water, and gooseneck faucet (`y = 0..36`).
  */
 import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
-import { field, mix, plate, rivet, rust, SHADOW, Tile } from './floor.js';
+import { blitTile, field, mix, plate, rivet, rust, SHADOW, Tile } from './floor.js';
 import { mulberry32 } from './rng.js';
 
 const scratchEdgeA = new Vec3();
@@ -147,6 +147,7 @@ void main(void) {
 `;
 
 export const FURNITURE_FRAGMENT = `
+#extension GL_OES_standard_derivatives : enable
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
@@ -210,6 +211,134 @@ vec3 furnitureLight(vec3 worldPos, vec3 normal) {
   return min(total, vec3(2.5));
 }
 
+uniform int uHasPbr;
+uniform sampler2D uNormalSampler;
+uniform sampler2D uDetailSampler;
+uniform sampler2D uAoSampler;
+uniform vec2 uAoInvSize;
+uniform vec3 uCameraPosition;
+
+const float PBR_EXPOSURE = 3.0;
+
+float ggxDistribution(float nh, float rough) {
+  float a = rough * rough;
+  float a2 = a * a;
+  float d = nh * nh * (a2 - 1.0) + 1.0;
+  return a2 / (3.14159265 * d * d + 0.0001);
+}
+
+vec3 filmicTone(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+/**
+ * Physically based shading of a furniture, barrel or chest surface. The normal map (RG: tangent-space normal, B: height,
+ * A: baked ambient occlusion) is laid over the mesh's own smooth normal through a tangent frame taken from how the
+ * position and uv change on screen. Roughness and metalness come from the colour and height; the lights, ranges and
+ * falloff are those of furnitureLight, and the room's occlusion map grounds the piece against walls and corners.
+ */
+vec3 furniturePbr(vec3 albedoSrgb, float emissive) {
+  vec3 P = vWorldPos;
+  vec3 V = normalize(uCameraPosition - P);
+  vec3 Ng = normalize(vNormal);
+  if (dot(Ng, V) < 0.0)
+    Ng = -Ng;
+  vec3 dpx = dFdx(P);
+  vec3 dpy = dFdy(P);
+  vec2 duvx = dFdx(vTextureCoord);
+  vec2 duvy = dFdy(vTextureCoord);
+  vec3 dp2perp = cross(dpy, Ng);
+  vec3 dp1perp = cross(Ng, dpx);
+  vec3 T = dp2perp * duvx.x + dp1perp * duvy.x;
+  vec3 B = dp2perp * duvx.y + dp1perp * duvy.y;
+  float invmax = inversesqrt(max(max(dot(T, T), dot(B, B)), 0.000000000001));
+  T *= invmax;
+  B *= invmax;
+  vec4 nm = texture2D(uNormalSampler, vTextureCoord);
+  vec3 nt = vec3(nm.xy * 2.0 - 1.0, 0.0);
+  nt.z = sqrt(max(0.0, 1.0 - dot(nt.xy, nt.xy)));
+  float detailFade = 1.0 - smoothstep(120.0, 360.0, vDepth);
+  if (detailFade > 0.001) {
+    vec2 dn = texture2D(uDetailSampler, vec2(dot(P, T), dot(P, B)) / 24.0).xy * 2.0 - 1.0;
+    nt = normalize(vec3(nt.xy + dn * 0.12 * detailFade, nt.z));
+  }
+  vec3 N = normalize(T * nt.x + B * nt.y + Ng * nt.z);
+  float hh = (nm.b - 0.75) * 8.0;
+  float warm = clamp((albedoSrgb.r - albedoSrgb.b) * 2.83, 0.0, 1.0);
+  float rough = clamp(0.52 - 0.12 * clamp(hh, 0.0, 1.6) + 0.18 * clamp(-hh, 0.0, 1.7) + warm * 0.18, 0.1, 1.0);
+  float metal = clamp(0.62 - warm * 0.5, 0.05, 0.7);
+  vec3 a0 = max(albedoSrgb, vec3(0.0));
+  vec3 albedo = a0 * (a0 * (a0 * 0.305306011 + 0.682171111) + 0.012522878);
+  vec3 F0 = mix(vec3(0.04), min(albedo * 2.0 + 0.03, vec3(0.6)), metal);
+  vec3 diffuseColor = albedo * (1.0 - 0.5 * metal);
+  float NV = max(dot(N, V), 0.02);
+  float k = (rough + 1.0) * (rough + 1.0) * 0.125;
+  // standing on the floor and, against a wall or in a corner, in the shade of it
+  vec2 lvl = texture2D(uAoSampler, P.xz * uAoInvSize).rg;
+  float groundFade = smoothstep(34.0, 0.0, P.y);
+  float room = 1.0 - clamp(lvl.r * 0.55, 0.0, 0.45) * groundFade - clamp((lvl.g - 0.42) * 1.4, 0.0, 0.35) * groundFade;
+  float floorAo = 0.62 + 0.38 * smoothstep(0.0, 9.0, clamp(P.y, 0.0, 9.0));
+  float overhangAo = 0.68 + 0.32 * clamp(Ng.y + 0.6, 0.0, 1.0);
+  float ao = nm.a * floorAo * overhangAo * room;
+  float sky = N.y * 0.5 + 0.5;
+  vec3 irradiance = uAmbientLight * 0.85 * ao * (0.55 + 0.45 * sky);
+  vec3 diffuseAcc = vec3(0.0);
+  vec3 specAcc = vec3(0.0);
+  if (uNbLights > 0) {
+    for (int i = 0; i < 8; i++) {
+      if (i >= uNbLights)
+        break;
+      vec3 diff = uLightDiffuse[i];
+      if (diff.x + diff.y + diff.z <= 0.001)
+        continue;
+      vec3 delta = uLightPosition[i] - P;
+      if (delta.x * delta.x + delta.z * delta.z > 160000.0)
+        continue;
+      float isCeilingFixture = step(54.0, uLightPosition[i].y);
+      float distSq = dot(delta, delta);
+      if (distSq > 160000.0)
+        continue;
+      vec3 att = uLightAttenuation[i];
+      if (att.z > 0.001 && distSq >= 18225.0)
+        continue;
+      float dist = sqrt(distSq);
+      float shortRange = step(0.001, att.z);
+      float rangeCutoff = mix(1.0, 1.0 - smoothstep(75.0, 135.0, dist), shortRange);
+      float attenuation = rangeCutoff / max(att.x + att.y * dist + att.z * distSq, 0.0001);
+      float downward = clamp(delta.y / max(dist, 1.0), 0.0, 1.0);
+      float spread = mix(1.05, 0.5 + 0.75 * downward * downward, isCeilingFixture);
+      vec3 lc = diff * (attenuation * spread);
+      vec3 L = delta / max(dist, 0.001);
+      float wrapN = clamp(dot(N, L) * 0.85 + 0.15, 0.0, 1.0);
+      diffuseAcc += lc * wrapN;
+      if (i < 4) {
+        float NL = max(dot(N, L), 0.0);
+        vec3 H = normalize(L + V);
+        float NH = max(dot(N, H), 0.0);
+        float fv = 1.0 - max(dot(V, H), 0.0);
+        float fv2 = fv * fv;
+        float G = (NL / (NL * (1.0 - k) + k)) * (NV / (NV * (1.0 - k) + k));
+        vec3 F = F0 + (1.0 - F0) * (fv2 * fv2 * fv);
+        specAcc += lc * F * (ggxDistribution(NH, rough) * G / (4.0 * NV)) * (0.55 * step(0.0, dot(Ng, L)));
+      }
+    }
+  }
+  vec3 lightTotal = min(irradiance + diffuseAcc * ao, vec3(2.5));
+  vec3 R = reflect(-V, N);
+  float fn = 1.0 - NV;
+  float fn2 = fn * fn;
+  vec3 Fenv = F0 + (max(vec3(1.0 - rough), F0) - F0) * (fn2 * fn2 * fn);
+  float envUp = mix(0.3, 1.0, smoothstep(-0.2, 0.8, R.y));
+  vec3 envSpec = Fenv * uAmbientLight * envUp * ao * 0.1;
+  vec3 colorLin = diffuseColor * lightTotal + specAcc * ao + envSpec;
+  colorLin += albedo * emissive * 1.8;
+  // the exposure was tuned for the dark steel of the walls: bright paint (barrels, chests) would burn out to white at it
+  float brightness = dot(albedo, vec3(0.299, 0.587, 0.114));
+  float exposure = PBR_EXPOSURE * mix(1.0, 0.16, smoothstep(0.04, 0.3, brightness));
+  vec3 mapped = filmicTone(colorLin * exposure);
+  return pow(mapped, vec3(0.4545));
+}
+
 void main(void) {
   vec4 texel = texture2D(uSampler, vTextureCoord);
   if (texel.a < 0.5)
@@ -219,7 +348,13 @@ void main(void) {
     return;
   }
   vec3 n = normalize(vNormal);
-  vec3 color = texel.rgb * uMaterialDiffuse * furnitureLight(vWorldPos, n);
+  vec3 color;
+  if (uHasPbr == 1) {
+    float peak = max(texel.r, max(texel.g, texel.b));
+    float emissive = smoothstep(0.55, 0.8, peak) * smoothstep(0.25, 0.5, peak - min(texel.r, min(texel.g, texel.b)));
+    color = furniturePbr(texel.rgb * uMaterialDiffuse, emissive);
+  } else
+    color = texel.rgb * uMaterialDiffuse * furnitureLight(vWorldPos, n);
   float pitDepthFade = smoothstep(-2.0, -48.0, vWorldPos.y);
   vec3 pitFogColor = uHasFog == 1 ? uFogColor * 0.42 : vec3(0.02, 0.03, 0.06);
   color = mix(color, pitFogColor, pitDepthFade);
@@ -309,6 +444,20 @@ function drawFront(rnd) {
       t.set(lx, ly + 1, ENAMEL_LIGHT, 0.45);
     }
 
+  // relief: kickplate and alcove are recessed, the header bezel and badges stand out, the service door is a panel
+  t.relief(1, 56, 62, 7, -0.8, 0.8);
+  t.relief(8, 4, 48, 7, -1.0, 0.8);
+  t.relief(10, 13, 44, 19, -2.2, 1.2);
+  t.relief(9, 29, 46, 4, 1.0, 0.7);
+  t.relief(18, 16, 7, 5, 0.8, 0.5);
+  t.relief(39, 16, 7, 5, 0.8, 0.5);
+  t.relief(8, 35, 48, 20, 0.6, 0.8);
+  t.relief(46, 41, 4, 7, -1.4, 0.5);
+  for (let ly = 49; ly <= 52; ly += 2)
+    t.groove(14, ly, 41, ly, 1.1, 0.7);
+  for (let x = 11; x < 53; x += 3)
+    t.groove(x, 30, x, 32, 1.0, 0.5);
+
   for (const [rx, ry] of [[5, 5], [56, 5], [5, 51], [56, 51]])
     rivet(t, rx, ry);
 
@@ -338,6 +487,12 @@ function drawSide(rnd) {
       t.set(lx, ly + 1, ENAMEL_DARK, 0.7);
       t.set(lx, ly + 2, ENAMEL_LIGHT, 0.45);
     }
+
+  // relief: kickplate recessed, a pressed seam at mid-height, louvers cut as slots
+  t.relief(1, 56, 62, 7, -0.8, 0.8);
+  t.groove(3, 28.5, 60, 28.5, 1.5, 0.8);
+  for (let ly = 34; ly <= 50; ly += 3)
+    t.groove(12, ly + 0.5, 51, ly + 0.5, 1.6, 1.0);
 
   for (const [rx, ry] of [[5, 5], [56, 5], [5, 24], [56, 24], [5, 51], [56, 51]])
     rivet(t, rx, ry);
@@ -372,6 +527,12 @@ function drawTrim(rnd) {
     t.set(45, y, HOT_LIGHT, 0.75);
     t.set(61, y, SHADOW, 0.7);
   }
+
+  // relief: moulded plastic collars stand up, the drip-tray grate is slotted
+  t.relief(1, 1, 18, 62, 1.0, 1.2);
+  t.relief(44, 1, 19, 62, 1.0, 1.2);
+  for (let y = 6; y < 58; y += 4)
+    t.groove(23, y + 1, 40, y + 1, 2.2, 1.6);
 
   return t;
 }
@@ -415,6 +576,10 @@ function drawBottle(rnd) {
       t.set(x, y, base, 1);
     }
 
+  // relief: the moulded stiffening ribs of the bottle, and a smooth neck
+  for (const y of [25, 39, 51])
+    t.pipe(0, y - 1.5, BOTTLE.width, 3, 0.9, true);
+
   return t;
 }
 
@@ -424,16 +589,8 @@ function drawBottle(rnd) {
 export function dispenserAtlas() {
   const { width, height } = DISPENSER_ATLAS;
   const data = new Uint8Array(width * height * 4);
-  const blit = (tile, x0) => {
-    for (let y = 0; y < tile.height; y++)
-      for (let x = 0; x < tile.width; x++) {
-        const i = (y * tile.width + x) * 3;
-        const o = (y * width + x0 + x) * 4;
-        for (let k = 0; k < 3; k++)
-          data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
-        data[o + 3] = 255;
-      }
-  };
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
   blit(drawFront(mulberry32(8101)), FRONT.x);
   blit(drawSide(mulberry32(8102)), SIDE.x);
   blit(drawTrim(mulberry32(8103)), TRIM.x);
@@ -441,8 +598,11 @@ export function dispenserAtlas() {
   return {
     name: 'dispenser',
     data,
+    relief,
     width,
     height,
+    cell: DISPENSER_CELL,
+    frames: DISPENSER_FRAMES,
     front: FRONT,
     side: SIDE,
     trim: TRIM,
@@ -1783,6 +1943,15 @@ function drawDeskTop(rnd) {
     t.rect(24, dy + 3, 16, 1, DESK_TRIM_METAL, 0.85);
   }
 
+  // relief: a laminate top inside a metal edge, a raised front bumper, drawers as panels with sunk pulls
+  t.relief(4, 4, 56, 32, -0.5, 1.0);
+  t.relief(48, 8, 6, 4, -1.8, 0.5);
+  t.relief(1, 36, 62, 4, 1.2, 0.9);
+  for (const [dy, dh] of [[42, 9], [53, 9]]) {
+    t.relief(4, dy, 56, dh, 0.7, 0.7);
+    t.relief(22, dy + 3, 20, 3, -1.4, 0.5);
+  }
+
   for (const [rx, ry] of [[5, 5], [58, 5], [5, 33], [58, 33]])
     rivet(t, rx, ry);
 
@@ -1831,6 +2000,19 @@ function drawDeskSide(rnd) {
       t.set(gx, gy, KICKPLATE, 0.92);
       t.set(gx, gy + 1, DESK_SLATE_LIGHT, 0.45);
     }
+
+  // relief: louvers cut into the pedestal, the tower is a raised chassis with sunk drive bays and a slotted grille
+  for (let ly = 12; ly <= 28; ly += 3)
+    t.groove(6, ly + 0.5, 25, ly + 0.5, 1.4, 0.9);
+  t.relief(1, 56, 30, 7, -0.8, 0.8);
+  t.relief(32, 1, 31, 62, 0.9, 1.0);
+  for (const by of [5, 13])
+    t.relief(36, by, 23, 6, -1.2, 0.6);
+  t.relief(36, 24, 23, 8, -1.0, 0.6);
+  t.relief(52, 25, 5, 4, 0.8, 0.5);
+  for (let gy = 37; gy <= 56; gy += 3)
+    for (let gx = 37; gx < 58; gx += 2)
+      t.dome(gx + 0.5, gy + 0.5, 0.9, -1.2);
 
   rust(t, rnd, 0.14);
   return t;
@@ -1895,6 +2077,11 @@ function drawDeskScreen(rnd) {
   t.rect(53, 37, 3, 2, LED_GREEN, 0.95);
   t.rect(44, 37, 2, 2, DESK_TRIM_METAL, 0.75);
   t.rect(48, 37, 2, 2, DESK_TRIM_METAL, 0.75);
+  // relief: the bezel stands out around a slightly sunk, smooth glass; knobs are bumps; each keycap is a block
+  t.relief(2, 2, 60, 39, 1.2, 1.0);
+  t.relief(6, 5, 52, 31, -1.6, 1.4);
+  t.dome(45, 38, 1.1, 1.0);
+  t.dome(49, 38, 1.1, 1.0);
 
   // Lower region (y = 43..63): Mechanical Keyboard keycap matrix & Mouse swatch
   t.rect(2, 43, 60, 20, KEYCAP_DARK, 0.95);
@@ -1911,6 +2098,11 @@ function drawDeskScreen(rnd) {
   // Keyboard lock LEDs in top-right corner
   t.set(54, 44, LED_GREEN, 0.95);
   t.set(56, 44, CRT_AMBER, 0.9);
+  // the keys stand on a sunk tray
+  t.relief(2, 43, 60, 20, -0.8, 0.8);
+  for (let ky = 45; ky <= 59; ky += 3)
+    for (let kx = 5; kx < 56; kx += 3)
+      t.relief(kx, ky, ky === 57 && kx >= 17 && kx <= 38 ? 22 : 2, 2, 1.1, 0.4);
 
   return t;
 }
@@ -1942,6 +2134,18 @@ function drawDeskChair(rnd) {
   for (let x = 4; x < 60; x++)
     t.set(x, 48, ENAMEL_LIGHT, 0.7);
 
+  // relief: padded, quilted upholstery - bolsters bulge, the stitched ribs and side seams pinch in
+  for (let y = 2; y < 44; y++)
+    for (let x = 3; x < 61; x++) {
+      const bolster = Math.sin(((x - 3) / 58) * Trigo.pi);
+      t.relief(x, y, 1, 1, 1.6 * bolster, 0.1);
+    }
+  for (let ry = 8; ry <= 40; ry += 6)
+    t.groove(6, ry + 0.5, 57, ry + 0.5, 1.6, 1.0);
+  t.groove(6, 3, 6, 43, 1.2, 0.6);
+  t.groove(57, 3, 57, 43, 1.2, 0.6);
+  t.relief(3, 47, 58, 6, 0.9, 0.8);
+
   rust(t, rnd, 0.1);
   return t;
 }
@@ -1952,16 +2156,8 @@ function drawDeskChair(rnd) {
 export function deskAtlas() {
   const { width, height } = DESK_ATLAS;
   const data = new Uint8Array(width * height * 4);
-  const blit = (tile, x0) => {
-    for (let y = 0; y < tile.height; y++)
-      for (let x = 0; x < tile.width; x++) {
-        const i = (y * tile.width + x) * 3;
-        const o = (y * width + x0 + x) * 4;
-        for (let k = 0; k < 3; k++)
-          data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
-        data[o + 3] = 255;
-      }
-  };
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
   blit(drawDeskTop(mulberry32(8201)), DESK_TOP.x);
   blit(drawDeskSide(mulberry32(8202)), DESK_SIDE.x);
   blit(drawDeskScreen(mulberry32(8203)), DESK_SCREEN.x);
@@ -1969,8 +2165,11 @@ export function deskAtlas() {
   return {
     name: 'desk',
     data,
+    relief,
     width,
     height,
+    cell: DESK_CELL,
+    frames: DESK_FRAMES,
     top: DESK_TOP,
     side: DESK_SIDE,
     screen: DESK_SCREEN,
@@ -2055,7 +2254,7 @@ function buildChairParts(vertices, normals, uvs, chairX, chairZ, chairU0, chairU
  * - Desktop computer tower (`y = 20.0..33.4`), swivel monitor stand & glowing CRT screen (`y = 20.0..38.0`), keyboard, and mouse on top of the desk.
  * - Ergonomic 5-star swivel office chair (`y = 0..32.5`) tucked in front of the desk (`z = 8.8`) facing the screen.
  */
-export function deskMesh() {
+function deskMeshAuthored() {
   const vertices = [];
   const normals = [];
   const uvs = [];
@@ -2198,7 +2397,7 @@ export function deskMesh() {
  * intact lower desk frame & drawers, ruptured computer tower stump with outward-bent metal flaps,
  * snapped monitor stand with jagged CRT screen glass shards, askew keyboard half, and damaged chair.
  */
-export function deskWreckMesh() {
+function deskWreckMeshAuthored() {
   const vertices = [];
   const normals = [];
   const uvs = [];
@@ -2317,7 +2516,7 @@ export function deskWreckMesh() {
  * Builds the 3D floor debris scatter mesh (`y = 0.12`) around a destroyed Computer Desk:
  * shattered phosphor CRT screen glass & keycap/circuit fragments on the floor in front of the desk.
  */
-export function deskDebrisMesh() {
+function deskDebrisMeshAuthored() {
   const vertices = [];
   const normals = [];
   const uvs = [];
@@ -2362,7 +2561,7 @@ export function deskDebrisMesh() {
  * - `shards`: `DESK_SHARD_COUNT` (`5`) flying fragments (2 phosphor CRT glass shards, 1 blown-off computer tower drive bay panel,
  *   1 split mechanical keyboard half, and 1 torn chair armrest pad).
  */
-export function deskShrapnelParts() {
+function deskShrapnelPartsAuthored() {
   const W = DESK_ATLAS.width;
   const inset = 0.35 / W;
   const topU0 = DESK_TOP.x / W + inset;
@@ -2487,6 +2686,39 @@ export function deskShrapnelParts() {
     carboyTop: monitorTop,
     shards,
   };
+}
+
+/**
+ * The desk meshes are authored with V counted down from the top of the picture (row 0 = v 0), but the atlas is uploaded
+ * flipped so that up is +V. Turn the authored V over so the screen, keyboard and tower land the right way up.
+ */
+function flipV(geometry) {
+  const { uvs } = geometry;
+  for (let i = 1; i < uvs.length; i += 2)
+    uvs[i] = 1 - uvs[i];
+  return geometry;
+}
+
+export function deskMesh() {
+  return flipV(deskMeshAuthored());
+}
+
+export function deskWreckMesh() {
+  return flipV(deskWreckMeshAuthored());
+}
+
+export function deskDebrisMesh() {
+  return flipV(deskDebrisMeshAuthored());
+}
+
+export function deskShrapnelParts() {
+  const parts = deskShrapnelPartsAuthored();
+  flipV(parts.carboyTop);
+  if (parts.monitorTop && parts.monitorTop !== parts.carboyTop)
+    flipV(parts.monitorTop);
+  for (const shard of parts.shards)
+    flipV(shard);
+  return parts;
 }
 
 /** Pre-allocates a reusable pose structure for `deskBreakPose`. */
@@ -3365,6 +3597,10 @@ function drawPlantPot(rnd) {
     }
   }
   t.rect(8, 58, 48, 5, POT_DARK, 0.85);
+  // relief: the thick rolled rim, a gently bellied pot wall, a recessed foot
+  t.pipe(2, 4, 60, 10, 1.6, true);
+  t.relief(4, 15, 56, 43, 0.5, 2.0);
+  t.relief(8, 58, 48, 5, -0.8, 0.6);
   return t;
 }
 
@@ -3381,6 +3617,14 @@ function drawPlantFoliage(rnd) {
     t.rect(4, y, 6, 2, FOLIAGE_DARK, 0.8);
     t.rect(54, y, 6, 2, FOLIAGE_DARK, 0.8);
   }
+  // relief: a raised midrib, the blade folded down either side of it, serrated edge notches
+  t.groove(32, 2, 32, 62, 3.0, -1.2);
+  for (let x = 4; x < 60; x++)
+    t.relief(x, 2, 1, 60, 0.7 * (1 - Math.abs(x - 32) / 28), 0.1);
+  for (let y = 4; y < 60; y += 4) {
+    t.relief(4, y, 6, 2, -0.8, 0.5);
+    t.relief(54, y, 6, 2, -0.8, 0.5);
+  }
   return t;
 }
 
@@ -3392,6 +3636,11 @@ function drawPlantStem(rnd) {
       t.set(x, y, STEM_LIGHT, 0.4);
   for (let y = 12; y < 64; y += 14)
     t.rect(2, y, 60, 3, FOLIAGE_DARK, 0.7);
+  // relief: ridged stalk with a pinched node band at every joint
+  for (let x = 6; x < 58; x += 6)
+    t.groove(x, 0, x, 63, 2.0, -0.6);
+  for (let y = 12; y < 64; y += 14)
+    t.relief(2, y, 60, 3, 0.9, 0.6);
   return t;
 }
 
@@ -3406,6 +3655,9 @@ function drawPlantSoil(rnd) {
       else if (noise < 0.25)
         t.set(x, y, SOIL_DARK, 0.6);
     }
+  // relief: loose, lumpy crumbs of soil
+  for (let k = 0; k < 90; k++)
+    t.dome(3 + rnd() * 58, 3 + rnd() * 58, 1.2 + rnd() * 2.0, (rnd() - 0.35) * 1.4);
   return t;
 }
 
@@ -3415,16 +3667,8 @@ function drawPlantSoil(rnd) {
 export function plantAtlas() {
   const { width, height } = PLANT_ATLAS;
   const data = new Uint8Array(width * height * 4);
-  const blit = (tile, x0) => {
-    for (let y = 0; y < tile.height; y++)
-      for (let x = 0; x < tile.width; x++) {
-        const i = (y * tile.width + x) * 3;
-        const o = (y * width + x0 + x) * 4;
-        for (let k = 0; k < 3; k++)
-          data[o + k] = Utils.clamp(Math.round(tile.pixels[i + k]), 0, 255);
-        data[o + 3] = 255;
-      }
-  };
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
   blit(drawPlantPot(mulberry32(8701)), PLANT_POT.x);
   blit(drawPlantFoliage(mulberry32(8702)), PLANT_FOLIAGE.x);
   blit(drawPlantStem(mulberry32(8703)), PLANT_STEM.x);
@@ -3432,8 +3676,11 @@ export function plantAtlas() {
   return {
     name: 'plant',
     data,
+    relief,
     width,
     height,
+    cell: PLANT_CELL,
+    frames: PLANT_FRAMES,
     pot: PLANT_POT,
     foliage: PLANT_FOLIAGE,
     stem: PLANT_STEM,
@@ -3509,6 +3756,170 @@ export function buildOfficePlant() {
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
+  };
+}
+
+/** The atlas fractions the plant's meshes read their textures from. */
+function plantUvs() {
+  const W = PLANT_ATLAS.width;
+  const inset = 0.35 / W;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+  const pot = { u0: PLANT_POT.x / W + inset, u1: (PLANT_POT.x + PLANT_POT.width) / W - inset };
+  const foliage = { u0: PLANT_FOLIAGE.x / W + inset, u1: (PLANT_FOLIAGE.x + PLANT_FOLIAGE.width) / W - inset };
+  const stem = { u0: PLANT_STEM.x / W + inset, u1: (PLANT_STEM.x + PLANT_STEM.width) / W - inset };
+  const soil = { u0: PLANT_SOIL.x / W + inset, u1: (PLANT_SOIL.x + PLANT_SOIL.width) / W - inset };
+  const boxUvs = (cell, v0, v1) => {
+    const r = uvRect(cell.u0, v0, cell.u1, v1);
+    return { front: r, back: r, left: r, right: r, top: r, bottom: r };
+  };
+  return { uvRect, pot, foliage, stem, soil, boxUvs };
+}
+
+/**
+ * Builds the 3D wreck left standing when an Office Plant is destroyed: the lower half of the terracotta pot with a jagged
+ * broken rim, a mound of spilled potting soil heaped in it, a snapped stem stub and a few leaves lying on the soil.
+ */
+export function plantWreckMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+  const { pot, foliage, stem, soil, boxUvs } = plantUvs();
+  const potMid = (pot.u0 + pot.u1) * 0.5;
+
+  // 1. The pot's lower half (y = 0 .. 8.0), its base disc, and the broken edge it leaves
+  pushFrustumRing(vertices, normals, uvs, 0, 8.0, 6.2, 7.5, pot.u0, pot.u1, 0.5, 0.9, 12);
+  pushTopDisc(vertices, normals, uvs, 0, 6.2, potMid, 0.5, (pot.u1 - pot.u0) * 0.4, 0.4, 12);
+  for (let i = 0; i < 12; i++) {
+    // a saw-tooth rim: the pot wall is torn away higher in some places than others
+    const a0 = (i / 12) * Trigo.twopi;
+    const a1 = ((i + 1) / 12) * Trigo.twopi;
+    const aM = (a0 + a1) * 0.5;
+    const tooth = [0, 2.6, 0.8, 3.4, 0.4, 1.8, 0, 3.0, 1.2, 2.2, 0.6, 3.6][i];
+    if (tooth < 0.5)
+      continue;
+    const b0 = new Vec3(Math.cos(a0) * 7.5, 8.0, Math.sin(a0) * 7.5);
+    const b1 = new Vec3(Math.cos(a1) * 7.5, 8.0, Math.sin(a1) * 7.5);
+    const tip = new Vec3(Math.cos(aM) * 7.7, 8.0 + tooth, Math.sin(aM) * 7.7);
+    const uA = Utils.lerp(pot.u0, pot.u1, i / 12);
+    const uB = Utils.lerp(pot.u0, pot.u1, (i + 1) / 12);
+    pushTri(vertices, normals, uvs, b1, b0, tip, new Vec2(uB, 0.45), new Vec2(uA, 0.45), new Vec2((uA + uB) * 0.5, 0.25));
+    pushTri(vertices, normals, uvs, b0, b1, tip, new Vec2(uA, 0.45), new Vec2(uB, 0.45), new Vec2((uA + uB) * 0.5, 0.25));
+  }
+
+  // 2. Spilled potting soil heaped in the pot, higher in the middle
+  pushTopDisc(vertices, normals, uvs, 8.2, 7.2, (soil.u0 + soil.u1) * 0.5, 0.5, (soil.u1 - soil.u0) * 0.45, 0.45, 12);
+  pushFrustumRing(vertices, normals, uvs, 8.2, 9.4, 7.0, 4.4, soil.u0, soil.u1, 0.2, 0.7, 10);
+  pushTopDisc(vertices, normals, uvs, 9.4, 4.4, (soil.u0 + soil.u1) * 0.5, 0.5, (soil.u1 - soil.u0) * 0.3, 0.3, 10);
+
+  // 3. A snapped stem stub, leaning, and two leaves torn off and lying on the soil
+  pushBoxPart(vertices, normals, uvs, new Vec3(-0.9, 9.2, -0.9), new Vec3(0.9, 14.0, 0.9), boxUvs(stem, 0.1, 0.9));
+  pushBoxPart(vertices, normals, uvs, new Vec3(0.2, 13.0, -1.0), new Vec3(3.4, 14.4, 1.0), boxUvs(stem, 0.1, 0.9));
+  const leaf = boxUvs(foliage, 0.05, 0.95);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-6.0, 9.1, 0.8), new Vec3(-1.0, 10.0, 4.6), leaf);
+  pushBoxPart(vertices, normals, uvs, new Vec3(1.8, 9.1, -5.6), new Vec3(6.4, 10.0, -1.6), leaf);
+
+  return {
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  };
+}
+
+/**
+ * Builds the 3D spilled potting soil mesh on the floor (`y = 0.12`) around a destroyed Office Plant: an irregular
+ * 12-sided pool of dark soil, spread a little further to the front.
+ */
+export function plantDebrisMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+  const { soil } = plantUvs();
+  const uc = (soil.u0 + soil.u1) * 0.5;
+  const uSpan = (soil.u1 - soil.u0) * 0.42;
+  const radii = [11.0, 13.4, 15.8, 14.6, 12.0, 10.0, 9.2, 10.6, 12.8, 14.2, 12.4, 10.4];
+  const center = new Vec3(0.4, 0.12, 2.6);
+  const uvCenter = new Vec2(uc, 0.5);
+  for (let i = 0; i < radii.length; i++) {
+    const next = (i + 1) % radii.length;
+    const a0 = (i / radii.length) * Trigo.twopi;
+    const a1 = (next / radii.length) * Trigo.twopi;
+    const p0 = new Vec3(center.x + Math.cos(a0) * radii[i], 0.12, center.z + Math.sin(a0) * radii[i]);
+    const p1 = new Vec3(center.x + Math.cos(a1) * radii[next], 0.12, center.z + Math.sin(a1) * radii[next]);
+    const uv0 = new Vec2(uc + Math.cos(a0) * uSpan, 0.5 + Math.sin(a0) * 0.4);
+    const uv1 = new Vec2(uc + Math.cos(a1) * uSpan, 0.5 + Math.sin(a1) * 0.4);
+    pushTri(vertices, normals, uvs, center, p1, p0, uvCenter, uv1, uv0);
+  }
+  return {
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  };
+}
+
+/**
+ * Builds the 3D shrapnel blasted off a destroyed Office Plant:
+ * - `carboyTop` (the name every furniture piece shares for its top part): the leafy crown torn off the stems, with its
+ *   local origin at its centre so it tumbles.
+ * - `shards`: `PLANT_SHARD_COUNT` flying fragments, 3 curved shards of terracotta pot and 2 tufts of leaves.
+ */
+export function plantShrapnelParts() {
+  const { pot, foliage, stem, boxUvs } = plantUvs();
+  const leaf = boxUvs(foliage, 0.05, 0.95);
+
+  const crownVerts = [];
+  const crownNorms = [];
+  const crownUvs = [];
+  pushBoxPart(crownVerts, crownNorms, crownUvs, new Vec3(-3.0, -2.0, -3.0), new Vec3(3.0, 3.0, 3.0), leaf);
+  pushBoxPart(crownVerts, crownNorms, crownUvs, new Vec3(-7.0, -3.0, -2.0), new Vec3(-2.0, 0.5, 2.0), leaf);
+  pushBoxPart(crownVerts, crownNorms, crownUvs, new Vec3(2.0, -2.5, -2.0), new Vec3(7.0, 1.0, 2.0), leaf);
+  pushBoxPart(crownVerts, crownNorms, crownUvs, new Vec3(-0.8, -5.0, -0.8), new Vec3(0.8, -2.0, 0.8), boxUvs(stem, 0.1, 0.9));
+
+  const shards = [];
+  // three curved pieces of the pot wall, each a jagged strip of the terracotta
+  const arcSpan = (Trigo.twopi / 3) * 0.5;
+  for (let s = 0; s < 3; s++) {
+    const verts = [];
+    const norms = [];
+    const uvs = [];
+    const subSegs = 3;
+    const R = 7.4;
+    const halfH = 3.2 + (s % 2) * 0.9;
+    const uBase = s / 3;
+    const uSpan = 0.6 / 3;
+    for (let j = 0; j < subSegs; j++) {
+      const a0 = (j / subSegs - 0.5) * arcSpan;
+      const a1 = ((j + 1) / subSegs - 0.5) * arcSpan;
+      const x0 = Math.sin(a0) * R;
+      const z0 = (Math.cos(a0) - 0.9) * R;
+      const x1 = Math.sin(a1) * R;
+      const z1 = (Math.cos(a1) - 0.9) * R;
+      const top0 = halfH * (0.74 + ((s + j) % 2) * 0.4);
+      const top1 = halfH * (0.74 + ((s + j + 1) % 2) * 0.4);
+      const bot0 = -halfH * (0.7 + ((s + j + 1) % 2) * 0.3);
+      const bot1 = -halfH * (0.7 + ((s + j) % 2) * 0.3);
+      const b0 = new Vec3(x0, bot0, z0);
+      const b1 = new Vec3(x1, bot1, z1);
+      const t0 = new Vec3(x0 * 1.04, top0, z0 + 0.3);
+      const t1 = new Vec3(x1 * 1.04, top1, z1 + 0.3);
+      const u0 = Utils.lerp(pot.u0, pot.u1, uBase + (j / subSegs) * uSpan);
+      const u1 = Utils.lerp(pot.u0, pot.u1, uBase + ((j + 1) / subSegs) * uSpan);
+      pushQuad(verts, norms, uvs, b0, b1, t1, t0, u0, 0.3, u1, 0.85);
+      pushQuad(verts, norms, uvs, b1, b0, t0, t1, u0, 0.3, u1, 0.85);
+    }
+    shards.push({ vertices: new Float32Array(verts), normals: new Float32Array(norms), uvs: new Float32Array(uvs) });
+  }
+  // two tufts of leaves
+  for (let s = 0; s < 2; s++) {
+    const verts = [];
+    const norms = [];
+    const uvs = [];
+    pushBoxPart(verts, norms, uvs, new Vec3(-3.4, -0.5, -1.6), new Vec3(3.4, 0.5, 1.6), leaf);
+    pushBoxPart(verts, norms, uvs, new Vec3(-1.6, -0.4, -3.4 + s), new Vec3(1.6, 0.6, 3.0 - s), leaf);
+    shards.push({ vertices: new Float32Array(verts), normals: new Float32Array(norms), uvs: new Float32Array(uvs) });
+  }
+  return {
+    carboyTop: { vertices: new Float32Array(crownVerts), normals: new Float32Array(crownNorms), uvs: new Float32Array(crownUvs) },
+    shards,
   };
 }
 

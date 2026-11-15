@@ -59,10 +59,10 @@ const GLOW = [
 const LID_HEIGHT = 4;
 const LID_DEPTH = 27;
 
-function cellPutter(data, atlasWidth, cell) {
+function cellPutter(data, atlasWidth, cell, relief) {
   const S = CHEST_CELL;
   const ox = cell * S;
-  return (x, y, rgb) => {
+  const put = (x, y, rgb) => {
     if (x < 0 || x >= S || y < 0 || y >= S || !rgb)
       return;
     const o = (y * atlasWidth + ox + x) * 4;
@@ -71,6 +71,19 @@ function cellPutter(data, atlasWidth, cell) {
     data[o + 2] = rgb[2];
     data[o + 3] = 255;
   };
+  /** Adds `amount` world units of height to a texel (a texel here is 2 units across); + raised, - sunk. */
+  put.raise = (x, y, amount) => {
+    if (x >= 0 && x < S && y >= 0 && y < S)
+      relief[y * atlasWidth + ox + x] += amount;
+  };
+  return put;
+}
+
+/** Raises a rectangle of texels, with a one-texel sloped rim. */
+function raiseRect(put, x0, y0, x1, y1, amount) {
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++)
+      put.raise(x, y, amount * (Math.min(x - x0, x1 - x, y - y0, y1 - y) === 0 ? 0.5 : 1));
 }
 
 function drawLidSealCell(put) {
@@ -84,6 +97,12 @@ function drawLidSealCell(put) {
   for (let y = 12; y <= 19; y++)
     for (let x = 1; x < S - 1; x++)
       put(x, y, ((x + y) >> 2) & 1 ? HAZARD[0] : HAZARD[1]);
+  // relief: the panel is lipped at its edge, the hazard strip is sunk, the rivets are bumps
+  raiseRect(put, 0, 0, S - 1, S - 1, 0.6);
+  raiseRect(put, 1, 12, S - 2, 19, -1.0);
+  for (const [cx, cy] of [[4, 4], [27, 4], [4, 27], [27, 27]])
+    for (const [dx, dy, a] of [[0, 0, 1.4], [1, 0, 1.0], [0, 1, 1.0], [1, 1, 0.8], [-1, 0, 0.4], [0, -1, 0.4], [2, 0, 0.4], [0, 2, 0.4], [2, 1, 0.3], [1, 2, 0.3], [-1, 1, 0.3], [1, -1, 0.3]])
+      put.raise(cx + dx, cy + dy, a);
   for (const [cx, cy] of [[4, 4], [27, 4], [4, 27], [27, 27]]) {
     put(cx, cy, STEEL[5]);
     put(cx + 1, cy, STEEL[2]);
@@ -104,6 +123,10 @@ function drawLatchCell(put) {
       const edge = x === 9 || x === 22 || y === 8 || y === 23;
       put(x, y, edge ? STEEL[1] : y < 15 ? STEEL[4] : STEEL[3]);
     }
+  // relief: the plate stands off the lid, the latch block on it, the lamp window is sunk
+  raiseRect(put, 0, 0, S - 1, S - 1, 0.5);
+  raiseRect(put, 9, 8, 22, 23, 1.6);
+  raiseRect(put, 13, 17, 18, 20, -1.4);
   for (let y = 17; y <= 20; y++)
     for (let x = 13; x <= 18; x++)
       put(x, y, x === 13 || x === 18 || y === 17 || y === 20 ? LAMP[0] : x < 15 && y < 19 ? LAMP[2] : LAMP[1]);
@@ -111,6 +134,9 @@ function drawLatchCell(put) {
 
 function drawSidePanelCell(put) {
   const S = CHEST_CELL;
+  // relief: a stiffened panel, lipped at its edge, with a skirt strip along the bottom
+  raiseRect(put, 0, 0, S - 1, S - 1, 0.5);
+  raiseRect(put, 0, 28, S - 1, S - 1, 0.6);
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
       const border = x === 0 || x === S - 1 || y === 0 || y === S - 1;
@@ -119,6 +145,11 @@ function drawSidePanelCell(put) {
         continue;
       }
       const rib = y >= 5 && y <= 25 && (x - 5) % 7 === 0;
+      if (rib) {
+        put.raise(x, y, 1.1);
+        put.raise(x - 1, y, 0.4);
+        put.raise(x + 1, y, 0.4);
+      }
       put(x, y, rib ? STEEL[4] : x === 1 || y === 1 ? STEEL[4] : STEEL[2]);
     }
 }
@@ -137,11 +168,14 @@ export function chestAtlas() {
   const width = CHEST_CELL * CHEST_FRAMES;
   const height = CHEST_CELL;
   const data = new Uint8Array(width * height * 4);
-  drawLidSealCell(cellPutter(data, width, CHEST_CELLS.lidSeal));
-  drawLatchCell(cellPutter(data, width, CHEST_CELLS.latch));
-  drawSidePanelCell(cellPutter(data, width, CHEST_CELLS.sidePanel));
-  drawInteriorGlowCell(cellPutter(data, width, CHEST_CELLS.interiorGlow));
-  return { name: 'chest', data, width, height, cell: CHEST_CELL, frames: CHEST_FRAMES };
+  const relief = new Float32Array(width * height);
+  drawLidSealCell(cellPutter(data, width, CHEST_CELLS.lidSeal, relief));
+  drawLatchCell(cellPutter(data, width, CHEST_CELLS.latch, relief));
+  drawSidePanelCell(cellPutter(data, width, CHEST_CELLS.sidePanel, relief));
+  drawInteriorGlowCell(cellPutter(data, width, CHEST_CELLS.interiorGlow, relief));
+  // a chest texel is about 1.25 units across (a 32 px cell covers a 26 to 40 unit face), not the 2 of a 64 unit cell
+  const regions = Array.from({ length: CHEST_FRAMES }, (_, f) => ({ x: f * CHEST_CELL, width: CHEST_CELL, height: CHEST_CELL, units: 1.25 }));
+  return { name: 'chest', data, relief, width, height, cell: CHEST_CELL, frames: CHEST_FRAMES, regions };
 }
 
 const scratchBoxMin = new Vec3();

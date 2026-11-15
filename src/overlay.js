@@ -16,7 +16,7 @@ const TEXTURED_FRAGMENT = hudTexturedShader.fragment;
 
 /** Textured quads in screen pixels, drawn over what is behind them; a faded one is more see-through. */
 class SpriteBuffer {
-  constructor(gl, quads, atlas) {
+  constructor(gl, quads, atlas, filter = gl.NEAREST) {
     this.gl = gl;
     this.capacity = quads * 6;
     this.positions = new Float32Array(this.capacity * 2);
@@ -32,7 +32,7 @@ class SpriteBuffer {
     this.mesh = new Mesh(gl, geometry);
     this.mesh.addProgram(TEXTURED_VERTEX, TEXTURED_FRAGMENT, new Material());
     this.mesh.addCustomUniform('size', 'uniform2f', new Vec2(1, 1));
-    this.mesh.setTexture(atlas.data, { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST });
+    this.mesh.setTexture(atlas.data, { size: new Vec2(atlas.width, atlas.height), magFilter: filter, minFilter: filter });
     this.mesh.setDepthWrite(false);
     this.mesh.setBlend('SRC_ALPHA', 'ONE_MINUS_SRC_ALPHA');
     this.mesh.setInactive();
@@ -192,7 +192,7 @@ class Layer {
     this.wall = withWeapon ? new SpriteBuffer(gl, 2, wallAtlas()) : null;
     if (this.wall)
       this.scene.addMesh(this.wall.mesh);
-    this.sprites = spriteCapacity ? new SpriteBuffer(gl, spriteCapacity, bloodAtlas()) : null;
+    this.sprites = spriteCapacity ? new SpriteBuffer(gl, spriteCapacity, bloodAtlas(), gl.LINEAR) : null;
     if (this.sprites)
       this.scene.addMesh(this.sprites.mesh);
   }
