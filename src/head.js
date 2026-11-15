@@ -20,7 +20,7 @@ import {
  * fully animated by FaceR's Ken Perlin behaviour engine (blinks, eye saccades, head follow-through) plus combat reactions:
  * - health drives the 5 progressive damage tiers (bruises, blood) and the death expression
  * - taking damage fires a directional pain flinch
- * - firing a weapon holds a battle snarl while it keeps firing, picking up a power-up an evil grin
+ * - firing a weapon holds a battle snarl while it keeps firing, picking up a power-up an evil grin, any other pickup a happy smile
  *
  * It is drawn straight into the main framebuffer, in the HUD's face box, by its own RoostR Scene with a positioned viewport.
  */
@@ -177,6 +177,7 @@ export class HeadView {
     this.lastShootFace = 0;
     this.lastShotAt = -10;
     this.lastPower = false;
+    this.lastPickup = false;
     this.deadApplied = false;
   }
 
@@ -236,6 +237,12 @@ export class HeadView {
     if (power && !this.lastPower && health > 0)
       facer.triggerImpulse('evilGrin', 1);
     this.lastPower = power;
+
+    // any pickup puts on a happy face (a power-up's evil grin above already covers its own pickup)
+    const pickup = (player.pickupFlash ?? 0) > 0;
+    if (pickup && !this.lastPickup && !power && health > 0)
+      facer.triggerImpulse('happy', 1);
+    this.lastPickup = pickup;
 
     if (first || dt > 0) {
       facer.update(dt);

@@ -204,85 +204,100 @@ function drawVent(t, rnd) {
     rivet(t, x, y);
 }
 
+/** Where the three pipe strips sit in the pipes cell (x, width, in units of a 64-wide tile). The 3D pipes (pipes.js) are wrapped in these. */
+export const PIPE_RUNS_PX = [[13, 6], [27, 9], [46, 6]];
+/** Heights above the foot of each 64-unit piece of wall, in world units, shared with pipes.js. */
+export const PIPE_CLAMP_HEIGHTS = [16, 44];
+export const PIPE_CLAMP_HEIGHT = 3;
+export const PIPE_WHEEL_Y = 30;
+/** Where a flat sample of one material sits on a strip (heights above the foot): clamp iron, and the red valve paint the handwheel takes. */
+export const PIPE_IRON_ROWS = [17, 18];
+export const PIPE_RED_ROWS = [29, 31];
+
+// Dark like the steel around them: the shader brightens everything, so bright paint would glow. No blue or green leaning
+// paint either, which the shader reads as a lit strip.
+const P_STEEL = mix(METAL, LIGHT, 0.3);
+const P_IRON = mix(METAL, SHADOW, 0.45);
+const P_FLANGE = mix(METAL, LIGHT, 0.7);
+const P_BRASS = [96, 70, 28];
+const P_PALE = [88, 90, 92];
+const P_YELLOW = [132, 100, 26];
+const P_BLACK = [10, 11, 13];
+const P_RED = [98, 30, 24];
+
+/**
+ * One pipe strip. Every facet of the 3D pipe is wrapped over the whole width of its strip, so what is painted here is
+ * what each facet shows: a gentle dome (the normal map then rounds the flat facet), and rows from the foot upwards: steel
+ * body, a weld, bolted flanges, dark iron clamps with brass bolts, and bands of paint that say what the pipe carries.
+ */
+function paintPipe(t, run) {
+  const s = t.scale;
+  const H = t.ensureRelief();
+  const [x, w] = PIPE_RUNS_PX[run];
+  const px0 = Math.round(x * s);
+  const px1 = Math.round((x + w) * s);
+  const rows = (h0, h1) => [Math.round((64 - h1) * s), Math.round((64 - h0) * s)];
+  const fill = (h0, h1, colorAt, lift = 0) => {
+    const [a, b] = rows(h0, h1);
+    for (let py = a; py < b; py++)
+      for (let px = px0; px < px1; px++) {
+        const c = (px + 0.5 - px0) / (px1 - px0);
+        t.setRaw(px, py, colorAt(c, (px + 0.5) / s, (py + 0.5) / s), 1);
+        if (lift)
+          H[py * t.width + px] += lift * Utils.smoothstep(0, 0.6 * s, Math.min(py - a + 0.5, b - py - 0.5));
+      }
+  };
+  const bolt = (c, h) => {
+    const cx = x + c * w;
+    const cy = 64 - h;
+    for (let py = Math.floor((cy - 0.8) * s); py <= Math.ceil((cy + 0.8) * s); py++)
+      for (let px = Math.floor((cx - 0.8) * s); px <= Math.ceil((cx + 0.8) * s); px++) {
+        const d = Math.hypot(px + 0.5 - cx * s, py + 0.5 - cy * s) / s;
+        if (d < 0.7)
+          t.setRaw(px, py, mix(P_BRASS, [150, 112, 48], Utils.clamp(0.7 - d * 1.4 + 0.3, 0, 0.8)), 1);
+      }
+    t.dome(cx, cy, 0.7, 0.35);
+  };
+  // the dome: slope 0.32 at the edges, about what a facet of an 8-sided pipe needs to look round
+  const amplitude = 0.08 * w;
+  for (let py = 0; py < t.height; py++)
+    for (let px = px0; px < px1; px++) {
+      const c = (px + 0.5 - px0) / (px1 - px0);
+      H[py * t.width + px] += amplitude * (1 - (2 * c - 1) ** 2);
+    }
+  // steel body with a fine brushed grain along the pipe
+  fill(0, 64, (c, ux, uy) => {
+    const g = (((Math.floor(ux * s) * 13) & 7) - 3.5) * 0.45;
+    return [P_STEEL[0] + g, P_STEEL[1] + g, P_STEEL[2] + g * 1.1];
+  });
+  fill(36, 37, () => P_FLANGE, 0.2); // a weld
+  for (const h of [6, 59]) {
+    fill(h, h + 3, () => P_FLANGE, 0.5); // bolted flanges
+    bolt(0.5, h + 1.5);
+  }
+  for (const h of PIPE_CLAMP_HEIGHTS) {
+    fill(h, h + PIPE_CLAMP_HEIGHT, (c, ux, uy) => (uy < 64 - h - PIPE_CLAMP_HEIGHT + 0.7 ? mix(P_IRON, LIGHT, 0.4) : uy > 64 - h - 0.7 ? SHADOW : P_IRON), 0.4);
+    bolt(0.5, h + PIPE_CLAMP_HEIGHT / 2);
+  }
+  // what each pipe carries, in paint
+  if (run === 0) {
+    fill(24, 29, () => P_PALE, 0.15);
+    fill(31, 32, () => P_PALE, 0.1);
+  } else if (run === 1) {
+    fill(49, 54, (c, ux, uy) => (((ux + uy) * 0.9) % 2.4 < 1.2 ? P_YELLOW : P_BLACK), 0.15);
+    fill(PIPE_RED_ROWS[0] - 2, PIPE_RED_ROWS[1] + 2, () => P_RED, 0.15);
+  } else {
+    fill(24, 29, () => P_RED, 0.15);
+    fill(31, 32, () => P_RED, 0.1);
+  }
+}
+
 function drawPipes(t, rnd) {
   bulkhead(t, rnd);
-  const s = t.scale;
-  // Recessed dark pipe chase channel behind the vertical pipes (x = 10..55, y = 6..54)
-  bevel(t, 10, 6, 45, 48, false);
-  t.relief(11, 7, 43, 46, -1, 1);
-  for (let py = 7 * s; py < 53 * s; py++)
-    for (let px = 11 * s; px < 54 * s; px++)
-      t.setRaw(px, py, SHADOW, 0.42);
-
-  for (const x of [13, 27, 46]) {
-    const w = x === 27 ? 9 : 6;
-    const cx = (x + w * 0.5) * s;
-    const rad = w * 0.5 * s;
-    t.pipe(x, 0, w, 56, 2.2, false);
-    // Drop shadow cast to the right of each vertical pipe
-    for (let py = 0; py < 56 * s; py++)
-      for (let dx = 1; dx <= s + 2; dx++)
-        t.setRaw(Math.round(cx + rad) + dx, py, SHADOW, (1 - dx / (s + 3)) * 0.68);
-    // 3D cylindrical pipe body with off-center specular highlight and rim bounce light
-    for (let px = Math.round(x * s); px < Math.round((x + w) * s); px++) {
-      const nx = (px + 0.5 - cx) / rad;
-      const nz = Math.sqrt(Math.max(0, 1 - nx * nx));
-      const spec = Math.pow(Math.max(0, -nx * 0.48 + nz * 0.87), 3.2);
-      const col = mix(
-        mix(SHADOW, METAL, 0.18 + nz * 0.78),
-        LIGHT,
-        Utils.clamp(spec * 0.82 + (nx > 0.7 ? (nx - 0.7) * 0.35 : 0), 0, 0.95)
-      );
-      for (let py = 0; py < 56 * s; py++) {
-        // Subtle horizontal brushed-metal ring grain along the pipe
-        const ring = (((py * 17) & 7) - 3.5) * 1.1;
-        t.setRaw(px, py, [col[0] + ring, col[1] + ring, col[2] + ring * 1.1], 0.98);
-      }
-    }
-    // Machined U-bolt pipe clamps & flanged couplings at y = 8, 28, 46
-    for (const y of [8, 28, 46]) {
-      t.relief(x - 1.25, y, w + 2.5, 3, 0.8, 0.4);
-      const py0 = y * s;
-      const ph = 3 * s;
-      const px0 = Math.round((x - 1.25) * s);
-      const pw = Math.round((w + 2.5) * s);
-      for (let py = py0; py < py0 + ph; py++)
-        for (let px = px0; px < px0 + pw; px++) {
-          const nx = (px - cx) / (pw * 0.5);
-          const cyl = Math.sqrt(Math.max(0, 1 - nx * nx));
-          const topBottom = py < py0 + 2 ? LIGHT : py >= py0 + ph - 2 ? SHADOW : mix(METAL, LIGHT, 0.25 + cyl * 0.55);
-          t.setRaw(px, py, topBottom, 0.96);
-        }
-      for (let px = px0; px < px0 + pw; px++) {
-        t.setRaw(px, py0 + ph, SHADOW, 0.88);
-        t.setRaw(px, py0 + ph + 1, SHADOW, 0.45);
-      }
-    }
-  }
-  // Circular shutoff handwheel on the central main pipe at (31.5, 20.5)
-  const vcx = 31.5 * s;
-  const vcy = 20.5 * s;
-  const vRad = 5.2 * s;
-  const H = t.ensureRelief();
-  for (let py = Math.floor(vcy - vRad - 2); py <= Math.ceil(vcy + vRad + 2); py++)
-    for (let px = Math.floor(vcx - vRad - 2); px <= Math.ceil(vcx + vRad + 2); px++) {
-      const dx = px - vcx;
-      const dy = py - vcy;
-      const r = Math.hypot(dx, dy) / s;
-      if (r > 5.4)
-        continue;
-      const ang = Math.atan2(dy, dx);
-      const spoke = Math.abs(Math.sin(ang * 2)) * r < 0.65 && r < 4.5;
-      const rim = r >= 3.8 && r <= 5.0;
-      const hub = r < 1.6;
-      if (hub || rim || spoke) {
-        const shade = hub ? 0.82 : rim ? 1 - Math.abs(r - 4.4) / 0.7 : 0.65;
-        H[py * t.width + px] += hub ? 0.8 : rim ? 0.7 : 0.4;
-        t.setRaw(px, py, mix(SHADOW, LIGHT, Utils.clamp(0.35 + shade * 0.58, 0.2, 0.95)), 0.96);
-      } else if (r <= 5.3) {
-        t.setRaw(px, py, SHADOW, 0.55);
-      }
-    }
+  // nothing of the pipes is drawn on the wall itself: they are 3D meshes standing off a plain bulkhead (see pipes.js).
+  // These strips are only the skin those meshes wear, and each sits right behind its own pipe.
+  for (let run = 0; run < PIPE_RUNS_PX.length; run++)
+    paintPipe(t, run);
 }
 
 function drawLights(t, rnd) {
@@ -1234,6 +1249,14 @@ export function wallCellFor(tile, d, exit = false, door = false, lock = null) {
 }
 
 /**
+ * The cell the flat wall shows for a tile: a pipes tile shows plain bulkhead, because its pipes are real 3D meshes (pipes.js)
+ * and the pipes cell is only the sheet of skins they wear, never drawn flat on a wall.
+ */
+function shownCell(cell) {
+  return cell === WALL_CELLS.pipes ? WALL_CELLS.plain : cell;
+}
+
+/**
  * The quads of one flat wall face, one per tile along it and per 64 units up it, each with its cell and the part of the
  * picture that fits. `face` is { axis, plane, from, to (tiles), base, top, tile (Vec2), d, exit, door, lock }. Corners come back as in
  * `faceCorners`: bottom-left, bottom-right, top-right, top-left.
@@ -1247,7 +1270,7 @@ export function wallFaceQuads({ axis, plane, from, to, base, top, tile, d, exit,
       scratchTile.setScalar(tile.x, a);
     else
       scratchTile.setScalar(a, tile.y);
-    const cell = wallCellFor(scratchTile, d, exit, door, lock);
+    const cell = door ? wallCellFor(scratchTile, d, exit, door, lock) : shownCell(wallCellFor(scratchTile, d, exit, door, lock));
     for (let y0 = base, step = 0; y0 < top - 1e-6; y0 += TILE, step++) {
       const y1 = Math.min(top, y0 + TILE);
       const part = (y1 - y0) / TILE;
@@ -1270,7 +1293,7 @@ export function wallFaceQuads({ axis, plane, from, to, base, top, tile, d, exit,
  */
 export function diagWallFaceQuads({ a, b, heights, tile, diag, exit }) {
   const out = [];
-  const cell = wallCellFor(tile, 4 + diag, exit);
+  const cell = shownCell(wallCellFor(tile, 4 + diag, exit));
   for (let y0 = heights.x, step = 0; y0 < heights.y - 1e-6; y0 += TILE, step++) {
     const y1 = Math.min(heights.y, y0 + TILE);
     const part = (y1 - y0) / TILE;

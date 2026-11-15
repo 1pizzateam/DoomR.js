@@ -1,0 +1,131 @@
+import assert from 'node:assert/strict';
+
+const { GraphicsSettings, GRAPHICS_STORAGE_KEY, GLOW_OFF, GLOW_LOW, GLOW_HIGH } = await import('../src/graphics.js');
+const { OptionsMenu, OPTION_CONTROLS, OPTIONS_PAGE_ROOT, OPTIONS_PAGE_GRAPHICS } = await import('../src/options.js');
+const { NAV_UP, NAV_DOWN, NAV_LEFT, NAV_RIGHT, NAV_NONE } = await import('../src/input.js');
+
+const memoryStorage = () => {
+  const data = new Map();
+  return { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => data.set(k, String(v)), data };
+};
+const makeInput = () => ({
+  nav: NAV_NONE,
+  taken: new Set(),
+  mousePos: { x: 0, y: 0 },
+  mouseMoved: false,
+  navigate() { return this.nav; },
+  took(name) { return this.taken.has(name); },
+});
+const game = { zero: {}, emit() {} };
+const press = (input, menu, nav, taken) => {
+  input.nav = nav;
+  input.taken = new Set(taken ? [taken] : []);
+  menu.update(false, game);
+  input.nav = NAV_NONE;
+  input.taken.clear();
+};
+
+const checks = [
+  ['defaults are the full-quality preset', () => {
+    const s = new GraphicsSettings(memoryStorage());
+    assert.equal(s.presetName, 'high');
+    assert.equal(s.scale, 1);
+    assert.equal(s.glow, GLOW_HIGH);
+    assert.equal(s.hudGlow, true);
+  }],
+  ['presets cycle and LOW turns the expensive effects off', () => {
+    const s = new GraphicsSettings(memoryStorage());
+    s.cyclePreset(1);
+    assert.equal(s.presetName, 'medium');
+    assert.equal(s.glow, GLOW_LOW);
+    s.cyclePreset(1);
+    assert.equal(s.presetName, 'low');
+    assert.equal(s.glow, GLOW_OFF);
+    assert.equal(s.hudGlow, false);
+    assert.equal(s.scale, 0.5);
+    s.cyclePreset(1);
+    assert.equal(s.presetName, 'high');
+  }],
+  ['changing one option makes the preset custom, and every change bumps version', () => {
+    const s = new GraphicsSettings(memoryStorage());
+    const v = s.version;
+    s.toggleHudGlow();
+    assert.equal(s.presetName, 'custom');
+    assert.ok(s.version > v);
+  }],
+  ['settings persist and bad stored data is ignored', () => {
+    const storage = memoryStorage();
+    const a = new GraphicsSettings(storage);
+    a.applyPreset('low');
+    const b = new GraphicsSettings(storage);
+    assert.equal(b.presetName, 'low');
+    storage.data.set(GRAPHICS_STORAGE_KEY, '{"version":1,"resolution":99,"glow":"x"}');
+    const c = new GraphicsSettings(storage);
+    assert.equal(c.presetName, 'high');
+    storage.data.set(GRAPHICS_STORAGE_KEY, 'not json');
+    assert.equal(new GraphicsSettings(storage).presetName, 'high');
+    assert.equal(new GraphicsSettings(null).presetName, 'high');
+  }],
+  ['options root: CONTROLS signals main.js for one frame, GRAPHICS opens its page, BACK closes', () => {
+    const input = makeInput();
+    const menu = new OptionsMenu(input, new GraphicsSettings(memoryStorage()));
+    menu.open('title');
+    assert.equal(menu.view.page, OPTIONS_PAGE_ROOT);
+    press(input, menu, NAV_NONE, 'confirm');
+    assert.equal(menu.activated, OPTION_CONTROLS);
+    press(input, menu, NAV_NONE);
+    assert.equal(menu.activated, '');
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_NONE, 'confirm');
+    assert.equal(menu.view.page, OPTIONS_PAGE_GRAPHICS);
+    press(input, menu, NAV_NONE, 'menu');
+    assert.equal(menu.view.page, OPTIONS_PAGE_ROOT);
+    assert.equal(menu.view.cursor, 1);
+    press(input, menu, NAV_NONE, 'menu');
+    assert.equal(menu.isOpen, false);
+  }],
+  ['graphics page: left/right change the focused value and the view text follows', () => {
+    const input = makeInput();
+    const settings = new GraphicsSettings(memoryStorage());
+    const menu = new OptionsMenu(input, settings);
+    menu.open('paused');
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_NONE, 'confirm');
+    const rows = menu.view.rows;
+    assert.equal(rows[0].value, 'HIGH');
+    press(input, menu, NAV_RIGHT);
+    assert.equal(rows[0].value, 'MEDIUM');
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_LEFT);
+    assert.equal(settings.resolution, 0);
+    assert.equal(rows[1].value, settings.resolutionText);
+    assert.equal(rows[0].value, 'CUSTOM');
+    press(input, menu, NAV_UP);
+    press(input, menu, NAV_RIGHT);
+    assert.notEqual(rows[0].value, 'CUSTOM');
+  }],
+  ['mouse hover moves the cursor and click activates the hovered row', () => {
+    const input = makeInput();
+    const menu = new OptionsMenu(input, new GraphicsSettings(memoryStorage()), { hitAt: () => 1 });
+    menu.open('title');
+    input.mouseMoved = true;
+    press(input, menu, NAV_NONE);
+    assert.equal(menu.view.cursor, 1);
+    input.mouseMoved = false;
+    press(input, menu, NAV_NONE, 'Click');
+    assert.equal(menu.view.page, OPTIONS_PAGE_GRAPHICS);
+  }],
+];
+
+let failed = 0;
+for (const [name, fn] of checks) {
+  try {
+    fn();
+    console.log(`ok   ${name}`);
+  } catch (error) {
+    failed++;
+    console.log(`FAIL ${name}\n     ${error.message}`);
+  }
+}
+if (failed > 0)
+  process.exit(1);

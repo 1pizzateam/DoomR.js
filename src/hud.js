@@ -180,6 +180,29 @@ export const layoutMainMenu = (viewportSize) => {
   return L;
 };
 
+const OPTIONS_ROW_H = 34;
+const OPTIONS_LAYOUT = { width: -1, height: -1, rows: -1, boxX: 0, boxY: 0, boxW: 0, boxH: 0, rowsTop: 0, valueX: 0 };
+
+/** Shared by drawing and hit-testing so they never drift. */
+export const layoutOptions = (viewportSize, rows) => {
+  const { x: width, y: height } = viewportSize;
+  const L = OPTIONS_LAYOUT;
+  if (L.width === width && L.height === height && L.rows === rows)
+    return L;
+  L.width = width;
+  L.height = height;
+  L.rows = rows;
+  L.boxW = Utils.clamp(width - 48, 280, 440);
+  L.boxH = 64 + rows * OPTIONS_ROW_H + 52;
+  L.boxX = width / 2 - L.boxW / 2;
+  L.boxY = Math.max(8, height / 2 - L.boxH / 2);
+  L.rowsTop = L.boxY + 56;
+  L.valueX = L.boxX + L.boxW - 36;
+  return L;
+};
+
+const OPTIONS_FRAME = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
 const HINT_TITLE_STYLE = Object.freeze({ size: 11, align: 'left', alpha: 0.55, weight: 800, glow: 3 });
 const HINT_KEY_STYLE = Object.freeze({ size: 10, align: 'center', alpha: 0.85, weight: 600, glow: 2 });
 const HINT_KEY_COMPACT_STYLE = Object.freeze({ size: 8, align: 'center', alpha: 0.85, weight: 600, glow: 2 });
@@ -307,6 +330,9 @@ export class Hud {
     this.controlsView = null;
     this.controlsEntryText = 'CONTROLS · F1';
     this.optionsText = 'OPTIONS · F1';
+    this.optionsView = null;
+    // false drops the canvas shadow blur from every HUD line and label, which is slow on old GPUs
+    this.hudGlow = true;
     this.mainMenuView = { cursor: 0, items: MAIN_MENU_ITEMS };
     this.unboundText = '';
     this.pauseKeyLabel = '';
@@ -493,10 +519,13 @@ export class Hud {
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = COLORS[color];
     ctx.lineWidth = width;
-    ctx.shadowColor = COLORS[color];
-    ctx.shadowBlur = glow;
+    if (this.hudGlow) {
+      ctx.shadowColor = COLORS[color];
+      ctx.shadowBlur = glow;
+    }
     ctx.stroke();
-    ctx.shadowBlur = 0;
+    if (this.hudGlow)
+      ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
 
@@ -516,12 +545,13 @@ export class Hud {
     ctx.globalAlpha = alpha;
     const col = COLORS[color];
     ctx.fillStyle = col;
-    if (glow > 0) {
+    const shine = glow > 0 && this.hudGlow;
+    if (shine) {
       ctx.shadowColor = col;
       ctx.shadowBlur = glow;
     }
     ctx.fillText(text, x, y);
-    if (glow > 0)
+    if (shine)
       ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
@@ -959,7 +989,7 @@ export class Hud {
     wall.quad(setRectEdges(WALL_LOWER, tl.x, br.y - pieceH, br.x, br.y), wallCellUv(WALL_CELLS.plain), WALL_ALPHA);
     if (topH > 0.5) {
       // the top part of a pipe panel, as much of it as fits
-      wall.quad(setRectEdges(WALL_UPPER, tl.x, tl.y, br.x, tl.y + topH), wallCellUv(WALL_CELLS.pipes, 1 - topH / w, 1), WALL_ALPHA);
+      wall.quad(setRectEdges(WALL_UPPER, tl.x, tl.y, br.x, tl.y + topH), wallCellUv(WALL_CELLS.plain, 1 - topH / w, 1), WALL_ALPHA);
     }
   }
 
@@ -1695,6 +1725,50 @@ export class Hud {
     return -1;
   }
 
+  optionsHitAt(pos) {
+    const view = this.optionsView;
+    if (!view)
+      return -1;
+    const L = layoutOptions(scratchViewport.setScalar(this.width, this.height), view.rows.length);
+    if (pos.x < L.boxX || pos.x > L.boxX + L.boxW || pos.y < L.rowsTop)
+      return -1;
+    const at = Math.floor((pos.y - L.rowsTop) / OPTIONS_ROW_H);
+    return at < view.rows.length ? at : -1;
+  }
+
+  drawOptions(view) {
+    const rows = view.rows;
+    const L = layoutOptions(scratchViewport.setScalar(this.width, this.height), rows.length);
+    const { boxX, boxY, boxW, boxH, rowsTop } = L;
+    const right = boxX + boxW;
+    const bottom = boxY + boxH;
+    const cx = this.width / 2;
+    const F = OPTIONS_FRAME;
+    F[0] = boxX; F[1] = boxY; F[2] = right; F[3] = boxY; F[4] = right; F[5] = bottom;
+    F[6] = boxX; F[7] = bottom; F[8] = boxX; F[9] = boxY;
+    this.canvasLine(F, BLUE, 0.45, 1.5, 8);
+    this.text(view.title, cx, boxY + 28, BLUE, { size: 14, align: 'center', weight: 800, glow: 8 });
+    for (let i = 0; i < rows.length; i++) {
+      const item = rows[i];
+      const focus = view.cursor === i;
+      const y = rowsTop + i * OPTIONS_ROW_H + 22;
+      if (focus) {
+        F[0] = boxX + 14; F[1] = y - 20; F[2] = right - 14; F[3] = y - 20; F[4] = right - 14; F[5] = y + 8;
+        F[6] = boxX + 14; F[7] = y + 8; F[8] = boxX + 14; F[9] = y - 20;
+        this.canvasLine(F, ORANGE, 0.65, 1.5, 8);
+      }
+      const color = focus ? ORANGE : GREEN;
+      if (item.adjustable) {
+        this.text(item.label, boxX + 30, y, color, { size: 13, weight: focus ? 800 : 600, alpha: focus ? 1 : 0.8, glow: focus ? 8 : 2 });
+        this.text(focus ? `◂ ${item.value} ▸` : item.value, L.valueX, y, color, { size: 13, align: 'right', weight: 800, alpha: focus ? 1 : 0.85, glow: focus ? 8 : 2 });
+      } else
+        this.text(item.label, cx, y, color, { size: 13, align: 'center', weight: focus ? 800 : 600, alpha: focus ? 1 : 0.8, glow: focus ? 8 : 2 });
+    }
+    if (view.note)
+      this.text(view.note, cx, bottom - 30, BLUE, { size: 11, align: 'center', alpha: 0.6, glow: 0 });
+    this.text('↑/↓ select  ·  ←/→ change  ·  ENTER confirm  ·  ESC back', cx, bottom - 12, BLUE, { size: 10, align: 'center', alpha: 0.5, glow: 0 });
+  }
+
   drawMainMenu() {
     const view = this.mainMenuView;
     if (!view)
@@ -1816,6 +1890,12 @@ export class Hud {
       return;
     }
 
+    if (this.optionsView?.open && (state === 'title' || state === 'paused')) {
+      dim(0.82);
+      this.drawOptions(this.optionsView);
+      return;
+    }
+
     if (state === 'title') {
       dim(Math.max(0.55, game.fade));
       const blink = 0.5 + 0.5 * Math.sin(game.time * 2.2);
@@ -1873,7 +1953,7 @@ export class Hud {
       dim(0.6);
       this.text('PAUSED', cx, cy, BLUE, { size: 40, align: 'center', weight: 800, glow: 14 });
       this.text(this.resumeText, cx, cy + 36, GREEN, { size: 14, align: 'center' });
-      this.text(this.controlsEntryText, cx, cy + CONTROLS_ENTRY_PAUSED_DY, GREEN, { size: 13, align: 'center', alpha: 0.85 });
+      this.text(this.optionsText, cx, cy + CONTROLS_ENTRY_PAUSED_DY, GREEN, { size: 13, align: 'center', alpha: 0.85 });
       const panelH = this.drawControlHints(cx, cy + 76);
       if (this.unboundText)
         this.text(this.unboundText, cx, cy + 76 + panelH + 16, RED, { size: 12, align: 'center' });

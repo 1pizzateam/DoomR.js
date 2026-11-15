@@ -7,6 +7,8 @@ import { Input, NAV_DOWN, NAV_LEFT, NAV_RIGHT, NAV_UP } from './input.js';
 import { ControlsMenu } from './controls.js';
 import { CONTROLS_STORAGE_KEY } from './keymap.js';
 import { MainMenu, MENU_OPTIONS, MENU_PLAY } from './menu.js';
+import { GraphicsSettings } from './graphics.js';
+import { OptionsMenu, OPTION_CONTROLS } from './options.js';
 import { TitleDirector } from './title.js';
 import { World } from './world.js';
 import { loadHeadAssets } from './head.js';
@@ -30,6 +32,9 @@ if (urlLevel) {
 }
 const controlsMenu = new ControlsMenu(keymap, input, { hitAt: (pos) => hud.controlsHitAt(pos) });
 hud.controlsView = controlsMenu.view;
+const graphics = new GraphicsSettings();
+const optionsMenu = new OptionsMenu(input, graphics, { hitAt: (pos) => hud.optionsHitAt(pos) });
+hud.optionsView = optionsMenu.view;
 const mainMenu = new MainMenu(input, { hitAt: (pos) => hud.menuHitAt(pos) });
 hud.mainMenuView = mainMenu.view;
 game.keyLabel = (id) => keymap.actionLabel(id);
@@ -48,6 +53,15 @@ await loadHeadAssets();
 // if the browser drops the GPU context, the world rebuilds itself when it comes back (see World.restoreGpu)
 const world = new World(worldCanvas);
 hud.overlay = world.overlay;
+
+let graphicsVersion = -1;
+/** Pushes the saved graphics options into the HUD and the world; the caller resizes afterwards. */
+function applyGraphics() {
+  graphicsVersion = graphics.version;
+  hud.hudGlow = graphics.hudGlow;
+  world.setGlowLevel(graphics.glow);
+}
+applyGraphics();
 
 // Try to start the intro music immediately on page load (works whenever the browser allows autoplay,
 // such as after a reload, same-origin navigation, high media engagement, or site audio permission).
@@ -69,7 +83,7 @@ for (const type of ['pointermove', 'wheel'])
 function resize() {
   const ratio = window.devicePixelRatio || 1;
   if (!world.lost)
-    world.resize(window.innerWidth, window.innerHeight, Math.min(ratio, WORLD_RATIO_CAP) * quality.scale);
+    world.resize(window.innerWidth, window.innerHeight, Math.min(ratio, WORLD_RATIO_CAP) * graphics.scale * (graphics.adaptive ? quality.scale : 1));
   hud.resize(window.innerWidth, window.innerHeight, Math.min(ratio, 2));
 }
 window.addEventListener('resize', resize);
@@ -110,6 +124,23 @@ function control(dt) {
       title.update(dt);
     }
     controlsMenu.update(dt, game);
+    if (!controlsMenu.isOpen)
+      optionsMenu.returnFromControls();
+    return;
+  }
+  if (optionsMenu.isOpen) {
+    if (optionsMenu.returnState === 'title') {
+      hud.automap = false;
+      game.time += dt;
+      title.update(dt);
+    }
+    optionsMenu.update(unlockedThisFrame, game);
+    if (optionsMenu.activated === OPTION_CONTROLS)
+      controlsMenu.open(optionsMenu.returnState);
+    if (graphics.version !== graphicsVersion) {
+      applyGraphics();
+      resize();
+    }
     return;
   }
   if (input.took('music'))
@@ -145,7 +176,7 @@ function control(dt) {
       game.state = 'paused';
       input.unlock();
     }
-    controlsMenu.open(game.state === 'title' ? 'title' : 'paused');
+    optionsMenu.open(game.state === 'title' ? 'title' : 'paused');
     return;
   }
 
@@ -160,7 +191,7 @@ function control(dt) {
           game.selectingDifficulty = true;
           mainMenu.focus(MENU_PLAY);
         } else if (mainMenu.activated === MENU_OPTIONS)
-          controlsMenu.open('title');
+          optionsMenu.open('title');
         break;
       }
       if (input.took('menu')) {
@@ -255,7 +286,7 @@ function hearGame() {
 }
 
 const loop = new Player((dt) => {
-  if (!document.hidden && quality.update(dt) !== null)
+  if (!document.hidden && graphics.adaptive && quality.update(dt) !== null)
     resize();
   const fps = loop.getFPS();
   hud.fps = fps;
@@ -275,4 +306,4 @@ const loop = new Player((dt) => {
 loop.capDelta(0.1);
 loop.start();
 
-window.doomr = { game, world, hud, loop, sound, quality };
+window.doomr = { game, world, hud, loop, sound, quality, graphics };

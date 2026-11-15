@@ -89,6 +89,12 @@ const impulses = {
     muscles: { browDownL: 0.80, browDownR: 0.80, browOuterUpL: 0.48, browOuterUpR: 0.48, eyeSquintL: 0.68, eyeSquintR: 0.68, cheekSquintL: 0.78, cheekSquintR: 0.78, mouthSmileL: 0.86, mouthSmileR: 0.86, mouthUpperUpL: 0.16, mouthUpperUpR: 0.16, jawOpen: 0.08 },
     headEuler: [-0.06, 0, 0],
   },
+  // a simple friendly smile: soft smile, slight cheek lift, relaxed brows, no frown or snarl
+  happy: {
+    duration: 1.4, attack: 0.25,
+    muscles: { mouthSmileL: 0.7, mouthSmileR: 0.7, cheekSquintL: 0.3, cheekSquintR: 0.3, eyeSquintL: 0.12, eyeSquintR: 0.12, browOuterUpL: 0.15, browOuterUpR: 0.15 },
+    headEuler: [-0.03, 0, 0],
+  },
 };
 // the held snarl of a weapon that keeps firing (setShooting) uses the `shoot` recipe above; it eases in at `holdRiseRate`, out at `holdFallRate`
 const holdShooting = { holdRiseRate: 35, holdFallRate: 22 };

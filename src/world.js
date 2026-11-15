@@ -8,11 +8,12 @@ import { MAX_CHUNKS, MergedBlood, TEX as FLOOR_BLOOD_TEX } from './bloodfloor.js
 import { bloodAtlas, createQuadTarget, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
 import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorAtlas, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
 import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, doorCeilingAtlas, doorCeilingCellFor, doorCeilingCellUv, elevatorLightFactor, MARS_SKY_FRAGMENT, MARS_SKY_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, marsSkyAtlas, marsSkyMesh, updateCeilingLights } from './ceiling.js';
+import { wallPipeQuads } from './pipes.js';
 import { WALL_CELLS, diagWallFaceQuads, doorWallAtlas, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
 import { createExplosion3dPose, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from './explosion.js';
 import { FIREBALL_FRAMES, fireballAtlas } from './fireball.js';
 import { GRENADE_SCALE, grenadeAtlas, grenadeParts } from './grenade.js';
-import { ACID_MIST_FRAGMENT, CRATE_FRAGMENT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, acidSplashQuads, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
+import { ACID_MIST_FRAGMENT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, acidSplashQuads, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
 import { BASE_FLOOR_LEVEL, CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
 import { FOG_FAR, FOG_NEAR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar } from './fog.js';
 import { faceCorners, quadTriangles } from './lines.js';
@@ -25,7 +26,7 @@ import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
 import { keycardAtlas, keycardMesh } from './keycard.js';
 import { CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, SWITCH_LEVER_ANGLE, SWITCH_LEVER_HINGE, SWITCH_TINTS, chestAtlas, chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from './cache.js';
-import { createDeskBreakPose, createDispenserBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
+import { buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createOvenBreakPose, createPlantBreakPose, createSinkBreakPose, createTableBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, ovenAtlas, ovenBreakPose, ovenDebrisMesh, ovenMesh, ovenShrapnelParts, ovenWreckMesh, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, sinkAtlas, sinkBreakPose, sinkMesh, sinkPuddleMesh, sinkShrapnelParts, sinkWreckMesh, tableAtlas, tableBreakPose, tableDebrisMesh, tableMesh, tableShrapnelParts, tableWreckMesh, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
 import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, knifeAtlas, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from './arsenal.js';
 import { WEAPONS } from './weapon.js';
 import { armorAtlas, armorMesh } from './armor.js';
@@ -121,6 +122,28 @@ function wallHoleQuad(mark, out = null) {
 }
 const DOOR_BLASTS = 12;
 const scratchBlastMark = { pos: scratchHolePos, normal: scratchHoleNormal, top: 0, seed: 0, tier: 0, lo: 0, hi: 0, slope: 0, size: 0, ceiling: false, variant: 0 };
+
+/**
+ * How far a mark aimed at the tile edge has to move in to lie on the face of `door`, so holes, blood and blasts sit on the
+ * door and not on the wall plane in front of it. Marks are stored on the tile's edge; the door's face is `faceHalf` from the
+ * door's own centre: a pair of blast door slabs shows its inner face, 14 units in from the edge, a secret door is flush, and a thin (elevator)
+ * door is a single slab that does not sit in the middle of its tile, so it is worked out from where the door really is.
+ * Mirrors `buildDoor`.
+ */
+function doorMarkInset(door, mark) {
+  const faceHalf = door.secret
+    ? TILE / 2
+    : door.elevator || door.thin
+      ? (door.thickness || ELEVATOR_DOOR_THICKNESS) / 2
+      : door.framed === false
+        ? (TILE - 0.8) / 2
+        // a blast door's slab is DOOR_THICKNESS thick, and the face that shows is the inner one (see `secretDoorBox`: the
+        // door meshes cull back faces and RoostR takes clockwise triangles as front ones)
+        : TILE / 2 - DOOR_INSET - DOOR_THICKNESS;
+  const alongX = Math.abs(mark.nx) > 0.5;
+  const fromCentre = alongX ? (mark.x - door.center.x) * Math.sign(mark.nx) : (mark.y - door.center.y) * Math.sign(mark.ny);
+  return fromCentre - faceHalf;
+}
 
 /** Fills the shared scratch blast mark from a door-bound wall mark, shifted by the door's inset and drop. */
 function fillDoorBlast(mark, inset, drop, height) {
@@ -357,6 +380,16 @@ function partitionTrianglesBySector(vertices, sectorGrid, sectorWorldSize = SECT
 
 // walls end at y = 0 but floor and dirt tiles sit at y = -0.2; lowering the bottom edge closes the seam that shows the sky
 const WALL_FLOOR_Y = -0.2;
+/** Per-type furniture art: atlas, intact/wreck/debris meshes, flying shrapnel and break-pose functions. */
+const FURNITURE_KINDS = {
+  dispenser: { atlas: dispenserAtlas, intact: dispenserMesh, wreck: dispenserWreckMesh, debris: dispenserPuddleMesh, shrapnel: dispenserShrapnelParts, createPose: createDispenserBreakPose, pose: dispenserBreakPose },
+  desk: { atlas: deskAtlas, intact: deskMesh, wreck: deskWreckMesh, debris: deskDebrisMesh, shrapnel: deskShrapnelParts, createPose: createDeskBreakPose, pose: deskBreakPose },
+  table: { atlas: tableAtlas, intact: tableMesh, wreck: tableWreckMesh, debris: tableDebrisMesh, shrapnel: tableShrapnelParts, createPose: createTableBreakPose, pose: tableBreakPose },
+  oven: { atlas: ovenAtlas, intact: ovenMesh, wreck: ovenWreckMesh, debris: ovenDebrisMesh, shrapnel: ovenShrapnelParts, createPose: createOvenBreakPose, pose: ovenBreakPose },
+  sink: { atlas: sinkAtlas, intact: sinkMesh, wreck: sinkWreckMesh, debris: sinkPuddleMesh, shrapnel: sinkShrapnelParts, createPose: createSinkBreakPose, pose: sinkBreakPose },
+  plant: { atlas: plantAtlas, intact: buildOfficePlant, wreck: plantWreckMesh, debris: plantDebrisMesh, shrapnel: plantShrapnelParts, createPose: createPlantBreakPose, pose: plantBreakPose },
+};
+
 function sinkToFloor(quads) {
   for (const quad of quads)
     for (let i = 1; i < 12; i += 3)
@@ -576,6 +609,8 @@ export class World {
     this.target = new RenderTarget(this.viewportSize, gl);
     this.glowTarget = new RenderTarget(this.glowViewportSize, gl);
     this.glowDivisor = 4;
+    // 2 = full bloom, 1 = bloom blurred at half the size, 0 = no bloom passes at all
+    this.glowLevel = 2;
 
     this.down = new Scene({ context: gl, clearColor: BG_VEC, viewport: this.glowViewportSize });
     this.downQuad = this.screenQuad(DOWN_FRAGMENT, this.target.texture);
@@ -854,6 +889,15 @@ export class World {
     return quad;
   }
 
+  /** Bloom quality for older GPUs: 0 skips the glow passes, 1 halves the glow texture, 2 is the full effect. Call resize() after. */
+  setGlowLevel(level) {
+    this.glowLevel = level;
+    if (level > 0)
+      this.glowQuad.setActive();
+    else
+      this.glowQuad.setInactive();
+  }
+
   resize(cssWidth, cssHeight, ratio) {
     this.ratio = ratio;
     this.width = Math.max(1, Math.round(cssWidth * ratio));
@@ -867,7 +911,7 @@ export class World {
 
     // the glow is blurred in a texture a fraction of the size, so its cost does not grow with the screen
     const scale = Math.max(this.height / 760, 1);
-    this.glowDivisor = Math.max(3, Math.round(4 * scale));
+    this.glowDivisor = Math.max(3, Math.round(4 * scale)) * (this.glowLevel === 1 ? 2 : 1);
     const glowWidth = Math.max(1, Math.ceil(this.width / this.glowDivisor));
     const glowHeight = Math.max(1, Math.ceil(this.height / this.glowDivisor));
     this.glowViewportSize.setScalar(glowWidth, glowHeight);
@@ -1091,9 +1135,9 @@ export class World {
     };
   }
 
-  doorBatch(capacity, atlas, material, texOptions = {}) {
+  doorBatch(capacity, atlas, material, texOptions = bloodTextureOptions(this.gl)) {
     const sharedTexture = this.sharedTexture(atlas, texOptions);
-    const batch = new QuadBatch(this.gl, { capacity, atlas, sharedTexture, material });
+    const batch = new QuadBatch(this.gl, { capacity, atlas, sharedTexture, material, textureOptions: texOptions });
     if (sharedTexture) {
       batch.sharedAtlas = atlas;
       batch.sharedTexOptions = texOptions;
@@ -1228,8 +1272,8 @@ export class World {
     this.dripsLive = false;
     // bullet holes and chainsaw marks sit on the wall behind any blood splats or drips
     this.impactPixels ??= impactAtlas();
-    const sharedImpactTex = this.sharedTexture(this.impactPixels);
-    this.holes = new QuadBatch(this.gl, { capacity: BLOOD.holes, atlas: this.impactPixels, sharedTexture: sharedImpactTex });
+    const sharedImpactTex = this.sharedTexture(this.impactPixels, bloodTexOpts);
+    this.holes = new QuadBatch(this.gl, { capacity: BLOOD.holes, atlas: this.impactPixels, sharedTexture: sharedImpactTex, textureOptions: bloodTexOpts });
     this.shadowPixels ??= shadowAtlas();
     const shadowTexOpts = { minFilter: this.gl.LINEAR, magFilter: this.gl.LINEAR };
     const sharedShadowTex = this.sharedTexture(this.shadowPixels, shadowTexOpts);
@@ -1253,12 +1297,14 @@ export class World {
       this.sharedTexturedMeshes.push(b);
     }
     this.holes.sharedAtlas = this.impactPixels;
+    this.holes.sharedTexOptions = bloodTexOpts;
     this.sharedTexturedMeshes.push(this.holes);
     this.scene.addMesh(this.holes);
     this.holesVersion = -1;
     // blast damage is drawn over the bullet holes, in the same impact texture
-    this.blasts = new QuadBatch(this.gl, { capacity: (RUBBLE.wall + RUBBLE.floor + RUBBLE.ceiling) * 2, atlas: this.impactPixels, sharedTexture: sharedImpactTex });
+    this.blasts = new QuadBatch(this.gl, { capacity: (RUBBLE.wall + RUBBLE.floor + RUBBLE.ceiling) * 2, atlas: this.impactPixels, sharedTexture: sharedImpactTex, textureOptions: bloodTexOpts });
     this.blasts.sharedAtlas = this.impactPixels;
+    this.blasts.sharedTexOptions = bloodTexOpts;
     // blast decals are layered by age in syncBlasts, not by depth
     this.blasts.setDepthWrite(false);
     this.sharedTexturedMeshes.push(this.blasts);
@@ -1431,7 +1477,6 @@ export class World {
     marks.splats.show(true);
     marks.blasts.show(true);
 
-    const inset = door.secret ? 0 : DOOR_INSET;
     if (marks.holesOpen !== door.open || marks.holesVersion !== blood.holesVersion) {
       marks.holesOpen = door.open;
       marks.holesVersion = blood.holesVersion;
@@ -1441,6 +1486,7 @@ export class World {
         if (mark.door !== door)
           continue;
         const hm = scratchHoleMark;
+        const inset = doorMarkInset(door, mark);
         hm.pos.x = mark.x - mark.nx * inset;
         hm.pos.y = mark.y - mark.ny * inset;
         hm.pos.z = mark.z - drop;
@@ -1481,7 +1527,7 @@ export class World {
               continue;
             if (seen++ < skip)
               continue;
-            fillDoorBlast(mark, inset, drop, height);
+            fillDoorBlast(mark, doorMarkInset(door, mark), drop, height);
             const quad = pass === 0 ? burnWallQuad(scratchBlastMark, scratchHoleQuad) : blastWallQuad(scratchBlastMark, scratchHoleQuad);
             if (quad)
               blasts.quad(quad.corners, quad.uv);
@@ -1512,6 +1558,7 @@ export class World {
         continue;
       fillWallOpts(mark);
       const sunk = scratchSplatMark;
+      const inset = doorMarkInset(door, mark);
       sunk.pos.setScalar(mark.x - mark.nx * inset, mark.y - mark.ny * inset, mark.z - drop);
       sunk.top = mark.top * height;
       const quad = wallSplatQuad(sunk, scratchMarkQuad);
@@ -1719,7 +1766,7 @@ export class World {
     if (mb.chunks.size > MAX_CHUNKS - 10)
       return;
     for (const splat of blood.walls) {
-      if (splat.door || splat.slope || splat.age < splat.dripTime || this.mergedWalls.has(splat))
+      if (splat.door || splat.slope || splat.onPipe || splat.age < splat.dripTime || this.mergedWalls.has(splat))
         continue;
       const axisX = Math.abs(splat.nx) > 0.99 && Math.abs(splat.ny) < 0.01;
       const axisY = Math.abs(splat.ny) > 0.99 && Math.abs(splat.nx) < 0.01;
@@ -1926,9 +1973,10 @@ export class World {
         continue;
       this.resolveShadowLightDir(f.pos, scratchShadowDir);
       const isDesk = f.type === 'desk';
+      const isWide = isDesk || f.type === 'table';
       const alongX = f.wallSide === 1 || f.wallSide === 3 || Math.abs(Math.sin(f.angle ?? 0)) > 0.7;
-      const halfX = isDesk ? (alongX ? 22.0 : 19.0) : (f.gone ? 16.5 : 17.5);
-      const halfZ = isDesk ? (alongX ? 19.0 : 22.0) : (f.gone ? 16.5 : 17.5);
+      const halfX = isWide ? (alongX ? 22.0 : 19.0) : (f.gone ? 16.5 : 17.5);
+      const halfZ = isWide ? (alongX ? 19.0 : 22.0) : (f.gone ? 16.5 : 17.5);
       const height = f.gone ? 18.0 : 38.0;
       writeFloorShadowQuad(
         scratchShadowCorners,
@@ -2047,6 +2095,7 @@ export class World {
       }
     }
 
+    level.pipeFaces = new Set();
     const faces = [];
     const doorFaces = [];
     const outdoorFaces = [];
@@ -2060,7 +2109,9 @@ export class World {
       return kind[idx] === DOOR && !level.doors.get(idx)?.secret;
     };
     const doorCorridorInfo = (tx, ty, dir) => {
-      if (isCorridorDoor(tx, ty)) {
+      // the walls either side of any door, a secret one included, wear the door's own side-wall panels (never pipes or
+      // other wall pieces); while a secret door is shut its disguised block hides them
+      if (level.inBounds(tx, ty) && kind[ty * width + tx] === DOOR) {
         const door = level.doors.get(ty * width + tx);
         return { door: true, lock: door?.lock ?? null };
       }
@@ -2125,6 +2176,15 @@ export class World {
             door: Boolean(corridor),
             lock: corridor?.lock ?? null,
           });
+          // the pipes tile carries real 3D pipes, standing out of the wall
+          if (group.kind !== EXIT && !corridor && !(isMars && !level.isIndoorTile(adjIdx))) {
+            const pipes = wallPipeQuads({ axis, plane, a, base, top: tileToRoof ? ROOF : top, tile: new Vec2(group.x, group.y), d });
+            if (pipes.length) {
+              // blood and bullet holes look this up to land on the pipes instead of behind them
+              level.pipeFaces.add((axis === 'x' ? a * width + group.x : group.y * width + a) * 4 + d);
+              quads.push(...pipes);
+            }
+          }
           if (base === 0)
             sinkToFloor(quads);
           if (isMars && !level.isIndoorTile(adjIdx))
@@ -3076,20 +3136,23 @@ export class World {
           allQuads.push(q);
       }
     }
-    const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
+    // same physically based shading as the steel walls and floor, so the crate is lit identically
+    const texOpts = pbrTextureOptions(gl);
     const sharedTexture = this.sharedTexture(this.cratePixels, texOpts);
     const batch = new QuadBatch(gl, {
       capacity: Math.max(1, allQuads.length),
       atlas: this.cratePixels,
       sharedTexture,
+      material: new Material({ diffuse: new Vec3(1, 1, 1) }),
       vertex: FLOOR_VERTEX,
-      fragment: CRATE_FRAGMENT,
+      fragment: FLOOR_FRAGMENT,
       textureOptions: texOpts,
     });
     if (sharedTexture) {
       batch.sharedAtlas = this.cratePixels;
       batch.sharedTexOptions = texOpts;
       this.sharedTexturedMeshes.push(batch);
+      attachMaterialMaps(this, batch, this.cratePixels);
     }
     batch.addCustomUniform('time', 'uniform1f', 0);
     batch.begin();
@@ -3270,22 +3333,15 @@ export class World {
 
   buildFurniture(furniture) {
     const { gl } = this;
-    const isDesk = furniture?.type === 'desk';
-    const atlas = isDesk
-      ? (this.deskPixels ??= deskAtlas())
-      : (this.dispenserPixels ??= dispenserAtlas());
-    const intactGeo = isDesk
-      ? (this.deskGeo ??= deskMesh())
-      : (this.dispenserGeo ??= dispenserMesh());
-    const wreckGeo = isDesk
-      ? (this.deskWreckGeo ??= deskWreckMesh())
-      : (this.dispenserWreckGeo ??= dispenserWreckMesh());
-    const puddleGeo = isDesk
-      ? (this.deskDebrisGeo ??= deskDebrisMesh())
-      : (this.dispenserPuddleGeo ??= dispenserPuddleMesh());
-    const shrapnelGeo = isDesk
-      ? (this.deskShrapnelGeo ??= deskShrapnelParts())
-      : (this.dispenserShrapnelGeo ??= dispenserShrapnelParts());
+    const kind = furniture?.type in FURNITURE_KINDS ? furniture.type : 'dispenser';
+    const art = FURNITURE_KINDS[kind];
+    this.furnitureArt ??= {};
+    const cache = (this.furnitureArt[kind] ??= {});
+    const atlas = (cache.atlas ??= art.atlas());
+    const intactGeo = (cache.intact ??= art.intact());
+    const wreckGeo = (cache.wreck ??= art.wreck());
+    const puddleGeo = (cache.debris ??= art.debris());
+    const shrapnelGeo = (cache.shrapnel ??= art.shrapnel());
     const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
     const sharedTexture = this.sharedTexture(atlas, texOpts);
     const root = new Mesh(gl, new CustomMesh());
@@ -3330,7 +3386,7 @@ export class World {
     root.setRotation(scratchRot.setScalar(0, yaw, 0));
     this.scene.addMesh(root);
     const view = {
-      type: isDesk ? 'desk' : 'dispenser',
+      type: kind,
       root,
       intact,
       wreck,
@@ -3339,7 +3395,7 @@ export class World {
       shards,
       skinMaterial,
       wreckMaterial,
-      pose: isDesk ? createDeskBreakPose() : createDispenserBreakPose(),
+      pose: art.createPose(),
       wasGone: false,
       intactSettled: true,
       wreckSettled: false,
@@ -3417,10 +3473,7 @@ export class World {
       return;
     const deadTime = furniture.deadTime ?? 0;
     const phase = furniture.phase ?? 0;
-    if (view.type === 'desk' || furniture.type === 'desk')
-      deskBreakPose(deadTime, phase, view.pose);
-    else
-      dispenserBreakPose(deadTime, phase, view.pose);
+    (FURNITURE_KINDS[view.type] ?? FURNITURE_KINDS.dispenser).pose(deadTime, phase, view.pose);
     const flash = deadTime < 0.25 ? (1 - deadTime / 0.25) * 0.42 : 0;
     scratchPos.setScalar(1 + flash, 1 + flash, 1 + flash);
     view.wreckMaterial.setDiffuse(scratchPos);
@@ -4555,10 +4608,12 @@ export class World {
     this.overlay.glow.render(this.postCamera, time);
     this.target.unbind(this.viewportSize);
 
-    this.glowTarget.bind();
-    this.down.clear(false, true);
-    this.down.render(this.postCamera, time);
-    this.glowTarget.unbind(this.viewportSize);
+    if (this.glowLevel > 0) {
+      this.glowTarget.bind();
+      this.down.clear(false, true);
+      this.down.render(this.postCamera, time);
+      this.glowTarget.unbind(this.viewportSize);
+    }
 
     gl.viewport(0, 0, this.width, this.height);
     this.post.clear();

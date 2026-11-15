@@ -108,14 +108,14 @@ export const SINK_WALL_OFFSET = 18;
 export const SINK_HP = 1;
 export const SINK_SHARD_COUNT = 5;
 
-const PLANT_POT = { x: 0, width: 64, height: 64 };
-const PLANT_FOLIAGE = { x: 64, width: 64, height: 64 };
-const PLANT_STEM = { x: 128, width: 64, height: 64 };
-const PLANT_SOIL = { x: 192, width: 64, height: 64 };
+const PLANT_POT = { x: 0, width: 128, height: 128 };
+const PLANT_FOLIAGE = { x: 128, width: 128, height: 128 };
+const PLANT_STEM = { x: 256, width: 128, height: 128 };
+const PLANT_SOIL = { x: 384, width: 128, height: 128 };
 
-export const PLANT_CELL = 64;
+export const PLANT_CELL = 128;
 export const PLANT_FRAMES = 4;
-export const PLANT_ATLAS = { width: 256, height: 64 };
+export const PLANT_ATLAS = { width: 512, height: 128 };
 export const PLANT_SIZE = new Vec3(20, 36, 20);
 export const PLANT_RADIUS = 12;
 export const PLANT_WALL_OFFSET = 16;
@@ -265,8 +265,10 @@ vec3 furniturePbr(vec3 albedoSrgb, float emissive) {
   vec3 N = normalize(T * nt.x + B * nt.y + Ng * nt.z);
   float hh = (nm.b - 0.75) * 8.0;
   float warm = clamp((albedoSrgb.r - albedoSrgb.b) * 2.83, 0.0, 1.0);
-  float rough = clamp(0.52 - 0.12 * clamp(hh, 0.0, 1.6) + 0.18 * clamp(-hh, 0.0, 1.7) + warm * 0.18, 0.1, 1.0);
-  float metal = clamp(0.62 - warm * 0.5, 0.05, 0.7);
+  // living green (leaves, canes) is matte: it must not take the steel look the dark cool colours of the hangar get
+  float organic = smoothstep(0.03, 0.13, albedoSrgb.g - max(albedoSrgb.r, albedoSrgb.b));
+  float rough = clamp(0.52 - 0.12 * clamp(hh, 0.0, 1.6) + 0.18 * clamp(-hh, 0.0, 1.7) + warm * 0.18 + organic * 0.3, 0.1, 1.0);
+  float metal = mix(clamp(0.62 - warm * 0.5, 0.05, 0.7), 0.0, organic);
   vec3 a0 = max(albedoSrgb, vec3(0.0));
   vec3 albedo = a0 * (a0 * (a0 * 0.305306011 + 0.682171111) + 0.012522878);
   vec3 F0 = mix(vec3(0.04), min(albedo * 2.0 + 0.03, vec3(0.6)), metal);
@@ -3570,18 +3572,52 @@ const POT_TERRACOTTA = [142, 68, 42];
 const POT_LIGHT = [178, 92, 58];
 const POT_DARK = [98, 46, 28];
 const POT_RIM = [162, 82, 52];
-const FOLIAGE_GREEN = [38, 108, 48];
-const FOLIAGE_LIGHT = [62, 148, 68];
-const FOLIAGE_DARK = [22, 68, 30];
-const STEM_BROWN = [64, 82, 42];
-const STEM_LIGHT = [86, 112, 58];
-const SOIL_DARK = [32, 22, 18];
-const SOIL_BASE = [48, 34, 26];
-const SOIL_LIGHT = [68, 52, 40];
+const POT_CHALK = [196, 168, 140];
+const LEAF_DARK = [16, 56, 26];
+const LEAF_BASE = [30, 88, 38];
+const LEAF_MID = [46, 118, 46];
+const LEAF_LIGHT = [92, 142, 64];
+const LEAF_RIB = [112, 142, 76];
+const CANE_BASE = [92, 98, 54];
+const CANE_LIGHT = [118, 126, 72];
+const CANE_DARK = [56, 60, 34];
+const SOIL_DARK = [28, 19, 15];
+const SOIL_BASE = [46, 33, 25];
+const SOIL_LIGHT = [74, 56, 42];
+const SOIL_GRIT = [116, 104, 92];
+
+function plantHash(x, y, seed = 0) {
+  let h = Math.imul(x * 374761393 ^ y * 668265263 ^ seed * 2246822519, 1274126177);
+  h ^= h >>> 13;
+  h = Math.imul(h, 1911520717);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+/** Smooth value noise in 0..1: bilinear blend of hashed lattice points `1 / freq` texels apart. */
+function plantNoise(px, py, freq, seed = 0) {
+  const x = px / freq;
+  const y = py / freq;
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const fx = Utils.smoothstep(0, 1, x - x0);
+  const fy = Utils.smoothstep(0, 1, y - y0);
+  return Utils.lerp(
+    Utils.lerp(plantHash(x0, y0, seed), plantHash(x0 + 1, y0, seed), fx),
+    Utils.lerp(plantHash(x0, y0 + 1, seed), plantHash(x0 + 1, y0 + 1, seed), fx),
+    fy
+  );
+}
+
+/** The blade's half width (0..1 of the leaf cell) a fraction `t` of the way from its base (0) to its tip (1): a lanceolate leaf. */
+function leafHalfWidth(t) {
+  if (t <= 0 || t >= 1)
+    return 0;
+  return Math.min(0.9, 3.1 * Math.pow(t, 0.8) * Math.pow(1 - t, 1.1));
+}
 
 function drawPlantPot(rnd) {
-  const t = new Tile(PLANT_POT.width, PLANT_POT.height);
-  plate(t, 0, 0, PLANT_POT.width, PLANT_POT.height, rnd, POT_TERRACOTTA);
+  const t = new Tile(PLANT_POT.width, PLANT_POT.height, 2);
+  plate(t, 0, 0, 64, 64, rnd, POT_TERRACOTTA);
   t.rect(2, 4, 60, 10, POT_RIM, 0.9);
   for (let x = 3; x < 61; x++) {
     t.set(x, 4, POT_LIGHT, 0.7);
@@ -3597,6 +3633,16 @@ function drawPlantPot(rnd) {
     }
   }
   t.rect(8, 58, 48, 5, POT_DARK, 0.85);
+  // fired clay: cloudy glaze mottling, fine speckle and white mineral bloom near the foot
+  for (let py = 0; py < t.height; py++)
+    for (let px = 0; px < t.width; px++) {
+      const cloud = plantNoise(px, py, 14, 3) * 0.6 + plantNoise(px, py, 5, 4) * 0.4;
+      t.setRaw(px, py, cloud > 0.5 ? POT_LIGHT : POT_DARK, Math.abs(cloud - 0.5) * 0.55);
+      if (py > 90 && plantNoise(px, py, 9, 5) > 0.7)
+        t.setRaw(px, py, POT_CHALK, (py - 90) / 60 * 0.18);
+      if (plantHash(px, py, 6) > 0.985)
+        t.setRaw(px, py, POT_DARK, 0.7);
+    }
   // relief: the thick rolled rim, a gently bellied pot wall, a recessed foot
   t.pipe(2, 4, 60, 10, 1.6, true);
   t.relief(4, 15, 56, 43, 0.5, 2.0);
@@ -3604,65 +3650,89 @@ function drawPlantPot(rnd) {
   return t;
 }
 
-function drawPlantFoliage(rnd) {
+/** One lanceolate leaf with a midrib, herringbone veins and a waxy gradient, plus its cut-out mask (255 inside the blade). */
+function drawPlantFoliage() {
   const t = new Tile(PLANT_FOLIAGE.width, PLANT_FOLIAGE.height);
-  plate(t, 0, 0, PLANT_FOLIAGE.width, PLANT_FOLIAGE.height, rnd, FOLIAGE_GREEN);
-  for (let y = 2; y < 62; y++)
-    for (let x = 2; x < 62; x++) {
-      const vein = Math.abs(x - 32) < 2 ? 0.35 : 0;
-      const wave = Math.sin((x / 62) * Trigo.twopi * 2 + (y / 62) * Trigo.twopi) * 0.2;
-      t.set(x, y, FOLIAGE_LIGHT, vein + wave);
+  const H = t.ensureRelief();
+  const size = PLANT_FOLIAGE.width;
+  const mask = new Uint8Array(size * size);
+  for (let py = 0; py < size; py++)
+    for (let px = 0; px < size; px++) {
+      const along = (size - 5 - py) / (size - 10);
+      const across = (px + 0.5 - size / 2) / (size / 2);
+      const hw = leafHalfWidth(along);
+      const i = py * size + px;
+      const f = hw > 0.001 ? Math.abs(across) / hw : 2;
+      if (f > 1) {
+        t.setRaw(px, py, LEAF_MID);
+        continue;
+      }
+      mask[i] = 255;
+      const mottle = plantNoise(px, py, 11, 7) * 0.6 + plantNoise(px, py, 4, 8) * 0.4;
+      let col = mix(LEAF_BASE, LEAF_MID, Utils.clamp(0.25 + along * 0.7 + (mottle - 0.5) * 0.7, 0, 1));
+      col = mix(col, LEAF_DARK, Utils.smoothstep(0.55, 1.0, f) * 0.55 + (1 - Utils.smoothstep(0.0, 0.25, along)) * 0.4);
+      col = mix(col, LEAF_LIGHT, Utils.smoothstep(0.0, 0.5, 0.5 - f) * 0.35 * (0.5 + mottle));
+      const rib = Math.abs(across) * size * 0.5;
+      let height = 0.18 * (1 - f * f);
+      // side veins sweep up toward the tip at a shallow angle
+      const vein = (along * 15 + Math.abs(across) * 3.4) % 1;
+      if (rib > 1.6 && vein < 0.1 && f < 0.94) {
+        col = mix(col, LEAF_LIGHT, 0.32);
+        height -= 0.1;
+      }
+      if (rib <= 1.7 && along > 0.02 && along < 0.96) {
+        col = mix(col, LEAF_RIB, 0.85 - rib * 0.2);
+        height += 0.4 * (1 - rib / 1.7);
+      }
+      t.setRaw(px, py, col);
+      H[i] = height;
     }
-  for (let y = 4; y < 60; y += 4) {
-    t.rect(4, y, 6, 2, FOLIAGE_DARK, 0.8);
-    t.rect(54, y, 6, 2, FOLIAGE_DARK, 0.8);
-  }
-  // relief: a raised midrib, the blade folded down either side of it, serrated edge notches
-  t.groove(32, 2, 32, 62, 3.0, -1.2);
-  for (let x = 4; x < 60; x++)
-    t.relief(x, 2, 1, 60, 0.7 * (1 - Math.abs(x - 32) / 28), 0.1);
-  for (let y = 4; y < 60; y += 4) {
-    t.relief(4, y, 6, 2, -0.8, 0.5);
-    t.relief(54, y, 6, 2, -0.8, 0.5);
-  }
+  t.mask = mask;
   return t;
 }
 
-function drawPlantStem(rnd) {
+function drawPlantStem() {
   const t = new Tile(PLANT_STEM.width, PLANT_STEM.height);
-  plate(t, 0, 0, PLANT_STEM.width, PLANT_STEM.height, rnd, STEM_BROWN);
-  for (let x = 6; x < 58; x += 6)
-    for (let y = 0; y < 64; y++)
-      t.set(x, y, STEM_LIGHT, 0.4);
-  for (let y = 12; y < 64; y += 14)
-    t.rect(2, y, 60, 3, FOLIAGE_DARK, 0.7);
-  // relief: ridged stalk with a pinched node band at every joint
-  for (let x = 6; x < 58; x += 6)
-    t.groove(x, 0, x, 63, 2.0, -0.6);
-  for (let y = 12; y < 64; y += 14)
-    t.relief(2, y, 60, 3, 0.9, 0.6);
+  const size = PLANT_STEM.width;
+  const H = t.ensureRelief();
+  for (let py = 0; py < size; py++)
+    for (let px = 0; px < size; px++) {
+      const fibre = plantNoise(px, py * 0.12, 3.2, 11);
+      let col = mix(CANE_BASE, CANE_LIGHT, fibre * 0.8);
+      const ring = ((py + 6) % 32) / 32;
+      const node = Math.exp(-Math.pow((ring - 0.5) * 18, 2));
+      col = mix(col, CANE_DARK, node * 0.8);
+      // old leaf scars: a pale crescent just under every node
+      if (ring > 0.54 && ring < 0.62 && plantNoise(px, py, 8, 12) > 0.45)
+        col = mix(col, CANE_LIGHT, 0.4);
+      t.setRaw(px, py, col);
+      H[py * size + px] = (fibre - 0.5) * 0.25 + node * 0.5;
+    }
   return t;
 }
 
-function drawPlantSoil(rnd) {
-  const t = new Tile(PLANT_SOIL.width, PLANT_SOIL.height);
-  plate(t, 0, 0, PLANT_SOIL.width, PLANT_SOIL.height, rnd, SOIL_BASE);
-  for (let y = 2; y < 62; y++)
-    for (let x = 2; x < 62; x++) {
-      const noise = rnd();
-      if (noise > 0.85)
-        t.set(x, y, SOIL_LIGHT, 0.5);
-      else if (noise < 0.25)
-        t.set(x, y, SOIL_DARK, 0.6);
+function drawPlantSoil() {
+  const t = new Tile(PLANT_SOIL.width, PLANT_SOIL.height, 2);
+  const size = PLANT_SOIL.width;
+  for (let py = 0; py < size; py++)
+    for (let px = 0; px < size; px++) {
+      const clump = plantNoise(px, py, 9, 21) * 0.65 + plantNoise(px, py, 3, 22) * 0.35;
+      let col = mix(SOIL_DARK, SOIL_LIGHT, clump);
+      col = mix(SOIL_BASE, col, 0.8);
+      if (plantHash(px, py, 23) > 0.992)
+        col = SOIL_GRIT;
+      t.setRaw(px, py, col);
     }
   // relief: loose, lumpy crumbs of soil
-  for (let k = 0; k < 90; k++)
-    t.dome(3 + rnd() * 58, 3 + rnd() * 58, 1.2 + rnd() * 2.0, (rnd() - 0.35) * 1.4);
+  const rnd = mulberry32(8705);
+  for (let k = 0; k < 220; k++)
+    t.dome(3 + rnd() * 58, 3 + rnd() * 58, 0.8 + rnd() * 1.6, (rnd() - 0.35) * 1.1);
   return t;
 }
 
 /**
- * Returns the power-of-two RGBA texture atlas (256 x 64) for the 3D Office Plant furniture prop.
+ * Returns the power-of-two RGBA texture atlas (512 x 128, four 128-texel cells) for the 3D Office Plant furniture prop. The
+ * foliage cell is a single cut-out leaf: texels outside the blade have alpha 0 and are discarded by the furniture shader.
  */
 export function plantAtlas() {
   const { width, height } = PLANT_ATLAS;
@@ -3670,9 +3740,13 @@ export function plantAtlas() {
   const relief = new Float32Array(width * height);
   const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
   blit(drawPlantPot(mulberry32(8701)), PLANT_POT.x);
-  blit(drawPlantFoliage(mulberry32(8702)), PLANT_FOLIAGE.x);
-  blit(drawPlantStem(mulberry32(8703)), PLANT_STEM.x);
-  blit(drawPlantSoil(mulberry32(8704)), PLANT_SOIL.x);
+  const foliage = drawPlantFoliage();
+  blit(foliage, PLANT_FOLIAGE.x);
+  for (let y = 0; y < PLANT_FOLIAGE.height; y++)
+    for (let x = 0; x < PLANT_FOLIAGE.width; x++)
+      data[(y * width + PLANT_FOLIAGE.x + x) * 4 + 3] = foliage.mask[y * PLANT_FOLIAGE.width + x];
+  blit(drawPlantStem(), PLANT_STEM.x);
+  blit(drawPlantSoil(), PLANT_SOIL.x);
   return {
     name: 'plant',
     data,
@@ -3689,6 +3763,97 @@ export function plantAtlas() {
 }
 
 /**
+ * Pushes one arching leaf: a ribbon of `segs` rows from its base at (`ox`, `oy`, `oz`), heading along `yaw` (radians, in the
+ * floor plane), rising at `pitch` and bending down by `droop` over its `length`. `fold` lifts the two edges into a shallow V
+ * along the midrib. Normals are smooth across the blade, `foliage` is the leaf cell's u range.
+ */
+function pushLeaf(vertices, normals, uvs, foliage, ox, oy, oz, yaw, length, width, pitch, droop, fold = 0.35, segs = 6) {
+  const dx = Math.cos(yaw);
+  const dz = Math.sin(yaw);
+  const sx = -dz;
+  const sz = dx;
+  const rows = [];
+  let x = ox;
+  let y = oy;
+  let z = oz;
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const theta = pitch - droop * t;
+    rows.push({ x, y, z, theta, t });
+    const step = length / segs;
+    const mid = pitch - droop * ((i + 0.5) / segs);
+    x += dx * Math.cos(mid) * step;
+    y += Math.sin(mid) * step;
+    z += dz * Math.cos(mid) * step;
+  }
+  // blade vertices: left edge, midrib, right edge
+  const grid = rows.map((r) => {
+    const half = width * 0.5 * Math.sin(Math.min(1, 0.35 + r.t * 3) * Trigo.halfpi);
+    const lift = fold * half;
+    const cx = Math.cos(r.theta);
+    const sy = Math.sin(r.theta);
+    // the blade normal: up and out of the leaf, perpendicular to its heading
+    const nx = -dx * sy;
+    const ny = cx;
+    const nz = -dz * sy;
+    const slope = fold * 0.9;
+    const v = Utils.lerp(0.97, 0.03, r.t);
+    const make = (side, u) => {
+      const k = side * half;
+      const tilt = -side * slope;
+      let ax = nx + sx * tilt;
+      let ay = ny;
+      let az = nz + sz * tilt;
+      const inv = 1 / Math.hypot(ax, ay, az);
+      ax *= inv;
+      ay *= inv;
+      az *= inv;
+      return { p: [r.x + sx * k, r.y + (side === 0 ? 0 : lift), r.z + sz * k], n: [ax, ay, az], u: Utils.lerp(foliage.u0, foliage.u1, u), v };
+    };
+    return [make(-1, 0), make(0, 0.5), make(1, 1)];
+  });
+  const push = (a, b, c) => {
+    for (const q of [a, b, c]) {
+      vertices.push(q.p[0], q.p[1], q.p[2]);
+      normals.push(q.n[0], q.n[1], q.n[2]);
+      uvs.push(q.u, q.v);
+    }
+  };
+  for (let i = 0; i < segs; i++) {
+    const a = grid[i];
+    const b = grid[i + 1];
+    for (let c = 0; c < 2; c++) {
+      push(a[c], a[c + 1], b[c + 1]);
+      push(a[c], b[c + 1], b[c]);
+    }
+  }
+}
+
+/** Pushes a slim round cane from (`cx`, `y0`, `cz`) up to `y1`, narrowing from `r0` to `r1`, with smooth radial normals. */
+function pushCane(vertices, normals, uvs, stem, cx, cz, y0, y1, r0, r1, segs = 7) {
+  const slope = (r0 - r1) / Math.max(y1 - y0, 0.001);
+  const ring = Math.hypot(1, slope);
+  for (let i = 0; i < segs; i++) {
+    const a0 = (i / segs) * Trigo.twopi;
+    const a1 = ((i + 1) / segs) * Trigo.twopi;
+    const u0 = Utils.lerp(stem.u0, stem.u1, i / segs);
+    const u1 = Utils.lerp(stem.u0, stem.u1, (i + 1) / segs);
+    const corners = [[a0, y0, r0, u0, 0.96], [a1, y0, r0, u1, 0.96], [a1, y1, r1, u1, 0.04], [a0, y1, r1, u0, 0.04]];
+    const q = corners.map(([a, y, r, u, v]) => ({
+      p: [cx + Math.cos(a) * r, y, cz + Math.sin(a) * r],
+      n: [Math.cos(a) / ring, slope / ring, Math.sin(a) / ring],
+      u,
+      v,
+    }));
+    for (const idx of [0, 1, 2, 0, 2, 3]) {
+      vertices.push(q[idx].p[0], q[idx].p[1], q[idx].p[2]);
+      normals.push(q[idx].n[0], q[idx].n[1], q[idx].n[2]);
+      uvs.push(q[idx].u, q[idx].v);
+    }
+  }
+}
+
+/**
  * Builds the 3D Office Plant mesh standing on `y = 0`, centered on `x/z`:
  * - Terracotta planter pot (`y = 0..15.0`) with tapered base, outer rim, and potting soil.
  * - Central and branching stems rising from the soil (`y = 14.0..26.0`).
@@ -3698,59 +3863,48 @@ export function buildOfficePlant() {
   const vertices = [];
   const normals = [];
   const uvs = [];
+  const { pot, foliage, stem, soil } = plantUvs();
+  const potMid = (pot.u0 + pot.u1) * 0.5;
+  const potHalf = (pot.u1 - pot.u0) * 0.4;
+  const soilMid = (soil.u0 + soil.u1) * 0.5;
+  const soilHalf = (soil.u1 - soil.u0) * 0.45;
 
-  const W = PLANT_ATLAS.width;
-  const inset = 0.35 / W;
-  const potU0 = PLANT_POT.x / W + inset;
-  const potU1 = (PLANT_POT.x + PLANT_POT.width) / W - inset;
-  const folU0 = PLANT_FOLIAGE.x / W + inset;
-  const folU1 = (PLANT_FOLIAGE.x + PLANT_FOLIAGE.width) / W - inset;
-  const stemU0 = PLANT_STEM.x / W + inset;
-  const stemU1 = (PLANT_STEM.x + PLANT_STEM.width) / W - inset;
-  const soilU0 = PLANT_SOIL.x / W + inset;
-  const soilU1 = (PLANT_SOIL.x + PLANT_SOIL.width) / W - inset;
-  const soilUC = (soilU0 + soilU1) * 0.5;
-  const soilUR = (soilU1 - soilU0) * 0.45;
+  // 1. Terracotta planter pot (y = 0 .. 15.0): a bellied wall, a thick rolled rim and a flat foot
+  pushFrustumRing(vertices, normals, uvs, 0, 1.2, 5.6, 6.0, pot.u0, pot.u1, 0.82, 0.95, 20);
+  pushFrustumRing(vertices, normals, uvs, 1.2, 9.5, 6.0, 7.9, pot.u0, pot.u1, 0.3, 0.82, 20);
+  pushFrustumRing(vertices, normals, uvs, 9.5, 12.8, 7.9, 8.4, pot.u0, pot.u1, 0.2, 0.3, 20);
+  pushFrustumRing(vertices, normals, uvs, 12.8, 13.4, 8.4, 9.0, pot.u0, pot.u1, 0.1, 0.2, 20);
+  pushFrustumRing(vertices, normals, uvs, 13.4, 15.0, 9.0, 8.8, pot.u0, pot.u1, 0.05, 0.1, 20);
+  pushFrustumRing(vertices, normals, uvs, 15.0, 14.2, 8.8, 8.0, pot.u0, pot.u1, 0.05, 0.1, 20);
+  pushTopDisc(vertices, normals, uvs, 0, 5.6, potMid, 0.5, potHalf, 0.4, 20);
 
-  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+  // 2. Potting soil heaped a little in the middle
+  pushFrustumRing(vertices, normals, uvs, 14.2, 14.9, 8.0, 5.6, soil.u0, soil.u1, 0.2, 0.8, 20);
+  pushTopDisc(vertices, normals, uvs, 14.9, 5.6, soilMid, 0.5, soilHalf * 0.7, 0.35, 20);
 
-  // 1. Terracotta Planter Pot (y = 0 .. 15.0)
-  pushFrustumRing(vertices, normals, uvs, 0, 13.0, 6.2, 8.5, potU0, potU1, 0.2, 0.9, 12);
-  pushFrustumRing(vertices, normals, uvs, 13.0, 15.0, 8.8, 8.8, potU0, potU1, 0.05, 0.2, 12);
-  const potBottomCenter = (potU0 + potU1) * 0.5;
-  const potBottomRadius = (potU1 - potU0) * 0.4;
-  pushTopDisc(vertices, normals, uvs, 0, 6.2, potBottomCenter, 0.5, potBottomRadius, 0.4, 12);
-
-  // 2. Potting Soil Disc at y = 14.0
-  pushTopDisc(vertices, normals, uvs, 14.0, 8.0, soilUC, 0.5, soilUR, 0.45, 12);
-
-  // 3. Stems (y = 14.0 .. 26.0)
-  const stemFaces = {
-    front: uvRect(stemU0, 0.1, stemU1, 0.9),
-    back: uvRect(stemU0, 0.1, stemU1, 0.9),
-    left: uvRect(stemU0, 0.1, stemU1, 0.9),
-    right: uvRect(stemU0, 0.1, stemU1, 0.9),
-    top: uvRect(stemU0, 0.02, stemU1, 0.1),
-    bottom: uvRect(stemU0, 0.9, stemU1, 0.98),
-  };
-  pushBoxPart(vertices, normals, uvs, new Vec3(-1.0, 14.0, -1.0), new Vec3(1.0, 26.0, 1.0), stemFaces);
-  pushBoxPart(vertices, normals, uvs, new Vec3(-4.5, 18.0, -1.0), new Vec3(-0.8, 22.0, 1.0), stemFaces);
-  pushBoxPart(vertices, normals, uvs, new Vec3(0.8, 20.0, -1.0), new Vec3(4.5, 24.0, 1.0), stemFaces);
-
-  // 4. Foliage Leaves (y = 20.0 .. 36.0)
-  const leafFaces = {
-    front: uvRect(folU0, 0.05, folU1, 0.95),
-    back: uvRect(folU0, 0.05, folU1, 0.95),
-    left: uvRect(folU0, 0.05, folU1, 0.95),
-    right: uvRect(folU0, 0.05, folU1, 0.95),
-    top: uvRect(folU0, 0.05, folU1, 0.95),
-    bottom: uvRect(folU0, 0.05, folU1, 0.95),
-  };
-  pushBoxPart(vertices, normals, uvs, new Vec3(-7.5, 22.0, -4.0), new Vec3(-1.5, 29.0, 4.0), leafFaces);
-  pushBoxPart(vertices, normals, uvs, new Vec3(1.5, 23.0, -4.0), new Vec3(7.5, 30.0, 4.0), leafFaces);
-  pushBoxPart(vertices, normals, uvs, new Vec3(-4.0, 24.0, 1.5), new Vec3(4.0, 31.0, 7.5), leafFaces);
-  pushBoxPart(vertices, normals, uvs, new Vec3(-4.0, 25.0, -7.5), new Vec3(4.0, 32.0, -1.5), leafFaces);
-  pushBoxPart(vertices, normals, uvs, new Vec3(-3.5, 27.0, -3.5), new Vec3(3.5, 36.0, 3.5), leafFaces);
+  // 3. Three slim canes of different heights, each carrying a crown of arching leaves; shorter leaves spring from the soil
+  const rnd = mulberry32(8710);
+  const canes = [
+    { x: 0.2, z: 0.0, top: 25.4, leaves: 8, length: 10.0, pitch: 1.18 },
+    { x: -2.6, z: 1.6, top: 20.6, leaves: 7, length: 9.2, pitch: 1.08 },
+    { x: 2.4, z: -1.8, top: 22.8, leaves: 7, length: 9.6, pitch: 1.12 },
+  ];
+  for (const cane of canes) {
+    pushCane(vertices, normals, uvs, stem, cane.x, cane.z, 14.5, cane.top, 0.78, 0.5);
+    for (let i = 0; i < cane.leaves; i++) {
+      const yaw = (i / cane.leaves) * Trigo.twopi + rnd() * 0.5;
+      // leaves alternate between young and upright and old and drooping
+      const old = i % 2;
+      pushLeaf(vertices, normals, uvs, foliage, cane.x, cane.top - 0.4, cane.z, yaw,
+        cane.length * (0.8 + rnd() * 0.3), 3.2 + rnd() * 0.8,
+        cane.pitch - old * 0.5 + rnd() * 0.2, 0.9 + old * 0.7 + rnd() * 0.4, 0.4, 6);
+    }
+  }
+  for (let i = 0; i < 7; i++) {
+    const yaw = (i / 7) * Trigo.twopi + 0.3 + rnd() * 0.4;
+    pushLeaf(vertices, normals, uvs, foliage, Math.cos(yaw) * 1.6, 14.7, Math.sin(yaw) * 1.6, yaw,
+      8.0 + rnd() * 2.5, 3.4 + rnd() * 0.8, 0.85 + rnd() * 0.3, 0.9 + rnd() * 0.5, 0.45, 6);
+  }
 
   return {
     vertices: new Float32Array(vertices),
@@ -3783,7 +3937,7 @@ export function plantWreckMesh() {
   const vertices = [];
   const normals = [];
   const uvs = [];
-  const { pot, foliage, stem, soil, boxUvs } = plantUvs();
+  const { pot, foliage, stem, soil } = plantUvs();
   const potMid = (pot.u0 + pot.u1) * 0.5;
 
   // 1. The pot's lower half (y = 0 .. 8.0), its base disc, and the broken edge it leaves
@@ -3811,12 +3965,11 @@ export function plantWreckMesh() {
   pushFrustumRing(vertices, normals, uvs, 8.2, 9.4, 7.0, 4.4, soil.u0, soil.u1, 0.2, 0.7, 10);
   pushTopDisc(vertices, normals, uvs, 9.4, 4.4, (soil.u0 + soil.u1) * 0.5, 0.5, (soil.u1 - soil.u0) * 0.3, 0.3, 10);
 
-  // 3. A snapped stem stub, leaning, and two leaves torn off and lying on the soil
-  pushBoxPart(vertices, normals, uvs, new Vec3(-0.9, 9.2, -0.9), new Vec3(0.9, 14.0, 0.9), boxUvs(stem, 0.1, 0.9));
-  pushBoxPart(vertices, normals, uvs, new Vec3(0.2, 13.0, -1.0), new Vec3(3.4, 14.4, 1.0), boxUvs(stem, 0.1, 0.9));
-  const leaf = boxUvs(foliage, 0.05, 0.95);
-  pushBoxPart(vertices, normals, uvs, new Vec3(-6.0, 9.1, 0.8), new Vec3(-1.0, 10.0, 4.6), leaf);
-  pushBoxPart(vertices, normals, uvs, new Vec3(1.8, 9.1, -5.6), new Vec3(6.4, 10.0, -1.6), leaf);
+  // 3. A snapped cane stub and a few leaves torn off and lying on the soil
+  pushCane(vertices, normals, uvs, stem, 0, 0, 9.2, 14.0, 0.8, 0.55);
+  pushLeaf(vertices, normals, uvs, foliage, -1.0, 9.5, 0.8, 2.6, 5.8, 3.0, 0.12, 0.25, 0.25, 4);
+  pushLeaf(vertices, normals, uvs, foliage, 1.2, 9.5, -1.0, -0.9, 5.6, 3.0, 0.1, 0.3, 0.25, 4);
+  pushLeaf(vertices, normals, uvs, foliage, 0.8, 9.6, 1.4, 0.7, 4.6, 2.6, 0.14, 0.2, 0.25, 4);
 
   return {
     vertices: new Float32Array(vertices),
@@ -3863,16 +4016,14 @@ export function plantDebrisMesh() {
  * - `shards`: `PLANT_SHARD_COUNT` flying fragments, 3 curved shards of terracotta pot and 2 tufts of leaves.
  */
 export function plantShrapnelParts() {
-  const { pot, foliage, stem, boxUvs } = plantUvs();
-  const leaf = boxUvs(foliage, 0.05, 0.95);
+  const { pot, foliage, stem } = plantUvs();
 
   const crownVerts = [];
   const crownNorms = [];
   const crownUvs = [];
-  pushBoxPart(crownVerts, crownNorms, crownUvs, new Vec3(-3.0, -2.0, -3.0), new Vec3(3.0, 3.0, 3.0), leaf);
-  pushBoxPart(crownVerts, crownNorms, crownUvs, new Vec3(-7.0, -3.0, -2.0), new Vec3(-2.0, 0.5, 2.0), leaf);
-  pushBoxPart(crownVerts, crownNorms, crownUvs, new Vec3(2.0, -2.5, -2.0), new Vec3(7.0, 1.0, 2.0), leaf);
-  pushBoxPart(crownVerts, crownNorms, crownUvs, new Vec3(-0.8, -5.0, -0.8), new Vec3(0.8, -2.0, 0.8), boxUvs(stem, 0.1, 0.9));
+  pushCane(crownVerts, crownNorms, crownUvs, stem, 0, 0, -4.5, -0.5, 0.6, 0.5);
+  for (let i = 0; i < 7; i++)
+    pushLeaf(crownVerts, crownNorms, crownUvs, foliage, 0, -0.5, 0, (i / 7) * Trigo.twopi, 6.4 + (i % 2) * 1.4, 2.8, 0.7 - (i % 2) * 0.35, 0.9, 0.35, 4);
 
   const shards = [];
   // three curved pieces of the pot wall, each a jagged strip of the terracotta
@@ -3913,8 +4064,8 @@ export function plantShrapnelParts() {
     const verts = [];
     const norms = [];
     const uvs = [];
-    pushBoxPart(verts, norms, uvs, new Vec3(-3.4, -0.5, -1.6), new Vec3(3.4, 0.5, 1.6), leaf);
-    pushBoxPart(verts, norms, uvs, new Vec3(-1.6, -0.4, -3.4 + s), new Vec3(1.6, 0.6, 3.0 - s), leaf);
+    for (let i = 0; i < 3; i++)
+      pushLeaf(verts, norms, uvs, foliage, 0, 0, 0, (i / 3) * Trigo.twopi + s * 0.9, 4.6, 2.2, 0.06, 0.12, 0.25, 3);
     shards.push({ vertices: new Float32Array(verts), normals: new Float32Array(norms), uvs: new Float32Array(uvs) });
   }
   return {

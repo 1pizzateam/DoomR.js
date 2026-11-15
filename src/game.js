@@ -2,6 +2,7 @@ import { Grid, Rand, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { Physics, Raycast, Scene } from '@1pizzateam/bumpr';
 import { Blood, makeFeet } from './blood.js';
 import { Rubble, severityOf } from './rubble.js';
+import { faceDirOf, pipePlacements } from './pipes.js';
 import { CONE_RANGE, Fog, marsFogNearFar } from './fog.js';
 import { BASE_FLOOR_LEVEL, CACHE_WALL_OFFSET, CEILING, CROUCH_EYE, DOOR, EXIT, EYE, FLOOR, Level, TILE, WALL } from './level.js';
 export { CACHE_WALL_OFFSET };
@@ -13,7 +14,16 @@ import { KNIFE_ATTACKS } from './arsenal.js';
 import { POWERUP_TYPES } from './powerups.js';
 import { defaultActionLabel } from './keymap.js';
 import { GRENADE_SCALE, GRENADE_START } from './grenade.js';
-import { DESK_HP, DESK_RADIUS, DISPENSER_HP, DISPENSER_RADIUS } from './furniture.js';
+import { DESK_HP, DESK_RADIUS, DISPENSER_HP, DISPENSER_RADIUS, OVEN_HP, OVEN_RADIUS, PLANT_HP, PLANT_RADIUS, SINK_HP, SINK_RADIUS, TABLE_HP, TABLE_RADIUS } from './furniture.js';
+
+const FURNITURE_STATS = {
+  dispenser: { radius: DISPENSER_RADIUS, hp: DISPENSER_HP },
+  desk: { radius: DESK_RADIUS, hp: DESK_HP },
+  table: { radius: TABLE_RADIUS, hp: TABLE_HP },
+  oven: { radius: OVEN_RADIUS, hp: OVEN_HP },
+  sink: { radius: SINK_RADIUS, hp: SINK_HP },
+  plant: { radius: PLANT_RADIUS, hp: PLANT_HP },
+};
 
 /** Collision categories: every body filters on what it should react to. */
 export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 32 };
@@ -32,6 +42,8 @@ const DUST_COUNT = 240;
 /** Explosive barrels: a couple of pellets set one off, and the blast sets off its neighbours. */
 const BARREL = { hp: 6, radius: 10, blast: 175, fuse: 0.08 };
 // blast damage to the surfaces round an explosion is only drawn; these do not touch damage
+// the scorch round a blast is this many times wider than the damage in it (see impacts.js)
+const BLAST_SCORCH_REACH = 1.9;
 const BLAST_RAYS = 16;
 const BLAST_RAY_COS = new Float64Array(BLAST_RAYS);
 const BLAST_RAY_SIN = new Float64Array(BLAST_RAYS);
@@ -197,6 +209,9 @@ export class Game {
     this.blastNormal = new Vec2();
     this.blastWall = new Vec3();
     this.blastMark = new Vec3();
+    this.blastPiecePos = new Vec3();
+    this.blastPieceNormal = new Vec2();
+    this.blastPieceSpan = { lo: 0, hi: 0, top: 0, slope: 0, door: null };
     this.blastFace = { x: 0, y: 0, nx: 0, ny: 0, idx: 0, top: 0, height: 0, door: null, span: null, lo: 0, hi: 0, slope: 0 };
     // scratch vectors handed to the blood APIs, which read them immediately and keep no reference
     this.bloodPos = new Vec3();
@@ -220,6 +235,8 @@ export class Game {
       lockedAngles: [0, 0, 0],
       missFlash: 0,
       hitFlash: 0,
+      releaseLatch: false,
+      cooldown: 0,
     };
     this.elevator = {
       active: false,
@@ -345,6 +362,8 @@ export class Game {
     this.usePrompt.key = 'use';
     this.clearUseTarget();
     this.cancelChestLock();
+    this.chestLock.releaseLatch = false;
+    this.chestLock.cooldown = 0;
     const seedIndex = this.levelIndex;
     this.level = def instanceof Level
       ? def
@@ -758,6 +777,7 @@ export class Game {
       nightVisionBattery: carry.hasNightVision ? POWERUP_TYPES.nightvision.duration : 0,
       nightVision: 0,
       soulFlash: 0,
+      pickupFlash: 0,
       teleFlash: 0,
       ammoFlash: { shells: 0, bullets: 0, rockets: 0 },
       ammoFrom: { shells: carry.shells ?? carry.ammo ?? 0, bullets: carry.bullets ?? 0, rockets: carry.rockets ?? 0 },
@@ -850,8 +870,7 @@ export class Game {
 
   addFurniture(entry) {
     const type = entry.type ?? 'dispenser';
-    const radius = type === 'desk' ? DESK_RADIUS : DISPENSER_RADIUS;
-    const hp = type === 'desk' ? DESK_HP : DISPENSER_HP;
+    const { radius, hp } = FURNITURE_STATS[type] ?? FURNITURE_STATS.dispenser;
     const body = makeBody(entry.pos, radius, {
       type: 'static',
       category: CAT.BARREL,
@@ -969,6 +988,8 @@ export class Game {
     lock.needle = 0;
     lock.missFlash = 0;
     lock.hitFlash = 0;
+    lock.releaseLatch = Boolean(this.player?.triggerHeld);
+    lock.cooldown = 0;
     const base = Math.random() * Trigo.twopi;
     lock.targets[0] = (base + 1.15) % Trigo.twopi;
     lock.targets[1] = (base + 3.25) % Trigo.twopi;
@@ -983,6 +1004,10 @@ export class Game {
     const lock = this.chestLock;
     if (!lock)
       return;
+    if (lock.active) {
+      lock.releaseLatch = true;
+      lock.cooldown = 0.25;
+    }
     lock.active = false;
     lock.cache = null;
     lock.stage = 0;
@@ -1257,6 +1282,28 @@ export class Game {
   }
 
   /**
+   * The part of a wall blast that falls on the pipes standing in front of that wall is drawn again on the pipes, one piece on
+   * each facet it reaches, in the same picture (the same seed and variant) so it runs on from facet to facet.
+   */
+  blastOnPipes(face, severity, primary) {
+    const { rubble, blastPiecePos, blastPieceNormal, blastPieceSpan } = this;
+    const { seed, variant } = primary;
+    const pieces = pipePlacements(face.x, face.y, face.height, face.nx, face.ny, (primary.size * BLAST_SCORCH_REACH) / 2);
+    for (const piece of pieces) {
+      blastPiecePos.setScalar(piece.x, piece.y, face.height);
+      blastPieceNormal.setScalar(piece.nx, piece.ny);
+      blastPieceSpan.lo = piece.lo;
+      blastPieceSpan.hi = piece.hi;
+      blastPieceSpan.top = face.top;
+      const slot = rubble.addWall(blastPiecePos, blastPieceNormal, severity, blastPieceSpan);
+      if (slot) {
+        slot.seed = seed;
+        slot.variant = variant;
+      }
+    }
+  }
+
+  /**
    * A blast scars the walls, floor and ceiling round it, as long as they are in the open to it. Only drawn: it takes no
    * random numbers from the game and does no damage.
    */
@@ -1293,6 +1340,8 @@ export class Game {
       const slot = rubble.addWall(blastMark, blastNormal, severity, blastFace);
       if (!slot)
         continue;
+      if (!door && level.pipeFaces?.has(blastFace.idx * 4 + faceDirOf(blastFace.nx, blastFace.ny)))
+        this.blastOnPipes(blastFace, severity, slot);
       marked = true;
       lastX = hit.point.x;
       lastY = hit.point.y;
@@ -1610,6 +1659,8 @@ export class Game {
     ref.initial = initial;
     ref.taken = false;
     this.grant(ref);
+    if (ref.taken)
+      this.player.pickupFlash = 0.6;
     return ref.taken;
   }
 
@@ -3262,7 +3313,15 @@ export class Game {
       this.use();
     const wasHoldingTrigger = Boolean(player.triggerHeld);
     player.triggerHeld = Boolean(input.fire);
+    if (this.chestLock) {
+      if (this.chestLock.cooldown > 0)
+        this.chestLock.cooldown = Math.max(0, this.chestLock.cooldown - dt);
+      if (!input.fire && !this.chestLock.active)
+        this.chestLock.releaseLatch = false;
+    }
     if (wasPickingLock || this.chestLock?.active) {
+      if (input.fire && this.chestLock)
+        this.chestLock.releaseLatch = true;
       if (player.kick.burst > 0)
         this.endBurst();
       if (this.chestLock?.active && input.fire && !wasHoldingTrigger)
@@ -3279,6 +3338,11 @@ export class Game {
       }
     if (player.kick.burst > 0 && !input.fire)
       this.endBurst();
+    if (this.chestLock?.releaseLatch || (this.chestLock?.cooldown ?? 0) > 0) {
+      if (input.fire)
+        this.chestLock.releaseLatch = true;
+      return;
+    }
     if (input.fire && player.cooldown <= 0) {
       const def = WEAPONS[player.weapon ?? 'shotgun'] ?? WEAPONS.shotgun;
       const pool = def.ammoType ? AMMO_TYPES[def.ammoType] : null;
@@ -3375,6 +3439,7 @@ export class Game {
     const { player } = this;
     player.radFlash = Math.max(0, (player.radFlash ?? 0) - dt);
     player.soulFlash = Math.max(0, (player.soulFlash ?? 0) - dt);
+    player.pickupFlash = Math.max(0, (player.pickupFlash ?? 0) - dt);
     player.berserkTimer = Math.max(0, (player.berserkTimer ?? 0) - dt);
     player.radSuit = Math.max(0, (player.radSuit ?? 0) - dt);
     if (player.hasNightVision) {

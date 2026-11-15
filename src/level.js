@@ -76,7 +76,7 @@ const PICKUPS = {
   V: 'radsuit',
   N: 'nightvision',
 };
-const FURNITURES = { d: 'dispenser', t: 'desk' };
+const FURNITURES = { d: 'dispenser', t: 'desk', f: 'table', e: 'oven', l: 'sink', p: 'plant' };
 
 // Face directions: the side of a tile a ray enters through (0: -x, 1: +x, 2: -y, 3: +y).
 const DX = [-1, 1, 0, 0];
@@ -86,7 +86,19 @@ const WALL_DY = [0, 1, 0, -1];
 export const CACHE_WALL_OFFSET = 14;
 export const DISPENSER_WALL_OFFSET = 20;
 export const DESK_WALL_OFFSET = 14;
+export const TABLE_WALL_OFFSET = 0;
+export const OVEN_WALL_OFFSET = 18;
+export const SINK_WALL_OFFSET = 18;
+export const PLANT_WALL_OFFSET = 16;
 export const SWITCH_WALL_OFFSET = 2;
+const FURNITURE_WALL_OFFSETS = {
+  dispenser: DISPENSER_WALL_OFFSET,
+  desk: DESK_WALL_OFFSET,
+  table: TABLE_WALL_OFFSET,
+  oven: OVEN_WALL_OFFSET,
+  sink: SINK_WALL_OFFSET,
+  plant: PLANT_WALL_OFFSET,
+};
 
 /**
  * A tile map parsed from ASCII rows.
@@ -645,7 +657,7 @@ export class Level {
       ? wallSide
       : this.chestWallSide(x, y);
     const pos = this.center(x, y);
-    const wallOffset = type === 'desk' ? DESK_WALL_OFFSET : DISPENSER_WALL_OFFSET;
+    const wallOffset = FURNITURE_WALL_OFFSETS[type] ?? DISPENSER_WALL_OFFSET;
     let resolvedAngle = 0;
     if (resolvedWallSide >= 0) {
       pos.x += WALL_DX[resolvedWallSide] * wallOffset;

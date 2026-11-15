@@ -2,7 +2,10 @@ import { Rand, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { dripTime, GIB_VARIANTS } from './bloodsprites.js';
 import { MARS_BOULDER_BASE_INSET, MARS_BOULDER_SLOPE } from './floor.js';
 import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
+import { faceDirOf, pipePlacements } from './pipes.js';
 
+// half the size of a bullet hole's picture (see impacts.js)
+const HOLE_HALF = 8;
 export const BLOOD = {
   particles: 1400,
   floor: 640,
@@ -305,9 +308,15 @@ export class Blood {
       seed: this.rand.integer(1, 2147483647),
     };
     this.holes.push(hole);
+    // the part of the hole that falls on a pipe in front of the wall is drawn on the pipe too
+    if (!door && level.pipeFaces?.has(idx * 4 + faceDirOf(nx, ny)))
+      for (const piece of pipePlacements(px, py, height, nx, ny, HOLE_HALF))
+        this.holes.push({ ...hole, ...piece });
     if (door) {
       this.evictOldestOf(this.holes, door, BLOOD.doorHoles);
     }
+    while (this.holes.length > BLOOD.holes)
+      this.holes.shift();
     if (this.holes.length > BLOOD.holes)
       this.holes.shift();
     this.holesVersion++;
@@ -527,12 +536,17 @@ export class Blood {
     } else
       span = this.faceSpan(this.spanAt.setScalar(x, y), normal, door);
     const seed = this.rand.integer(1, 2147483647);
-    this.walls.push({ x: px, y: py, z, nx, ny, size, top, door, ...span, seed, age: 0, dripTime: dripTime(seed, size) });
+    const splat = { x: px, y: py, z, nx, ny, size, top, door, ...span, seed, age: 0, dripTime: dripTime(seed, size) };
+    this.walls.push(splat);
+    // the part of the splat that falls on a pipe in front of the wall is drawn on the pipe too (and never baked into the wall)
+    if (!isDiag && !door && idx >= 0 && this.level.pipeFaces?.has(idx * 4 + faceDirOf(nx, ny)))
+      for (const piece of pipePlacements(px, py, z, nx, ny, size / 2))
+        this.walls.push({ ...splat, ...piece, onPipe: true });
     // blood on a door rides with it, like a hole, and each door keeps only so many
     if (door) {
       this.evictOldestOf(this.walls, door, BLOOD.doorSplats);
     }
-    if (this.walls.length > BLOOD.walls)
+    while (this.walls.length > BLOOD.walls)
       this.walls.shift();
     this.version++;
   }

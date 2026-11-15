@@ -245,19 +245,25 @@ const checks = [
     assert.ok(!/\bnew\b|=>|\{\}|\[\]|\bfunction\b/.test(body), 'syncBlasts allocates nothing');
     assert.equal(typeof World.prototype.syncBlasts, 'function');
   }],
-  ['AC-1 atlas is a single 64 px row with unchanged legacy cells', () => {
+  ['AC-1 atlas is a single 64 px row with native 64x64 impact cells', () => {
     const atlas = impactAtlas();
     assert.equal(atlas.width, CELL * IMPACT_CELL_COUNT);
     assert.equal(atlas.height, CELL);
     assert.equal(atlas.frames, IMPACT_CELL_COUNT);
     const px = (cell, x, y) => atlas.data.subarray((y * atlas.width + cell * CELL + x) * 4, (y * atlas.width + cell * CELL + x) * 4 + 4);
-    for (const cell of [IMPACT_CELLS.hole + 3, IMPACT_CELLS.spark + 1, IMPACT_CELLS.slash + 2])
+    for (const cell of [IMPACT_CELLS.hole + 3, IMPACT_CELLS.spark + 1, IMPACT_CELLS.slash + 2]) {
+      let subPixelDiffs = 0;
       for (let y = 0; y < CELL; y += 2)
         for (let x = 0; x < CELL; x += 2) {
           const a = px(cell, x, y);
-          for (const [dx, dy] of [[1, 0], [0, 1], [1, 1]])
-            assert.deepEqual(px(cell, x + dx, y + dy), a, `cell ${cell} is a 2x upscale at ${x},${y}`);
+          for (const [dx, dy] of [[1, 0], [0, 1], [1, 1]]) {
+            const b = px(cell, x + dx, y + dy);
+            if (b[0] !== a[0] || b[1] !== a[1] || b[2] !== a[2] || b[3] !== a[3])
+              subPixelDiffs++;
+          }
         }
+      assert.ok(subPixelDiffs > 12, `cell ${cell} has native 64x64 detail (${subPixelDiffs} sub-block diffs)`);
+    }
     assert.equal(impactCellUv(IMPACT_CELL_COUNT - 1)[2], 1);
   }],
   ['AC-2 blast cell layout is non-overlapping and inside the atlas', () => {

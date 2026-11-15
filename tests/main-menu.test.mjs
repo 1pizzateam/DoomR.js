@@ -119,9 +119,9 @@ const checks = [
     m.update(true);
     assert.equal(m.activated, MENU_NONE);
   }],
-  ['AC-8 main.js wires PLAY to selectingDifficulty and OPTIONS to controlsMenu.open(\'title\') (source assertions), and focus(MENU_PLAY)/cursor persistence on OPTIONS are checked on the model', () => {
+  ['AC-8 main.js wires PLAY to selectingDifficulty and OPTIONS to optionsMenu.open(\'title\') (source assertions), and focus(MENU_PLAY)/cursor persistence on OPTIONS are checked on the model', () => {
     assert.match(mainSrc, /mainMenu\.activated === MENU_PLAY\)\s*\{\s*game\.selectingDifficulty = true;/);
-    assert.match(mainSrc, /mainMenu\.activated === MENU_OPTIONS\)\s*controlsMenu\.open\('title'\)/);
+    assert.match(mainSrc, /mainMenu\.activated === MENU_OPTIONS\)\s*optionsMenu\.open\('title'\)/);
     assert.match(mainSrc, /game\.selectingDifficulty = false;\s*mainMenu\.focus\(MENU_PLAY\);/);
     const input = makeInput();
     const m = new MainMenu(input);

@@ -572,6 +572,25 @@
     0,
     0
    ]
+  },
+  "happy": {
+   "duration": 1.4,
+   "attack": 0.25,
+   "muscles": {
+    "mouthSmileL": 0.7,
+    "mouthSmileR": 0.7,
+    "cheekSquintL": 0.3,
+    "cheekSquintR": 0.3,
+    "eyeSquintL": 0.12,
+    "eyeSquintR": 0.12,
+    "browOuterUpL": 0.15,
+    "browOuterUpR": 0.15
+   },
+   "headEuler": [
+    -0.03,
+    0,
+    0
+   ]
   }
  },
  "holdShooting": {

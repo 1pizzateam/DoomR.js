@@ -259,8 +259,8 @@ function fillDrips(seed, size, out) {
 const SCRATCH_DRIPS = [];
 const COLS = [0, 0];
 
-// Where the blood of each wall splat ends along its bottom: for every column of its 32-unit cell, the row (from the
-// top) below which no solid body is left, so a drip can come out of the body instead of out of thin air.
+// Where the blood of each wall splat is solid, per column of its 32-unit cell: the rows (from the top) of the highest and
+// lowest solid texel, so a drip can come out of the body instead of out of thin air.
 const BODY_ROWS = [];
 
 function bodyRows(variant) {
@@ -272,39 +272,47 @@ function bodyRows(variant) {
   let top = 0;
   for (let i = 0; i < layers.H.length; i++)
     top = Math.max(top, layers.H[i]);
-  const rows = new Array(CELL).fill(CELL / 2);
+  const rows = [];
   for (let col = 0; col < CELL; col++) {
     let low = -1;
+    let high = Infinity;
     for (let y = 0; y < n; y++)
       for (let x = col * per; x < (col + 1) * per; x++) {
         const i = y * n + x;
-        if (layers.cov[i] > 0.9 && layers.H[i] > top * 0.4)
+        if (layers.cov[i] > 0.9 && layers.H[i] > top * 0.4) {
           low = Math.max(low, y);
+          high = Math.min(high, y);
+        }
       }
-    // columns without a body are left at the middle: a drip is never started where there is none
-    rows[col] = low < 0 ? CELL / 2 : low / per;
+    // a column with no body has high > low
+    rows.push(low < 0 ? { low: -1, high: Infinity } : { low: low / per, high: high / per });
   }
   BODY_ROWS[variant] = rows;
   return rows;
 }
 
-/** The height, above the hit and in wall units, where a stem of half-width `half` at `u` leaves the body of the splat. */
+/**
+ * The height, above the hit and in wall units, where a stem of half-width `half` at `u` leaves the body of the splat, or
+ * NaN when the body there is too thin or missing for the stem to sit inside it.
+ */
 function bodyBottom(variant, size, u, half) {
   const rows = bodyRows(variant);
   const pixel = size / 10;
   const first = Math.max(0, Math.floor(CELL / 2 + (u - half) / pixel));
   const last = Math.min(CELL - 1, Math.floor(CELL / 2 + (u + half) / pixel));
-  // the highest lower edge across the stem, so the whole top of the stem lies inside the body
-  let row = 0;
   if (last < first)
-    row = CELL / 2;
-  else {
-    row = Infinity;
-    for (let c = first; c <= last; c++)
-      row = Math.min(row, rows[c]);
+    return NaN;
+  // the highest lower edge and the lowest upper edge across the stem: its top has to lie inside the body everywhere
+  let low = Infinity;
+  let high = -Infinity;
+  for (let c = first; c <= last; c++) {
+    low = Math.min(low, rows[c].low);
+    high = Math.max(high, rows[c].high);
   }
+  if (!(low - high >= 3))
+    return NaN;
   // a little inside the body, so the stem's soft top is hidden in it
-  return (CELL / 2 - row) * pixel + pixel * 2.5;
+  return (CELL / 2 - low + 2.5) * pixel;
 }
 
 /** How long, in seconds, until every drip of a splat has stopped. */
@@ -421,8 +429,14 @@ export function wallDripQuads({ pos, normal, size, top, seed, age = 0, lo = -Inf
       continue;
     const px = drip.pixel;
     const half = ((STEM_TO - STEM_FROM) / 2) * px;
-    const start = bodyBottom(variant, size, drip.u, half);
-    if (drip.u - half < lo + EDGE || drip.u + half > hi - EDGE || start > top - 0.6 - z)
+    // a drip whose spot has no body under it slides toward the middle of the splat until it has one
+    let u = drip.u;
+    let start = bodyBottom(variant, size, u, half);
+    for (let k = 1; k <= 4 && Number.isNaN(start); k++) {
+      u = drip.u * (1 - k / 4);
+      start = bodyBottom(variant, size, u, half);
+    }
+    if (Number.isNaN(start) || u - half < lo + EDGE || u + half > hi - EDGE || start > top - 0.6 - z)
       continue;
     const tipHeight = TIP_HEIGHTS[drip.tip] * px;
     // the end of the stem, resting on the floor when it gets there
@@ -437,11 +451,11 @@ export function wallDripQuads({ pos, normal, size, top, seed, age = 0, lo = -Inf
     const narrowing = (y) => 1 - (1 - TAPER) * Math.min(1, Math.max(0, (start - y) / run));
     for (let top2 = start; top2 > bottom + 1e-6; top2 -= segment) {
       const partBottom = Math.max(bottom, top2 - segment);
-      pushDripQuad(out, pos, scratchTangent, normal, slope, drip.u, half * narrowing(partBottom), half * narrowing(top2), partBottom, top2, s0, 1 - (top2 - partBottom) / segment, s1, 1);
+      pushDripQuad(out, pos, scratchTangent, normal, slope, u, half * narrowing(partBottom), half * narrowing(top2), partBottom, top2, s0, 1 - (top2 - partBottom) / segment, s1, 1);
     }
     columnsInto(CELLS.tips + drip.tip);
     const end = half * narrowing(bottom);
-    pushDripQuad(out, pos, scratchTangent, normal, slope, drip.u, end, end, head + px - tipHeight, head + px, COLS[0], 1 - TIP_HEIGHTS[drip.tip] / CELL, COLS[1], 1);
+    pushDripQuad(out, pos, scratchTangent, normal, slope, u, end, end, head + px - tipHeight, head + px, COLS[0], 1 - TIP_HEIGHTS[drip.tip] / CELL, COLS[1], 1);
   }
   if (target)
     return target;

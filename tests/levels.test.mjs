@@ -534,17 +534,18 @@ try {
     ['sink', sinkAtlas, ['front', 'side', 'top', 'water']],
   ]) {
     const atlas = fn();
+    const cell = name === 'plant' ? 128 : 64;
     assert.equal(atlas.name, name, `${name} atlas name matches`);
-    assert.equal(atlas.width, 256, `${name} atlas width is 256`);
-    assert.equal(atlas.height, 64, `${name} atlas height is 64`);
+    assert.equal(atlas.width, cell * 4, `${name} atlas width is ${cell * 4}`);
+    assert.equal(atlas.height, cell, `${name} atlas height is ${cell}`);
     assert.equal(atlas.width & (atlas.width - 1), 0, `${name} atlas width is power of two`);
     assert.equal(atlas.height & (atlas.height - 1), 0, `${name} atlas height is power of two`);
     assert.ok(atlas.data instanceof Uint8Array, `${name} atlas data is Uint8Array`);
-    assert.equal(atlas.data.length, 256 * 64 * 4, `${name} atlas buffer is 65536 bytes`);
+    assert.equal(atlas.data.length, cell * 4 * cell * 4, `${name} atlas buffer is ${cell * 4 * cell * 4} bytes`);
     for (const key of expectedSubtiles) {
       assert.ok(atlas[key] && typeof atlas[key].x === 'number', `${name} contains subtile ${key}`);
-      assert.equal(atlas[key].width, 64, `${name} subtile ${key} width is 64`);
-      assert.equal(atlas[key].height, 64, `${name} subtile ${key} height is 64`);
+      assert.equal(atlas[key].width, cell, `${name} subtile ${key} width is ${cell}`);
+      assert.equal(atlas[key].height, cell, `${name} subtile ${key} height is ${cell}`);
     }
   }
   console.log(`ok   ${furnitureAtlasAc1TestName}`);

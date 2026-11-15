@@ -738,6 +738,23 @@ export function secretDoorBox(dimensions, wallCells = 8) {
   const vertices = [];
   const uvs = [];
   pushBoxFaces(vertices, uvs, dimensions.x / 2, dimensions.y, 0, 0, wallCells);
+  // RoostR takes clockwise triangles as front faces and the door meshes cull back faces, while the box above is built
+  // counter-clockwise from outside: left as it is, only the inside of the block would show, and a secret door would look
+  // like a hollow recess. Turn every triangle round (swap its second and third corners) so the outside is what is drawn.
+  for (let t = 0; t < vertices.length / 9; t++) {
+    const v = t * 9;
+    const u = t * 6;
+    for (let k = 0; k < 3; k++) {
+      const a = vertices[v + 3 + k];
+      vertices[v + 3 + k] = vertices[v + 6 + k];
+      vertices[v + 6 + k] = a;
+    }
+    for (let k = 0; k < 2; k++) {
+      const a = uvs[u + 2 + k];
+      uvs[u + 2 + k] = uvs[u + 4 + k];
+      uvs[u + 4 + k] = a;
+    }
+  }
   return { vertices, uvs };
 }
 

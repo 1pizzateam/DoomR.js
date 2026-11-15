@@ -4,16 +4,14 @@ import { mulberry32 } from './rng.js';
 const scratchPt = new Vec2();
 
 /**
- * What a bullet leaves behind and what it throws up, as pixel art drawn here in code (no image files): bullet holes in
- * steel (twelve kinds: clean punctures, torn petals, ricochet scrapes, cracked plate, double hits, dents, scorched ones) and the sparks of a pellet striking metal (four kinds, five frames each). One 32 x 32 cell
- * each, in a single row, padded to a power of two. The holes are flat quads on a wall face (see `holeQuad`), the sparks
- * are a short animation on a sprite that faces the camera.
+ * What a bullet leaves behind and what it throws up, as procedural high-resolution art drawn here in code (no image files):
+ * bullet holes in steel (twelve variants across eight ballistic archetypes: clean punctures, peeled petals, ricochet gouges,
+ * fractured plates, double hits, concussive dents, scorched punctures, star-crazed craters), metallic pellet sparks (four
+ * kinds, five frames each), vertical chainsaw/blade gashes (six variants), and multi-tier blast craters and scorch halos.
+ * Every cell is painted natively at 64 x 64 texels in a single row.
  */
 
-const IMPACT_CELL = 32;
-// the atlas cells are twice as sharp: the legacy pictures are doubled, the blast art is painted at this size
 const ATLAS_CELL = 64;
-const ATLAS_SCALE = ATLAS_CELL / IMPACT_CELL;
 const mid2 = (ATLAS_CELL - 1) / 2;
 export const IMPACT_CELL_COUNT = 64;
 export const HOLE_VARIANTS = 12;
@@ -72,245 +70,435 @@ const FLASH = [255, 252, 226];
 const YELLOW = [255, 220, 110];
 const ORANGE = [255, 150, 46];
 const EMBER = [196, 78, 28];
+const EMBER_DIM = [148, 48, 18];
 
-const mid = (IMPACT_CELL - 1) / 2;
-
-class Cell {
-  constructor() {
-    this.pixels = new Uint8Array(IMPACT_CELL * IMPACT_CELL * 4);
-  }
-
-  put(x, y, color, over = true) {
-    x = Math.round(x);
-    y = Math.round(y);
-    if (x < 0 || y < 0 || x >= IMPACT_CELL || y >= IMPACT_CELL)
-      return;
-    const o = (y * IMPACT_CELL + x) * 4;
-    if (!over && this.pixels[o + 3])
-      return;
-    this.pixels[o] = color[0];
-    this.pixels[o + 1] = color[1];
-    this.pixels[o + 2] = color[2];
-    this.pixels[o + 3] = 255;
-  }
-
-  line(x0, y0, x1, y1, color, over = true) {
-    const steps = Math.ceil(scratchPt.setScalar(x1 - x0, y1 - y0).getMagnitude() * 1.5) || 1;
-    for (let i = 0; i <= steps; i++)
-      this.put(Utils.lerp(x0, x1, i / steps), Utils.lerp(y0, y1, i / steps), color, over);
-  }
-}
-
-const SHADE = [28, 34, 48];
-const BARE = [138, 154, 182];
-
-/** Fills an ellipse (radii rx, ry, turned by `turn`), calling `paint(x, y, d, lit)` where d is 0 at the middle and 1 at the edge. */
-function ellipse(cx, cy, rx, ry, turn, paint) {
-  const cos = Math.cos(turn);
-  const sin = Math.sin(turn);
-  const reach = Math.ceil(Math.max(rx, ry) + 2);
-  for (let y = Math.floor(cy - reach); y <= Math.ceil(cy + reach); y++)
-    for (let x = Math.floor(cx - reach); x <= Math.ceil(cx + reach); x++) {
-      const dx = x - cx;
-      const dy = y - cy;
-      const u = (dx * cos + dy * sin) / rx;
-      const v = (-dx * sin + dy * cos) / ry;
-      // which way the rim faces: lit on the upper left, in shadow on the lower right
-      paint(x, y, scratchPt.setScalar(u, v).getMagnitude(), dx + dy);
-    }
-}
-
-/** A dent or crater: dark inside, a bevelled rim round it, and a bright edge of bare metal where the steel was torn. */
-function crater(c, cx, cy, rx, ry, turn, { depth = 1, bare = true, rnd } = {}) {
-  const wobble = rnd() * 6.28;
-  ellipse(cx, cy, rx, ry, turn, (x, y, d, side) => {
-    const e = 1 + 0.1 * Math.sin(Math.atan2(y - cy, x - cx) * 3 + wobble);
-    if (d <= (1 - 0.34) * e) {
-      // dark inside, darkest in the middle; shallow dents stay lighter
-      const inner = d / e;
-      c.put(x, y, depth > 0.6 ? (inner < 0.45 ? CHAR : mix3(CHAR, SCORCH, inner)) : mix3(SHADE, SCORCH, inner));
-    } else if (d <= 1.12 * e) {
-      c.put(x, y, side < 0 ? RIM : SCORCH);
-      // a line of bare, freshly torn metal on the lit lip
-      if (bare && side < -1 && d > 0.85 * e)
-        c.put(x, y, BARE);
-    } else if (d <= 1.55 * e)
-      c.put(x, y, side < 0 ? SCORCH : SHADE, false);
-  });
-}
+const SHADE = [24, 30, 44];
+const PRIMER = [50, 58, 76];
+const BORE_LIT = [58, 70, 92];
+const BARE = [146, 166, 196];
+const SPECULAR_STEEL = [192, 212, 236];
 
 function mix3(a, b, t) {
   return [Utils.lerp(a[0], b[0], t), Utils.lerp(a[1], b[1], t), Utils.lerp(a[2], b[2], t)];
 }
 
-/** A crack that wanders, with side branches; `light` puts a thin lit edge beside it. */
-function crack(c, rnd, x, y, angle, length, light = true, branches = 1) {
-  let a = angle;
-  for (let d = 0; d < length; d++) {
-    a += (rnd() - 0.5) * 0.7;
-    x += Math.cos(a);
-    y += Math.sin(a);
-    c.put(x, y, CRACK);
-    if (light && d % 2 === 0)
-      c.put(x + 1, y + 1, RIM, false);
-    if (branches > 0 && d > 2 && rnd() < 0.18)
-      crack(c, rnd, x, y, a + (rnd() < 0.5 ? -1 : 1) * (0.6 + rnd() * 0.5), 2 + Math.floor(rnd() * 4), false, branches - 1);
-  }
+function clampSteelColor(color, jitter = 0) {
+  return [
+    Math.max(0, Math.min(198, color[0] + jitter)),
+    Math.max(0, Math.min(242, color[1] + jitter)),
+    Math.max(0, Math.min(255, color[2] + jitter)),
+  ];
 }
 
-/** A soft scorch: dithered dark, thinning outwards. */
-function scorch(c, rnd, cx, cy, radius, density = 1) {
-  for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++)
-    for (let x = Math.floor(cx - radius); x <= Math.ceil(cx + radius); x++) {
-      const d = scratchPt.setScalar(x - cx, y - cy).getMagnitude();
-      if (d < radius && (x + y) % 2 === 0 && rnd() < (1.1 - d / radius) * density)
-        c.put(x, y, SCORCH, false);
+/**
+ * Paints a 64x64 3D ballistic crater or concussive dent at `(cx, cy)` with semi-axes `(rx, ry)` rotated by `turn`.
+ * Features a deep ambient-occluded entry cavity with grazing light on the lower-right bore wall, an undercut shadow
+ * beneath the upper-left overhang, a raised 3D bevel collar of sheared bare steel, an exposed primer ring, and a
+ * domain-warped powder-soot halo with smooth alpha falloff.
+ */
+function crater(c, cx, cy, rx, ry, turn, { depth = 1, bare = true, halo = 1.38, seed = 17, rnd } = {}) {
+  const wobble = rnd() * Trigo.twopi;
+  const wobble2 = rnd() * Trigo.twopi;
+  const cos = Math.cos(turn);
+  const sin = Math.sin(turn);
+  const reach = Math.ceil(Math.max(rx, ry) * (halo + 0.22) + 2);
+  const yMin = Math.max(BORDER, Math.floor(cy - reach));
+  const yMax = Math.min(ATLAS_CELL - BORDER - 1, Math.ceil(cy + reach));
+  const xMin = Math.max(BORDER, Math.floor(cx - reach));
+  const xMax = Math.min(ATLAS_CELL - BORDER - 1, Math.ceil(cx + reach));
+
+  for (let y = yMin; y <= yMax; y++)
+    for (let x = xMin; x <= xMax; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const u = (dx * cos + dy * sin) / rx;
+      const v = (-dx * sin + dy * cos) / ry;
+      const r = scratchPt.setScalar(u, v).getMagnitude();
+      const theta = Math.atan2(dy, dx);
+      const n1 = fbm(x * 0.24 + seed * 0.37, y * 0.24 + seed * 0.19, seed);
+      const n2 = fbm(x * 0.58, y * 0.58, seed + 13);
+      const lobe = 1
+        + 0.09 * Math.sin(theta * 3 + wobble)
+        + 0.06 * Math.cos(theta * 5 - wobble2)
+        + (n1 - 0.5) * 0.24;
+      const d = r / lobe;
+      if (d > halo)
+        continue;
+
+      const dist = Math.hypot(dx, dy) || 1;
+      const ux = dx / dist;
+      const uy = dy / dist;
+      // Upper-left directional light (+1 when surface normal points upper-left, -1 when lower-right)
+      const lightDot = -(ux * 0.68 + uy * 0.73);
+      const jitter = (hash2(x, y, seed + 5) - 0.5) * 10;
+
+      if (depth <= 0.5) {
+        // Concussive non-penetrating dent: concave bowl shadowed on upper-left inner slope, lit on lower-right inner bowl
+        if (d < 0.92) {
+          const bowlT = d / 0.92;
+          const innerLit = Utils.clamp(-lightDot * 0.65 * bowlT + 0.35, 0, 1);
+          const impactCore = 1 - Utils.smoothstep(0, 0.36, d);
+          const baseCol = mix3(SHADE, mix3(RIM, BARE, innerLit * 0.65), innerLit * (0.45 + 0.55 * n2));
+          const dented = mix3(baseCol, SCORCH, impactCore * 0.72);
+          c.put(x, y, clampSteelColor(dented, jitter), 255);
+        } else if (d < 1.12) {
+          const rimLit = Utils.clamp(lightDot * 0.7 + 0.3, 0, 1);
+          const rimCol = mix3(SCORCH, RIM, rimLit * (0.55 + 0.45 * n2));
+          c.put(x, y, clampSteelColor(rimCol, jitter), 255);
+        } else {
+          const fade = 1 - Utils.smoothstep(1.1, halo, d);
+          const alpha = Math.round(235 * fade * (0.65 + 0.35 * n1));
+          if (alpha >= 132)
+            c.put(x, y, clampSteelColor(mix3(SCORCH, SHADE, n2 * 0.5), jitter * 0.5), alpha, false);
+        }
+        continue;
+      }
+
+      if (d < 0.56) {
+        // Deep ballistic entry bore: dark ambient-occluded throat with grazing illumination on lower-right cylinder wall
+        const inner = d / 0.56;
+        const wallGrazing = Utils.smoothstep(0.32, 0.98, inner) * Utils.clamp(-lightDot + 0.15, 0, 1);
+        const striation = 0.7 + 0.3 * Math.sin(theta * 11 + wobble * 2);
+        const boreCol = mix3(CHAR, mix3(SCORCH, BORE_LIT, wallGrazing * striation), inner * inner * (0.35 + 0.65 * wallGrazing));
+        c.put(x, y, clampSteelColor(boreCol, jitter * 0.4), 255);
+      } else if (d < 0.75) {
+        // Inner sheared lip: undercut shadow under upper-left overhang, bright sheared inner bevel on lower-right
+        const t = (d - 0.56) / 0.19;
+        if (lightDot > 0.08) {
+          const crest = Utils.smoothstep(0.45, 1.0, t);
+          const col = mix3(CHAR, bare ? BARE : RIM, crest * (0.55 + 0.45 * lightDot));
+          c.put(x, y, clampSteelColor(col, jitter), 255);
+        } else {
+          const bevelPeak = 1 - Math.abs(t - 0.5) * 1.6;
+          const sheen = Utils.clamp((-lightDot) * Math.max(0, bevelPeak), 0, 1);
+          const col = mix3(SCORCH, bare ? CHIP : RIM, sheen * (0.6 + 0.4 * n2));
+          c.put(x, y, clampSteelColor(col, jitter), 255);
+        }
+      } else if (d < 1.04) {
+        // Raised outer spall crown: strongly lit on upper-left slope, shadowed on lower-right slope
+        const crownT = 1 - Math.abs((d - 0.88) / 0.16);
+        const facet = 0.6 + 0.4 * Math.cos(theta * 6 - wobble2);
+        if (lightDot >= -0.05) {
+          const spec = Utils.clamp(lightDot * (0.65 + 0.35 * Math.max(0, crownT)) * (0.7 + 0.3 * facet), 0, 1);
+          const metal = bare ? mix3(RIM, SPECULAR_STEEL, spec) : mix3(PRIMER, CHIP, spec * 0.85);
+          c.put(x, y, clampSteelColor(metal, jitter), 255);
+        } else {
+          const shadowT = Utils.clamp((-lightDot) * 0.85, 0, 1);
+          const shadowCol = mix3(PRIMER, SCORCH, shadowT * (0.65 + 0.35 * (1 - n2)));
+          c.put(x, y, clampSteelColor(shadowCol, jitter * 0.7), 255);
+        }
+      } else if (d < 1.17) {
+        // Exposed primer / chipped paint step around the crater collar
+        const stepLit = Utils.clamp(lightDot * 0.5 + 0.5, 0, 1);
+        const stepCol = mix3(SCORCH, mix3(SHADE, PRIMER, stepLit), 0.45 + 0.55 * n2);
+        c.put(x, y, clampSteelColor(stepCol, jitter * 0.6), 248);
+      } else {
+        // Outer powder-soot & shock halo with radial blast striations
+        const jet = 0.65 + 0.35 * Math.sin(theta * 7 + wobble * 1.3);
+        const fade = (1 - Utils.smoothstep(1.14, halo, d)) * (0.55 + 0.45 * n1 * jet);
+        const alpha = Math.round(240 * fade);
+        if (alpha >= 132) {
+          const sootCol = mix3(CHAR, SHADE, n2 * 0.65);
+          c.put(x, y, clampSteelColor(sootCol, jitter * 0.4), alpha, false);
+        }
+      }
     }
 }
 
-/** Flecks of steel thrown out round a hit. */
+/** A high-resolution radial fracture in steel with tapered sub-pixel crevice, side branches, and a specular catch-lip. */
+function crack(c, rnd, x, y, angle, length, light = true, branches = 1) {
+  let a = angle;
+  const steps = Math.max(2, Math.ceil(length * 2.4));
+  const stepLen = length / steps;
+  for (let i = 0; i < steps; i++) {
+    const t = i / steps;
+    a += (rnd() - 0.5) * 0.42;
+    x += Math.cos(a) * stepLen;
+    y += Math.sin(a) * stepLen;
+    const nx = -Math.sin(a);
+    const ny = Math.cos(a);
+    const halfW = 0.55 * (1 - t * 0.65);
+    c.put(x, y, CRACK, 255);
+    if (halfW > 0.32) {
+      c.put(x + nx * 0.45, y + ny * 0.45, SCORCH, 220, false);
+      c.put(x - nx * 0.45, y - ny * 0.45, SCORCH, 220, false);
+    }
+    if (light && i % 2 === 0 && t < 0.85) {
+      // Catch-edge on the side of the fracture facing the upper-left key light
+      const side = nx + ny > 0 ? 1 : -1;
+      const lipCol = t < 0.45 ? CHIP : RIM;
+      c.put(x + nx * side * 1.05, y + ny * side * 1.05, lipCol, 235, false);
+    }
+    if (branches > 0 && i > 4 && i % 4 === 0 && rnd() < 0.34)
+      crack(c, rnd, x, y, a + (rnd() < 0.5 ? -1 : 1) * (0.55 + rnd() * 0.45), (length - i * stepLen) * (0.45 + rnd() * 0.35), false, branches - 1);
+  }
+}
+
+/** Organic FBM powder-burn and friction-soot halo around an impact. */
+function scorch(c, rnd, cx, cy, radius, density = 1, seed = 41) {
+  const ox = rnd() * 30;
+  const oy = rnd() * 30;
+  const phase = rnd() * Trigo.twopi;
+  const yMin = Math.max(BORDER, Math.floor(cy - radius));
+  const yMax = Math.min(ATLAS_CELL - BORDER - 1, Math.ceil(cy + radius));
+  const xMin = Math.max(BORDER, Math.floor(cx - radius));
+  const xMax = Math.min(ATLAS_CELL - BORDER - 1, Math.ceil(cx + radius));
+  for (let y = yMin; y <= yMax; y++)
+    for (let x = xMin; x <= xMax; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist = scratchPt.setScalar(dx, dy).getMagnitude();
+      if (dist >= radius)
+        continue;
+      const theta = Math.atan2(dy, dx);
+      const warp = fbm(x * 0.22 + ox, y * 0.22 + oy, seed);
+      const rays = 0.72 + 0.28 * Math.cos(theta * 6 + phase);
+      const reach = radius * (0.62 + 0.46 * warp) * rays;
+      if (dist >= reach)
+        continue;
+      const t = dist / reach;
+      const grain = fbm(x * 0.48, y * 0.48, seed + 7);
+      const strength = (1 - Utils.smoothstep(0.18, 1.0, t)) * density * (0.65 + 0.35 * grain);
+      if (strength < 0.34)
+        continue;
+      const alpha = Math.round(Utils.clamp(136 + strength * 118, 136, 250));
+      const col = mix3(CHAR, mix3(SCORCH, SHADE, grain), Utils.smoothstep(0, 0.85, t));
+      c.put(x, y, clampSteelColor(col, (hash2(x, y, seed) - 0.5) * 6), alpha, false);
+    }
+}
+
+/** Sheared metallic spall chips and micro-burrs thrown out around a hit, with lit facet and dark cast shadow. */
 function flecks(c, rnd, cx, cy, count, near, far) {
   for (let i = 0; i < count; i++) {
     const angle = rnd() * Trigo.twopi;
     const distance = near + rnd() * (far - near);
     const x = cx + Math.cos(angle) * distance;
     const y = cy + Math.sin(angle) * distance;
-    c.put(x, y, CHIP, false);
-    if (rnd() < 0.5)
-      c.put(x + 1, y, RIM, false);
+    const big = rnd() < 0.45;
+    c.put(x, y, big ? BARE : CHIP, 250, false);
+    c.put(x + 0.8, y + 0.8, SCORCH, 225, false);
+    if (big)
+      c.put(x - 0.6, y + 0.4, RIM, 235, false);
   }
 }
 
-// the kinds of hole, each a different way for a pellet to meet steel
+// Eight ballistic impact archetypes painted natively at 64x64 resolution
 const KINDS = [
-  // a clean puncture: a round crater, a thin halo and a few short cracks
-  (c, rnd) => {
-    scorch(c, rnd, mid, mid, 6, 0.5);
-    for (let i = 0; i < 3 + Math.floor(rnd() * 2); i++)
-      crack(c, rnd, mid, mid, rnd() * 6.28, 3 + Math.floor(rnd() * 4), true, 0);
-    crater(c, mid, mid, 3.4, 3.2, 0, { rnd });
+  // 0: Clean armor-piercing puncture — crisp circular bore, bevelled steel collar, radial micro-fissures
+  (c, rnd, scale, seed) => {
+    const r = 7.6 * scale;
+    scorch(c, rnd, mid2, mid2, 13.5 * scale, 0.72, seed);
+    const nCracks = 4 + Math.floor(rnd() * 2);
+    for (let i = 0; i < nCracks; i++)
+      crack(c, rnd, mid2, mid2, (i / nCracks) * Trigo.twopi + (rnd() - 0.5) * 0.45, (8.0 + rnd() * 6.5) * scale, true, 0);
+    crater(c, mid2, mid2, r, r * 0.94, rnd() * Trigo.twopi, { halo: 1.38, seed, rnd });
   },
-  // torn metal: the steel is peeled back round the hole in bent, bright petals
-  (c, rnd) => {
-    const petals = 4 + Math.floor(rnd() * 3);
-    const start = rnd() * 6.28;
+  // 1: Torn hollow-point / buckshot petals — steel peeled back in curled, gleaming metallic petals with deep radial slots
+  (c, rnd, scale, seed) => {
+    const petals = 5 + Math.floor(rnd() * 3);
+    const start = rnd() * Trigo.twopi;
+    scorch(c, rnd, mid2, mid2, 14.0 * scale, 0.65, seed);
     for (let k = 0; k < petals; k++) {
-      const a = start + (k / petals) * Trigo.twopi + (rnd() - 0.5) * 0.4;
-      const length = 4 + rnd() * 3;
-      for (let d = 2.5; d < length + 2.5; d += 0.6) {
-        const w = Math.max(0.3, 1.6 * (1 - (d - 2.5) / length));
-        for (let o = -w; o <= w; o += 0.6)
-          c.put(mid + Math.cos(a) * d - Math.sin(a) * o, mid + Math.sin(a) * d + Math.cos(a) * o, o < 0 ? CHIP : RIM);
+      const a = start + (k / petals) * Trigo.twopi + (rnd() - 0.5) * 0.32;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const length = (7.8 + rnd() * 5.2) * scale;
+      const r0 = 4.8 * scale;
+      for (let d = r0; d <= r0 + length; d += 0.45) {
+        const t = (d - r0) / length;
+        const w = Math.max(0.5, 3.2 * scale * (1 - t * 0.8) * Math.sin(t * Trigo.pi * 0.85 + 0.25));
+        for (let o = -w; o <= w; o += 0.45) {
+          const px = mid2 + ca * d - sa * o;
+          const py = mid2 + sa * d + ca * o;
+          const edgeT = o / (w || 1);
+          const col = edgeT < -0.25 ? SPECULAR_STEEL : edgeT < 0.35 ? CHIP : RIM;
+          c.put(px, py, clampSteelColor(col, (hash2(px | 0, py | 0, seed + k) - 0.5) * 8), 255);
+        }
       }
-      c.line(mid + Math.cos(a) * 2.5, mid + Math.sin(a) * 2.5, mid + Math.cos(a) * (length + 2.5), mid + Math.sin(a) * (length + 2.5), SHADE, false);
+      // Dark tear slot and cast shadow between adjacent curled petals
+      const slotA = a + Trigo.pi / petals;
+      c.line(
+        mid2 + Math.cos(slotA) * (r0 * 0.85),
+        mid2 + Math.sin(slotA) * (r0 * 0.85),
+        mid2 + Math.cos(slotA) * (r0 + length * 0.92),
+        mid2 + Math.sin(slotA) * (r0 + length * 0.92),
+        CHAR,
+        255
+      );
     }
-    crater(c, mid, mid, 2.8, 2.8, 0, { rnd });
+    crater(c, mid2, mid2, 6.4 * scale, 6.2 * scale, start, { halo: 1.3, seed, rnd });
   },
-  // a ricochet: an elongated gouge, with a scrape running on from it
-  (c, rnd) => {
-    const turn = rnd() * 6.28;
+  // 2: Grazing ricochet gouge — elongated teardrop trough with piled-up steel prow and skid scratches
+  (c, rnd, scale, seed) => {
+    const turn = rnd() * Trigo.twopi;
     const dx = Math.cos(turn);
     const dy = Math.sin(turn);
-    for (let d = 2; d < 11; d += 0.7) {
-      const fade = 1 - d / 11;
-      if (rnd() < 0.5 + fade * 0.5) {
-        c.put(mid + dx * d, mid + dy * d, CRACK);
-        c.put(mid + dx * d - dy, mid + dy * d + dx, RIM, false);
+    const nx = -dy;
+    const ny = dx;
+    for (let d = -5 * scale; d < 20.5 * scale; d += 0.45) {
+      const t = Math.max(0, d / (20.5 * scale));
+      const halfSkid = Math.max(0.5, (2.6 - t * 1.9) * scale);
+      for (let o = -halfSkid; o <= halfSkid; o += 0.5) {
+        const px = mid2 + dx * d + nx * o;
+        const py = mid2 + dy * d + ny * o;
+        const isEdge = Math.abs(o) > halfSkid * 0.55;
+        c.put(px, py, isEdge ? (o < 0 ? CHIP : SHADE) : (t < 0.5 ? CRACK : SCORCH), Math.round(250 * (1 - t * 0.35)));
       }
     }
-    crater(c, mid, mid, 4.8, 2.1, turn, { rnd });
-    flecks(c, rnd, mid + dx * 8, mid + dy * 8, 3, 0, 4);
+    // Piled-up displaced steel wave at the exit end of the ricochet trough
+    for (let a = -1.0; a <= 1.0; a += 0.12) {
+      const rProw = 9.8 * scale;
+      const px = mid2 + Math.cos(turn + a * 0.55) * rProw;
+      const py = mid2 + Math.sin(turn + a * 0.55) * rProw;
+      c.put(px, py, SPECULAR_STEEL, 255);
+      c.put(px + dx * 0.9, py + dy * 0.9, BARE, 245);
+    }
+    crater(c, mid2, mid2, 10.2 * scale, 5.0 * scale, turn, { halo: 1.34, seed, rnd });
+    flecks(c, rnd, mid2 + dx * 15 * scale, mid2 + dy * 15 * scale, 5, 1, 7.5 * scale);
   },
-  // cracked plate: the hit has split the plate, with long cracks and a chip knocked out
-  (c, rnd) => {
-    const main = rnd() * 6.28;
+  // 3: Fractured armor plate — deep impact with long branching stress cracks and a secondary spall crater
+  (c, rnd, scale, seed) => {
+    const main = rnd() * Trigo.twopi;
+    scorch(c, rnd, mid2, mid2, 13.0 * scale, 0.65, seed);
     for (let i = 0; i < 4; i++)
-      crack(c, rnd, mid, mid, main + i * 1.57 + (rnd() - 0.5) * 0.8, 8 + Math.floor(rnd() * 7), true, 1);
-    crater(c, mid, mid, 2.6, 2.6, 0, { rnd });
-    const a = rnd() * 6.28;
-    crater(c, mid + Math.cos(a) * 5, mid + Math.sin(a) * 5, 1.4, 1.2, 0, { depth: 0.4, bare: false, rnd });
+      crack(c, rnd, mid2, mid2, main + i * Trigo.halfpi + (rnd() - 0.5) * 0.65, (14.5 + rnd() * 9.5) * scale, true, 1);
+    crater(c, mid2, mid2, 6.2 * scale, 6.0 * scale, main, { halo: 1.32, seed, rnd });
+    const a = main + 0.75 + rnd() * 1.2;
+    const dist = 10.6 * scale;
+    crater(c, mid2 + Math.cos(a) * dist, mid2 + Math.sin(a) * dist, 3.6 * scale, 3.1 * scale, a, { depth: 0.4, bare: false, halo: 1.25, seed: seed + 19, rnd });
   },
-  // two pellets close together
-  (c, rnd) => {
-    const a = rnd() * 6.28;
-    const gap = 2.6 + rnd() * 1.4;
-    scorch(c, rnd, mid, mid, 7, 0.45);
-    crater(c, mid + Math.cos(a) * gap, mid + Math.sin(a) * gap, 2.4, 2.3, 0, { rnd });
-    crater(c, mid - Math.cos(a) * gap, mid - Math.sin(a) * gap, 2.0, 2.0, 0, { rnd });
-    crack(c, rnd, mid, mid, a + 1.57, 4 + Math.floor(rnd() * 3), true, 0);
+  // 4: Double-tap / paired buckshot hit — two overlapping craters with a buckled steel bridge between them
+  (c, rnd, scale, seed) => {
+    const a = rnd() * Trigo.twopi;
+    const gap = (5.4 + rnd() * 2.0) * scale;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    scorch(c, rnd, mid2, mid2, 15.0 * scale, 0.7, seed);
+    crater(c, mid2 + ca * gap, mid2 + sa * gap, 5.6 * scale, 5.3 * scale, a, { halo: 1.34, seed, rnd });
+    crater(c, mid2 - ca * gap, mid2 - sa * gap, 4.8 * scale, 4.6 * scale, a + 0.5, { halo: 1.34, seed: seed + 23, rnd });
+    // Buckled steel ridge pinched between the two entry bores
+    for (let o = -3.8 * scale; o <= 3.8 * scale; o += 0.45) {
+      const bx = mid2 - sa * o;
+      const by = mid2 + ca * o;
+      c.put(bx, by, SPECULAR_STEEL, 255);
+      c.put(bx + ca * 0.8, by + sa * 0.8, CRACK, 255);
+    }
+    crack(c, rnd, mid2, mid2, a + Trigo.halfpi, (9.0 + rnd() * 5.0) * scale, true, 0);
+    crack(c, rnd, mid2, mid2, a - Trigo.halfpi, (8.0 + rnd() * 4.5) * scale, true, 0);
   },
-  // a dent: the steel took it without being pierced
-  (c, rnd) => {
-    scorch(c, rnd, mid, mid, 6, 0.35);
-    crater(c, mid, mid, 4.0, 3.7, rnd() * 3, { depth: 0.3, bare: false, rnd });
-    c.put(mid, mid, CHAR);
-    c.put(mid + 1, mid, CHAR);
-    flecks(c, rnd, mid, mid, 2, 5, 8);
+  // 5: Heavy concussive slug dent — dished steel bowl with concentric stress ripples and crazed center scar
+  (c, rnd, scale, seed) => {
+    scorch(c, rnd, mid2, mid2, 14.0 * scale, 0.65, seed);
+    crater(c, mid2, mid2, 8.8 * scale, 8.2 * scale, rnd() * Trigo.pi, { depth: 0.35, bare: false, halo: 1.35, seed, rnd });
+    // Crushed central slug-flattening scar and radial micro-crazing
+    crater(c, mid2, mid2, 3.0 * scale, 2.8 * scale, 0, { depth: 0.85, bare: true, halo: 1.2, seed: seed + 31, rnd });
+    for (let i = 0; i < 4; i++)
+      crack(c, rnd, mid2, mid2, rnd() * Trigo.twopi, (7.0 + rnd() * 4.5) * scale, true, 0);
+    flecks(c, rnd, mid2, mid2, 4, 9.5 * scale, 15.0 * scale);
   },
-  // a hot hit: a wide black scorch round a small crater, with soot streaks running up
-  (c, rnd) => {
-    scorch(c, rnd, mid, mid, 10, 1);
-    scorch(c, rnd, mid, mid, 6, 1);
-    for (let i = 0; i < 3; i++)
-      c.line(mid - 3 + i * 3 + (rnd() - 0.5) * 2, mid - 3, mid - 3 + i * 3 + (rnd() - 0.5) * 3, mid - 6 - rnd() * 5, SCORCH, false);
-    crater(c, mid, mid, 2.7, 2.6, 0, { rnd });
+  // 6: Hot plasma-scorched / point-blank puncture — wide FBM soot halo with upward smoke tongues around a quenched bore
+  (c, rnd, scale, seed) => {
+    scorch(c, rnd, mid2, mid2, 19.5 * scale, 1.15, seed);
+    scorch(c, rnd, mid2, mid2 - 4.0 * scale, 14.5 * scale, 0.95, seed + 11);
+    for (let i = 0; i < 4; i++) {
+      const sx0 = mid2 + (i - 1.5) * 4.0 * scale + (rnd() - 0.5) * 2.0;
+      const sy0 = mid2 - 5.0 * scale;
+      const sx1 = sx0 + (rnd() - 0.5) * 5.0 * scale;
+      const sy1 = mid2 - (15.5 + rnd() * 8.0) * scale;
+      c.line(sx0, sy0, sx1, sy1, SCORCH, 215);
+      c.line(sx0 + 0.7, sy0, sx1 + 0.7, sy1 + 1.5, SHADE, 180);
+    }
+    for (let i = 0; i < 4; i++)
+      crack(c, rnd, mid2, mid2, rnd() * Trigo.twopi, (8.0 + rnd() * 5.5) * scale, true, 0);
+    crater(c, mid2, mid2, 6.4 * scale, 6.2 * scale, 0, { halo: 1.48, seed, rnd });
   },
-  // a star: a puncture with sharp cracks radiating, like a shot through glass
-  (c, rnd) => {
+  // 7: Star-shattered brittle plate — dense radial fracture web and concentric spall ring around a sharp punch
+  (c, rnd, scale, seed) => {
     const n = 7 + Math.floor(rnd() * 3);
+    scorch(c, rnd, mid2, mid2, 13.5 * scale, 0.65, seed);
     for (let i = 0; i < n; i++)
-      crack(c, rnd, mid, mid, (i / n) * 6.28 + rnd() * 0.3, 4 + Math.floor(rnd() * 6), false, 0);
-    for (let r of [5, 8])
-      for (let k = 0; k < 14; k++) {
-        const a = rnd() * 6.28;
-        if (rnd() < 0.55)
-          c.put(mid + Math.cos(a) * r, mid + Math.sin(a) * r, CRACK, false);
-      }
-    crater(c, mid, mid, 2.4, 2.4, 0, { rnd });
+      crack(c, rnd, mid2, mid2, (i / n) * Trigo.twopi + (rnd() - 0.5) * 0.25, (9.5 + rnd() * 9.5) * scale, i % 2 === 0, 0);
+    // Concentric shock-spall ring connecting the radial cracks
+    for (const rRing of [9.5 * scale, 14.5 * scale])
+      for (let k = 0; k < 24; k++)
+        if (rnd() < 0.65) {
+          const a0 = (k / 24) * Trigo.twopi;
+          const a1 = ((k + 1) / 24) * Trigo.twopi;
+          c.line(
+            mid2 + Math.cos(a0) * rRing,
+            mid2 + Math.sin(a0) * rRing,
+            mid2 + Math.cos(a1) * rRing,
+            mid2 + Math.sin(a1) * rRing,
+            CRACK,
+            225
+          );
+        }
+    crater(c, mid2, mid2, 5.8 * scale, 5.6 * scale, 0, { halo: 1.32, seed, rnd });
   },
 ];
 
-/** A bullet hole of one of several kinds (the variant picks the kind and, past the last kind, how it differs). */
+// Per-variant caliber scale so the 12 hole cells span from tight sub-caliber punctures to heavy buckshot/slug wounds
+const HOLE_SCALES = [0.92, 1.02, 0.98, 1.06, 1.0, 0.96, 1.12, 0.98, 0.84, 1.14, 0.96, 1.18];
+
+/** A bullet hole of one of twelve high-resolution variants. */
 function drawHole(c, variant, rnd) {
-  KINDS[variant % KINDS.length](c, rnd);
-  // a few flecks of bare steel on most of them
+  const scale = HOLE_SCALES[variant % HOLE_SCALES.length];
+  const seed = 300 + variant * 97;
+  KINDS[variant % KINDS.length](c, rnd, scale, seed);
   if (variant % 3 !== 0)
-    flecks(c, rnd, mid, mid, 1 + Math.floor(rnd() * 3), 6, 10);
+    flecks(c, rnd, mid2, mid2, 2 + Math.floor(rnd() * 3), 10.5 * scale, 16.5 * scale);
 }
 
 /**
- * One frame of one kind of spark, small and quick, because a pellet on steel is a small thing:
- * 0 a tiny flash and a few sparks flying out, 1 a short shower falling, 2 a glint and a couple of embers,
- * 3 a ricochet, a few streaks thrown to one side.
+ * One frame of one kind of spark at 64x64 resolution:
+ * 0 a crisp star flash and high-velocity streaks, 1 a heavy shower arcing downward,
+ * 2 a sharp metallic glint and slow embers, 3 a directional ricochet cone of sparks.
  */
 function drawSpark(c, variant, frame) {
   const t = frame / (SPARK_FRAMES - 1);
   const rnd = mulberry32(900 + variant * 131);
-  const fade = (life) => (t < life * 0.35 ? YELLOW : t < life * 0.7 ? ORANGE : EMBER);
-  // a spark has a small 2-pixel head and a short glowing tail behind it while it is fast
+  const lastFrame = frame === SPARK_FRAMES - 1;
+  const fade = (life) => {
+    if (lastFrame)
+      return EMBER;
+    return t < life * 0.35 ? YELLOW : t < life * 0.7 ? ORANGE : EMBER;
+  };
+  // Each spark is painted at 64x64 with a bright incandescent head and a motion-blurred velocity tail
   const spark = (angle, speed, life, drop) => {
     if (t > life)
       return;
-    const travel = t * speed;
-    const x = mid + Math.cos(angle) * travel;
-    const y = mid + Math.sin(angle) * travel + drop * t * t;
+    const travel = t * speed * 2;
+    const ca = Math.cos(angle);
+    const sa = Math.sin(angle);
+    const x = mid2 + ca * travel;
+    const y = mid2 + sa * travel + drop * 2 * t * t;
     const col = fade(life);
-    c.put(x, y, col);
-    if (t < life * 0.75)
-      c.put(x + (Math.abs(Math.cos(angle)) > 0.5 ? 0 : 1), y + (Math.abs(Math.cos(angle)) > 0.5 ? 1 : 0), t < life * 0.35 ? ORANGE : EMBER, false);
-    if (t < life * 0.65) {
-      c.put(x - Math.cos(angle), y - Math.sin(angle) + drop * 0.1 * t, t < life * 0.35 ? ORANGE : EMBER, false);
-      if (t < life * 0.4)
-        c.put(x - Math.cos(angle) * 2, y - Math.sin(angle) * 2 + drop * 0.18 * t, EMBER, false);
+    c.put(x, y, col, 255);
+    c.put(x + 0.7, y, lastFrame ? EMBER_DIM : col, 235, false);
+    c.put(x, y + 0.7, lastFrame ? EMBER_DIM : col, 235, false);
+    if (t < life * 0.78) {
+      const tailCol = lastFrame ? EMBER_DIM : (t < life * 0.35 ? ORANGE : EMBER);
+      const tailLen = lastFrame ? 1.8 : 3.4 * (1 - t / life);
+      const vx = ca;
+      const vy = sa + drop * 0.14 * t;
+      for (let s = 0.7; s <= tailLen; s += 0.65)
+        c.put(x - vx * s, y - vy * s, s > tailLen * 0.6 ? (lastFrame ? EMBER_DIM : EMBER) : tailCol, 240, false);
     }
   };
   const flash = (size, color) => {
-    c.put(mid, mid, color);
-    for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]])
-      c.put(mid + dx, mid + dy, size > 1 ? YELLOW : ORANGE, false);
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
-      for (let d = 1; d <= size; d++)
-        c.put(mid + dx * d, mid + dy * d, d === 1 ? FLASH : YELLOW);
+    const r = size * 1.75;
+    for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++)
+      for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
+        const dist = Math.hypot(dx, dy);
+        const axial = Math.min(Math.abs(dx), Math.abs(dy));
+        const diag = Math.abs(Math.abs(dx) - Math.abs(dy));
+        if (dist <= 1.6)
+          c.put(mid2 + dx, mid2 + dy, color, 255);
+        else if (axial <= 0.8 && dist <= r)
+          c.put(mid2 + dx, mid2 + dy, dist <= r * 0.45 ? FLASH : YELLOW, 250);
+        else if (diag <= 0.8 && dist <= r * 0.72)
+          c.put(mid2 + dx, mid2 + dy, size > 1 ? YELLOW : ORANGE, 235, false);
+      }
   };
   if (variant === 0) {
     if (frame === 0)
@@ -327,13 +515,11 @@ function drawSpark(c, variant, frame) {
     for (let k = 0; k < 7; k++)
       spark(Trigo.halfpi + (rnd() - 0.5) * 1.8, 4 + rnd() * 6, 0.5 + rnd() * 0.5, 12);
   } else if (variant === 2) {
-    // a glint: a bright point with a cross, smaller on the second frame
     if (frame < 2)
       flash(frame === 0 ? 3 : 2, frame === 0 ? FLASH : YELLOW);
     for (let k = 0; k < 4; k++)
       spark(rnd() * Trigo.twopi, 3.5 + rnd() * 4.5, 0.7 + rnd() * 0.3, 10);
   } else {
-    // a ricochet: the sparks leave in a narrow cone to one side
     const heading = -0.5 + rnd() * 0.4 + (rnd() < 0.5 ? 0 : Trigo.pi - 0.4);
     if (frame === 0)
       flash(2, FLASH);
@@ -345,70 +531,96 @@ function drawSpark(c, variant, frame) {
 }
 
 /**
- * A vertical chainsaw gash in steel: a deep, serrated vertical kerf chewed by the cutting chain teeth,
- * with jagged bare-metal burrs along both lips, friction scorch, and optional parallel chain-skip scratches.
+ * A high-resolution vertical chainsaw or combat-knife gash in steel (64x64 native):
+ * a deep V-grooved vertical kerf with diagonal tooth striations on the grazing-lit inner wall,
+ * curled bare-steel burr ridges with raker-tooth scallops along the lips, continuous FBM friction
+ * scorch, parallel chain-skip chatter scratches, and thrown metal shavings.
  */
 function drawSlash(c, variant, rnd) {
-  const y0 = 3 + (variant % 2);
-  const y1 = IMPACT_CELL - 4 - ((variant + 1) % 2);
-  const tilt = (variant % 2 === 0 ? 1 : -1) * (0.05 + (variant % 3) * 0.045);
-  const curve = (variant % 3 === 1 ? 1 : -1) * 0.8;
+  const seed = 700 + variant * 113;
+  const y0 = 6 + (variant % 2) * 2;
+  const y1 = ATLAS_CELL - 7 - ((variant + 1) % 2) * 2;
+  const tilt = (variant % 2 === 0 ? 1 : -1) * (0.045 + (variant % 3) * 0.038);
+  const curve = (variant % 3 === 1 ? 1 : -1) * 1.55;
 
   for (let y = y0; y <= y1; y++) {
     const t = (y - y0) / (y1 - y0);
     const env = Math.sin(t * Trigo.pi);
-    const cx = mid + (y - mid) * tilt + Math.sin(t * Trigo.pi) * curve + (rnd() - 0.5) * 0.35;
-    const tooth = (y + variant) % 3 === 0;
-    const halfW = (0.75 + 0.85 * env) + (tooth ? 0.55 : 0);
+    const warp = (fbm(variant * 7.3, y * 0.28, seed) - 0.5) * 0.9;
+    const cx = mid2 + (y - mid2) * tilt + Math.sin(t * Trigo.pi) * curve + warp;
+    const toothPhase = Math.sin(y * 1.15 + variant * 1.7);
+    const tooth = toothPhase > 0.38;
+    const halfW = (1.15 + 1.85 * env) + (tooth ? 0.85 * env : 0);
+    const scorchW = halfW + 2.2 * env + 0.8;
 
-    // Friction scorch halo around the cut
-    if (y % 2 === 0) {
-      c.put(cx - halfW - 1.6, y, SCORCH, false);
-      c.put(cx + halfW + 1.6, y, SHADE, false);
+    for (let dx = -Math.ceil(scorchW + 1); dx <= Math.ceil(scorchW + 1); dx += 0.5) {
+      const px = cx + dx;
+      const adx = Math.abs(dx);
+      const grain = fbm(px * 0.45, y * 0.45, seed + 5);
+      const jitter = (hash2(px | 0, y, seed) - 0.5) * 9;
+
+      if (adx <= halfW) {
+        // Inside the V-groove kerf: pitch-black root, shadowed left wall, grazing-lit striated right wall
+        const normX = dx / (halfW || 1);
+        if (Math.abs(normX) < 0.44)
+          c.put(px, y, CHAR, 255);
+        else if (normX < 0)
+          c.put(px, y, clampSteelColor(mix3(CHAR, SCORCH, (normX + 1) * 0.8), jitter * 0.5), 255);
+        else {
+          const striation = 0.55 + 0.45 * Math.sin(y * 1.6 - dx * 1.2 + variant);
+          const innerCol = mix3(CRACK, mix3(PRIMER, RIM, striation), normX * 0.85);
+          c.put(px, y, clampSteelColor(innerCol, jitter), 255);
+        }
+      } else if (dx < 0 && adx <= halfW + 1.65) {
+        // Raised left burr lip: curled bare steel catching the upper-left light
+        const lipT = 1 - (adx - halfW) / 1.65;
+        const burrCol = tooth && lipT > 0.45 ? SPECULAR_STEEL : mix3(RIM, BARE, lipT * (0.65 + 0.35 * grain));
+        c.put(px, y, clampSteelColor(burrCol, jitter), 255);
+      } else if (dx > 0 && adx <= halfW + 1.55) {
+        // Right burr lip: thin specular ridge followed by cast overhang shadow
+        const lipT = (adx - halfW) / 1.55;
+        const rightCol = lipT < 0.48 ? mix3(SHADE, CHIP, (1 - lipT) * (tooth ? 0.9 : 0.55)) : SCORCH;
+        c.put(px, y, clampSteelColor(rightCol, jitter * 0.7), 255);
+      } else if (adx <= scorchW) {
+        // Continuous FBM friction-burn and heat-tint halo along the cut
+        const haloT = (adx - (halfW + 1.55)) / Math.max(0.6, scorchW - (halfW + 1.55));
+        const alpha = Math.round(235 * (1 - Utils.smoothstep(0, 1, haloT)) * (0.65 + 0.35 * grain));
+        if (alpha >= 136)
+          c.put(px, y, clampSteelColor(mix3(SCORCH, SHADE, grain * 0.6), jitter * 0.4), alpha, false);
+      }
     }
-
-    // Lit left burr lip and shadowed right burr lip with serrated chain-tooth notches
-    c.put(cx - halfW - 0.7, y, tooth ? BARE : RIM);
-    if (tooth)
-      c.put(cx - halfW - 1.5, y, CHIP, false);
-    c.put(cx + halfW + 0.7, y, tooth ? RIM : SHADE);
-    if (tooth && (y + variant) % 2 === 0)
-      c.put(cx + halfW + 1.5, y, SCORCH, false);
-
-    // Deep vertical kerf trench in the steel
-    for (let dx = -halfW; dx <= halfW; dx += 0.45)
-      c.put(cx + dx, y, Math.abs(dx) < halfW * 0.55 ? CHAR : CRACK);
   }
 
-  // Secondary parallel chain-skip scratch on variants 1 and 3
+  // Secondary parallel chain-skip score line on variants 1 and 3
   if (variant === 1 || variant === 3) {
-    const side = variant === 1 ? 3.4 : -3.4;
-    const sy0 = y0 + 4;
-    const sy1 = y1 - 3;
+    const side = variant === 1 ? 5.6 : -5.6;
+    const sy0 = y0 + 7;
+    const sy1 = y1 - 6;
     for (let y = sy0; y <= sy1; y++) {
-      const sx = mid + side + (y - mid) * tilt;
-      c.put(sx, y, CRACK);
-      if (y % 2 === 0)
-        c.put(sx - 1, y, RIM, false);
+      const env = Math.sin(((y - sy0) / (sy1 - sy0)) * Trigo.pi);
+      const sx = mid2 + side + (y - mid2) * tilt + (fbm(y * 0.3, variant, seed + 19) - 0.5) * 0.7;
+      c.put(sx, y, CRACK, 255);
+      c.put(sx - 0.85, y, env > 0.35 ? CHIP : RIM, 235, false);
+      c.put(sx + 0.85, y, SCORCH, 210, false);
     }
   }
 
-  // Double-bite overlapping vertical chatter notch on variant 3
+  // Double-bite overlapping vertical chatter gouge on variant 3
   if (variant === 3)
-    for (let y = y0 + 2; y <= y1 - 5; y++) {
-      const sx = mid + 1.6 - (y - mid) * tilt * 0.7;
-      c.put(sx, y, CHAR);
-      c.put(sx + 1, y, BARE, false);
+    for (let y = y0 + 5; y <= y1 - 9; y++) {
+      const sx = mid2 + 2.8 - (y - mid2) * tilt * 0.65;
+      c.put(sx, y, CHAR, 255);
+      c.put(sx + 0.9, y, BARE, 245, false);
     }
 
-  // Stress cracks branching sideways from the vertical gash on variants 4 and 5
+  // Short oblique shear cracks branching off the kerf on variants 4 and 5 (kept compact so the gash stays tall and narrow)
   if (variant >= 4) {
-    crack(c, rnd, mid - 1, mid - 3, Trigo.pi + (rnd() - 0.5) * 0.5, 4, true, 0);
-    crack(c, rnd, mid + 1, mid + 3, (rnd() - 0.5) * 0.5, 4, true, 0);
+    crack(c, rnd, mid2 - 1.5, mid2 - 6, Trigo.pi + 0.35 + (rnd() - 0.5) * 0.25, 5.2, true, 0);
+    crack(c, rnd, mid2 + 1.5, mid2 + 6, -0.35 + (rnd() - 0.5) * 0.25, 5.2, true, 0);
   }
 
-  // Shaved metal flecks thrown out at the bottom of the vertical cut
-  flecks(c, rnd, mid + (y1 - mid) * tilt, y1 - 1, 3, 1.5, 4.5);
+  // Shaved steel flecks thrown out near the bottom exit of the cut
+  flecks(c, rnd, mid2 + (y1 - mid2) * tilt, y1 - 2, 4, 2.0, 5.8);
 }
 
 
@@ -687,37 +899,25 @@ export function impactAtlas() {
   const data = new Uint8Array(width * ATLAS_CELL * 4);
   const blastEnd = IMPACT_CELLS.brokenCeiling + BLAST_SPAN;
   for (let cell = 0; cell < IMPACT_CELL_COUNT; cell++) {
-    if (cell >= IMPACT_CELLS.brokenWall && cell < blastEnd) {
-      const b = new BlastCell();
+    const b = new BlastCell();
+    if (cell < HOLE_VARIANTS)
+      drawHole(b, cell, mulberry32(2024 + cell * 7919));
+    else if (cell < IMPACT_CELLS.slash)
+      drawSpark(b, Math.floor((cell - HOLE_VARIANTS) / SPARK_FRAMES), (cell - HOLE_VARIANTS) % SPARK_FRAMES);
+    else if (cell < IMPACT_CELLS.slash + SLASH_VARIANTS) {
+      const slashIdx = cell - IMPACT_CELLS.slash;
+      drawSlash(b, slashIdx, mulberry32(4096 + slashIdx * 6151));
+    } else if (cell >= IMPACT_CELLS.brokenWall && cell < blastEnd) {
       const broken = cell - IMPACT_CELLS.brokenWall;
       const tierBase = broken % BLAST_SPAN;
       drawBlast(b, Math.floor(broken / BLAST_SPAN), Math.floor(tierBase / BLAST_BASES), tierBase % BLAST_BASES, mulberry32(8192 + cell * 7919));
-      for (let y = 0; y < ATLAS_CELL; y++)
-        data.set(b.pixels.subarray(y * ATLAS_CELL * 4, (y + 1) * ATLAS_CELL * 4), (y * width + cell * ATLAS_CELL) * 4);
-      continue;
-    }
-    if (cell >= IMPACT_CELLS.burn && cell < IMPACT_CELLS.burn + BLAST_TIERS * 2) {
-      const b = new BlastCell();
+    } else if (cell >= IMPACT_CELLS.burn && cell < IMPACT_CELLS.burn + BLAST_TIERS * 2) {
       const n = cell - IMPACT_CELLS.burn;
       drawBurn(b, n >= BLAST_TIERS, n % BLAST_TIERS, mulberry32(16384 + cell * 7919));
-      for (let y = 0; y < ATLAS_CELL; y++)
-        data.set(b.pixels.subarray(y * ATLAS_CELL * 4, (y + 1) * ATLAS_CELL * 4), (y * width + cell * ATLAS_CELL) * 4);
+    } else
       continue;
-    }
-    const c = new Cell();
-    if (cell < HOLE_VARIANTS)
-      drawHole(c, cell, mulberry32(2024 + cell * 7919));
-    else if (cell < IMPACT_CELLS.slash)
-      drawSpark(c, Math.floor((cell - HOLE_VARIANTS) / SPARK_FRAMES), (cell - HOLE_VARIANTS) % SPARK_FRAMES);
-    else if (cell < IMPACT_CELLS.slash + SLASH_VARIANTS) {
-      const slashIdx = cell - IMPACT_CELLS.slash;
-      drawSlash(c, slashIdx, mulberry32(4096 + slashIdx * 6151));
-    }
     for (let y = 0; y < ATLAS_CELL; y++)
-      for (let x = 0; x < ATLAS_CELL; x++) {
-        const s = ((y / ATLAS_SCALE | 0) * IMPACT_CELL + (x / ATLAS_SCALE | 0)) * 4;
-        data.set(c.pixels.subarray(s, s + 4), (y * width + cell * ATLAS_CELL + x) * 4);
-      }
+      data.set(b.pixels.subarray(y * ATLAS_CELL * 4, (y + 1) * ATLAS_CELL * 4), (y * width + cell * ATLAS_CELL) * 4);
   }
   return { name: 'impacts', data, width, height: ATLAS_CELL, cell: ATLAS_CELL, frames: IMPACT_CELL_COUNT };
 }
