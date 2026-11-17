@@ -20,7 +20,7 @@ import { PILLAR, TILE, WALL } from './level.js';
  */
 
 /** How steep the relief looks: 1 is as drawn, larger exaggerates it. */
-export const NORMAL_STRENGTH = 1.3;
+const NORMAL_STRENGTH = 1.3;
 
 const luminance = (r, g, b) => (r * 0.299 + g * 0.587 + b * 0.114) / 255;
 
