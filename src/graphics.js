@@ -1,15 +1,15 @@
 export const GRAPHICS_STORAGE_KEY = 'doomr.graphics';
-export const GRAPHICS_VERSION = 1;
+const GRAPHICS_VERSION = 1;
 
 /** Fixed render-resolution steps, as a fraction of the screen; the adaptive scaler multiplies on top of this. */
-export const RESOLUTION_STEPS = Object.freeze([1, 0.85, 0.7, 0.5]);
+const RESOLUTION_STEPS = Object.freeze([1, 0.85, 0.7, 0.5]);
 
 export const GLOW_OFF = 0;
 export const GLOW_LOW = 1;
 export const GLOW_HIGH = 2;
 const GLOW_NAMES = Object.freeze(['OFF', 'LOW', 'HIGH']);
 
-export const PRESET_NAMES = Object.freeze(['high', 'medium', 'low']);
+const PRESET_NAMES = Object.freeze(['high', 'medium', 'low']);
 const PRESETS = Object.freeze({
   high: Object.freeze({ resolution: 0, adaptive: true, glow: GLOW_HIGH, hudGlow: true }),
   medium: Object.freeze({ resolution: 1, adaptive: true, glow: GLOW_LOW, hudGlow: true }),
