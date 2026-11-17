@@ -15,9 +15,9 @@ import { Vec2 } from '@1pizzateam/spock';
  */
 
 /** The three vertical runs across a tile: centre along the face and radius, as in the old painting (world units). */
-export const PIPE_RUNS = PIPE_RUNS_PX.map(([x, w]) => ({ s: x + w / 2, r: w / 2 }));
+const PIPE_RUNS = PIPE_RUNS_PX.map(([x, w]) => ({ s: x + w / 2, r: w / 2 }));
 /** Gap between the wall and the pipe's back. */
-export const PIPE_STANDOFF = 1.5;
+const PIPE_STANDOFF = 1.5;
 const CLAMP_FLARE = 1.2;
 const SIDES = 8;
 const WHEEL_SEGMENTS = 12;
