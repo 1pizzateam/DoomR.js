@@ -131,6 +131,8 @@ const scratchBlastMark = { pos: scratchHolePos, normal: scratchHoleNormal, top: 
  * Mirrors `buildDoor`.
  */
 function doorMarkInset(door, mark) {
+  if (!door.center)
+    return door.secret ? 0 : DOOR_INSET;
   const faceHalf = door.secret
     ? TILE / 2
     : door.elevator || door.thin
