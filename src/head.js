@@ -161,7 +161,6 @@ export class HeadView {
     this.camera = new PerspectiveCamera(FOV, new Vec2(0.5, 200), gl);
     this.camera.setPosition(new Vec3(0, 0.8, FACE_Z));
     this.camera.setTarget(new Vec3(0, 0.3, 1));
-    this.aspect = new Vec2(1, 1);
 
     this.visible = false;
     this.cssHeight = 1;
@@ -178,7 +177,6 @@ export class HeadView {
     this.lastShotAt = -10;
     this.lastPower = false;
     this.lastPickup = false;
-    this.deadApplied = false;
   }
 
   /** The canvas is `width` x `height` backing pixels for `cssWidth` x `cssHeight` CSS pixels. */

@@ -16,7 +16,7 @@ const WEAVE_SIZE = 128;
 const THREAD = 4; // texels per thread
 const WEAVE_TILE = 4.8; // world units covered by one repeat of the weave
 
-export const SHIRT_COLOR = new Vec3(0.17, 0.32, 0.21);
+const SHIRT_COLOR = new Vec3(0.17, 0.32, 0.21);
 
 // Rows below the seam, in world units: y, half width (x), half depth (z), depth centre, superellipse exponent (higher = boxier),
 // and how far the row stays pulled toward the seam shape (0 = on the seam, 1 = fully its own ring) so the cloth blends smoothly off it.
@@ -97,7 +97,7 @@ const SHIRT_FRAGMENT = `
  * crown and dark where it dips, with a little slub and tint noise per thread. The alpha channel carries how raised a texel is,
  * so the shader can add its fibre sheen only on the crowns.
  */
-export function weaveTexture(size = WEAVE_SIZE) {
+function weaveTexture(size = WEAVE_SIZE) {
   const data = new Uint8Array(size * size * 4);
   let seed = 7;
   const rnd = () => {
@@ -136,7 +136,7 @@ export function weaveTexture(size = WEAVE_SIZE) {
  * The skin's bottom seam as an ordered, closed ring of vertex indices: the lowest boundary vertex, followed along the open edge
  * of the skin surface in both directions until the centre line at the back of the neck. Returns null if there is no seam.
  */
-export function findNeckSeamIds(cartridge) {
+function findNeckSeamIds(cartridge) {
   const { positions, indices, submeshes } = cartridge;
   const skin = submeshes?.find((s) => s.name === 'skin');
   const end = skin ? skin.startIndex + skin.indexCount : indices.length;
