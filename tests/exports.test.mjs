@@ -441,6 +441,39 @@ const checks = [
       assert.equal(pose.staveFires[i].active, false, `staveFires[${i}] should be inactive at t=30`);
     }
   }],
+  ['issue-228 AC-1 verify LIGHT and METAL are not imported or referenced in src/ceiling.js', () => {
+    const src = read('ceiling');
+    const floorImportMatch = src.match(/import\s*\{([^}]+)\}\s*from\s*['"]\.\/floor\.js['"]/);
+    assert.ok(floorImportMatch, 'src/ceiling.js does not import from ./floor.js');
+    const floorImports = floorImportMatch[1].split(',').map((s) => s.trim());
+    assert.ok(!floorImports.includes('LIGHT'), 'src/ceiling.js still imports LIGHT from ./floor.js');
+    assert.ok(!floorImports.includes('METAL'), 'src/ceiling.js still imports METAL from ./floor.js');
+    assert.ok(!/\bLIGHT\b/.test(src), 'src/ceiling.js contains LIGHT identifier');
+    assert.ok(!/\bMETAL\b/.test(src), 'src/ceiling.js contains METAL identifier');
+  }],
+  ['issue-228 AC-2 verify field is not imported or referenced in src/wall.js', () => {
+    const src = read('wall');
+    const floorImportMatch = src.match(/import\s*\{([^}]+)\}\s*from\s*['"]\.\/floor\.js['"]/);
+    assert.ok(floorImportMatch, 'src/wall.js does not import from ./floor.js');
+    const floorImports = floorImportMatch[1].split(',').map((s) => s.trim());
+    assert.ok(!floorImports.includes('field'), 'src/wall.js still imports field from ./floor.js');
+    const withoutPeriodic = src.replace(/\bperiodicField\b/g, '');
+    assert.ok(!/\bfield\b/.test(withoutPeriodic), 'src/wall.js references field identifier outside periodicField');
+  }],
+  ['issue-228 AC-3 Issue #228 dead-code assertions pass for ceiling and wall imports', async () => {
+    const ceilingMod = await import('../src/ceiling.js');
+    const wallMod = await import('../src/wall.js');
+    assert.ok(ceilingMod.CEILING_CELLS, 'src/ceiling.js CEILING_CELLS export missing');
+    assert.ok(wallMod.WALL_CELLS, 'src/wall.js WALL_CELLS export missing');
+    const ceilingSrc = read('ceiling');
+    assert.ok(!/\b(LIGHT|METAL)\b/.test(ceilingSrc), 'ceiling.js contains dead imports');
+    const wallSrc = read('wall').replace(/\bperiodicField\b/g, '');
+    assert.ok(!/\bfield\b/.test(wallSrc), 'wall.js contains dead field import');
+  }],
+  ['issue-228 AC-4 full exports test suite passes with zero regressions', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'package.json test script missing exports.test.mjs');
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');
