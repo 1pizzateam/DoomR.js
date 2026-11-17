@@ -379,6 +379,68 @@ const checks = [
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'package.json test script missing exports.test.mjs');
     assert.ok(pkg.scripts.test.includes('tests/sim.test.mjs'), 'package.json test script missing sim.test.mjs');
   }],
+  ['AC-1 shrapnel fire constants are unexported in source', () => {
+    const src = read('barrel');
+    const shrapnelFireConstants = [
+      'BARREL_SHRAPNEL_FIRE_FADE_START',
+      'BARREL_SHRAPNEL_FIRE_DURATION',
+      'BARREL_SHRAPNEL_FIRE_RANDOM_SPAN',
+    ];
+    for (const name of shrapnelFireConstants) {
+      assert.ok(!exported(src, name), `src/barrel.js still exports ${name}`);
+      assert.ok(new RegExp(`^const\\s+${name}\\b`, 'm').test(src), `src/barrel.js missing module-level const declaration for ${name}`);
+    }
+  }],
+  ['AC-2 barrel module does not export shrapnel fire constants', async () => {
+    const mod = await import('../src/barrel.js');
+    for (const name of ['BARREL_SHRAPNEL_FIRE_FADE_START', 'BARREL_SHRAPNEL_FIRE_DURATION', 'BARREL_SHRAPNEL_FIRE_RANDOM_SPAN']) {
+      assert.ok(!(name in mod), `${name} leaked as an export from src/barrel.js`);
+    }
+  }],
+  ['AC-3 barrel module retains public atlas, pose, and mesh exports', async () => {
+    const mod = await import('../src/barrel.js');
+    const publicExports = [
+      'BARREL_ATLAS',
+      'BARREL_STAVE_COUNT',
+      'BARREL_FIRE_VERTEX',
+      'BARREL_FIRE_FRAGMENT',
+      'barrelAtlas',
+      'skinBarrel',
+      'barrelWreckMesh',
+      'barrelShrapnelParts',
+      'barrelFireMesh',
+      'barrelShrapnelFireMesh',
+      'barrelAcidPuddleMesh',
+      'barrelAcidStreamMesh',
+      'createBarrelExplosionPose',
+      'barrelExplosionPose',
+    ];
+    for (const name of publicExports) {
+      assert.ok(name in mod, `${name} missing from src/barrel.js exports`);
+    }
+    assert.equal(typeof mod.createBarrelExplosionPose, 'function');
+    assert.equal(typeof mod.barrelExplosionPose, 'function');
+  }],
+  ['AC-4 internal shrapnel fire fade calculations execute cleanly', async () => {
+    const mod = await import('../src/barrel.js');
+    const pose = mod.createBarrelExplosionPose();
+    assert.ok(pose, 'createBarrelExplosionPose returned falsy');
+    assert.ok(pose.lidFire, 'pose.lidFire is missing');
+    assert.ok(Array.isArray(pose.staveFires), 'pose.staveFires is not an array');
+    assert.equal(pose.staveFires.length, mod.BARREL_STAVE_COUNT);
+
+    mod.barrelExplosionPose(0.0, 42, pose);
+    assert.equal(pose.lidFire.active, true, 'lidFire should be active at t=0');
+    for (let i = 0; i < pose.staveFires.length; i++) {
+      assert.equal(pose.staveFires[i].active, true, `staveFires[${i}] should be active at t=0`);
+    }
+
+    mod.barrelExplosionPose(30.0, 42, pose);
+    assert.equal(pose.lidFire.active, false, 'lidFire should be inactive at t=30');
+    for (let i = 0; i < pose.staveFires.length; i++) {
+      assert.equal(pose.staveFires[i].active, false, `staveFires[${i}] should be inactive at t=30`);
+    }
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');

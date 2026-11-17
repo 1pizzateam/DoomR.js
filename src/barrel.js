@@ -23,9 +23,9 @@ const LID = { x: 128, width: 64, height: 64 };
 const CHAR = { x: 192, width: 64, height: 64 };
 export const BARREL_ATLAS = { width: 256, height: 64 };
 export const BARREL_STAVE_COUNT = 5;
-export const BARREL_SHRAPNEL_FIRE_FADE_START = 4.0;
-export const BARREL_SHRAPNEL_FIRE_DURATION = 11.0;
-export const BARREL_SHRAPNEL_FIRE_RANDOM_SPAN = 9.0;
+const BARREL_SHRAPNEL_FIRE_FADE_START = 4.0;
+const BARREL_SHRAPNEL_FIRE_DURATION = 11.0;
+const BARREL_SHRAPNEL_FIRE_RANDOM_SPAN = 9.0;
 
 export const BARREL_FIRE_VERTEX = `
 attribute vec3 aVertexPosition;
