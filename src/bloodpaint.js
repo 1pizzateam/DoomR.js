@@ -23,8 +23,8 @@ export const PRINT_UNIT = 2.26 * SCALE;
 export const TIP_HEIGHTS = [8, 6, 9, 7];
 
 // the shape of a shoe, in the units of printVertices, with the toe towards +x
-export const HEEL = [[-5.2, 0], [-4.6, -1.3], [-3.4, -1.6], [-2.4, -1.2], [-2.2, 0], [-2.4, 1.2], [-3.4, 1.6], [-4.6, 1.3]];
-export const FOREFOOT = [[-1, -1.6], [1, -2.3], [3.4, -2.4], [5, -1.4], [5.4, 0.2], [4.6, 1.8], [2.6, 2.6], [0.2, 2.4], [-1, 1.4]];
+const HEEL = [[-5.2, 0], [-4.6, -1.3], [-3.4, -1.6], [-2.4, -1.2], [-2.2, 0], [-2.4, 1.2], [-3.4, 1.6], [-4.6, 1.3]];
+const FOREFOOT = [[-1, -1.6], [1, -2.3], [3.4, -2.4], [5, -1.4], [5.4, 0.2], [4.6, 1.8], [2.6, 2.6], [0.2, 2.4], [-1, 1.4]];
 
 const TWO_PI = Math.PI * 2;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -488,10 +488,6 @@ function splatter(rnd, { seed, radius, rays, reach, down = 0, clots = true, lift
 /** A floor splat as { pixels, layers }: the lit picture, and the height, coverage, colour and gloss it was lit from. */
 export function paintFloorSplatCell(variant, rnd) {
   return splatter(rnd, { seed: 101 + variant * 13, radius: (4.5 + (variant % 3) * 1.6 + rnd()) * 4, rays: 8 + Math.floor(rnd() * 5) + (variant > 3 ? 2 : 0), reach: 26 });
-}
-
-export function paintFloorSplat(variant, rnd) {
-  return paintFloorSplatCell(variant, rnd).pixels;
 }
 
 /** A wall splat as { pixels, layers }. */

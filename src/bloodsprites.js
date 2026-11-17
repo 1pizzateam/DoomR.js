@@ -1,4 +1,4 @@
-import { Bezier, Rect, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
+import { Bezier, Rect, Trigo, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 import { PRINT_UNIT, RES, SCALE, TIP_HEIGHTS, paintDrop, paintFloorSplatCell, paintGib, paintPrint, paintStem, paintTip, paintWallSplatCell } from './bloodpaint.js';
 
@@ -346,14 +346,6 @@ function progress(t, profile) {
   return Bezier.cubic(0, 1, 1, 1, t);
 }
 
-/** A stem of any length is a stack of its 32-pixel picture: [from, to] along the drip, `part` of a picture each. */
-function stack(top, bottom, segment) {
-  const out = [];
-  for (let y = top; y > bottom + 1e-6; y -= segment)
-    out.push({ top: y, bottom: Math.max(bottom, y - segment), part: (y - Math.max(bottom, y - segment)) / segment });
-  return out;
-}
-
 /** `columns` written into `COLS`, without allocating. */
 function columnsInto(cell) {
   const uv = cellUv(cell);
@@ -368,13 +360,6 @@ function columnsInto(cell) {
  */
 export function createQuadTarget() {
   return { quads: [], count: 0 };
-}
-
-/** The part of a cell the drips use: its middle 12 columns. */
-function columns(cell) {
-  const [a0, , a1] = cellUv(cell);
-  const share = (a1 - a0) / CELL;
-  return [a0 + share * STEM_FROM, a0 + share * STEM_TO];
 }
 
 /** Corner of a wall quad at (u, v) across and up the face, written into `corners[o..o + 2]`; `position` is (x, y, height). */

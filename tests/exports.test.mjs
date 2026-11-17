@@ -208,6 +208,62 @@ const checks = [
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'package.json test script missing exports.test.mjs');
   }],
+  ['issue-221 AC-1 src/bloodsprites.js has no orphaned stack and columns helpers', () => {
+    const src = read('bloodsprites');
+    assert.ok(!/function\s+stack\s*\(/.test(src), 'bloodsprites.js still defines stack() helper');
+    assert.ok(!/function\s+columns\s*\(/.test(src), 'bloodsprites.js still defines columns() helper');
+    assert.ok(!/\bstack\s*\(/.test(src), 'bloodsprites.js still calls stack()');
+    assert.ok(!/\bcolumns\s*\(/.test(src), 'bloodsprites.js still calls columns()');
+  }],
+  ['issue-221 AC-2 src/bloodsprites.js does not import unused Utils from @1pizzateam/spock', () => {
+    const src = read('bloodsprites');
+    const spockImportMatch = src.match(/import\s*\{([^}]+)\}\s*from\s*['"]@1pizzateam\/spock['"]/);
+    assert.ok(spockImportMatch, 'bloodsprites.js does not import from @1pizzateam/spock');
+    const imported = spockImportMatch[1].split(',').map((s) => s.trim());
+    assert.ok(!imported.includes('Utils'), 'bloodsprites.js still imports Utils from @1pizzateam/spock');
+    for (const expected of ['Bezier', 'Rect', 'Trigo', 'Vec2'])
+      assert.ok(imported.includes(expected), `bloodsprites.js missing expected import ${expected} from @1pizzateam/spock`);
+  }],
+  ['issue-221 AC-3 src/bloodsprites.js loads cleanly and exports required quad generators', async () => {
+    const mod = await import('../src/bloodsprites.js');
+    assert.equal(typeof mod.createQuadTarget, 'function');
+    const target = mod.createQuadTarget();
+    assert.deepEqual(target, { quads: [], count: 0 });
+    for (const fn of ['floorSplatQuad', 'floorGibQuad', 'printQuad', 'wallSplatQuad', 'wallDripQuads', 'screenSplatQuads', 'dripTime', 'wallDrips', 'particleQuad'])
+      assert.equal(typeof mod[fn], 'function', `${fn} is not exported from bloodsprites.js`);
+    assert.ok(!('stack' in mod), 'stack leaked as an export from bloodsprites.js');
+    assert.ok(!('columns' in mod), 'columns leaked as an export from bloodsprites.js');
+  }],
+  ['issue-221 AC-4 src/bloodpaint.js has no dead paintFloorSplat wrapper', async () => {
+    const src = read('bloodpaint');
+    assert.ok(!/function\s+paintFloorSplat\s*\(/.test(src), 'bloodpaint.js still defines paintFloorSplat()');
+    assert.ok(!/\bpaintFloorSplat\b/.test(src), 'bloodpaint.js still references paintFloorSplat');
+    const mod = await import('../src/bloodpaint.js');
+    assert.ok(!('paintFloorSplat' in mod), 'paintFloorSplat leaked as an export from bloodpaint.js');
+  }],
+  ['issue-221 AC-5 src/bloodpaint.js does not export HEEL and FOREFOOT polygon constants', async () => {
+    const src = read('bloodpaint');
+    assert.ok(!exported(src, 'HEEL'), 'bloodpaint.js still exports HEEL');
+    assert.ok(!exported(src, 'FOREFOOT'), 'bloodpaint.js still exports FOREFOOT');
+    const mod = await import('../src/bloodpaint.js');
+    assert.ok(!('HEEL' in mod), 'HEEL leaked as an export from bloodpaint.js');
+    assert.ok(!('FOREFOOT' in mod), 'FOREFOOT leaked as an export from bloodpaint.js');
+    assert.equal(typeof mod.paintPrint, 'function', 'paintPrint is missing from bloodpaint.js');
+  }],
+  ['issue-221 AC-6 src/bloodpaint.js footprint and floor splat cell generators operate without regressions', async () => {
+    const { paintPrint, paintFloorSplatCell, RES } = await import('../src/bloodpaint.js');
+    const { mulberry32 } = await import('../src/rng.js');
+    const filled = paintPrint(true);
+    assert.ok(filled instanceof Uint8Array, 'paintPrint(true) did not return a Uint8Array');
+    assert.equal(filled.length, RES * RES * 4, 'paintPrint(true) unexpected buffer size');
+    const outline = paintPrint(false);
+    assert.ok(outline instanceof Uint8Array, 'paintPrint(false) did not return a Uint8Array');
+    assert.equal(outline.length, RES * RES * 4, 'paintPrint(false) unexpected buffer size');
+    const splat = paintFloorSplatCell(0, mulberry32(42));
+    assert.ok(splat && splat.pixels instanceof Uint8Array, 'paintFloorSplatCell pixels missing or invalid');
+    assert.equal(splat.pixels.length, RES * RES * 4, 'paintFloorSplatCell pixels unexpected size');
+    assert.ok(splat.layers && splat.layers.H instanceof Float32Array, 'paintFloorSplatCell H layer missing');
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');
