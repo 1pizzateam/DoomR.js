@@ -519,6 +519,40 @@ const checks = [
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'tests/exports.test.mjs missing from test script');
     assert.ok(pkg.scripts.test.includes('tests/options-menu.test.mjs'), 'tests/options-menu.test.mjs missing from test script');
   }],
+  ['AC-1 src/game.js omits EXIT and FLOOR from ./level.js imports', () => {
+    const src = read('game');
+    const levelImportMatch = src.match(/import\s*\{([^}]+)\}\s*from\s*['"]\.\/level\.js['"]/);
+    assert.ok(levelImportMatch, 'src/game.js does not import from ./level.js');
+    const imported = levelImportMatch[1].split(',').map((s) => s.trim());
+    assert.ok(!imported.includes('EXIT'), 'src/game.js still imports EXIT from ./level.js');
+    assert.ok(!imported.includes('FLOOR'), 'src/game.js still imports FLOOR from ./level.js');
+    const expected = ['BASE_FLOOR_LEVEL', 'CACHE_WALL_OFFSET', 'CEILING', 'CROUCH_EYE', 'DOOR', 'EYE', 'Level', 'TILE', 'WALL'];
+    for (const exp of expected) {
+      assert.ok(imported.includes(exp), `src/game.js missing required import ${exp} from ./level.js`);
+    }
+  }],
+  ['AC-2 src/game.js contains no references to EXIT or FLOOR and sim tests pass', () => {
+    const src = read('game');
+    assert.ok(!/\bEXIT\b/.test(src), 'src/game.js still contains EXIT identifier');
+    assert.ok(!/\bFLOOR\b/.test(src), 'src/game.js still contains FLOOR identifier');
+  }],
+  ['AC-3 src/level.js defines SWITCH_WALL_OFFSET as internal non-exported const', () => {
+    const src = read('level');
+    assert.ok(!exported(src, 'SWITCH_WALL_OFFSET'), 'src/level.js still exports SWITCH_WALL_OFFSET');
+    assert.ok(/^const\s+SWITCH_WALL_OFFSET\s*=/m.test(src), 'src/level.js missing const SWITCH_WALL_OFFSET declaration');
+  }],
+  ['AC-4 src/level.js public exports remain intact without SWITCH_WALL_OFFSET', async () => {
+    const mod = await import('../src/level.js');
+    assert.ok(!('SWITCH_WALL_OFFSET' in mod), 'SWITCH_WALL_OFFSET leaked from src/level.js exports');
+    const publicLevelExports = [
+      'CACHE_WALL_OFFSET', 'DISPENSER_WALL_OFFSET', 'DESK_WALL_OFFSET', 'TABLE_WALL_OFFSET',
+      'OVEN_WALL_OFFSET', 'SINK_WALL_OFFSET', 'PLANT_WALL_OFFSET',
+      'Level', 'TILE', 'WALL', 'DOOR', 'FLOOR', 'EXIT',
+    ];
+    for (const exp of publicLevelExports) {
+      assert.ok(exp in mod, `src/level.js missing expected public export ${exp}`);
+    }
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');
