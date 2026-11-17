@@ -488,7 +488,7 @@ const checks = [
   }],
   ['AC-4 syncDoorMarks orders scorch then damage and keeps the newest 12', () => {
     const rubble = new Rubble();
-    const door = { open: 0, idx: 0, secret: false };
+    const door = { open: 0, idx: 0, secret: false, center: new Vec2(230, 18) };
     const span = { lo: -1000, hi: 1000, top: 64, slope: 0, door };
     for (let i = 0; i < 14; i++)
       rubble.addWall(new Vec3(100 + i * 20, 50, 30), new Vec2(0, 1), 0.5, span);
