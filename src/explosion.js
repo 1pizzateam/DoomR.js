@@ -530,7 +530,6 @@ function cellUvBounds(cell) {
   return [cell * step + pad, (cell + 1) * step - pad];
 }
 
-const scratchSurfaceP = new Vec3();
 const scratchSurfacePu0 = new Vec3();
 const scratchSurfacePu1 = new Vec3();
 const scratchSurfacePv0 = new Vec3();

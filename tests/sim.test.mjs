@@ -18995,6 +18995,16 @@ const tests = {
     assert.equal(lastScissor.w, hv.w);
     assert.equal(lastScissor.h, hv.h);
   },
+
+  'AC-4 verify explosion simulation and npm test suite pass'() {
+    const mesh = explosion3dMesh(new Vec3(1, 1, 1));
+    assert.ok(mesh.vertices.length > 0, '3D explosion mesh builds with valid vertices');
+    assert.equal(mesh.normals.length, mesh.vertices.length, '3D explosion mesh has matching normals');
+    const target = createExplosion3dPose();
+    const pose = explosion3dPose(0.5, target);
+    assert.equal(pose, target, 'explosion3dPose writes into target');
+    assert.ok(pose.pos instanceof Vec3, 'explosion3dPose outputs Vec3 pos');
+  },
 };
 
 function pausedHud() {
