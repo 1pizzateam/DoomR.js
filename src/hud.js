@@ -184,7 +184,7 @@ const OPTIONS_ROW_H = 34;
 const OPTIONS_LAYOUT = { width: -1, height: -1, rows: -1, boxX: 0, boxY: 0, boxW: 0, boxH: 0, rowsTop: 0, valueX: 0 };
 
 /** Shared by drawing and hit-testing so they never drift. */
-export const layoutOptions = (viewportSize, rows) => {
+const layoutOptions = (viewportSize, rows) => {
   const { x: width, y: height } = viewportSize;
   const L = OPTIONS_LAYOUT;
   if (L.width === width && L.height === height && L.rows === rows)

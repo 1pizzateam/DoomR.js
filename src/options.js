@@ -4,13 +4,13 @@ export const OPTIONS_PAGE_ROOT = 'root';
 export const OPTIONS_PAGE_GRAPHICS = 'graphics';
 
 export const OPTION_CONTROLS = 'controls';
-export const OPTION_GRAPHICS = 'graphics';
-export const OPTION_BACK = 'back';
-export const OPTION_PRESET = 'preset';
-export const OPTION_RESOLUTION = 'resolution';
-export const OPTION_ADAPTIVE = 'adaptive';
-export const OPTION_GLOW = 'glow';
-export const OPTION_HUD_GLOW = 'hudGlow';
+const OPTION_GRAPHICS = 'graphics';
+const OPTION_BACK = 'back';
+const OPTION_PRESET = 'preset';
+const OPTION_RESOLUTION = 'resolution';
+const OPTION_ADAPTIVE = 'adaptive';
+const OPTION_GLOW = 'glow';
+const OPTION_HUD_GLOW = 'hudGlow';
 
 const MENU_SOUND = Object.freeze({ visible: true });
 
