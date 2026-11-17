@@ -18943,6 +18943,58 @@ const tests = {
       assert.equal(v.mode, 'browse');
     });
   },
+
+  'AC-1 HeadView constructor does not define or assign aspect'() {
+    const { gl } = makeOverlayWorld();
+    const hv = new HeadView(gl);
+    assert.equal('aspect' in hv, false, 'HeadView constructor must not assign or define aspect');
+    assert.equal(hv.aspect, undefined, 'hv.aspect must be undefined');
+  },
+
+  'AC-2 HeadView constructor does not define or assign deadApplied'() {
+    const { gl } = makeOverlayWorld();
+    const hv = new HeadView(gl);
+    assert.equal('deadApplied' in hv, false, 'HeadView constructor must not assign or define deadApplied');
+    assert.equal(hv.deadApplied, undefined, 'hv.deadApplied must be undefined');
+  },
+
+  'AC-4 HeadView render and update execute with clean shirt mesh integration'() {
+    const gl = makeMockGL();
+    const hv = new HeadView(gl);
+    assert.ok(hv.shirt instanceof Mesh, 'shirt mesh is constructed and attached to scene');
+    assert.equal(hv.visible, false);
+
+    // Place and resize
+    hv.resize(640, 480, 1280, 960);
+    const rect = new Rect(new Vec2(60, 60), new Vec2(200, 200));
+    hv.place(rect);
+    assert.equal(hv.visible, true);
+    assert.equal(hv.w, 120);
+    assert.equal(hv.h, 120);
+
+    // Update with health, pain, shot snarl, and power-up
+    const player = { health: 80, hurt: 0.1, shootFace: 0.5, soulFlash: 0.5, pickupFlash: 0 };
+    hv.update(player, 0.5);
+    assert.equal(hv.lastHealth, 80);
+    assert.equal(hv.lastHurt, 0.1);
+    assert.equal(hv.lastPower, true);
+
+    // Mock scene.render to isolate HeadView render scissor and viewport plumbing
+    let rendered = false;
+    hv.scene.render = (cam, t) => {
+      rendered = true;
+      assert.equal(cam, hv.camera);
+      assert.equal(t, 0.5);
+    };
+
+    // Render under scissor test
+    hv.render(0.5);
+    assert.equal(rendered, true);
+    assert.ok(gl.scissorCalls.length > 0, 'scissor call executed');
+    const lastScissor = gl.scissorCalls[gl.scissorCalls.length - 1];
+    assert.equal(lastScissor.w, hv.w);
+    assert.equal(lastScissor.h, hv.h);
+  },
 };
 
 function pausedHud() {

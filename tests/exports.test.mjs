@@ -359,6 +359,26 @@ const checks = [
     assert.ok(pkg.scripts.test.includes('tests/levels.test.mjs'), 'tests/levels.test.mjs missing from test script');
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'tests/exports.test.mjs missing from test script');
   }],
+  ['issue-225 AC-3 shirt.js hides SHIRT_COLOR, weaveTexture, and findNeckSeamIds exports', async () => {
+    const src = read('shirt');
+    for (const name of ['SHIRT_COLOR', 'weaveTexture', 'findNeckSeamIds']) {
+      assert.ok(!exported(src, name), `src/shirt.js still exports ${name}`);
+      assert.ok(new RegExp(`^(const|function)\\s+${name}\\b`, 'm').test(src), `${name} declaration missing in src/shirt.js`);
+    }
+    const mod = await import('../src/shirt.js');
+    for (const name of ['SHIRT_COLOR', 'weaveTexture', 'findNeckSeamIds']) {
+      assert.ok(!(name in mod), `${name} leaked as an export from src/shirt.js`);
+    }
+    for (const name of ['createShirtMesh', 'updateShirt']) {
+      assert.ok(name in mod, `${name} missing from src/shirt.js exports`);
+      assert.equal(typeof mod[name], 'function', `${name} is not a function`);
+    }
+  }],
+  ['issue-225 AC-5 export surface check and sim test suite verify clean dead-code removal', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'package.json test script missing exports.test.mjs');
+    assert.ok(pkg.scripts.test.includes('tests/sim.test.mjs'), 'package.json test script missing sim.test.mjs');
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');
