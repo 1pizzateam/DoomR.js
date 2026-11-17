@@ -110,6 +110,19 @@ const checks = [
     assert.match(explosionSrc, /function buildLumpyDome\(radii,/);
     assert.doesNotMatch(extractFunction(explosionSrc, 'evalSurfaceVertex'), /return \[|\[\d\]/);
   }],
+  ['AC-1 verify scratchSurfaceP is removed', () => {
+    assert.doesNotMatch(explosionSrc, /scratchSurfaceP\b(?!\w)/);
+  }],
+  ['AC-2 verify evalSurfaceVertex and surface derivatives remain', () => {
+    assert.match(explosionSrc, /const scratchSurfacePu0 = new Vec3\(\);/);
+    assert.match(explosionSrc, /const scratchSurfacePu1 = new Vec3\(\);/);
+    assert.match(explosionSrc, /const scratchSurfacePv0 = new Vec3\(\);/);
+    assert.match(explosionSrc, /const scratchSurfacePv1 = new Vec3\(\);/);
+    assert.match(explosionSrc, /function evalSurfaceVertex\(/);
+  }],
+  ['AC-3 assert scratchSurfaceP is absent and mesh builder tests pass', () => {
+    assert.doesNotMatch(explosionSrc, /\bscratchSurfaceP\b/);
+  }],
 ];
 
 console.log('# file: tests/mesh-builders-vector.test.mjs');
