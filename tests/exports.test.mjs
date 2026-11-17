@@ -264,6 +264,31 @@ const checks = [
     assert.equal(splat.pixels.length, RES * RES * 4, 'paintFloorSplatCell pixels unexpected size');
     assert.ok(splat.layers && splat.layers.H instanceof Float32Array, 'paintFloorSplatCell H layer missing');
   }],
+  ['AC-1 verify FloorBlood export alias is removed from src/bloodfloor.js', () => {
+    const src = read('bloodfloor');
+    assert.ok(!exported(src, 'FloorBlood'), 'bloodfloor.js still exports FloorBlood');
+    assert.ok(!src.includes('FloorBlood'), 'bloodfloor.js still contains references to FloorBlood');
+  }],
+  ['AC-2 verify FloorBlood is absent from bloodfloor.js module exports', async () => {
+    const mod = await import('../src/bloodfloor.js');
+    assert.ok(!('FloorBlood' in mod), 'FloorBlood leaked as an export from bloodfloor.js');
+  }],
+  ['AC-3 verify MergedBlood and canonical bloodfloor constants remain exported', async () => {
+    const mod = await import('../src/bloodfloor.js');
+    assert.ok('MergedBlood' in mod, 'MergedBlood export missing from bloodfloor.js');
+    assert.equal(typeof mod.MergedBlood, 'function');
+    for (const n of ['CHUNK', 'MAX_CHUNKS', 'PAD', 'TEX', 'TPU']) {
+      assert.ok(n in mod, `${n} export missing from bloodfloor.js`);
+      assert.equal(typeof mod[n], 'number', `${n} is not a number`);
+    }
+    assert.ok('FLOOR' in mod, 'FLOOR export missing from bloodfloor.js');
+    assert.equal(typeof mod.FLOOR, 'object');
+    assert.equal(mod.FLOOR.kind, 'floor');
+  }],
+  ['AC-4 verify exports suite passes with zero regressions', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'package.json test script missing exports.test.mjs');
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');
