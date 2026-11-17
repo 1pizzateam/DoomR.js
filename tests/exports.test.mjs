@@ -474,6 +474,28 @@ const checks = [
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'package.json test script missing exports.test.mjs');
   }],
+  ['issue-227 AC-1 src/pipes.js declares PIPE_RUNS and PIPE_STANDOFF as internal constants without export', () => {
+    const src = read('pipes');
+    assert.ok(!exported(src, 'PIPE_RUNS'), 'src/pipes.js still exports PIPE_RUNS');
+    assert.ok(!exported(src, 'PIPE_STANDOFF'), 'src/pipes.js still exports PIPE_STANDOFF');
+    assert.ok(/const\s+PIPE_RUNS\s*=/.test(src), 'src/pipes.js missing const PIPE_RUNS declaration');
+    assert.ok(/const\s+PIPE_STANDOFF\s*=/.test(src), 'src/pipes.js missing const PIPE_STANDOFF declaration');
+  }],
+  ['issue-227 AC-2 pipes module does not export PIPE_RUNS or PIPE_STANDOFF', async () => {
+    const mod = await import('../src/pipes.js');
+    assert.ok(!('PIPE_RUNS' in mod), 'PIPE_RUNS leaked from src/pipes.js exports');
+    assert.ok(!('PIPE_STANDOFF' in mod), 'PIPE_STANDOFF leaked from src/pipes.js exports');
+  }],
+  ['issue-227 AC-3 pipes module retains public wallPipeQuads, faceDirOf, and pipePlacements exports', async () => {
+    const mod = await import('../src/pipes.js');
+    assert.equal(typeof mod.wallPipeQuads, 'function', 'wallPipeQuads export missing');
+    assert.equal(typeof mod.faceDirOf, 'function', 'faceDirOf export missing');
+    assert.equal(typeof mod.pipePlacements, 'function', 'pipePlacements export missing');
+  }],
+  ['issue-227 AC-4 npm test runs complete test suite cleanly', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'));
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');
