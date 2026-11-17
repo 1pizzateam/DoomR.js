@@ -553,6 +553,35 @@ const checks = [
       assert.ok(exp in mod, `src/level.js missing expected public export ${exp}`);
     }
   }],
+  ['AC-1 NORMAL_STRENGTH is not exported from src/pbr.js', async () => {
+    const src = read('pbr');
+    assert.ok(!exported(src, 'NORMAL_STRENGTH'), 'src/pbr.js still exports NORMAL_STRENGTH');
+    const mod = await import('../src/pbr.js');
+    assert.ok(!('NORMAL_STRENGTH' in mod), 'NORMAL_STRENGTH leaked from src/pbr.js exports');
+  }],
+  ['AC-2 NORMAL_STRENGTH retained as module-private constant in src/pbr.js', () => {
+    const src = read('pbr');
+    assert.ok(/^const\s+NORMAL_STRENGTH\s*=\s*1\.3;/m.test(src), 'src/pbr.js missing const NORMAL_STRENGTH = 1.3 declaration');
+  }],
+  ['AC-3 buildMaterialMaps defaults to NORMAL_STRENGTH and executes cleanly', async () => {
+    const mod = await import('../src/pbr.js');
+    assert.equal(typeof mod.buildMaterialMaps, 'function', 'buildMaterialMaps export missing from src/pbr.js');
+    const dummyAtlas = {
+      name: 'test-atlas',
+      data: new Uint8Array(16 * 16 * 4),
+      width: 16,
+      height: 16,
+      cell: 16,
+    };
+    const result = mod.buildMaterialMaps(dummyAtlas);
+    assert.ok(result && result.normal, 'buildMaterialMaps did not produce normal map object');
+    assert.equal(result.normal.name, 'test-atlas-normal');
+    assert.equal(result.normal.data.length, 16 * 16 * 4);
+  }],
+  ['AC-4 exports suite passes with zero regressions', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'package.json test script missing exports.test.mjs');
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');
