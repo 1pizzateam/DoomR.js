@@ -43,10 +43,9 @@ const SIDE = { x: 64, width: 64, height: 64 };
 const TRIM = { x: 128, width: 64, height: 64 };
 const BOTTLE = { x: 192, width: 64, height: 64 };
 
-export const DISPENSER_CELL = 64;
-export const DISPENSER_FRAMES = 4;
+const DISPENSER_CELL = 64;
+const DISPENSER_FRAMES = 4;
 export const DISPENSER_ATLAS = { width: 256, height: 64 };
-export const DISPENSER_SIZE = new Vec3(14, 42, 14);
 export const DISPENSER_RADIUS = 10;
 export const DISPENSER_WALL_OFFSET = 20;
 export const DISPENSER_HP = 1;
@@ -57,10 +56,9 @@ const DESK_SIDE = { x: 64, width: 64, height: 64 };
 const DESK_SCREEN = { x: 128, width: 64, height: 64 };
 const DESK_CHAIR = { x: 192, width: 64, height: 64 };
 
-export const DESK_CELL = 64;
-export const DESK_FRAMES = 4;
+const DESK_CELL = 64;
+const DESK_FRAMES = 4;
 export const DESK_ATLAS = { width: 256, height: 64 };
-export const DESK_SIZE = new Vec3(36, 38, 30);
 export const DESK_RADIUS = 16;
 export const DESK_WALL_OFFSET = 14;
 export const DESK_HP = 1;
@@ -71,52 +69,48 @@ const TABLE_FRAME = { x: 64, width: 64, height: 64 };
 const TABLE_CHAIR = { x: 128, width: 64, height: 64 };
 const TABLE_TRAY = { x: 192, width: 64, height: 64 };
 
-export const TABLE_CELL = 64;
-export const TABLE_FRAMES = 4;
-export const TABLE_ATLAS = { width: 256, height: 64 };
-export const TABLE_SIZE = new Vec3(38, 30, 34);
+const TABLE_CELL = 64;
+const TABLE_FRAMES = 4;
+const TABLE_ATLAS = { width: 256, height: 64 };
 export const TABLE_RADIUS = 18;
 export const TABLE_WALL_OFFSET = 0;
 export const TABLE_HP = 1;
-export const TABLE_SHARD_COUNT = 5;
+const TABLE_SHARD_COUNT = 5;
 
 const OVEN_FRONT = { x: 0, width: 64, height: 64 };
 const OVEN_SIDE = { x: 64, width: 64, height: 64 };
 const OVEN_COOKTOP = { x: 128, width: 64, height: 64 };
 const OVEN_TRIM = { x: 192, width: 64, height: 64 };
 
-export const OVEN_CELL = 64;
-export const OVEN_FRAMES = 4;
-export const OVEN_ATLAS = { width: 256, height: 64 };
-export const OVEN_SIZE = new Vec3(26, 36, 22);
+const OVEN_CELL = 64;
+const OVEN_FRAMES = 4;
+const OVEN_ATLAS = { width: 256, height: 64 };
 export const OVEN_RADIUS = 14;
 export const OVEN_WALL_OFFSET = 18;
 export const OVEN_HP = 1;
-export const OVEN_SHARD_COUNT = 5;
+const OVEN_SHARD_COUNT = 5;
 
 const SINK_FRONT = { x: 0, width: 64, height: 64 };
 const SINK_SIDE = { x: 64, width: 64, height: 64 };
 const SINK_TOP = { x: 128, width: 64, height: 64 };
 const SINK_WATER = { x: 192, width: 64, height: 64 };
 
-export const SINK_CELL = 64;
-export const SINK_FRAMES = 4;
-export const SINK_ATLAS = { width: 256, height: 64 };
-export const SINK_SIZE = new Vec3(30, 36, 22);
+const SINK_CELL = 64;
+const SINK_FRAMES = 4;
+const SINK_ATLAS = { width: 256, height: 64 };
 export const SINK_RADIUS = 15;
 export const SINK_WALL_OFFSET = 18;
 export const SINK_HP = 1;
-export const SINK_SHARD_COUNT = 5;
+const SINK_SHARD_COUNT = 5;
 
 const PLANT_POT = { x: 0, width: 128, height: 128 };
 const PLANT_FOLIAGE = { x: 128, width: 128, height: 128 };
 const PLANT_STEM = { x: 256, width: 128, height: 128 };
 const PLANT_SOIL = { x: 384, width: 128, height: 128 };
 
-export const PLANT_CELL = 128;
-export const PLANT_FRAMES = 4;
-export const PLANT_ATLAS = { width: 512, height: 128 };
-export const PLANT_SIZE = new Vec3(20, 36, 20);
+const PLANT_CELL = 128;
+const PLANT_FRAMES = 4;
+const PLANT_ATLAS = { width: 512, height: 128 };
 export const PLANT_RADIUS = 12;
 export const PLANT_WALL_OFFSET = 16;
 export const PLANT_HP = 1;

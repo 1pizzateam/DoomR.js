@@ -289,6 +289,71 @@ const checks = [
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'package.json test script missing exports.test.mjs');
   }],
+  ['issue-220 AC-1 dead furniture size vectors are removed from src/furniture.js', async () => {
+    const src = read('furniture');
+    const deadVectors = ['DISPENSER_SIZE', 'DESK_SIZE', 'TABLE_SIZE', 'OVEN_SIZE', 'SINK_SIZE', 'PLANT_SIZE'];
+    for (const name of deadVectors) {
+      assert.ok(!new RegExp(`\\b${name}\\b`).test(src), `${name} still found in src/furniture.js`);
+    }
+    const mod = await import('../src/furniture.js');
+    for (const name of deadVectors) {
+      assert.ok(!(name in mod), `${name} leaked as an export from src/furniture.js`);
+    }
+  }],
+  ['issue-220 AC-2 internal furniture atlas constants are unexported', async () => {
+    const src = read('furniture');
+    const unexported = [
+      'DISPENSER_CELL', 'DISPENSER_FRAMES',
+      'DESK_CELL', 'DESK_FRAMES',
+      'TABLE_CELL', 'TABLE_FRAMES', 'TABLE_ATLAS', 'TABLE_SHARD_COUNT',
+      'OVEN_CELL', 'OVEN_FRAMES', 'OVEN_ATLAS', 'OVEN_SHARD_COUNT',
+      'SINK_CELL', 'SINK_FRAMES', 'SINK_ATLAS', 'SINK_SHARD_COUNT',
+      'PLANT_CELL', 'PLANT_FRAMES', 'PLANT_ATLAS',
+    ];
+    for (const name of unexported) {
+      assert.ok(!exported(src, name), `src/furniture.js still exports ${name}`);
+      assert.ok(new RegExp(`^const\\s+${name}\\b`, 'm').test(src), `${name} module-level const declaration missing`);
+    }
+    const mod = await import('../src/furniture.js');
+    for (const name of unexported) {
+      assert.ok(!(name in mod), `${name} leaked as an export from src/furniture.js`);
+    }
+  }],
+  ['issue-220 AC-3 public furniture exports remain intact', async () => {
+    const mod = await import('../src/furniture.js');
+    const publicExports = [
+      'DISPENSER_RADIUS', 'DISPENSER_WALL_OFFSET', 'DISPENSER_HP', 'DISPENSER_SHARD_COUNT', 'DISPENSER_ATLAS',
+      'DESK_RADIUS', 'DESK_WALL_OFFSET', 'DESK_HP', 'DESK_SHARD_COUNT', 'DESK_ATLAS',
+      'TABLE_RADIUS', 'TABLE_WALL_OFFSET', 'TABLE_HP',
+      'OVEN_RADIUS', 'OVEN_WALL_OFFSET', 'OVEN_HP',
+      'SINK_RADIUS', 'SINK_WALL_OFFSET', 'SINK_HP',
+      'PLANT_RADIUS', 'PLANT_WALL_OFFSET', 'PLANT_HP', 'PLANT_SHARD_COUNT',
+      'FURNITURE_VERTEX', 'FURNITURE_FRAGMENT',
+      'dispenserAtlas', 'dispenserMesh', 'dispenserWreckMesh', 'dispenserPuddleMesh', 'dispenserShrapnelParts',
+      'deskAtlas', 'deskMesh', 'deskWreckMesh', 'deskDebrisMesh', 'deskShrapnelParts',
+      'tableAtlas', 'tableMesh', 'tableWreckMesh', 'tableDebrisMesh', 'tableShrapnelParts',
+      'ovenAtlas', 'ovenMesh', 'ovenWreckMesh', 'ovenDebrisMesh', 'ovenShrapnelParts',
+      'sinkAtlas', 'sinkMesh', 'sinkWreckMesh', 'sinkPuddleMesh', 'sinkShrapnelParts',
+      'plantAtlas', 'buildOfficePlant', 'plantWreckMesh', 'plantDebrisMesh', 'plantShrapnelParts',
+    ];
+    for (const name of publicExports) {
+      assert.ok(name in mod, `${name} missing from src/furniture.js exports`);
+    }
+  }],
+  ['issue-220 AC-4 export-surface regression test suite passes cleanly', () => {
+    const src = read('furniture');
+    assert.ok(!src.includes('DISPENSER_SIZE'), 'DISPENSER_SIZE remains');
+    assert.ok(!src.includes('DESK_SIZE'), 'DESK_SIZE remains');
+    assert.ok(!src.includes('TABLE_SIZE'), 'TABLE_SIZE remains');
+    assert.ok(!src.includes('OVEN_SIZE'), 'OVEN_SIZE remains');
+    assert.ok(!src.includes('SINK_SIZE'), 'SINK_SIZE remains');
+    assert.ok(!src.includes('PLANT_SIZE'), 'PLANT_SIZE remains');
+  }],
+  ['issue-220 AC-5 full level and export test suites pass with zero regressions', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.ok(pkg.scripts.test.includes('tests/levels.test.mjs'), 'tests/levels.test.mjs missing from test script');
+    assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'tests/exports.test.mjs missing from test script');
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');
