@@ -1,7 +1,7 @@
 import { Utils, Vec2 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 import { TILE } from './level.js';
-import { field, GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile, TILE_PIXELS } from './floor.js';
+import { GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile, TILE_PIXELS } from './floor.js';
 
 const scratchPt = new Vec2();
 const scratchTile = new Vec2();

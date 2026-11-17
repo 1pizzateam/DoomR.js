@@ -1,7 +1,7 @@
 import { AmbientLight, MAX_LIGHTS, PointLight, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { Trigo, Utils } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
-import { GLOW, LIGHT, METAL, mix, periodicField, plate, rivet, SHADOW, Tile, TILE_PIXELS } from './floor.js';
+import { GLOW, mix, periodicField, plate, rivet, SHADOW, Tile, TILE_PIXELS } from './floor.js';
 import { CEILING, DOOR, FLOOR, PILLAR, TILE } from './level.js';
 import { WEAPONS } from './weapon.js';
 import ceilingPbrShader from './shaders/ceiling-pbr.shadergun.json' with { type: 'json' };
