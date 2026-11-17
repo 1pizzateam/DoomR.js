@@ -4,7 +4,7 @@ import { Blood, makeFeet } from './blood.js';
 import { Rubble, severityOf } from './rubble.js';
 import { faceDirOf, pipePlacements } from './pipes.js';
 import { CONE_RANGE, Fog, marsFogNearFar } from './fog.js';
-import { BASE_FLOOR_LEVEL, CACHE_WALL_OFFSET, CEILING, CROUCH_EYE, DOOR, EXIT, EYE, FLOOR, Level, TILE, WALL } from './level.js';
+import { BASE_FLOOR_LEVEL, CACHE_WALL_OFFSET, CEILING, CROUCH_EYE, DOOR, EYE, Level, TILE, WALL } from './level.js';
 export { CACHE_WALL_OFFSET };
 import { LEVELS } from './levels.js';
 import { WEAPON_SLOTS, WEAPONS } from './weapon.js';

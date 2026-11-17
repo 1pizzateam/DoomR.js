@@ -90,7 +90,7 @@ export const TABLE_WALL_OFFSET = 0;
 export const OVEN_WALL_OFFSET = 18;
 export const SINK_WALL_OFFSET = 18;
 export const PLANT_WALL_OFFSET = 16;
-export const SWITCH_WALL_OFFSET = 2;
+const SWITCH_WALL_OFFSET = 2;
 const FURNITURE_WALL_OFFSETS = {
   dispenser: DISPENSER_WALL_OFFSET,
   desk: DESK_WALL_OFFSET,
