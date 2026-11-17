@@ -365,6 +365,3 @@ export class MergedBlood {
     chunk.dirty = { c0, c1, r0, r1 };
   }
 }
-
-/** The floor-only name the first version had. */
-export { MergedBlood as FloorBlood };
