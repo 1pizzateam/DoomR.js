@@ -16,7 +16,8 @@ const INTERNALS = {
   overlay: ['VERTEX', 'FRAGMENT', 'TEXTURED_VERTEX', 'TEXTURED_FRAGMENT'],
   game: ['BARREL', 'USE_VERBS'],
   bloodsprites: ['FLOOR_VARIANTS', 'WALL_VARIANTS'],
-  hud: ['CONTROLS_LAYOUT', 'HINTS_LAYOUT', 'layoutHints'],
+  hud: ['CONTROLS_LAYOUT', 'HINTS_LAYOUT', 'layoutHints', 'layoutOptions'],
+  options: ['OPTION_GRAPHICS', 'OPTION_BACK', 'OPTION_PRESET', 'OPTION_RESOLUTION', 'OPTION_ADAPTIVE', 'OPTION_GLOW', 'OPTION_HUD_GLOW'],
 };
 
 const checks = [
@@ -495,6 +496,28 @@ const checks = [
   ['issue-227 AC-4 npm test runs complete test suite cleanly', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'));
+  }],
+  ['issue-224 AC-1 internal option row identifier constants are not exported from src/options.js', async () => {
+    const mod = await import('../src/options.js');
+    const internalOptions = ['OPTION_GRAPHICS', 'OPTION_BACK', 'OPTION_PRESET', 'OPTION_RESOLUTION', 'OPTION_ADAPTIVE', 'OPTION_GLOW', 'OPTION_HUD_GLOW'];
+    for (const name of internalOptions) {
+      assert.ok(!(name in mod), `${name} leaked from src/options.js exports`);
+    }
+  }],
+  ['issue-224 AC-2 OPTION_CONTROLS, OPTIONS_PAGE_ROOT, and OPTIONS_PAGE_GRAPHICS remain exported from src/options.js', async () => {
+    const mod = await import('../src/options.js');
+    for (const name of ['OPTION_CONTROLS', 'OPTIONS_PAGE_ROOT', 'OPTIONS_PAGE_GRAPHICS', 'OptionsMenu']) {
+      assert.ok(name in mod, `${name} missing from src/options.js exports`);
+    }
+  }],
+  ['issue-224 AC-3 layoutOptions helper is not exported from src/hud.js', async () => {
+    const mod = await import('../src/hud.js');
+    assert.ok(!('layoutOptions' in mod), 'layoutOptions leaked from src/hud.js exports');
+  }],
+  ['issue-224 AC-4 options menu, HUD layout, and export-surface test suite passes cleanly', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'tests/exports.test.mjs missing from test script');
+    assert.ok(pkg.scripts.test.includes('tests/options-menu.test.mjs'), 'tests/options-menu.test.mjs missing from test script');
   }],
 ];
 
