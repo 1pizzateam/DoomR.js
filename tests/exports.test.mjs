@@ -20,6 +20,11 @@ const INTERNALS = {
 };
 
 const checks = [
+  ['AC-1 graphics module does not export internal version, resolution steps, or preset names', async () => {
+    const mod = await import('../src/graphics.js');
+    for (const name of ['GRAPHICS_VERSION', 'RESOLUTION_STEPS', 'PRESET_NAMES'])
+      assert.ok(!(name in mod), `${name} leaked from src/graphics.js`);
+  }],
   ['AC-1 listed internals are not exported from controls, cache, ceiling, door, face, impacts, overlay, game, bloodsprites, hud', () => {
     for (const [mod, names] of Object.entries(INTERNALS)) {
       const src = read(mod);

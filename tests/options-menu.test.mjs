@@ -26,14 +26,14 @@ const press = (input, menu, nav, taken) => {
 };
 
 const checks = [
-  ['defaults are the full-quality preset', () => {
+  ['AC-2 GraphicsSettings preserves its high-quality defaults', () => {
     const s = new GraphicsSettings(memoryStorage());
     assert.equal(s.presetName, 'high');
     assert.equal(s.scale, 1);
     assert.equal(s.glow, GLOW_HIGH);
     assert.equal(s.hudGlow, true);
   }],
-  ['presets cycle and LOW turns the expensive effects off', () => {
+  ['AC-3 forward preset cycling preserves order and wraps from low to high', () => {
     const s = new GraphicsSettings(memoryStorage());
     s.cyclePreset(1);
     assert.equal(s.presetName, 'medium');
@@ -46,22 +46,45 @@ const checks = [
     s.cyclePreset(1);
     assert.equal(s.presetName, 'high');
   }],
-  ['changing one option makes the preset custom, and every change bumps version', () => {
+  ['AC-3 preset cycling preserves named and custom transitions in both directions', () => {
+    const named = new GraphicsSettings(memoryStorage());
+    named.cyclePreset(-1);
+    assert.equal(named.presetName, 'low');
+    named.cyclePreset(-1);
+    assert.equal(named.presetName, 'medium');
+    named.cyclePreset(-1);
+    assert.equal(named.presetName, 'high');
+
+    const customForward = new GraphicsSettings(memoryStorage());
+    customForward.toggleHudGlow();
+    assert.equal(customForward.presetName, 'custom');
+    customForward.cyclePreset(1);
+    assert.equal(customForward.presetName, 'high');
+
+    const customBackward = new GraphicsSettings(memoryStorage());
+    customBackward.toggleHudGlow();
+    assert.equal(customBackward.presetName, 'custom');
+    customBackward.cyclePreset(-1);
+    assert.equal(customBackward.presetName, 'low');
+  }],
+  ['AC-3 changing one option makes the preset custom, and every change bumps version', () => {
     const s = new GraphicsSettings(memoryStorage());
     const v = s.version;
     s.toggleHudGlow();
     assert.equal(s.presetName, 'custom');
     assert.ok(s.version > v);
   }],
-  ['settings persist and bad stored data is ignored', () => {
+  ['AC-4 settings persist across reloads and malformed or out-of-range data preserves defaults', () => {
     const storage = memoryStorage();
     const a = new GraphicsSettings(storage);
     a.applyPreset('low');
     const b = new GraphicsSettings(storage);
     assert.equal(b.presetName, 'low');
-    storage.data.set(GRAPHICS_STORAGE_KEY, '{"version":1,"resolution":99,"glow":"x"}');
+    storage.data.set(GRAPHICS_STORAGE_KEY, '{"version":1,"resolution":99,"adaptive":"x","glow":99,"hudGlow":0}');
     const c = new GraphicsSettings(storage);
     assert.equal(c.presetName, 'high');
+    assert.equal(c.scale, 1);
+    assert.equal(c.glow, GLOW_HIGH);
     storage.data.set(GRAPHICS_STORAGE_KEY, 'not json');
     assert.equal(new GraphicsSettings(storage).presetName, 'high');
     assert.equal(new GraphicsSettings(null).presetName, 'high');
@@ -117,6 +140,7 @@ const checks = [
   }],
 ];
 
+console.log('# file: tests/options-menu.test.mjs');
 let failed = 0;
 for (const [name, fn] of checks) {
   try {
