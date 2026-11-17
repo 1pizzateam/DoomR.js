@@ -65,6 +65,21 @@ export const TEXTURED_FRAGMENT = texturedQuadShader.fragment;
 /** Every textured surface in the world is dynamically lit and solid to the neon pass. */
 export const SOLID_TEXTURED_FRAGMENT = solidLitShader.fragment;
 
+/**
+ * Surface decals (bullet holes, slashes, explosion craters and scorch burns) are dynamically lit like solid geometry,
+ * and render in two micro-passes (`uDecalPass = 0` for scorch, soot halos, and raised collars; `uDecalPass = 1` for
+ * inner breached cavities and entry bores) so overlapping impacts merge their cavities seamlessly without any collar
+ * cutting across an adjacent hole, while `gl.blendFuncSeparate(..., ZERO, ONE)` preserves `SOLID_ALPHA` (`0.5`).
+ */
+export const DECAL_FRAGMENT = SOLID_TEXTURED_FRAGMENT
+  .replace('uniform sampler2D uSampler;', 'uniform sampler2D uSampler;\nuniform int uDecalPass;')
+  .replace(
+    'if (texel.a < 0.5)\n    discard;',
+    'if (uDecalPass == 1) {\n    if (texel.a < 0.945)\n      discard;\n  } else if (texel.a < 0.015 || texel.a > 0.975) {\n    discard;\n  }\n  float decalAlpha = uDecalPass == 1 ? smoothstep(0.945, 0.985, texel.a) : texel.a;'
+  )
+  .replaceAll('gl_FragColor = vec4(uFogColor, 0.5);', 'gl_FragColor = vec4(uFogColor, decalAlpha);')
+  .replaceAll('gl_FragColor = vec4(color, 0.5);', 'gl_FragColor = vec4(color, decalAlpha);');
+
 export const PARTICLE_VERTEX = particleLitShader.vertex;
 
 export const PARTICLE_FRAGMENT = particleLitShader.fragment;
@@ -79,7 +94,7 @@ export const PARTICLE_FRAGMENT = particleLitShader.fragment;
  * which it owns) from them, with what was last filled.
  */
 export class QuadBatch extends RoostrQuadBatch {
-  constructor(gl, { capacity, atlas, sharedTexture = null, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, vertex = TEXTURED_VERTEX, fragment = SOLID_TEXTURED_FRAGMENT, pbr = null }) {
+  constructor(gl, { capacity, atlas, sharedTexture = null, material = new Material({ diffuse: new Vec3(1, 1, 1) }), textureOptions = {}, vertex = TEXTURED_VERTEX, fragment = SOLID_TEXTURED_FRAGMENT, pbr = null, decalBlend = false }) {
     super(gl, {
       capacity,
       vertexShader: vertex,
@@ -90,6 +105,9 @@ export class QuadBatch extends RoostrQuadBatch {
       textureOptions: sharedTexture ? undefined : { size: new Vec2(atlas.width, atlas.height), magFilter: gl.NEAREST, minFilter: gl.NEAREST, ...textureOptions },
     });
     this.pbrTextures = null;
+    this.decalBlend = Boolean(decalBlend);
+    if (this.decalBlend && typeof this.addCustomUniform === 'function')
+      this.addCustomUniform('decalPass', 'uniform1i', 0);
     if (pbr)
       this.setPbrTextures(pbr.normal, pbr.detail, pbr.ao, pbr.noise);
   }
@@ -106,7 +124,26 @@ export class QuadBatch extends RoostrQuadBatch {
 
   renderSelf(projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame) {
     bindPbrMaps(this, blendMode);
-    return super.renderSelf(projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame);
+    if (!this.decalBlend)
+      return super.renderSelf(projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame);
+    const gl = this.context;
+    if (!this.isActive() || this.nbPrograms === 0 || this.blendMode !== blendMode || typeof gl?.enable !== 'function')
+      return super.renderSelf(projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame);
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate?.(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
+    gl.depthFunc?.(gl.LEQUAL);
+    if (this.depthWrite)
+      gl.depthMask?.(false);
+    this.setCustomUniform?.('decalPass', 0);
+    super.renderSelf(projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame);
+    this.setCustomUniform?.('decalPass', 1);
+    const res = super.renderSelf(projectionMatrix, viewMatrix, lights, time, blendMode, cameraPosition, fog, frame);
+    this.setCustomUniform?.('decalPass', 0);
+    if (this.depthWrite)
+      gl.depthMask?.(true);
+    gl.depthFunc?.(gl.LESS);
+    gl.disable(gl.BLEND);
+    return res;
   }
 }
 

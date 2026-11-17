@@ -76,7 +76,7 @@ const PICKUPS = {
   V: 'radsuit',
   N: 'nightvision',
 };
-const FURNITURES = { d: 'dispenser', t: 'desk', f: 'table', e: 'oven', l: 'sink', p: 'plant' };
+const FURNITURES = { d: 'dispenser', t: 'desk', f: 'table', e: 'oven', l: 'sink', p: 'plant', j: 'toilet' };
 
 // Face directions: the side of a tile a ray enters through (0: -x, 1: +x, 2: -y, 3: +y).
 const DX = [-1, 1, 0, 0];
@@ -90,6 +90,7 @@ export const TABLE_WALL_OFFSET = 0;
 export const OVEN_WALL_OFFSET = 18;
 export const SINK_WALL_OFFSET = 18;
 export const PLANT_WALL_OFFSET = 16;
+export const TOILET_WALL_OFFSET = 18;
 const SWITCH_WALL_OFFSET = 2;
 const FURNITURE_WALL_OFFSETS = {
   dispenser: DISPENSER_WALL_OFFSET,
@@ -98,6 +99,7 @@ const FURNITURE_WALL_OFFSETS = {
   oven: OVEN_WALL_OFFSET,
   sink: SINK_WALL_OFFSET,
   plant: PLANT_WALL_OFFSET,
+  toilet: TOILET_WALL_OFFSET,
 };
 
 /**

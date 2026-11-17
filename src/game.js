@@ -14,7 +14,7 @@ import { KNIFE_ATTACKS } from './arsenal.js';
 import { POWERUP_TYPES } from './powerups.js';
 import { defaultActionLabel } from './keymap.js';
 import { GRENADE_SCALE, GRENADE_START } from './grenade.js';
-import { DESK_HP, DESK_RADIUS, DISPENSER_HP, DISPENSER_RADIUS, OVEN_HP, OVEN_RADIUS, PLANT_HP, PLANT_RADIUS, SINK_HP, SINK_RADIUS, TABLE_HP, TABLE_RADIUS } from './furniture.js';
+import { DESK_HP, DESK_RADIUS, DISPENSER_HP, DISPENSER_RADIUS, OVEN_HP, OVEN_RADIUS, PLANT_HP, PLANT_RADIUS, SINK_HP, SINK_RADIUS, TABLE_HP, TABLE_RADIUS, TOILET_HP, TOILET_RADIUS } from './furniture.js';
 
 const FURNITURE_STATS = {
   dispenser: { radius: DISPENSER_RADIUS, hp: DISPENSER_HP },
@@ -23,6 +23,7 @@ const FURNITURE_STATS = {
   oven: { radius: OVEN_RADIUS, hp: OVEN_HP },
   sink: { radius: SINK_RADIUS, hp: SINK_HP },
   plant: { radius: PLANT_RADIUS, hp: PLANT_HP },
+  toilet: { radius: TOILET_RADIUS, hp: TOILET_HP },
 };
 
 /** Collision categories: every body filters on what it should react to. */
@@ -53,7 +54,7 @@ for (let i = 0; i < BLAST_RAYS; i++) {
 }
 const BLAST_RING = 4;
 const BLAST_RING_REACH = 0.4;
-const BLAST_WALL_GAP = 12;
+const BLAST_WALL_GAP = 36;
 const FIREBALL_BLAST = { radius: 48, power: 0.5 };
 
 /**
@@ -1313,6 +1314,8 @@ export class Game {
     let lastY = 0;
     let lastNx = 0;
     let lastNy = 0;
+    let lastSeverity = 0;
+    let lastSlot = null;
     let marked = false;
     for (let i = 0; i < BLAST_RAYS; i++) {
       blastTo.setScalar(pos.x + BLAST_RAY_COS[i] * radius, pos.y + BLAST_RAY_SIN[i] * radius);
@@ -1329,17 +1332,37 @@ export class Game {
         continue;
       const gapX = hit.point.x - lastX;
       const gapY = hit.point.y - lastY;
-      if (marked && nx === lastNx && ny === lastNy && gapX * gapX + gapY * gapY < BLAST_WALL_GAP * BLAST_WALL_GAP)
+      const mergePrev = marked && nx === lastNx && ny === lastNy && gapX * gapX + gapY * gapY < BLAST_WALL_GAP * BLAST_WALL_GAP;
+      if (mergePrev && (severity <= lastSeverity || !lastSlot))
         continue;
-      blastWall.setScalar(hit.point.x, hit.point.y, this.player.eye - 2 + rubble.rand.float(-10, 10));
+      const zHit = mergePrev ? lastSlot.z : this.player.eye - 2 + rubble.rand.float(-3, 3);
+      blastWall.setScalar(hit.point.x, hit.point.y, zHit);
       if (!blood.wallFace(blastWall, blastNormal.setScalar(nx, ny), blastFace))
         continue;
       const door = blastFace.door;
       blastFace.top = door ? level.baseHeight[blastFace.idx] : blastFace.top;
       blastMark.setScalar(blastFace.x, blastFace.y, door ? blastFace.height / (1 - door.open) : blastFace.height);
-      const slot = rubble.addWall(blastMark, blastNormal, severity, blastFace);
-      if (!slot)
-        continue;
+      let slot;
+      if (mergePrev) {
+        slot = lastSlot;
+        slot.x = blastMark.x;
+        slot.y = blastMark.y;
+        slot.z = blastMark.z;
+        slot.severity = severity;
+        slot.tier = severity < 0.34 - 1e-6 ? 0 : severity < 0.67 - 1e-6 ? 1 : 2;
+        slot.size = Utils.lerp(26, 48, severity);
+        slot.lo = blastFace.lo;
+        slot.hi = blastFace.hi;
+        slot.top = blastFace.top;
+        slot.slope = blastFace.slope;
+        slot.door = door;
+        slot.gen++;
+        rubble.version++;
+      } else {
+        slot = rubble.addWall(blastMark, blastNormal, severity, blastFace);
+        if (!slot)
+          continue;
+      }
       if (!door && level.pipeFaces?.has(blastFace.idx * 4 + faceDirOf(blastFace.nx, blastFace.ny)))
         this.blastOnPipes(blastFace, severity, slot);
       marked = true;
@@ -1347,6 +1370,8 @@ export class Game {
       lastY = hit.point.y;
       lastNx = nx;
       lastNy = ny;
+      lastSeverity = severity;
+      lastSlot = slot;
     }
     for (let i = -1; i < BLAST_RING; i++) {
       const reach = i < 0 ? 0 : radius * BLAST_RING_REACH;
@@ -1361,6 +1386,7 @@ export class Game {
         rubble.addFloor(blastMark, severity);
       if (!level.isOutdoor(blastCheck))
         rubble.addCeiling(blastMark, severity);
+      break;
     }
   }
 
@@ -1378,16 +1404,6 @@ export class Game {
       this.hitBarrel(directRef, BARREL.hp, 0.02);
     else if (directRef?.kind === 'furniture')
       this.hitFurniture(directRef, DISPENSER_HP);
-    else if ((!directRef || directRef.kind === 'wall') && shot.dir) {
-      const from = this.rocketFrom.copy(pos).addScaledVector(shot.dir, -16);
-      const to = this.rocketTo.copy(pos).addScaledVector(shot.dir, 16);
-      const wallHit = this.scene.raycast(from, to, QUERY_WALL);
-      if (wallHit) {
-        const nx = Math.abs(wallHit.normal.x) > 0.9 ? Math.round(wallHit.normal.x) : wallHit.normal.x;
-        const ny = Math.abs(wallHit.normal.y) > 0.9 ? Math.round(wallHit.normal.y) : wallHit.normal.y;
-        this.blood.impact(this.bloodPos.setScalar(wallHit.point.x, wallHit.point.y, this.player.eye - 2), this.bloodNormal.setScalar(nx, ny));
-      }
-    }
 
     const away = this.player.pos.getDistance(pos);
     this.shake = Math.max(this.shake, Utils.clamp(1 - away / 520, 0, 1) * 1.15);

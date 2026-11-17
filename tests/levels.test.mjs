@@ -580,6 +580,21 @@ try {
     assert.ok(maxY <= expectedMaxY + 1e-3, `${name} height does not exceed expectedMaxY`);
     assert.ok(maxY >= expectedMinY + 10, `${name} height is non-trivial`);
   }
+  // Verify the kitchen sink's flipped V coordinates keep the brushed-steel basin/faucet/handles in the upper stainless
+  // region (v > 0.31 after flipY) and that the SINK_TOP chrome region is neutral brushed steel without blue/red blocks.
+  const sink = buildKitchenSink();
+  for (let i = 0; i < sink.uvs.length; i += 2) {
+    const u = sink.uvs[i];
+    const v = sink.uvs[i + 1];
+    if (u >= (128 + 32) / 256 && u < 192 / 256)
+      assert.ok(v > 0.31, `sink chrome vertex V (${v}) stays inside the flipped stainless region`);
+  }
+  const sAtlas = sinkAtlas();
+  for (let y = 0; y < sAtlas.height; y++)
+    for (let x = sAtlas.top.x + 32; x < sAtlas.top.x + sAtlas.top.width; x++) {
+      const idx = (y * sAtlas.width + x) * 4;
+      assert.ok(Math.abs(sAtlas.data[idx] - sAtlas.data[idx + 2]) <= 40, `sink chrome texel (${x},${y}) is neutral stainless steel`);
+    }
   console.log(`ok   ${furnitureMeshAc2TestName}`);
 } catch (error) {
   failed = true;
@@ -788,6 +803,76 @@ try {
 } catch (error) {
   failed = true;
   console.log(`FAIL ${switchValidationAc7TestName}\n     ${error.message}`);
+}
+
+const toiletFurnitureTestName = 'facility toilet furniture tile (j), procedural atlas, 3D mesh, wreck, puddle, shrapnel, and break pose';
+try {
+  const {
+    TOILET_RADIUS,
+    TOILET_WALL_OFFSET,
+    TOILET_HP,
+    TOILET_SHARD_COUNT,
+    toiletAtlas,
+    toiletMesh,
+    buildToilet,
+    toiletWreckMesh,
+    toiletPuddleMesh,
+    toiletShrapnelParts,
+    createToiletBreakPose,
+    toiletBreakPose,
+  } = await import('../src/furniture.js');
+
+  assert.equal(TOILET_RADIUS, 12);
+  assert.equal(TOILET_WALL_OFFSET, 18);
+  assert.equal(TOILET_HP, 1);
+  assert.equal(TOILET_SHARD_COUNT, 5);
+  assert.equal(buildToilet, toiletMesh);
+
+  const atlas = toiletAtlas();
+  assert.equal(atlas.name, 'toilet');
+  assert.equal(atlas.width, 256);
+  assert.equal(atlas.height, 64);
+  assert.equal(atlas.data.length, 256 * 64 * 4);
+  assert.equal(atlas.relief.length, 256 * 64);
+
+  const intact = toiletMesh();
+  assert.ok(intact.vertices.length > 0 && intact.vertices.length % 3 === 0);
+  assert.ok(intact.uvs.length * 3 === intact.vertices.length * 2);
+
+  const wreck = toiletWreckMesh();
+  assert.ok(wreck.vertices.length > 0 && wreck.vertices.length < intact.vertices.length);
+
+  const puddle = toiletPuddleMesh();
+  assert.ok(puddle.vertices.length > 0 && puddle.vertices.length % 3 === 0);
+
+  const shrapnel = toiletShrapnelParts();
+  assert.ok(shrapnel.carboyTop.vertices.length > 0);
+  assert.equal(shrapnel.shards.length, TOILET_SHARD_COUNT);
+
+  const pose = createToiletBreakPose();
+  assert.equal(pose.shards.length, TOILET_SHARD_COUNT);
+  toiletBreakPose(0.25, 42, pose);
+  assert.ok(pose.shards[0].pos.y > 0.7);
+  assert.ok(pose.puddleScale.x > 0.25);
+
+  const toiletLevel = new Level({
+    name: 'ToiletRoom',
+    rows: [
+      '#######',
+      '#..j..#',
+      '#..P..#',
+      '#######',
+    ],
+  });
+  assert.equal(toiletLevel.furnitures.length, 1);
+  assert.equal(toiletLevel.furnitures[0].type, 'toilet');
+  assert.equal(toiletLevel.furnitures[0].x, 3);
+  assert.equal(toiletLevel.furnitures[0].y, 1);
+  assert.equal(toiletLevel.furnitures[0].wallSide, 3);
+  console.log(`ok   ${toiletFurnitureTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${toiletFurnitureTestName}\n     ${error.message}`);
 }
 
 process.exit(failed ? 1 : 0);

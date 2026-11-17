@@ -315,6 +315,7 @@ const checks = [
       'OVEN_CELL', 'OVEN_FRAMES', 'OVEN_ATLAS', 'OVEN_SHARD_COUNT',
       'SINK_CELL', 'SINK_FRAMES', 'SINK_ATLAS', 'SINK_SHARD_COUNT',
       'PLANT_CELL', 'PLANT_FRAMES', 'PLANT_ATLAS',
+      'TOILET_CELL', 'TOILET_FRAMES', 'TOILET_ATLAS',
     ];
     for (const name of unexported) {
       assert.ok(!exported(src, name), `src/furniture.js still exports ${name}`);
@@ -334,6 +335,7 @@ const checks = [
       'OVEN_RADIUS', 'OVEN_WALL_OFFSET', 'OVEN_HP',
       'SINK_RADIUS', 'SINK_WALL_OFFSET', 'SINK_HP',
       'PLANT_RADIUS', 'PLANT_WALL_OFFSET', 'PLANT_HP', 'PLANT_SHARD_COUNT',
+      'TOILET_RADIUS', 'TOILET_WALL_OFFSET', 'TOILET_HP', 'TOILET_SHARD_COUNT',
       'FURNITURE_VERTEX', 'FURNITURE_FRAGMENT',
       'dispenserAtlas', 'dispenserMesh', 'dispenserWreckMesh', 'dispenserPuddleMesh', 'dispenserShrapnelParts',
       'deskAtlas', 'deskMesh', 'deskWreckMesh', 'deskDebrisMesh', 'deskShrapnelParts',
@@ -341,6 +343,7 @@ const checks = [
       'ovenAtlas', 'ovenMesh', 'ovenWreckMesh', 'ovenDebrisMesh', 'ovenShrapnelParts',
       'sinkAtlas', 'sinkMesh', 'sinkWreckMesh', 'sinkPuddleMesh', 'sinkShrapnelParts',
       'plantAtlas', 'buildOfficePlant', 'plantWreckMesh', 'plantDebrisMesh', 'plantShrapnelParts',
+      'toiletAtlas', 'toiletMesh', 'buildToilet', 'toiletWreckMesh', 'toiletPuddleMesh', 'toiletDebrisMesh', 'toiletShrapnelParts',
     ];
     for (const name of publicExports) {
       assert.ok(name in mod, `${name} missing from src/furniture.js exports`);
@@ -546,7 +549,7 @@ const checks = [
     assert.ok(!('SWITCH_WALL_OFFSET' in mod), 'SWITCH_WALL_OFFSET leaked from src/level.js exports');
     const publicLevelExports = [
       'CACHE_WALL_OFFSET', 'DISPENSER_WALL_OFFSET', 'DESK_WALL_OFFSET', 'TABLE_WALL_OFFSET',
-      'OVEN_WALL_OFFSET', 'SINK_WALL_OFFSET', 'PLANT_WALL_OFFSET',
+      'OVEN_WALL_OFFSET', 'SINK_WALL_OFFSET', 'PLANT_WALL_OFFSET', 'TOILET_WALL_OFFSET',
       'Level', 'TILE', 'WALL', 'DOOR', 'FLOOR', 'EXIT',
     ];
     for (const exp of publicLevelExports) {

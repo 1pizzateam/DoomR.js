@@ -20,13 +20,13 @@ import { faceCorners, quadTriangles } from './lines.js';
 import { MONSTERS, monsterGoreSkinAtlas, monsterParts, monsterSkinAtlas } from './monsters.js';
 import { Overlay } from './overlay.js';
 import { buildDetailNormal, buildLevelAo, buildMaterialMaps, buildNoiseTexture } from './pbr.js';
-import { PARTICLE_FRAGMENT, PARTICLE_VERTEX, QuadBatch, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, enableMeshPbr, texturedMesh } from './quads.js';
+import { DECAL_FRAGMENT, PARTICLE_FRAGMENT, PARTICLE_VERTEX, QuadBatch, SOLID_TEXTURED_FRAGMENT, TEXTURED_FRAGMENT, enableMeshPbr, texturedMesh } from './quads.js';
 import { blastFlatQuad, blastWallQuad, burnFlatQuad, burnWallQuad, holeQuad, IMPACT_CELLS, impactAtlas, SPARK_FRAMES, SPARK_VARIANTS } from './impacts.js';
 import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
 import { keycardAtlas, keycardMesh } from './keycard.js';
 import { CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, SWITCH_LEVER_ANGLE, SWITCH_LEVER_HINGE, SWITCH_TINTS, chestAtlas, chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from './cache.js';
-import { buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createOvenBreakPose, createPlantBreakPose, createSinkBreakPose, createTableBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, ovenAtlas, ovenBreakPose, ovenDebrisMesh, ovenMesh, ovenShrapnelParts, ovenWreckMesh, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, sinkAtlas, sinkBreakPose, sinkMesh, sinkPuddleMesh, sinkShrapnelParts, sinkWreckMesh, tableAtlas, tableBreakPose, tableDebrisMesh, tableMesh, tableShrapnelParts, tableWreckMesh, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
+import { buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createOvenBreakPose, createPlantBreakPose, createSinkBreakPose, createTableBreakPose, createToiletBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, ovenAtlas, ovenBreakPose, ovenDebrisMesh, ovenMesh, ovenShrapnelParts, ovenWreckMesh, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, sinkAtlas, sinkBreakPose, sinkMesh, sinkPuddleMesh, sinkShrapnelParts, sinkWreckMesh, tableAtlas, tableBreakPose, tableDebrisMesh, tableMesh, tableShrapnelParts, tableWreckMesh, toiletAtlas, toiletBreakPose, toiletMesh, toiletPuddleMesh, toiletShrapnelParts, toiletWreckMesh, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
 import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, knifeAtlas, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from './arsenal.js';
 import { WEAPONS } from './weapon.js';
 import { armorAtlas, armorMesh } from './armor.js';
@@ -390,6 +390,7 @@ const FURNITURE_KINDS = {
   oven: { atlas: ovenAtlas, intact: ovenMesh, wreck: ovenWreckMesh, debris: ovenDebrisMesh, shrapnel: ovenShrapnelParts, createPose: createOvenBreakPose, pose: ovenBreakPose },
   sink: { atlas: sinkAtlas, intact: sinkMesh, wreck: sinkWreckMesh, debris: sinkPuddleMesh, shrapnel: sinkShrapnelParts, createPose: createSinkBreakPose, pose: sinkBreakPose },
   plant: { atlas: plantAtlas, intact: buildOfficePlant, wreck: plantWreckMesh, debris: plantDebrisMesh, shrapnel: plantShrapnelParts, createPose: createPlantBreakPose, pose: plantBreakPose },
+  toilet: { atlas: toiletAtlas, intact: toiletMesh, wreck: toiletWreckMesh, debris: toiletPuddleMesh, shrapnel: toiletShrapnelParts, createPose: createToiletBreakPose, pose: toiletBreakPose },
 };
 
 function sinkToFloor(quads) {
@@ -1139,7 +1140,16 @@ export class World {
 
   doorBatch(capacity, atlas, material, texOptions = bloodTextureOptions(this.gl)) {
     const sharedTexture = this.sharedTexture(atlas, texOptions);
-    const batch = new QuadBatch(this.gl, { capacity, atlas, sharedTexture, material, textureOptions: texOptions });
+    const isImpact = Boolean(atlas && atlas === this.impactPixels);
+    const batch = new QuadBatch(this.gl, {
+      capacity,
+      atlas,
+      sharedTexture,
+      material,
+      textureOptions: texOptions,
+      fragment: isImpact ? DECAL_FRAGMENT : SOLID_TEXTURED_FRAGMENT,
+      decalBlend: isImpact,
+    });
     if (sharedTexture) {
       batch.sharedAtlas = atlas;
       batch.sharedTexOptions = texOptions;
@@ -1273,9 +1283,9 @@ export class World {
     this.dripVersion = -1;
     this.dripsLive = false;
     // bullet holes and chainsaw marks sit on the wall behind any blood splats or drips
-    this.impactPixels ??= impactAtlas();
+    this.impactPixels ??= impactAtlas(this.impactAtlasScale());
     const sharedImpactTex = this.sharedTexture(this.impactPixels, bloodTexOpts);
-    this.holes = new QuadBatch(this.gl, { capacity: BLOOD.holes, atlas: this.impactPixels, sharedTexture: sharedImpactTex, textureOptions: bloodTexOpts });
+    this.holes = new QuadBatch(this.gl, { capacity: BLOOD.holes, atlas: this.impactPixels, sharedTexture: sharedImpactTex, textureOptions: bloodTexOpts, fragment: DECAL_FRAGMENT, decalBlend: true });
     this.shadowPixels ??= shadowAtlas();
     const shadowTexOpts = { minFilter: this.gl.LINEAR, magFilter: this.gl.LINEAR };
     const sharedShadowTex = this.sharedTexture(this.shadowPixels, shadowTexOpts);
@@ -1304,7 +1314,7 @@ export class World {
     this.scene.addMesh(this.holes);
     this.holesVersion = -1;
     // blast damage is drawn over the bullet holes, in the same impact texture
-    this.blasts = new QuadBatch(this.gl, { capacity: (RUBBLE.wall + RUBBLE.floor + RUBBLE.ceiling) * 2, atlas: this.impactPixels, sharedTexture: sharedImpactTex, textureOptions: bloodTexOpts });
+    this.blasts = new QuadBatch(this.gl, { capacity: (RUBBLE.wall + RUBBLE.floor + RUBBLE.ceiling) * 2, atlas: this.impactPixels, sharedTexture: sharedImpactTex, textureOptions: bloodTexOpts, fragment: DECAL_FRAGMENT, decalBlend: true });
     this.blasts.sharedAtlas = this.impactPixels;
     this.blasts.sharedTexOptions = bloodTexOpts;
     // blast decals are layered by age in syncBlasts, not by depth
@@ -1433,6 +1443,12 @@ export class World {
     batch.end();
   }
 
+  /** Selects native 256x256 HD impact cells (`scale = 4`) when the GPU texture limit allows `16384` width, falling back to `2` or `1` in headless mock contexts. */
+  impactAtlasScale() {
+    const maxTex = typeof this.gl?.getParameter === 'function' ? (this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) || 4096) : 4096;
+    return maxTex >= 16384 ? 4 : maxTex >= 8192 ? 2 : 1;
+  }
+
   /**
    * Holes and blood on a door sink and rise with it. The door slides down into the floor whole (see render), so the
    * marks do exactly that: they keep their size and their spacing, drop by as much as the door has dropped, and are
@@ -1450,11 +1466,12 @@ export class World {
       return;
     }
     if (!marks) {
+      const holesBatch = this.doorBatch(BLOOD.doorHoles, this.impactPixels);
       const blastBatch = this.doorBatch(DOOR_BLASTS * 2, this.impactPixels);
       // decals are layered by age, not by depth; the optional call tolerates the batch stubs of headless tests
       blastBatch.setDepthWrite?.(false);
       marks = {
-        holes: this.doorBatch(BLOOD.doorHoles, this.impactPixels),
+        holes: holesBatch,
         splats: this.doorSplatBatch(),
         blasts: blastBatch,
         holesOpen: -1,
@@ -4296,7 +4313,7 @@ export class World {
     }
 
     const atlas = spark
-      ? (this.impactPixels ??= impactAtlas())
+      ? (this.impactPixels ??= impactAtlas(this.impactAtlasScale()))
       : teleport
         ? (this.teleportPixels ??= teleportAtlas())
         : (this.explosionPixels ??= explosionAtlas());

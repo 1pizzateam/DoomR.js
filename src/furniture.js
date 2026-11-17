@@ -25,6 +25,10 @@
  * - Kitchen Sink (`sinkAtlas()`, `sinkMesh()`):
  *   - Drawn procedurally as a crisp power-of-two RGBA atlas (64 x 64 per cell, 4 cells = 256 x 64) with commercial stainless
  *     under-sink cabinet, ribbed drainboard, deep recessed wash basin with soapy water, and gooseneck faucet (`y = 0..36`).
+ * - Facility Toilet Bowl (`toiletAtlas()`, `toiletMesh()`):
+ *   - Drawn procedurally as a crisp power-of-two RGBA atlas (64 x 64 per cell, 4 cells = 256 x 64) with glazed vitreous-china
+ *     porcelain pedestal & sculpted oval bowl, rear flush cistern tank with chrome handle, contoured seat ring & hinged open lid,
+ *     and recessed standing bowl water (`y = 0..31`).
  */
 import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { blitTile, field, mix, plate, rivet, rust, SHADOW, Tile } from './floor.js';
@@ -115,6 +119,19 @@ export const PLANT_RADIUS = 12;
 export const PLANT_WALL_OFFSET = 16;
 export const PLANT_HP = 1;
 export const PLANT_SHARD_COUNT = 5;
+
+const TOILET_PORCELAIN = { x: 0, width: 64, height: 64 };
+const TOILET_CISTERN = { x: 64, width: 64, height: 64 };
+const TOILET_SEAT = { x: 128, width: 64, height: 64 };
+const TOILET_WATER = { x: 192, width: 64, height: 64 };
+
+const TOILET_CELL = 64;
+const TOILET_FRAMES = 4;
+const TOILET_ATLAS = { width: 256, height: 64 };
+export const TOILET_RADIUS = 12;
+export const TOILET_WALL_OFFSET = 18;
+export const TOILET_HP = 1;
+export const TOILET_SHARD_COUNT = 5;
 
 export const FURNITURE_VERTEX = `
 attribute vec3 aVertexPosition;
@@ -893,11 +910,11 @@ export function dispenserMesh() {
   const bottleUC = (bottleU0 + bottleU1) * 0.5;
   pushTopDisc(vertices, normals, uvs, 42.0, 3.8, bottleUC, 0.08, (bottleU1 - bottleU0) * 0.35, 0.06, 12);
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -1070,11 +1087,11 @@ export function dispenserWreckMesh() {
     },
   );
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -1114,11 +1131,11 @@ export function dispenserPuddleMesh() {
     pushTri(vertices, normals, uvs, center, p1, p0, uvCenter, uv1, uv0);
   }
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -1186,11 +1203,11 @@ export function dispenserShrapnelParts() {
       pushQuad(sVerts, sNorms, sUvs, b0, b1, t1, t0, bu0, 0.28, bu1, 0.78);
       pushQuad(sVerts, sNorms, sUvs, b1, b0, t0, t1, bu0, 0.28, bu1, 0.78);
     }
-    shards.push({
+    shards.push(flipV({
       vertices: new Float32Array(sVerts),
       normals: new Float32Array(sNorms),
       uvs: new Float32Array(sUvs),
-    });
+    }));
   }
 
   // Shard 3: Blown-off front header bezel panel with LEDs
@@ -1212,11 +1229,11 @@ export function dispenserShrapnelParts() {
       bottom: uvRect(sideU0, 0.88, sideU1, 0.96),
     },
   );
-  shards.push({
+  shards.push(flipV({
     vertices: new Float32Array(bezelVerts),
     normals: new Float32Array(bezelNorms),
     uvs: new Float32Array(bezelUvs),
-  });
+  }));
 
   // Shard 4: Torn side cup-dispenser tube & bracket
   const tubeVerts = [];
@@ -1237,18 +1254,18 @@ export function dispenserShrapnelParts() {
       bottom: uvRect(trimBlueU0, 0.1, trimBlueU1, 0.4),
     },
   );
-  shards.push({
+  shards.push(flipV({
     vertices: new Float32Array(tubeVerts),
     normals: new Float32Array(tubeNorms),
     uvs: new Float32Array(tubeUvs),
-  });
+  }));
 
   return {
-    carboyTop: {
+    carboyTop: flipV({
       vertices: new Float32Array(topVerts),
       normals: new Float32Array(topNorms),
       uvs: new Float32Array(topUvs),
-    },
+    }),
     shards,
   };
 }
@@ -1632,11 +1649,11 @@ export function tableMesh() {
   buildRefectoryChair(vertices, normals, uvs, -9.5, -11.8, -1, chairU0, chairU1, uvRect, false);
   buildRefectoryChair(vertices, normals, uvs, 9.5, -11.8, -1, chairU0, chairU1, uvRect, false);
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -1687,11 +1704,11 @@ export function tableWreckMesh() {
   buildRefectoryChair(vertices, normals, uvs, -9.5, -12.2, -1, chairU0, chairU1, uvRect, false);
   buildRefectoryChair(vertices, normals, uvs, 9.5, -12.2, -1, chairU0, chairU1, uvRect, true);
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -1730,11 +1747,11 @@ export function tableDebrisMesh() {
     pushTri(vertices, normals, uvs, center, p1, p0, uvCenter, uv1, uv0);
   }
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -1781,7 +1798,7 @@ export function tableShrapnelParts() {
       top: uvRect(trayU0, 0.04, trayU1, 0.6),
       bottom: uvRect(topU0, 0.72, topU1, 0.94),
     });
-    shards.push({ vertices: new Float32Array(sVerts), normals: new Float32Array(sNorms), uvs: new Float32Array(sUvs) });
+    shards.push(flipV({ vertices: new Float32Array(sVerts), normals: new Float32Array(sNorms), uvs: new Float32Array(sUvs) }));
   }
   // Shards 2 & 3: Two blown-off molded canteen chair backrests
   for (let s = 0; s < 2; s++) {
@@ -1796,20 +1813,20 @@ export function tableShrapnelParts() {
       top: uvRect(chairU0, 0.04, chairU1, 0.66),
       bottom: uvRect(chairU0, 0.72, chairU1, 0.96),
     });
-    shards.push({ vertices: new Float32Array(cVerts), normals: new Float32Array(cNorms), uvs: new Float32Array(cUvs) });
+    shards.push(flipV({ vertices: new Float32Array(cVerts), normals: new Float32Array(cNorms), uvs: new Float32Array(cUvs) }));
   }
   // Shard 4: Flying insulated thermo-mug
   const mVerts = [];
   const mNorms = [];
   const mUvs = [];
   pushCylinderAt(mVerts, mNorms, mUvs, 0, 0, -1.7, 1.7, 1.2, 1.2, trayU0, trayU1, 0.66, 0.96, 8);
-  shards.push({ vertices: new Float32Array(mVerts), normals: new Float32Array(mNorms), uvs: new Float32Array(mUvs) });
+  shards.push(flipV({ vertices: new Float32Array(mVerts), normals: new Float32Array(mNorms), uvs: new Float32Array(mUvs) }));
 
-  const carboyTop = {
+  const carboyTop = flipV({
     vertices: new Float32Array(topVerts),
     normals: new Float32Array(topNorms),
     uvs: new Float32Array(topUvs),
-  };
+  });
   return { carboyTop, shards };
 }
 
@@ -3051,11 +3068,11 @@ export function ovenMesh() {
     top: uvRect(trimU0, 0.05, trimU1, 0.42),
   });
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -3101,11 +3118,11 @@ export function ovenWreckMesh() {
     top: uvRect(sideU0, 0.88, sideU1, 0.98),
   });
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -3144,11 +3161,11 @@ export function ovenDebrisMesh() {
     pushTri(vertices, normals, uvs, center, p1, p0, uvCenter, uv1, uv0);
   }
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -3188,7 +3205,7 @@ export function ovenShrapnelParts() {
   const potNorms = [];
   const potUvs = [];
   pushCylinderAt(potVerts, potNorms, potUvs, 0, 0, -2.6, 2.6, 3.4, 3.4, trimU0, trimU1, 0.05, 0.42, 8);
-  shards.push({ vertices: new Float32Array(potVerts), normals: new Float32Array(potNorms), uvs: new Float32Array(potUvs) });
+  shards.push(flipV({ vertices: new Float32Array(potVerts), normals: new Float32Array(potNorms), uvs: new Float32Array(potUvs) }));
 
   // Shards 1 & 2: Two cast-iron stovetop burner grates
   for (let s = 0; s < 2; s++) {
@@ -3203,7 +3220,7 @@ export function ovenShrapnelParts() {
       top: uvRect(cookU0, 0.04, cookU1, 0.96),
       bottom: uvRect(cookU0, 0.04, cookU1, 0.96),
     });
-    shards.push({ vertices: new Float32Array(gVerts), normals: new Float32Array(gNorms), uvs: new Float32Array(gUvs) });
+    shards.push(flipV({ vertices: new Float32Array(gVerts), normals: new Float32Array(gNorms), uvs: new Float32Array(gUvs) }));
   }
 
   // Shard 3: Blown-off upper control manifold strip with dials
@@ -3218,7 +3235,7 @@ export function ovenShrapnelParts() {
     top: uvRect(trimU0, 0.05, trimU1, 0.42),
     bottom: uvRect(sideU0, 0.88, sideU1, 0.98),
   });
-  shards.push({ vertices: new Float32Array(mVerts), normals: new Float32Array(mNorms), uvs: new Float32Array(mUvs) });
+  shards.push(flipV({ vertices: new Float32Array(mVerts), normals: new Float32Array(mNorms), uvs: new Float32Array(mUvs) }));
 
   // Shard 4: Torn exhaust flue cap
   const fVerts = [];
@@ -3232,14 +3249,14 @@ export function ovenShrapnelParts() {
     top: uvRect(trimU0, 0.05, trimU1, 0.42),
     bottom: uvRect(sideU0, 0.88, sideU1, 0.98),
   });
-  shards.push({ vertices: new Float32Array(fVerts), normals: new Float32Array(fNorms), uvs: new Float32Array(fUvs) });
+  shards.push(flipV({ vertices: new Float32Array(fVerts), normals: new Float32Array(fNorms), uvs: new Float32Array(fUvs) }));
 
   return {
-    carboyTop: {
+    carboyTop: flipV({
       vertices: new Float32Array(topVerts),
       normals: new Float32Array(topNorms),
       uvs: new Float32Array(topUvs),
-    },
+    }),
     shards,
   };
 }
@@ -3311,11 +3328,12 @@ function drawSinkTop(rnd) {
       t.set(gx, gy + 1, COLD_LIGHT, 0.55);
     }
 
-  // Right half (x = 32..63): Brushed basin walls, chrome faucet trim & hot/cold handle badges
-  t.rect(33, 4, 28, 40, STAINLESS_BASE, 0.7);
-  // Cold-blue & hot-red valve badges at bottom of cell (y = 46..62)
-  t.rect(34, 46, 13, 15, COLD_BLUE, 0.92);
-  t.rect(49, 46, 13, 15, HOT_RED, 0.92);
+  // Right half (x = 32..63): Clean brushed stainless-steel basin walls, chrome faucet & wrist-blade handles
+  t.rect(33, 4, 28, 56, STAINLESS_BASE, 0.72);
+  for (let gy = 8; gy <= 54; gy += 6) {
+    t.rect(35, gy, 24, 1, STAINLESS_LIGHT, 0.38);
+    t.rect(35, gy + 1, 24, 1, STAINLESS_DARK, 0.28);
+  }
 
   return t;
 }
@@ -3375,8 +3393,8 @@ export function sinkMesh() {
   const sideU1 = (SINK_SIDE.x + SINK_SIDE.width) / W - inset;
   const drainU0 = SINK_TOP.x / W + inset;
   const drainU1 = (SINK_TOP.x + 31) / W - inset;
-  const chromeU0 = (SINK_TOP.x + 32) / W + inset;
-  const chromeU1 = (SINK_TOP.x + SINK_TOP.width) / W - inset;
+  const chromeU0 = (SINK_TOP.x + 33) / W + inset;
+  const chromeU1 = (SINK_TOP.x + 61) / W - inset;
   const waterU0 = SINK_WATER.x / W + inset;
   const waterU1 = (SINK_WATER.x + SINK_WATER.width) / W - inset;
   const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
@@ -3457,27 +3475,15 @@ export function sinkMesh() {
   // Downward aerator nozzle tip (`y = 32.4 .. 34.6, z = -3.0 .. -1.8`)
   pushBoxPart(vertices, normals, uvs, new Vec3(3.6, 32.4, -3.0), new Vec3(4.8, 34.6, -1.8), faucetFaces);
 
-  // Left Cold (blue) & Right Hot (red) valve handles
-  pushBoxPart(vertices, normals, uvs, new Vec3(-0.4, 26.5, -8.6), new Vec3(1.2, 29.0, -7.2), {
-    front: uvRect(chromeU0, 0.72, (chromeU0 + chromeU1) * 0.5, 0.96),
-    back: uvRect(chromeU0, 0.72, (chromeU0 + chromeU1) * 0.5, 0.96),
-    left: uvRect(chromeU0, 0.72, (chromeU0 + chromeU1) * 0.5, 0.96),
-    right: uvRect(chromeU0, 0.72, (chromeU0 + chromeU1) * 0.5, 0.96),
-    top: uvRect(chromeU0, 0.72, (chromeU0 + chromeU1) * 0.5, 0.96),
-  });
-  pushBoxPart(vertices, normals, uvs, new Vec3(7.2, 26.5, -8.6), new Vec3(8.8, 29.0, -7.2), {
-    front: uvRect((chromeU0 + chromeU1) * 0.5, 0.72, chromeU1, 0.96),
-    back: uvRect((chromeU0 + chromeU1) * 0.5, 0.72, chromeU1, 0.96),
-    left: uvRect((chromeU0 + chromeU1) * 0.5, 0.72, chromeU1, 0.96),
-    right: uvRect((chromeU0 + chromeU1) * 0.5, 0.72, chromeU1, 0.96),
-    top: uvRect((chromeU0 + chromeU1) * 0.5, 0.72, chromeU1, 0.96),
-  });
+  // Left & Right wrist-blade valve handles
+  pushBoxPart(vertices, normals, uvs, new Vec3(-0.4, 26.5, -8.6), new Vec3(1.2, 29.0, -7.2), faucetFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(7.2, 26.5, -8.6), new Vec3(8.8, 29.0, -7.2), faucetFaces);
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -3523,11 +3529,11 @@ export function sinkWreckMesh() {
     top: uvRect(drainU0, 0.06, drainU1, 0.94),
   });
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -3900,11 +3906,11 @@ export function buildOfficePlant() {
       8.0 + rnd() * 2.5, 3.4 + rnd() * 0.8, 0.85 + rnd() * 0.3, 0.9 + rnd() * 0.5, 0.45, 6);
   }
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /** The atlas fractions the plant's meshes read their textures from. */
@@ -3965,11 +3971,11 @@ export function plantWreckMesh() {
   pushLeaf(vertices, normals, uvs, foliage, 1.2, 9.5, -1.0, -0.9, 5.6, 3.0, 0.1, 0.3, 0.25, 4);
   pushLeaf(vertices, normals, uvs, foliage, 0.8, 9.6, 1.4, 0.7, 4.6, 2.6, 0.14, 0.2, 0.25, 4);
 
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -3996,11 +4002,11 @@ export function plantDebrisMesh() {
     const uv1 = new Vec2(uc + Math.cos(a1) * uSpan, 0.5 + Math.sin(a1) * 0.4);
     pushTri(vertices, normals, uvs, center, p1, p0, uvCenter, uv1, uv0);
   }
-  return {
+  return flipV({
     vertices: new Float32Array(vertices),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-  };
+  });
 }
 
 /**
@@ -4051,7 +4057,7 @@ export function plantShrapnelParts() {
       pushQuad(verts, norms, uvs, b0, b1, t1, t0, u0, 0.3, u1, 0.85);
       pushQuad(verts, norms, uvs, b1, b0, t0, t1, u0, 0.3, u1, 0.85);
     }
-    shards.push({ vertices: new Float32Array(verts), normals: new Float32Array(norms), uvs: new Float32Array(uvs) });
+    shards.push(flipV({ vertices: new Float32Array(verts), normals: new Float32Array(norms), uvs: new Float32Array(uvs) }));
   }
   // two tufts of leaves
   for (let s = 0; s < 2; s++) {
@@ -4060,10 +4066,10 @@ export function plantShrapnelParts() {
     const uvs = [];
     for (let i = 0; i < 3; i++)
       pushLeaf(verts, norms, uvs, foliage, 0, 0, 0, (i / 3) * Trigo.twopi + s * 0.9, 4.6, 2.2, 0.06, 0.12, 0.25, 3);
-    shards.push({ vertices: new Float32Array(verts), normals: new Float32Array(norms), uvs: new Float32Array(uvs) });
+    shards.push(flipV({ vertices: new Float32Array(verts), normals: new Float32Array(norms), uvs: new Float32Array(uvs) }));
   }
   return {
-    carboyTop: { vertices: new Float32Array(crownVerts), normals: new Float32Array(crownNorms), uvs: new Float32Array(crownUvs) },
+    carboyTop: flipV({ vertices: new Float32Array(crownVerts), normals: new Float32Array(crownNorms), uvs: new Float32Array(crownUvs) }),
     shards,
   };
 }
@@ -4140,6 +4146,641 @@ export function plantBreakPose(elapsed, seed = 0, target = createPlantBreakPose(
     );
   }
   return target;
+}
+
+const PORCELAIN_BASE = [148, 158, 172];
+const PORCELAIN_LIGHT = [186, 196, 208];
+const PORCELAIN_DARK = [86, 96, 112];
+const PORCELAIN_SHADOW = [38, 46, 58];
+const SEAT_BASE = [162, 172, 184];
+const SEAT_LIGHT = [196, 204, 216];
+const SEAT_DARK = [98, 108, 122];
+
+function drawToiletPorcelain(rnd) {
+  const t = new Tile(TOILET_PORCELAIN.width, TOILET_PORCELAIN.height);
+  plate(t, 0, 0, TOILET_PORCELAIN.width, TOILET_PORCELAIN.height, rnd, PORCELAIN_BASE);
+
+  // Upper rolled vitreous-china bowl rim band (y = 2..13)
+  t.rect(1, 2, 62, 11, PORCELAIN_LIGHT, 0.72);
+  for (let x = 2; x < 62; x++) {
+    t.set(x, 3, SEAT_LIGHT, 0.85);
+    t.set(x, 12, PORCELAIN_DARK, 0.82);
+    t.set(x, 13, PORCELAIN_SHADOW, 0.75);
+  }
+
+  // Sculpted bellied bowl & siphon trapway contour (y = 14..48)
+  for (let y = 14; y < 48; y++)
+    for (let x = 3; x < 61; x++) {
+      const sheen = Math.sin(((x - 3) / 58) * Trigo.pi) * Math.sin(((y - 14) / 34) * Trigo.pi);
+      t.set(x, y, PORCELAIN_LIGHT, sheen * 0.48);
+    }
+  // Recessed trapway S-curve contour on the side of the pedestal
+  t.rect(14, 24, 36, 18, PORCELAIN_DARK, 0.32);
+  for (let x = 16; x < 48; x++) {
+    t.set(x, 24, PORCELAIN_SHADOW, 0.55);
+    t.set(x, 41, PORCELAIN_LIGHT, 0.65);
+  }
+
+  // Flanged porcelain floor pedestal foot & dark rubberized seal gasket (y = 49..63)
+  t.rect(2, 49, 60, 8, PORCELAIN_DARK, 0.45);
+  for (let x = 3; x < 61; x++)
+    t.set(x, 49, PORCELAIN_LIGHT, 0.7);
+  t.rect(1, 57, 62, 6, KICKPLATE, 0.92);
+
+  // Porcelain floor-bolt caps on the flanged foot
+  for (const [rx, ry] of [[16, 53], [48, 53]])
+    rivet(t, rx, ry);
+
+  // Relief: rolled bowl rim, bellied ceramic trapway boss, and recessed floor gasket
+  t.pipe(1, 2, 62, 11, 1.5, true);
+  t.relief(6, 16, 52, 30, 0.9, 2.2);
+  t.relief(14, 24, 36, 18, -0.6, 1.4);
+  t.relief(1, 57, 62, 6, -0.8, 0.8);
+
+  rust(t, rnd, 0.1);
+  return t;
+}
+
+function drawToiletCistern(rnd) {
+  const t = new Tile(TOILET_CISTERN.width, TOILET_CISTERN.height);
+  plate(t, 0, 0, TOILET_CISTERN.width, TOILET_CISTERN.height, rnd, PORCELAIN_BASE);
+
+  // Overhanging beveled porcelain cistern tank lid (y = 2..12)
+  t.rect(2, 2, 60, 10, PORCELAIN_LIGHT, 0.78);
+  for (let x = 2; x < 62; x++) {
+    t.set(x, 3, SEAT_LIGHT, 0.85);
+    t.set(x, 11, PORCELAIN_DARK, 0.85);
+    t.set(x, 12, SHADOW, 0.88);
+  }
+  // Dual-flush chrome button badge inlaid in the center of the tank lid
+  t.rect(25, 4, 14, 5, STAINLESS_LIGHT, 0.9);
+  t.rect(26, 5, 5, 3, STAINLESS_DARK, 0.75);
+  t.rect(32, 5, 6, 3, SEAT_LIGHT, 0.85);
+
+  // Main cistern front wall with recessed beveled inspection panel (x = 7..57, y = 16..46)
+  t.rect(7, 16, 50, 30, PORCELAIN_DARK, 0.24);
+  for (let y = 17; y < 45; y++)
+    for (let x = 8; x < 56; x++) {
+      const sheen = Math.sin(((x - 8) / 48) * Trigo.pi) * 0.36;
+      t.set(x, y, PORCELAIN_LIGHT, sheen);
+    }
+  for (let x = 7; x < 57; x++) {
+    t.set(x, 16, PORCELAIN_SHADOW, 0.7);
+    t.set(x, 45, PORCELAIN_LIGHT, 0.75);
+  }
+
+  // Left-mounted chrome flush lever escutcheon & handle bar (x = 9..23, y = 19..25)
+  t.rect(9, 19, 6, 6, STAINLESS_DARK, 0.9);
+  t.rect(10, 20, 13, 4, STAINLESS_LIGHT, 0.92);
+  t.rect(11, 21, 11, 2, SEAT_LIGHT, 0.85);
+
+  // Lower band (y = 49..63): Chrome water supply valve, braided riser pipe & rubber tank gasket
+  t.rect(1, 49, 62, 14, STAINLESS_BASE, 0.85);
+  for (let x = 2; x < 62; x++) {
+    t.set(x, 50, STAINLESS_LIGHT, 0.8);
+    t.set(x, 56, PORCELAIN_SHADOW, 0.85);
+  }
+  t.rect(4, 58, 12, 5, COLD_BLUE, 0.9);
+
+  // Relief: overhanging cistern lid, lid seam groove, recessed front panel, and raised chrome flush handle
+  t.relief(2, 2, 60, 10, 1.2, 1.0);
+  t.groove(2, 12.5, 61, 12.5, 1.6, 1.2);
+  t.relief(7, 16, 50, 30, -0.5, 1.2);
+  t.relief(9, 19, 14, 6, 1.1, 0.6);
+
+  for (const [rx, ry] of [[14, 52], [50, 52]])
+    rivet(t, rx, ry);
+
+  rust(t, rnd, 0.12);
+  return t;
+}
+
+function drawToiletSeat(rnd) {
+  const t = new Tile(TOILET_SEAT.width, TOILET_SEAT.height);
+  plate(t, 0, 0, TOILET_SEAT.width, TOILET_SEAT.height, rnd, SEAT_BASE);
+
+  // Upper region (y = 0..41): Contoured enameled polymer toilet seat ring & hinged lid surface
+  for (let y = 2; y < 40; y++)
+    for (let x = 2; x < 62; x++) {
+      const contour = Math.sin(((x - 2) / 60) * Trigo.pi) * Math.sin(((y - 2) / 38) * Trigo.pi);
+      t.set(x, y, SEAT_LIGHT, contour * 0.55);
+    }
+  // Subtle recessed inner lid bevel & rubberized seat bumpers
+  for (let x = 8; x < 56; x++) {
+    t.set(x, 7, SEAT_DARK, 0.65);
+    t.set(x, 34, SEAT_LIGHT, 0.75);
+  }
+  t.rect(12, 36, 10, 3, PORCELAIN_DARK, 0.75);
+  t.rect(42, 36, 10, 3, PORCELAIN_DARK, 0.75);
+
+  // Lower region (y = 42..63): Chrome hinge brackets (left) & dark inner siphon throat (right)
+  t.rect(1, 42, 32, 21, STAINLESS_LIGHT, 0.85);
+  for (let x = 2; x < 32; x++) {
+    t.set(x, 44, SEAT_LIGHT, 0.85);
+    t.set(x, 58, STAINLESS_DARK, 0.85);
+  }
+  t.rect(34, 42, 29, 21, ALCOVE_DARK, 0.94);
+
+  t.relief(2, 2, 60, 38, 1.1, 1.6);
+  t.relief(8, 7, 48, 27, -0.5, 1.2);
+  t.pipe(1, 43, 32, 18, 1.0, true);
+
+  return t;
+}
+
+function drawToiletWater(rnd) {
+  const t = new Tile(TOILET_WATER.width, TOILET_WATER.height);
+  const ripple = field(rnd, 5);
+  const cx = TOILET_WATER.width * 0.5;
+  const cy = TOILET_WATER.height * 0.5;
+
+  for (let y = 0; y < TOILET_WATER.height; y++)
+    for (let x = 0; x < TOILET_WATER.width; x++) {
+      const dx = (x + 0.5 - cx) / 30;
+      const dy = (y + 0.5 - cy) / 30;
+      const r = Math.hypot(dx, dy);
+      const n = ripple(x, y);
+
+      let col;
+      if (r > 0.86) {
+        // Glazed inner porcelain bowl wall sloping down toward the water line
+        const rimShade = Utils.clamp((r - 0.86) / 0.22, 0, 1);
+        col = mix(PORCELAIN_DARK, PORCELAIN_LIGHT, rimShade * 0.75 + (n - 0.5) * 0.12);
+      } else if (r > 0.78) {
+        // Waterline meniscus & faint mineral ring
+        col = mix(MENISCUS, PORCELAIN_BASE, 0.45);
+      } else if (r < 0.28) {
+        // Deep dark siphon trapway drain hole at the bottom of the bowl
+        const throat = Utils.clamp(r / 0.28, 0, 1);
+        col = mix(ALCOVE_DARK, WATER_DEEP, throat * 0.72);
+      } else {
+        // Clear facility water pool with concentric caustic ripples
+        const depth = (0.78 - r) / 0.5;
+        const wave = Math.sin(r * 26 + n * 4.5) * 0.5 + 0.5;
+        const baseWater = mix(WATER_BRIGHT, WATER_MID, depth * 0.68);
+        col = mix(baseWater, MENISCUS, wave * 0.28);
+      }
+      t.set(x, y, col, 1);
+    }
+
+  t.dome(cx, cy, 26, -1.6);
+  return t;
+}
+
+/**
+ * Returns the power-of-two RGBA texture atlas (256 x 64) for the 3D Facility Toilet Bowl furniture prop.
+ */
+export function toiletAtlas() {
+  const { width, height } = TOILET_ATLAS;
+  const data = new Uint8Array(width * height * 4);
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
+  blit(drawToiletPorcelain(mulberry32(8801)), TOILET_PORCELAIN.x);
+  blit(drawToiletCistern(mulberry32(8802)), TOILET_CISTERN.x);
+  blit(drawToiletSeat(mulberry32(8803)), TOILET_SEAT.x);
+  blit(drawToiletWater(mulberry32(8804)), TOILET_WATER.x);
+  return {
+    name: 'toilet',
+    data,
+    relief,
+    width,
+    height,
+    cell: TOILET_CELL,
+    frames: TOILET_FRAMES,
+    porcelain: TOILET_PORCELAIN,
+    cistern: TOILET_CISTERN,
+    seat: TOILET_SEAT,
+    water: TOILET_WATER,
+    front: TOILET_PORCELAIN,
+    side: TOILET_CISTERN,
+    top: TOILET_SEAT,
+  };
+}
+
+function pushOvalFrustum(vertices, normals, uvs, cz0, cz1, y0, y1, rx0, rz0, rx1, rz1, uStart, uEnd, v0, v1, segs = 14, inward = false) {
+  for (let i = 0; i < segs; i++) {
+    const f0 = i / segs;
+    const f1 = (i + 1) / segs;
+    const a0 = f0 * Trigo.twopi;
+    const a1 = f1 * Trigo.twopi;
+    const c0 = Math.cos(a0);
+    const s0 = Math.sin(a0);
+    const c1 = Math.cos(a1);
+    const s1 = Math.sin(a1);
+    const b0 = new Vec3(c0 * rx0, y0, cz0 + s0 * rz0);
+    const b1 = new Vec3(c1 * rx0, y0, cz0 + s1 * rz0);
+    const t1 = new Vec3(c1 * rx1, y1, cz1 + s1 * rz1);
+    const t0 = new Vec3(c0 * rx1, y1, cz1 + s0 * rz1);
+    const u0 = Utils.lerp(uStart, uEnd, f0);
+    const u1 = Utils.lerp(uStart, uEnd, f1);
+    if (inward)
+      pushQuad(vertices, normals, uvs, b0, b1, t1, t0, u0, v0, u1, v1);
+    else
+      pushQuad(vertices, normals, uvs, b1, b0, t0, t1, u0, v0, u1, v1);
+  }
+}
+
+function pushOvalRingCap(vertices, normals, uvs, cz, y, rxOuter, rzOuter, rxInner, rzInner, uCenter, vCenter, uRadius, vRadius, segs = 14) {
+  for (let i = 0; i < segs; i++) {
+    const a0 = (i / segs) * Trigo.twopi;
+    const a1 = ((i + 1) / segs) * Trigo.twopi;
+    const c0 = Math.cos(a0);
+    const s0 = Math.sin(a0);
+    const c1 = Math.cos(a1);
+    const s1 = Math.sin(a1);
+    const o0 = new Vec3(c0 * rxOuter, y, cz + s0 * rzOuter);
+    const o1 = new Vec3(c1 * rxOuter, y, cz + s1 * rzOuter);
+    const i1 = new Vec3(c1 * rxInner, y, cz + s1 * rzInner);
+    const i0 = new Vec3(c0 * rxInner, y, cz + s0 * rzInner);
+    const uo0 = new Vec2(uCenter + c0 * uRadius, vCenter + s0 * vRadius);
+    const uo1 = new Vec2(uCenter + c1 * uRadius, vCenter + s1 * vRadius);
+    const ui1 = new Vec2(uCenter + c1 * uRadius * 0.68, vCenter + s1 * vRadius * 0.68);
+    const ui0 = new Vec2(uCenter + c0 * uRadius * 0.68, vCenter + s0 * vRadius * 0.68);
+    pushTri(vertices, normals, uvs, o0, i1, o1, uo0, ui1, uo1);
+    pushTri(vertices, normals, uvs, o0, i0, i1, uo0, ui0, ui1);
+  }
+}
+
+function pushOvalDisc(vertices, normals, uvs, cz, y, rx, rz, uCenter, vCenter, uRadius, vRadius, segs = 14) {
+  const center = new Vec3(0, y, cz);
+  const uvCenter = new Vec2(uCenter, vCenter);
+  for (let i = 0; i < segs; i++) {
+    const a0 = (i / segs) * Trigo.twopi;
+    const a1 = ((i + 1) / segs) * Trigo.twopi;
+    const c0 = Math.cos(a0);
+    const s0 = Math.sin(a0);
+    const c1 = Math.cos(a1);
+    const s1 = Math.sin(a1);
+    const p0 = new Vec3(c0 * rx, y, cz + s0 * rz);
+    const p1 = new Vec3(c1 * rx, y, cz + s1 * rz);
+    const uv0 = new Vec2(uCenter + c0 * uRadius, vCenter + s0 * vRadius);
+    const uv1 = new Vec2(uCenter + c1 * uRadius, vCenter + s1 * vRadius);
+    pushTri(vertices, normals, uvs, center, p1, p0, uvCenter, uv1, uv0);
+  }
+}
+
+/**
+ * Builds the 3D Facility Toilet Bowl mesh standing on `y = 0`, centered on `x/z`, with the rear cistern tank at `-Z`
+ * and the sculpted oval bowl projecting forward toward `+Z`:
+ * - Flanged vitreous-china pedestal foot & sculpted oval bowl (`y = 0..16.2`, `z = -8.6..11.8`) with recessed inner
+ *   porcelain walls and standing bowl water at `y = 12.2`.
+ * - Contoured oval toilet seat ring (`y = 16.2..17.1`), chrome hinge posts, and raised hinged cover lid (`y = 17.1..28.4`).
+ * - Rear porcelain flush cistern tank (`y = 15.8..29.2`), beveled tank lid with chrome dual-flush button (`y = 29.2..31.0`),
+ *   left-side chrome flush handle lever, and rear water supply stop-valve & riser pipe.
+ */
+export function toiletMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = TOILET_ATLAS.width;
+  const inset = 0.35 / W;
+  const porcU0 = TOILET_PORCELAIN.x / W + inset;
+  const porcU1 = (TOILET_PORCELAIN.x + TOILET_PORCELAIN.width) / W - inset;
+  const cistU0 = TOILET_CISTERN.x / W + inset;
+  const cistU1 = (TOILET_CISTERN.x + TOILET_CISTERN.width) / W - inset;
+  const seatU0 = TOILET_SEAT.x / W + inset;
+  const seatU1 = (TOILET_SEAT.x + TOILET_SEAT.width) / W - inset;
+  const chromeU0 = TOILET_SEAT.x / W + inset;
+  const chromeU1 = (TOILET_SEAT.x + 31) / W - inset;
+  const waterU0 = TOILET_WATER.x / W + inset;
+  const waterU1 = (TOILET_WATER.x + TOILET_WATER.width) / W - inset;
+  const waterUC = (waterU0 + waterU1) * 0.5;
+  const waterUSpan = (waterU1 - waterU0) * 0.44;
+  const seatUC = (seatU0 + seatU1) * 0.5;
+  const seatUSpan = (seatU1 - seatU0) * 0.42;
+
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  // 1. Flanged Oval Porcelain Pedestal Base & Sculpted Bowl Outer Belly (y = 0 .. 16.2)
+  pushOvalDisc(vertices, normals, uvs, 2.0, 0, 5.2, 7.2, (porcU0 + porcU1) * 0.5, 0.85, (porcU1 - porcU0) * 0.35, 0.1, 14);
+  pushOvalFrustum(vertices, normals, uvs, 2.0, 2.0, 0, 2.0, 5.2, 7.2, 4.6, 6.6, porcU0, porcU1, 0.78, 0.98, 14);
+  pushOvalFrustum(vertices, normals, uvs, 2.0, 2.4, 2.0, 8.2, 4.6, 6.6, 4.9, 7.2, porcU0, porcU1, 0.42, 0.78, 14);
+  pushOvalFrustum(vertices, normals, uvs, 2.4, 3.0, 8.2, 13.6, 4.9, 7.2, 6.8, 8.6, porcU0, porcU1, 0.18, 0.42, 14);
+  pushOvalFrustum(vertices, normals, uvs, 3.0, 3.0, 13.6, 16.2, 6.8, 8.6, 7.0, 8.8, porcU0, porcU1, 0.03, 0.2, 14);
+
+  // Rear porcelain trapway housing & cistern mounting deck (x = -5.4 .. 5.4, y = 0 .. 16.2, z = -9.4 .. 0.8)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-5.0, 0, -8.8), new Vec3(5.0, 13.6, 0.4), {
+    front: uvRect(porcU0, 0.22, porcU1, 0.96),
+    back: uvRect(porcU0, 0.22, porcU1, 0.96),
+    left: uvRect(porcU0, 0.22, porcU1, 0.96),
+    right: uvRect(porcU0, 0.22, porcU1, 0.96),
+    bottom: uvRect(porcU0, 0.85, porcU1, 0.98),
+  });
+  pushBoxPart(vertices, normals, uvs, new Vec3(-6.2, 13.6, -9.6), new Vec3(6.2, 16.2, -1.2), {
+    front: uvRect(porcU0, 0.04, porcU1, 0.22),
+    back: uvRect(porcU0, 0.04, porcU1, 0.22),
+    left: uvRect(porcU0, 0.04, porcU1, 0.22),
+    right: uvRect(porcU0, 0.04, porcU1, 0.22),
+    top: uvRect(porcU0, 0.04, porcU1, 0.2),
+  });
+
+  // 2. Hollowed Inner Porcelain Bowl Cavity & Standing Bowl Water (y = 11.4 .. 16.2)
+  pushOvalRingCap(vertices, normals, uvs, 3.0, 16.2, 7.0, 8.8, 4.7, 6.4, (porcU0 + porcU1) * 0.5, 0.1, (porcU1 - porcU0) * 0.4, 0.08, 14);
+  pushOvalFrustum(vertices, normals, uvs, 2.8, 3.0, 11.4, 16.2, 3.5, 4.7, 4.7, 6.4, porcU0, porcU1, 0.08, 0.38, 14, true);
+  pushOvalDisc(vertices, normals, uvs, 2.9, 12.2, 4.1, 5.5, waterUC, 0.5, waterUSpan, 0.42, 14);
+
+  // 3. Contoured Oval Toilet Seat Ring, Chrome Hinge Brackets & Raised Open Lid
+  pushOvalFrustum(vertices, normals, uvs, 3.0, 3.0, 16.2, 17.1, 6.8, 8.6, 6.6, 8.4, seatU0, seatU1, 0.06, 0.58, 14);
+  pushOvalFrustum(vertices, normals, uvs, 3.0, 3.0, 16.2, 17.1, 4.4, 6.1, 4.5, 6.2, seatU0, seatU1, 0.06, 0.58, 14, true);
+  pushOvalRingCap(vertices, normals, uvs, 3.0, 17.1, 6.6, 8.4, 4.5, 6.2, seatUC, 0.3, seatUSpan, 0.24, 14);
+
+  const chromeFaces = {
+    front: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    back: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    left: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    right: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    top: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    bottom: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+  };
+  // Chrome seat hinge posts at the rear of the bowl rim
+  pushBoxPart(vertices, normals, uvs, new Vec3(-3.8, 16.2, -4.4), new Vec3(-2.4, 17.6, -2.8), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(2.4, 16.2, -4.4), new Vec3(3.8, 17.6, -2.8), chromeFaces);
+
+  // Raised hinged toilet cover lid resting upright in front of the cistern tank (y = 17.2 .. 28.4, z = -4.2 .. -3.1)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-5.8, 17.2, -4.2), new Vec3(5.8, 28.4, -3.1), {
+    front: uvRect(seatU0, 0.04, seatU1, 0.62),
+    back: uvRect(seatU0, 0.04, seatU1, 0.62),
+    left: uvRect(seatU0, 0.04, seatU1, 0.62),
+    right: uvRect(seatU0, 0.04, seatU1, 0.62),
+    top: uvRect(seatU0, 0.04, seatU1, 0.22),
+  });
+
+  // 4. Rear Porcelain Cistern Tank, Overhanging Lid, Chrome Flush Lever & Water Supply Valve (y = 4.6 .. 31.0)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-7.4, 15.8, -10.4), new Vec3(7.4, 29.2, -4.2), {
+    front: uvRect(cistU0, 0.2, cistU1, 0.78),
+    back: uvRect(porcU0, 0.16, porcU1, 0.76),
+    left: uvRect(porcU0, 0.16, porcU1, 0.76),
+    right: uvRect(porcU0, 0.16, porcU1, 0.76),
+    bottom: uvRect(porcU0, 0.72, porcU1, 0.88),
+  });
+  // Overhanging beveled porcelain cistern tank lid (y = 29.2 .. 31.0)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-7.8, 29.2, -10.8), new Vec3(7.8, 31.0, -3.9), {
+    front: uvRect(cistU0, 0.03, cistU1, 0.2),
+    back: uvRect(cistU0, 0.03, cistU1, 0.2),
+    left: uvRect(cistU0, 0.03, cistU1, 0.2),
+    right: uvRect(cistU0, 0.03, cistU1, 0.2),
+    top: uvRect(cistU0, 0.03, cistU1, 0.2),
+    bottom: uvRect(porcU0, 0.72, porcU1, 0.88),
+  });
+  // Left-side chrome flush lever handle protruding from the cistern
+  pushBoxPart(vertices, normals, uvs, new Vec3(-9.0, 26.4, -5.6), new Vec3(-7.4, 27.8, -4.0), chromeFaces);
+
+  // Rear-left chrome water supply pipe & wall angle-stop valve under the cistern (y = 4.6 .. 15.8)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-6.2, 5.2, -10.6), new Vec3(-4.6, 6.8, -7.8), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-5.8, 6.8, -8.8), new Vec3(-5.0, 15.8, -8.0), chromeFaces);
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export const buildToilet = toiletMesh;
+
+/**
+ * Builds the 3D wrecked Facility Toilet Bowl left standing after destruction:
+ * fractured porcelain pedestal stump (`y = 0..12.6`) with jagged ceramic teeth around the shattered bowl rim,
+ * exposed siphon water pool, snapped supply pipe stub, and cracked rear cistern base mount.
+ */
+export function toiletWreckMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = TOILET_ATLAS.width;
+  const inset = 0.35 / W;
+  const porcU0 = TOILET_PORCELAIN.x / W + inset;
+  const porcU1 = (TOILET_PORCELAIN.x + TOILET_PORCELAIN.width) / W - inset;
+  const chromeU0 = TOILET_SEAT.x / W + inset;
+  const chromeU1 = (TOILET_SEAT.x + 31) / W - inset;
+  const waterU0 = TOILET_WATER.x / W + inset;
+  const waterU1 = (TOILET_WATER.x + TOILET_WATER.width) / W - inset;
+  const waterUC = (waterU0 + waterU1) * 0.5;
+  const waterUSpan = (waterU1 - waterU0) * 0.44;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  // 1. Surviving lower porcelain pedestal foot & lower bowl stump (y = 0 .. 11.2)
+  pushOvalDisc(vertices, normals, uvs, 2.0, 0, 5.2, 7.2, (porcU0 + porcU1) * 0.5, 0.85, (porcU1 - porcU0) * 0.35, 0.1, 12);
+  pushOvalFrustum(vertices, normals, uvs, 2.0, 2.0, 0, 2.0, 5.2, 7.2, 4.6, 6.6, porcU0, porcU1, 0.78, 0.98, 12);
+  pushOvalFrustum(vertices, normals, uvs, 2.0, 2.4, 2.0, 8.2, 4.6, 6.6, 4.9, 7.2, porcU0, porcU1, 0.42, 0.78, 12);
+  pushOvalFrustum(vertices, normals, uvs, 2.4, 2.8, 8.2, 11.2, 4.9, 7.2, 6.1, 7.9, porcU0, porcU1, 0.24, 0.42, 12);
+  pushOvalDisc(vertices, normals, uvs, 2.8, 10.6, 5.6, 7.3, waterUC, 0.5, waterUSpan, 0.42, 12);
+
+  // Jagged fractured porcelain teeth around the shattered bowl rim (y = 11.2 .. 14.8)
+  for (let i = 0; i < 10; i++) {
+    const a0 = (i / 10) * Trigo.twopi;
+    const a1 = ((i + 1) / 10) * Trigo.twopi;
+    const aM = (a0 + a1) * 0.5;
+    const tooth = [2.8, 0.9, 3.4, 0.4, 2.5, 3.2, 0.6, 2.9, 1.4, 3.6][i];
+    if (tooth < 0.7)
+      continue;
+    const b0 = new Vec3(Math.cos(a0) * 6.1, 11.2, 2.8 + Math.sin(a0) * 7.9);
+    const b1 = new Vec3(Math.cos(a1) * 6.1, 11.2, 2.8 + Math.sin(a1) * 7.9);
+    const tip = new Vec3(Math.cos(aM) * 6.4, 11.2 + tooth, 2.8 + Math.sin(aM) * 8.2);
+    const uA = Utils.lerp(porcU0, porcU1, i / 10);
+    const uB = Utils.lerp(porcU0, porcU1, (i + 1) / 10);
+    const uv0 = new Vec2(uA, 0.35);
+    const uv1 = new Vec2(uB, 0.35);
+    const uvTip = new Vec2((uA + uB) * 0.5, 0.12);
+    pushTri(vertices, normals, uvs, b1, b0, tip, uv1, uv0, uvTip);
+    pushTri(vertices, normals, uvs, b0, b1, tip, uv0, uv1, uvTip);
+  }
+
+  // 2. Fractured rear trapway block & snapped water supply stub
+  pushBoxPart(vertices, normals, uvs, new Vec3(-5.0, 0, -8.8), new Vec3(5.0, 12.4, 0.2), {
+    front: uvRect(porcU0, 0.28, porcU1, 0.96),
+    back: uvRect(porcU0, 0.28, porcU1, 0.96),
+    left: uvRect(porcU0, 0.28, porcU1, 0.96),
+    right: uvRect(porcU0, 0.28, porcU1, 0.96),
+    top: uvRect(waterU0, 0.2, waterU1, 0.8),
+    bottom: uvRect(porcU0, 0.85, porcU1, 0.98),
+  });
+  pushBoxPart(vertices, normals, uvs, new Vec3(-5.8, 5.2, -9.8), new Vec3(-4.8, 11.8, -8.0), {
+    front: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    back: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    left: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    right: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    top: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+/**
+ * Builds the 3D spilled toilet water puddle mesh (`y = 0.12`) around a destroyed Facility Toilet Bowl.
+ */
+export function toiletPuddleMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = TOILET_ATLAS.width;
+  const waterU0 = TOILET_WATER.x / W + 0.004;
+  const waterU1 = (TOILET_WATER.x + TOILET_WATER.width) / W - 0.004;
+  const waterUC = (waterU0 + waterU1) * 0.5;
+  const waterUSpan = (waterU1 - waterU0) * 0.36;
+
+  const radii = [15.0, 18.2, 21.6, 23.0, 20.4, 16.8, 13.4, 11.8, 13.2, 16.6, 19.8, 17.4];
+  const segs = radii.length;
+  const center = new Vec3(0.4, 0.12, 4.2);
+  const uvCenter = new Vec2(waterUC, 0.5);
+  for (let i = 0; i < segs; i++) {
+    const next = (i + 1) % segs;
+    const a0 = (i / segs) * Trigo.twopi;
+    const a1 = (next / segs) * Trigo.twopi;
+    const c0 = Math.cos(a0);
+    const s0 = Math.sin(a0);
+    const c1 = Math.cos(a1);
+    const s1 = Math.sin(a1);
+    const p0 = new Vec3(center.x + c0 * radii[i], 0.12, center.z + s0 * radii[i]);
+    const p1 = new Vec3(center.x + c1 * radii[next], 0.12, center.z + s1 * radii[next]);
+    const uv0 = new Vec2(waterUC + c0 * waterUSpan, 0.5 + s0 * 0.32);
+    const uv1 = new Vec2(waterUC + c1 * waterUSpan, 0.5 + s1 * 0.32);
+    pushTri(vertices, normals, uvs, center, p1, p0, uvCenter, uv1, uv0);
+  }
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export const toiletDebrisMesh = toiletPuddleMesh;
+
+/**
+ * Builds the 3D shrapnel pieces blasted off a destroyed Facility Toilet Bowl:
+ * - `carboyTop`: blown-off porcelain cistern lid & upper tank rim.
+ * - `shards`: `TOILET_SHARD_COUNT` (`5`) flying fragments (2 curved white porcelain bowl shards, 1 broken toilet seat half,
+ *   1 torn hinged cover lid, and 1 fractured cistern front panel with chrome flush handle).
+ */
+export function toiletShrapnelParts() {
+  const W = TOILET_ATLAS.width;
+  const inset = 0.35 / W;
+  const porcU0 = TOILET_PORCELAIN.x / W + inset;
+  const porcU1 = (TOILET_PORCELAIN.x + TOILET_PORCELAIN.width) / W - inset;
+  const cistU0 = TOILET_CISTERN.x / W + inset;
+  const cistU1 = (TOILET_CISTERN.x + TOILET_CISTERN.width) / W - inset;
+  const seatU0 = TOILET_SEAT.x / W + inset;
+  const seatU1 = (TOILET_SEAT.x + TOILET_SEAT.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  // 1. Blown-off porcelain cistern tank lid & upper tank rim (centered at local origin)
+  const topVerts = [];
+  const topNorms = [];
+  const topUvs = [];
+  pushBoxPart(topVerts, topNorms, topUvs, new Vec3(-7.6, -1.2, -3.4), new Vec3(7.6, 1.2, 3.4), {
+    front: uvRect(cistU0, 0.03, cistU1, 0.22),
+    back: uvRect(cistU0, 0.03, cistU1, 0.22),
+    left: uvRect(cistU0, 0.03, cistU1, 0.22),
+    right: uvRect(cistU0, 0.03, cistU1, 0.22),
+    top: uvRect(cistU0, 0.03, cistU1, 0.2),
+    bottom: uvRect(porcU0, 0.72, porcU1, 0.88),
+  });
+
+  const shards = [];
+
+  // Shards 0 & 1: Two curved glazed porcelain bowl rim fragments
+  const arcSpan = (Trigo.twopi / 3) * 0.55;
+  for (let s = 0; s < 2; s++) {
+    const sVerts = [];
+    const sNorms = [];
+    const sUvs = [];
+    const subSegs = 3;
+    const R = 6.6;
+    const halfH = 3.2 + s * 0.6;
+    for (let j = 0; j < subSegs; j++) {
+      const a0 = (j / subSegs - 0.5) * arcSpan;
+      const a1 = ((j + 1) / subSegs - 0.5) * arcSpan;
+      const x0 = Math.sin(a0) * R;
+      const z0 = (Math.cos(a0) - 0.9) * R;
+      const x1 = Math.sin(a1) * R;
+      const z1 = (Math.cos(a1) - 0.9) * R;
+      const b0 = new Vec3(x0, -halfH * (0.75 + ((s + j) % 2) * 0.25), z0);
+      const b1 = new Vec3(x1, -halfH * (0.75 + ((s + j + 1) % 2) * 0.25), z1);
+      const t0 = new Vec3(x0 * 1.04, halfH, z0 + 0.3);
+      const t1 = new Vec3(x1 * 1.04, halfH, z1 + 0.3);
+      const u0 = Utils.lerp(porcU0, porcU1, (j / subSegs) * 0.45 + s * 0.45);
+      const u1 = Utils.lerp(porcU0, porcU1, ((j + 1) / subSegs) * 0.45 + s * 0.45);
+      pushQuad(sVerts, sNorms, sUvs, b0, b1, t1, t0, u0, 0.05, u1, 0.55);
+      pushQuad(sVerts, sNorms, sUvs, b1, b0, t0, t1, u0, 0.05, u1, 0.55);
+    }
+    shards.push({ vertices: new Float32Array(sVerts), normals: new Float32Array(sNorms), uvs: new Float32Array(sUvs) });
+  }
+
+  // Shard 2: Broken half of the contoured toilet seat ring
+  const seatVerts = [];
+  const seatNorms = [];
+  const seatUvs = [];
+  pushBoxPart(seatVerts, seatNorms, seatUvs, new Vec3(-2.4, -0.6, -5.2), new Vec3(2.4, 0.6, 5.2), {
+    front: uvRect(seatU0, 0.06, seatU1, 0.58),
+    back: uvRect(seatU0, 0.06, seatU1, 0.58),
+    left: uvRect(seatU0, 0.06, seatU1, 0.58),
+    right: uvRect(seatU0, 0.06, seatU1, 0.58),
+    top: uvRect(seatU0, 0.06, seatU1, 0.58),
+    bottom: uvRect(seatU0, 0.06, seatU1, 0.58),
+  });
+  shards.push({ vertices: new Float32Array(seatVerts), normals: new Float32Array(seatNorms), uvs: new Float32Array(seatUvs) });
+
+  // Shard 3: Torn-off hinged toilet cover lid
+  const lidVerts = [];
+  const lidNorms = [];
+  const lidUvs = [];
+  pushBoxPart(lidVerts, lidNorms, lidUvs, new Vec3(-5.2, -5.0, -0.55), new Vec3(5.2, 5.0, 0.55), {
+    front: uvRect(seatU0, 0.04, seatU1, 0.62),
+    back: uvRect(seatU0, 0.04, seatU1, 0.62),
+    left: uvRect(seatU0, 0.04, seatU1, 0.62),
+    right: uvRect(seatU0, 0.04, seatU1, 0.62),
+    top: uvRect(seatU0, 0.04, seatU1, 0.22),
+    bottom: uvRect(seatU0, 0.04, seatU1, 0.22),
+  });
+  shards.push({ vertices: new Float32Array(lidVerts), normals: new Float32Array(lidNorms), uvs: new Float32Array(lidUvs) });
+
+  // Shard 4: Shattered cistern front plate with chrome flush lever
+  const tankVerts = [];
+  const tankNorms = [];
+  const tankUvs = [];
+  pushBoxPart(tankVerts, tankNorms, tankUvs, new Vec3(-4.8, -3.6, -0.8), new Vec3(4.8, 3.6, 0.8), {
+    front: uvRect(cistU0, 0.22, cistU1, 0.72),
+    back: uvRect(porcU0, 0.22, porcU1, 0.72),
+    left: uvRect(porcU0, 0.22, porcU1, 0.72),
+    right: uvRect(porcU0, 0.22, porcU1, 0.72),
+    top: uvRect(porcU0, 0.22, porcU1, 0.72),
+    bottom: uvRect(porcU0, 0.22, porcU1, 0.72),
+  });
+  shards.push({ vertices: new Float32Array(tankVerts), normals: new Float32Array(tankNorms), uvs: new Float32Array(tankUvs) });
+
+  for (const shard of shards)
+    flipV(shard);
+
+  return {
+    carboyTop: flipV({
+      vertices: new Float32Array(topVerts),
+      normals: new Float32Array(topNorms),
+      uvs: new Float32Array(topUvs),
+    }),
+    shards,
+  };
+}
+
+/** Pre-allocates a reusable pose structure for `toiletBreakPose`. */
+export function createToiletBreakPose() {
+  return createDispenserBreakPose();
+}
+
+/**
+ * Computes the 3D transforms for a destroyed Facility Toilet Bowl's pedestal wreck, spreading water puddle,
+ * tumbling porcelain cistern lid, and 5 flying shards at `elapsed` seconds after destruction, writing into `target`
+ * with zero allocations.
+ */
+export function toiletBreakPose(elapsed, seed = 0, target = createToiletBreakPose()) {
+  return dispenserBreakPose(elapsed, seed + 4.3, target);
 }
 
 export const SHADOW_ATLAS = { width: 128, height: 64 };
