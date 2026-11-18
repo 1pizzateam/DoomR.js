@@ -136,25 +136,30 @@ export function wallPipeQuads({ axis, plane, a, base, top, tile, d }) {
 }
 
 /** Which of the four faces of a tile a wall mark belongs to, from its normal in the game plane: 0 looks -x, 1 +x, 2 -y, 3 +y (as in `wallPipeQuads`). */
-export function faceDirOf(nx, ny) {
-  return nx < -0.5 ? 0 : nx > 0.5 ? 1 : ny < -0.5 ? 2 : 3;
+export function faceDirOf(normal) {
+  return normal.x < -0.5 ? 0 : normal.x > 0.5 ? 1 : normal.y < -0.5 ? 2 : 3;
 }
 
 // neighbouring pieces of a mark overlap this much, since a mark is always cut a little short of the edge it is given
 const FACET_OVERLAP = 0.4;
 const COS_HALF = Math.cos(Math.PI / SIDES);
 const SIN_HALF = Math.sin(Math.PI / SIDES);
+// scratch for the middle of a facet; placements that escape carry their own vectors
+const centreScratch = new Vec2();
 
 /**
  * The pieces of a wall mark (a bullet hole, a blood splat) that fall on the pipes. The mark itself is a flat quad on the wall
  * plane, and a pipe standing in front of it would hide it, so the part of it that overlaps a pipe is drawn again on the pipe:
  * one piece on each flat facet it reaches, cut to that facet and lined up so the picture runs on from facet to facet round
- * the pipe. `half` is half the mark's size, (x, y) where it is aimed at on the wall plane, `z` its height, (nx, ny) the face's
+ * the pipe. `half` is half the mark's size, `pos` (Vec3) where it is aimed at on the wall plane with its height in z, `normal` (Vec2) the face's
  * normal. Each piece has the facet's own normal (the facets turn away from the wall, so marks lie on them like on a boulder),
  * its place on the facet and how far the facet runs either side of it (`lo` is negative, `hi` positive), as `faceSpan` does.
  * Nothing when the mark is nowhere near a pipe, or sits on a clamp.
  */
-export function pipePlacements(x, y, z, nx, ny, half) {
+export function pipePlacements(pos, normal, half) {
+  const { x, y, z } = pos;
+  const nx = normal.x;
+  const ny = normal.y;
   const axisX = Math.abs(nx) > 0.5;
   const sign = nx > 0.5 || ny > 0.5 ? 1 : -1;
   const plane = (axisX ? Math.round(x / TILE) : Math.round(y / TILE)) * TILE;
@@ -166,7 +171,6 @@ export function pipePlacements(x, y, z, nx, ny, half) {
   for (const clamp of PIPE_CLAMP_HEIGHTS)
     if (h > clamp - 1 && h < clamp + PIPE_CLAMP_HEIGHT + 1)
       return out;
-  const map = (ss, nn) => ({ x: axisX ? plane + sign * nn : a0 + ss, y: axisX ? a0 + ss : plane + sign * nn });
   for (const run of PIPE_RUNS) {
     const r = run.r;
     const ds = s - run.s;
@@ -185,7 +189,9 @@ export function pipePlacements(x, y, z, nx, ny, half) {
       if (Math.abs(middle - along) - facetWidth / 2 >= half)
         continue;
       const phi = (k * Math.PI) / 4;
-      const centre = map(run.s + r * COS_HALF * Math.cos(phi), nc + r * COS_HALF * Math.sin(phi));
+      const ss = run.s + r * COS_HALF * Math.cos(phi);
+      const nn = nc + r * COS_HALF * Math.sin(phi);
+      centreScratch.setScalar(axisX ? plane + sign * nn : a0 + ss, axisX ? a0 + ss : plane + sign * nn);
       const normalX = axisX ? sign * Math.sin(phi) : Math.cos(phi);
       const normalY = axisX ? Math.cos(phi) : sign * Math.sin(phi);
       // the mark's tangent, as the quad builders take it, and which way round the pipe it runs
@@ -197,7 +203,12 @@ export function pipePlacements(x, y, z, nx, ny, half) {
       const growY = axisX ? growS : sign * growN;
       const direction = growX * tx + growY * ty > 0 ? 1 : -1;
       const offset = direction * (along - middle);
-      out.push({ x: centre.x + tx * offset, y: centre.y + ty * offset, nx: normalX, ny: normalY, lo: -facetWidth / 2 - FACET_OVERLAP - offset, hi: facetWidth / 2 + FACET_OVERLAP - offset });
+      out.push({
+        pos: new Vec2(centreScratch.x + tx * offset, centreScratch.y + ty * offset),
+        normal: new Vec2(normalX, normalY),
+        lo: -facetWidth / 2 - FACET_OVERLAP - offset,
+        hi: facetWidth / 2 + FACET_OVERLAP - offset,
+      });
     }
   }
   return out;

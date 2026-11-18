@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { Vec2, Vec3 } from '@1pizzateam/spock';
+import { readFileSync } from 'node:fs';
 import { LEVELS } from '../src/levels.js';
 import { CEILING, DESK_WALL_OFFSET, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DISPENSER_WALL_OFFSET, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from '../src/cache.js';
@@ -21,7 +22,7 @@ for (const def of LEVELS) {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const nx = x + dx;
       const ny = y + dy;
-      if (level.isWalkable(nx, ny) && !seen.has(`${nx},${ny}`)) {
+      if (level.isWalkable(new Vec2(nx, ny)) && !seen.has(`${nx},${ny}`)) {
         seen.add(`${nx},${ny}`);
         queue.push([nx, ny]);
       }
@@ -366,7 +367,7 @@ try {
     const disp = level.furnitures.find((f) => f.type === 'dispenser');
     assert.ok(disp, `${def.name} has a dispenser`);
     assert.ok(disp.wallSide >= 0 && disp.wallSide < 4, `${def.name} dispenser backs against an adjacent wall`);
-    const distFromCenter = disp.pos.getDistance(level.center(disp.x, disp.y));
+    const distFromCenter = disp.pos.getDistance(level.center(new Vec2(disp.x, disp.y)));
     assert.ok(Math.abs(distFromCenter - DISPENSER_WALL_OFFSET) < 1e-5);
   }
 
@@ -485,7 +486,7 @@ try {
   const deskEntry = customDeskLevel.furnitures[0];
   assert.equal(deskEntry.type, 'desk');
   assert.ok(deskEntry.wallSide >= 0 && deskEntry.wallSide < 4);
-  const distFromCenter = deskEntry.pos.getDistance(customDeskLevel.center(deskEntry.x, deskEntry.y));
+  const distFromCenter = deskEntry.pos.getDistance(customDeskLevel.center(new Vec2(deskEntry.x, deskEntry.y)));
   assert.ok(Math.abs(distFromCenter - DESK_WALL_OFFSET) < 1e-5);
 
   const game = new Game(0, 42);
@@ -771,7 +772,7 @@ try {
   assert.ok(door, 'door exists at (4, 1)');
   assert.equal(door.switchLocked, false, 'door is not switchLocked before createSwitch');
 
-  const sw = switchLevel.createSwitch(1, 2, 2, null);
+  const sw = switchLevel.createSwitch(new Vec2(1, 2), 2, null);
   assert.ok(sw, 'switch was created');
   assert.ok(sw.doors.length > 0, 'switch resolved room doors');
   assert.ok(sw.doors.includes(door), 'resolved room doors include the bounding passage door');
@@ -794,11 +795,11 @@ try {
       '#########',
     ],
   });
-  assert.equal(boundaryLevel.createSwitch(0, 0, 0), null, 'createSwitch on wall tile returns null');
-  assert.equal(boundaryLevel.createSwitch(-1, 2), null, 'createSwitch at negative X returns null');
-  assert.equal(boundaryLevel.createSwitch(2, -1), null, 'createSwitch at negative Y returns null');
-  assert.equal(boundaryLevel.createSwitch(20, 2), null, 'createSwitch beyond width returns null');
-  assert.equal(boundaryLevel.createSwitch(4, 2, null), null, 'createSwitch on floor tile with no adjacent wall returns null');
+  assert.equal(boundaryLevel.createSwitch(new Vec2(0, 0), 0), null, 'createSwitch on wall tile returns null');
+  assert.equal(boundaryLevel.createSwitch(new Vec2(-1, 2)), null, 'createSwitch at negative X returns null');
+  assert.equal(boundaryLevel.createSwitch(new Vec2(2, -1)), null, 'createSwitch at negative Y returns null');
+  assert.equal(boundaryLevel.createSwitch(new Vec2(20, 2)), null, 'createSwitch beyond width returns null');
+  assert.equal(boundaryLevel.createSwitch(new Vec2(4, 2), null), null, 'createSwitch on floor tile with no adjacent wall returns null');
   console.log(`ok   ${switchValidationAc7TestName}`);
 } catch (error) {
   failed = true;
@@ -873,6 +874,34 @@ try {
 } catch (error) {
   failed = true;
   console.log(`FAIL ${toiletFurnitureTestName}\n     ${error.message}`);
+}
+
+const tileVectorTestName = 'AC-5 tile queries and factories take Vec2';
+try {
+  const level = new Level({ name: 'Vec2 tiles', rows: ['#####', '#.P.#', '#...#', '#####'] });
+  assert.equal(level.inBounds(new Vec2(1, 1)), true);
+  assert.equal(level.inBounds(new Vec2(-1, 1)), false);
+  assert.equal(level.inBounds(new Vec2(level.width, 1)), false);
+  assert.equal(level.isWalkable(new Vec2(1, 1)), true);
+  assert.equal(level.isWalkable(new Vec2(0, 0)), false);
+  const centre = level.center(new Vec2(2, 1));
+  assert.ok(centre instanceof Vec2);
+  assert.deepEqual([centre.x, centre.y], [2.5 * TILE, 1.5 * TILE]);
+  for (const bad of [new Vec2(0, 0), new Vec2(-1, 1), new Vec2(level.width + 1, 1)])
+    assert.equal(level.createSwitch(bad, 2, null), null, `createSwitch refuses ${bad.x}, ${bad.y}`);
+  const scratch = new Vec2(1, 1);
+  level.isWalkable(scratch);
+  level.inBounds(scratch);
+  assert.deepEqual([scratch.x, scratch.y], [1, 1], 'queries leave the tile untouched');
+  const source = readFileSync(new URL('../src/level.js', import.meta.url), 'utf8');
+  for (const name of ['inBounds', 'isWalkable', 'isSlime', 'isAcidSplash', 'isEmptyPit', 'isTeleporter', 'chestWallSide', 'center'])
+    assert.match(source, new RegExp(`\\n  ${name}\\(tile\\b`), `${name} takes a tile`);
+  for (const name of ['createChest', 'createSwitch', 'createFurniture'])
+    assert.match(source, new RegExp(`\\n  ${name}\\(tile\\b`), `${name} takes a tile`);
+  console.log(`ok   ${tileVectorTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${tileVectorTestName}\n     ${error.message}`);
 }
 
 process.exit(failed ? 1 : 0);

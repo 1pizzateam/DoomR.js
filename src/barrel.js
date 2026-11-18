@@ -1,4 +1,4 @@
-import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
+import { Rect, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { mulberry32 } from './rng.js';
 import { blitTile, field, mix, plate, rivet, rust, SHADOW, Tile } from './floor.js';
 
@@ -10,6 +10,18 @@ const scratchUvD = new Vec2();
 const scratchEdgeA = new Vec3();
 const scratchEdgeB = new Vec3();
 const scratchNormal = new Vec3();
+const argV3a = new Vec3();
+const argV3b = new Vec3();
+const argV3c = new Vec3();
+const argV3d = new Vec3();
+const argV2a = new Vec2();
+const argUv = new Rect();
+// Writes the corners exactly (not via centre and size) so UVs stay bit-identical.
+const uvBox = (u0, v0, u1, v1) => {
+  argUv.topLeftCorner.setScalar(u0, v0);
+  argUv.bottomRightCorner.setScalar(u1, v1);
+  return argUv;
+};
 
 /**
  * The skin of an explosive barrel: an orange oil drum, as a pixel-art atlas drawn here in code. The side is 128 x 64
@@ -541,7 +553,11 @@ function pushTri(vertices, normals, uvs, p0, p1, p2, uv0, uv1, uv2) {
   uvs.push(uv0.x, uv0.y, uv1.x, uv1.y, uv2.x, uv2.y);
 }
 
-function pushQuad(vertices, normals, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
+function pushQuad(vertices, normals, uvs, c0, c1, c2, c3, uv) {
+  const u0 = uv.topLeftCorner.x;
+  const v0 = uv.topLeftCorner.y;
+  const u1 = uv.bottomRightCorner.x;
+  const v1 = uv.bottomRightCorner.y;
   scratchUvA.setScalar(u0, v1);
   scratchUvB.setScalar(u1, v1);
   scratchUvC.setScalar(u1, v0);
@@ -624,8 +640,8 @@ export function barrelWreckMesh(size = new Vec2(9.5, 26)) {
     const m1 = new Vec3(c1 * rCollar, collarH, s1 * rCollar);
     const su0 = Utils.lerp(sideU0, sideU1, u0);
     const su1 = Utils.lerp(sideU0, sideU1, u1);
-    pushQuad(vertices, normals, uvs, b0, b1, m1, m0, su0, 0.68, su1, 0.98);
-    pushQuad(vertices, normals, uvs, b1, b0, m0, m1, charU0, 0.55, charU1, 0.95);
+    pushQuad(vertices, normals, uvs, b0, b1, m1, m0, uvBox(su0, 0.68, su1, 0.98));
+    pushQuad(vertices, normals, uvs, b1, b0, m0, m1, uvBox(charU0, 0.55, charU1, 0.95));
 
     // 4. Jagged peeled-open metal petal flaring outward from the collar rim
     const h0 = H * petalHeights[i];
@@ -640,11 +656,11 @@ export function barrelWreckMesh(size = new Vec2(9.5, 26)) {
     const tip = new Vec3(cM * tipR, tipH, sM * tipR);
 
     // Outer face of flared petal (shows hazard band / orange paint)
-    pushQuad(vertices, normals, uvs, m0, m1, t1, t0, su0, 0.36, su1, 0.68);
+    pushQuad(vertices, normals, uvs, m0, m1, t1, t0, uvBox(su0, 0.36, su1, 0.68));
     pushTri(vertices, normals, uvs, t0, t1, tip, new Vec2(su0, 0.36), new Vec2(su1, 0.36), new Vec2((su0 + su1) * 0.5, 0.22));
 
     // Inner face of flared petal (shows blackened soot & glowing embers)
-    pushQuad(vertices, normals, uvs, m1, m0, t0, t1, charU0, 0.18, charU1, 0.55);
+    pushQuad(vertices, normals, uvs, m1, m0, t0, t1, uvBox(charU0, 0.18, charU1, 0.55));
     pushTri(vertices, normals, uvs, t1, t0, tip, new Vec2(charU1, 0.18), new Vec2(charU0, 0.18), new Vec2(charUC, 0.05));
   }
 
@@ -716,7 +732,7 @@ export function barrelShrapnelParts(size = new Vec2(9.5, 26)) {
       new Vec2(charUC + c0 * 0.11, 0.5 + s0 * 0.42),
       new Vec2(charUC + c1 * 0.11, 0.5 + s1 * 0.42)
     );
-    pushQuad(lidVerts, lidNorms, lidUvs, bot0, bot1, top1, top0, charU0, 0.2, charU1, 0.8);
+    pushQuad(lidVerts, lidNorms, lidUvs, bot0, bot1, top1, top0, uvBox(charU0, 0.2, charU1, 0.8));
   }
 
   // 2. Curved, twisted 3D torn barrel stave shards (`BARREL_STAVE_COUNT` pieces)
@@ -756,8 +772,8 @@ export function barrelShrapnelParts(size = new Vec2(9.5, 26)) {
 
       const su0 = Utils.lerp(sideU0, sideU1, uBase + (j / subSegs) * uSpan);
       const su1 = Utils.lerp(sideU0, sideU1, uBase + ((j + 1) / subSegs) * uSpan);
-      pushQuad(sVerts, sNorms, sUvs, b0, b1, t1, t0, su0, 0.14, su1, 0.66);
-      pushQuad(sVerts, sNorms, sUvs, b1, b0, t0, t1, charU0, 0.2, charU1, 0.8);
+      pushQuad(sVerts, sNorms, sUvs, b0, b1, t1, t0, uvBox(su0, 0.14, su1, 0.66));
+      pushQuad(sVerts, sNorms, sUvs, b1, b0, t0, t1, uvBox(charU0, 0.2, charU1, 0.8));
     }
 
     staves.push({
@@ -777,7 +793,12 @@ export function barrelShrapnelParts(size = new Vec2(9.5, 26)) {
   };
 }
 
-function pushHorizontalSheet(vertices, normals, uvs, cx, y, cz, spanX, spanZ, angle, seed, kind) {
+function pushHorizontalSheet(vertices, normals, uvs, pos, span, angle, uv) {
+  const cx = pos.x;
+  const y = pos.y;
+  const cz = pos.z;
+  const spanX = span.x;
+  const spanZ = span.y;
   const ca = Math.cos(angle);
   const sa = Math.sin(angle);
   const rx = ca * spanX;
@@ -788,10 +809,16 @@ function pushHorizontalSheet(vertices, normals, uvs, cx, y, cz, spanX, spanZ, an
   const c1 = new Vec3(cx + rx + fx, y, cz + rz + fz);
   const c2 = new Vec3(cx + rx - fx, y, cz + rz - fz);
   const c3 = new Vec3(cx - rx - fx, y, cz - rz - fz);
-  pushQuad(vertices, normals, uvs, c0, c1, c2, c3, seed + 0.02, kind + 0.02, seed + 0.98, kind + 0.98);
+  pushQuad(vertices, normals, uvs, c0, c1, c2, c3, uv);
 }
 
-function pushPlumeQuad(vertices, normals, uvs, cx, lowY, topY, cz, halfSpan, angle, driftX, driftZ, topExpand, seed, kind) {
+function pushPlumeQuad(vertices, normals, uvs, low, top, halfSpan, angle, drift, topExpand, uv) {
+  const cx = low.x;
+  const lowY = low.y;
+  const topY = top.y;
+  const cz = low.z;
+  const driftX = drift.x;
+  const driftZ = drift.y;
   const dx = Math.cos(angle) * halfSpan;
   const dz = Math.sin(angle) * halfSpan;
   const tdx = dx * topExpand;
@@ -800,7 +827,7 @@ function pushPlumeQuad(vertices, normals, uvs, cx, lowY, topY, cz, halfSpan, ang
   const b1 = new Vec3(cx + dx, lowY, cz + dz);
   const t1 = new Vec3(cx + driftX + tdx, topY, cz + driftZ + tdz);
   const t0 = new Vec3(cx + driftX - tdx, topY, cz + driftZ - tdz);
-  pushQuad(vertices, normals, uvs, b0, b1, t1, t0, seed + 0.02, kind + 0.02, seed + 0.98, kind + 0.98);
+  pushQuad(vertices, normals, uvs, b0, b1, t1, t0, uv);
 }
 
 /**
@@ -816,8 +843,8 @@ export function barrelFireMesh(size = new Vec2(9.5, 26)) {
   const uvs = [];
 
   // 1. Horizontal glowing ember & flame bed sheets inside the ruptured stump (kind = 0)
-  pushHorizontalSheet(vertices, normals, uvs, 0, 1.45, 0, R * 0.88, R * 0.88, 0.18, 0, 0);
-  pushHorizontalSheet(vertices, normals, uvs, 0.25, 2.85, -0.2, R * 0.82, R * 0.82, 0.96, 1, 0);
+  pushHorizontalSheet(vertices, normals, uvs, argV3a.setScalar(0, 1.45, 0), argV2a.setScalar(R * 0.88, R * 0.88), 0.18, uvBox(0 + 0.02, 0 + 0.02, 0 + 0.98, 0 + 0.98));
+  pushHorizontalSheet(vertices, normals, uvs, argV3a.setScalar(0.25, 2.85, -0.2), argV2a.setScalar(R * 0.82, R * 0.82), 0.96, uvBox(1 + 0.02, 0 + 0.02, 1 + 0.98, 0 + 0.98));
 
   // 2. Central crossed vertical flame plumes rising from the ruptured barrel core (kind = 1)
   const coreAngles = [0.15, 1.19, 2.24];
@@ -825,22 +852,7 @@ export function barrelFireMesh(size = new Vec2(9.5, 26)) {
   for (let i = 0; i < 3; i++) {
     const a = coreAngles[i];
     const drift = (i - 1) * 0.45;
-    pushPlumeQuad(
-      vertices,
-      normals,
-      uvs,
-      Math.cos(a) * 0.35,
-      1.15,
-      H * coreHeights[i],
-      Math.sin(a) * 0.35,
-      R * 0.78,
-      a,
-      drift,
-      -drift * 0.7,
-      1.06,
-      i,
-      1
-    );
+    pushPlumeQuad(vertices, normals, uvs, argV3a.setScalar(Math.cos(a) * 0.35, 1.15, Math.sin(a) * 0.35), argV3b.setScalar(Math.cos(a) * 0.35, H * coreHeights[i], Math.sin(a) * 0.35), R * 0.78, a, argV2a.setScalar(drift, -drift * 0.7), 1.06, uvBox(i + 0.02, 1 + 0.02, i + 0.98, 1 + 0.98));
   }
 
   // 3. Six peripheral flame tongues licking up around the inner collar rim between the peeled-open petals (kind = 1)
@@ -850,22 +862,7 @@ export function barrelFireMesh(size = new Vec2(9.5, 26)) {
     const ca = Math.cos(a);
     const sa = Math.sin(a);
     const ringR = R * 0.46;
-    pushPlumeQuad(
-      vertices,
-      normals,
-      uvs,
-      ca * ringR,
-      1.25,
-      H * tongueHeights[i],
-      sa * ringR,
-      R * 0.48,
-      a + Trigo.halfpi * 0.65,
-      ca * R * 0.22,
-      sa * R * 0.22,
-      1.12,
-      3 + i,
-      1
-    );
+    pushPlumeQuad(vertices, normals, uvs, argV3a.setScalar(ca * ringR, 1.25, sa * ringR), argV3b.setScalar(ca * ringR, H * tongueHeights[i], sa * ringR), R * 0.48, a + Trigo.halfpi * 0.65, argV2a.setScalar(ca * R * 0.22, sa * R * 0.22), 1.12, uvBox((3 + i) + 0.02, 1 + 0.02, (3 + i) + 0.98, 1 + 0.98));
   }
 
   // 4. Acid-mist-style drifting smoke: stacked horizontal mist layers + crossed vertical rising smoke plumes (kind = 2)
@@ -874,19 +871,7 @@ export function barrelFireMesh(size = new Vec2(9.5, 26)) {
   for (let i = 0; i < 3; i++) {
     const ox = (i - 1) * 0.65;
     const oz = ((i % 2) - 0.5) * 0.75;
-    pushHorizontalSheet(
-      vertices,
-      normals,
-      uvs,
-      ox,
-      H * smokeLayerFracs[i],
-      oz,
-      R * smokeLayerSpans[i],
-      R * smokeLayerSpans[i],
-      i * 0.85 + 0.3,
-      10 + i,
-      2
-    );
+    pushHorizontalSheet(vertices, normals, uvs, argV3a.setScalar(ox, H * smokeLayerFracs[i], oz), argV2a.setScalar(R * smokeLayerSpans[i], R * smokeLayerSpans[i]), i * 0.85 + 0.3, uvBox((10 + i) + 0.02, 2 + 0.02, (10 + i) + 0.98, 2 + 0.98));
   }
 
   const smokePlumeHeights = [1.08, 0.96, 1.16, 1.02];
@@ -896,22 +881,7 @@ export function barrelFireMesh(size = new Vec2(9.5, 26)) {
     const oz = Math.sin(a * 1.7) * R * 0.18;
     const lowY = H * (0.28 + (i % 2) * 0.06);
     const topY = H * smokePlumeHeights[i];
-    pushPlumeQuad(
-      vertices,
-      normals,
-      uvs,
-      ox,
-      lowY,
-      topY,
-      oz,
-      R * (0.88 + (i % 2) * 0.12),
-      a,
-      Math.cos(a + 0.6) * R * 0.28,
-      Math.sin(a + 0.6) * R * 0.28,
-      1.26,
-      14 + i,
-      2
-    );
+    pushPlumeQuad(vertices, normals, uvs, argV3a.setScalar(ox, lowY, oz), argV3b.setScalar(ox, topY, oz), R * (0.88 + (i % 2) * 0.12), a, argV2a.setScalar(Math.cos(a + 0.6) * R * 0.28, Math.sin(a + 0.6) * R * 0.28), 1.26, uvBox((14 + i) + 0.02, 2 + 0.02, (14 + i) + 0.98, 2 + 0.98));
   }
 
   return {
@@ -933,51 +903,21 @@ export function barrelShrapnelFireMesh(size = new Vec2(9.5, 26)) {
   const uvs = [];
 
   // 1. Glowing ember/flame base sheet on the shrapnel shard (kind = 0)
-  pushHorizontalSheet(vertices, normals, uvs, 0, 0.28, 0, R * 0.38, R * 0.38, 0.25, 0, 0);
+  pushHorizontalSheet(vertices, normals, uvs, argV3a.setScalar(0, 0.28, 0), argV2a.setScalar(R * 0.38, R * 0.38), 0.25, uvBox(0 + 0.02, 0 + 0.02, 0 + 0.98, 0 + 0.98));
 
   // 2. Three crossed vertical flame plumes licking up from the scorched shard (kind = 1)
   const flameAngles = [0.2, 1.25, 2.3];
   const flameHeights = [0.28, 0.23, 0.26];
   for (let i = 0; i < 3; i++) {
     const a = flameAngles[i];
-    pushPlumeQuad(
-      vertices,
-      normals,
-      uvs,
-      Math.cos(a) * 0.2,
-      0.12,
-      H * flameHeights[i],
-      Math.sin(a) * 0.2,
-      R * 0.36,
-      a,
-      Math.cos(a + 0.4) * 0.35,
-      Math.sin(a + 0.4) * 0.35,
-      1.08,
-      i,
-      1
-    );
+    pushPlumeQuad(vertices, normals, uvs, argV3a.setScalar(Math.cos(a) * 0.2, 0.12, Math.sin(a) * 0.2), argV3b.setScalar(Math.cos(a) * 0.2, H * flameHeights[i], Math.sin(a) * 0.2), R * 0.36, a, argV2a.setScalar(Math.cos(a + 0.4) * 0.35, Math.sin(a + 0.4) * 0.35), 1.08, uvBox(i + 0.02, 1 + 0.02, i + 0.98, 1 + 0.98));
   }
 
   // 3. Acid-mist-style drifting smoke wisp above the shrapnel flame: horizontal mist sheet + 2 crossed plumes (kind = 2)
-  pushHorizontalSheet(vertices, normals, uvs, 0.15, H * 0.26, -0.12, R * 0.46, R * 0.46, 0.7, 6, 2);
+  pushHorizontalSheet(vertices, normals, uvs, argV3a.setScalar(0.15, H * 0.26, -0.12), argV2a.setScalar(R * 0.46, R * 0.46), 0.7, uvBox(6 + 0.02, 2 + 0.02, 6 + 0.98, 2 + 0.98));
   for (let i = 0; i < 2; i++) {
     const a = 0.42 + i * Trigo.halfpi;
-    pushPlumeQuad(
-      vertices,
-      normals,
-      uvs,
-      0.12 * (i === 0 ? 1 : -1),
-      H * 0.13,
-      H * (0.46 + i * 0.05),
-      -0.1 * (i === 0 ? 1 : -1),
-      R * 0.44,
-      a,
-      0.45 * (i === 0 ? 1 : -0.6),
-      -0.35 * (i === 0 ? 0.6 : -1),
-      1.22,
-      7 + i,
-      2
-    );
+    pushPlumeQuad(vertices, normals, uvs, argV3a.setScalar(0.12 * (i === 0 ? 1 : -1), H * 0.13, -0.1 * (i === 0 ? 1 : -1)), argV3b.setScalar(0.12 * (i === 0 ? 1 : -1), H * (0.46 + i * 0.05), -0.1 * (i === 0 ? 1 : -1)), R * 0.44, a, argV2a.setScalar(0.45 * (i === 0 ? 1 : -0.6), -0.35 * (i === 0 ? 0.6 : -1)), 1.22, uvBox((7 + i) + 0.02, 2 + 0.02, (7 + i) + 0.98, 2 + 0.98));
   }
 
   return {
@@ -1022,7 +962,19 @@ export function createBarrelExplosionPose() {
   };
 }
 
-function writeBallisticArc(posTarget, rotTarget, startX, startY, startZ, endX, endY, endZ, spinX, spinY, spinZ, restPitch, restYaw, restRoll, t, peakLift) {
+function writeBallisticArc(posTarget, rotTarget, start, end, spin, rest, t, peakLift) {
+  const startX = start.x;
+  const startY = start.y;
+  const startZ = start.z;
+  const endX = end.x;
+  const endY = end.y;
+  const endZ = end.z;
+  const spinX = spin.x;
+  const spinY = spin.y;
+  const spinZ = spin.z;
+  const restPitch = rest.x;
+  const restYaw = rest.y;
+  const restRoll = rest.z;
   const clamped = Utils.clamp(t, 0, 1);
   const out = 1 - (1 - clamped) * (1 - clamped);
   const x = Utils.lerp(startX, endX, out);
@@ -1085,24 +1037,7 @@ export function barrelExplosionPose(elapsed, seed = 0, target = createBarrelExpl
   const lidDist = 24 + ((Math.sin(seed * 5.1) + 1) * 0.5) * 11;
   const lidEndX = Math.cos(lidAngle) * lidDist;
   const lidEndZ = Math.sin(lidAngle) * lidDist;
-  writeBallisticArc(
-    target.lid.pos,
-    target.lid.rot,
-    0,
-    25.5,
-    0,
-    lidEndX,
-    0.75,
-    lidEndZ,
-    Trigo.pi * 3.1,
-    lidAngle + Trigo.pi * 1.4,
-    Trigo.pi * 2.2,
-    0.14,
-    lidAngle + 0.8,
-    -0.12,
-    t / lidDuration,
-    28
-  );
+  writeBallisticArc(target.lid.pos, target.lid.rot, argV3a.setScalar(0, 25.5, 0), argV3b.setScalar(lidEndX, 0.75, lidEndZ), argV3c.setScalar(Trigo.pi * 3.1, lidAngle + Trigo.pi * 1.4, Trigo.pi * 2.2), argV3d.setScalar(0.14, lidAngle + 0.8, -0.12), t / lidDuration, 28);
 
   // 3. Five torn metal staves: blast outward radially in parabolic arcs, bounce across the floor, and settle around the stump
   for (let i = 0; i < BARREL_STAVE_COUNT; i++) {
@@ -1114,24 +1049,7 @@ export function barrelExplosionPose(elapsed, seed = 0, target = createBarrelExpl
     const duration = 0.68 + hash * 0.24;
     const peakLift = 14 + (1 - hash) * 13;
     const dirSign = i % 2 === 0 ? 1 : -1;
-    writeBallisticArc(
-      stave.pos,
-      stave.rot,
-      Math.cos(angle) * startR,
-      15.5 + (i % 3) * 1.8,
-      Math.sin(angle) * startR,
-      Math.cos(angle) * dist,
-      0.85,
-      Math.sin(angle) * dist,
-      dirSign * Trigo.pi * (2.4 + hash),
-      angle + dirSign * 1.8,
-      -dirSign * Trigo.pi * 1.9,
-      Trigo.halfpi - 0.16,
-      angle + 0.4 * dirSign,
-      (hash - 0.5) * 0.28,
-      t / duration,
-      peakLift
-    );
+    writeBallisticArc(stave.pos, stave.rot, argV3a.setScalar(Math.cos(angle) * startR, 15.5 + (i % 3) * 1.8, Math.sin(angle) * startR), argV3b.setScalar(Math.cos(angle) * dist, 0.85, Math.sin(angle) * dist), argV3c.setScalar(dirSign * Trigo.pi * (2.4 + hash), angle + dirSign * 1.8, -dirSign * Trigo.pi * 1.9), argV3d.setScalar(Trigo.halfpi - 0.16, angle + 0.4 * dirSign, (hash - 0.5) * 0.28), t / duration, peakLift);
   }
 
   // 4. Persistent post-detonation fire inside the ruptured stump & smaller flame licks on the scattered shrapnel that reduce and fade out after a few seconds
@@ -1288,7 +1206,7 @@ export function barrelAcidPuddleMesh(size = new Vec2(9.5, 26)) {
       new Vec2(0.5 + c1 * 0.44 * l1, 0.5 + s1 * 0.44 * l1),
       new Vec2(0.5 + c0 * 0.44 * l0, 0.5 + s0 * 0.44 * l0)
     );
-    pushQuad(vertices, normals, uvs, p0, p1, e1, e0, i / segs, 0.15, (i + 1) / segs, 0.85);
+    pushQuad(vertices, normals, uvs, p0, p1, e1, e0, uvBox(i / segs, 0.15, (i + 1) / segs, 0.85));
   }
 
   // Satellite acid splatter droplets around the main pool
@@ -1362,8 +1280,8 @@ export function barrelAcidStreamMesh(size = new Vec2(9.5, 26)) {
       const b0 = new Vec3(botX + c0 * rBot, botY, botZ + s0 * rBot);
       const b1 = new Vec3(botX + c1 * rBot, botY, botZ + s1 * rBot);
 
-      pushQuad(vertices, normals, uvs, m0, m1, t1, t0, u0, 0.05, u1, 0.5);
-      pushQuad(vertices, normals, uvs, b0, b1, m1, m0, u0, 0.5, u1, 0.95);
+      pushQuad(vertices, normals, uvs, m0, m1, t1, t0, uvBox(u0, 0.05, u1, 0.5));
+      pushQuad(vertices, normals, uvs, b0, b1, m1, m0, uvBox(u0, 0.5, u1, 0.95));
     }
   };
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { Rect } from '@1pizzateam/spock';
 import { Vec2, Vec3 } from '@1pizzateam/roostr';
 
 const worldSrc = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
@@ -494,6 +495,46 @@ const checks = [
     const moodBody = extractExportFunctionBody(monstersSrc, 'mood');
     assert.doesNotMatch(moodBody, /return\s*\{[^}]*\}/, 'mood() source must not contain return { ... }');
     assert.match(monstersSrc, /const\s+scratchMood\s*=\s*\{/, 'src/monsters.js must declare scratchMood at module scope');
+  }],
+  ['AC-6 resize takes Vec2 sizes', () => {
+    const overlaySrc = readFileSync(new URL('../src/overlay.js', import.meta.url), 'utf8');
+    const headSrc = readFileSync(new URL('../src/head.js', import.meta.url), 'utf8');
+    assert.equal((overlaySrc.match(/\n  resize\(cssSize, renderSize\) \{/g) ?? []).length, 2, 'Layer and Overlay take two Vec2 sizes');
+    assert.match(headSrc, /\n  resize\(cssSize, renderSize\) \{/);
+    assert.doesNotMatch(overlaySrc + headSrc, /resize\(cssWidth/);
+    assert.match(worldSrc, /const scratchCssSize = new Vec2\(\)/);
+    assert.match(worldSrc, /overlay\.resize\(scratchCssSize\.setScalar/);
+  }],
+  ['AC-7 HUD primitives take Rect and Vec2 without per-frame allocation', () => {
+    const calls = [];
+    const ctx = { beginPath() {}, moveTo(x, y) { calls.push(['m', x, y]); }, lineTo(x, y) { calls.push(['l', x, y]); }, stroke() {} };
+    const lines = [];
+    const overlay = { glow: { line(points) { lines.push(points.map((p) => [p.x, p.y])); } } };
+    const hud = new Hud({ width: 800, height: 600, getContext: () => ctx }, overlay);
+    const bounds = new Rect();
+    bounds.topLeftCorner.setScalar(10, 20);
+    bounds.bottomRightCorner.setScalar(50, 80);
+    hud.rect(bounds, 'green');
+    assert.deepEqual(lines[0], [[10, 20], [50, 20], [50, 80], [10, 80], [10, 20]]);
+    hud.segment(new Vec2(1, 2), new Vec2(3, 4), 'green');
+    assert.deepEqual(lines[1], [[1, 2], [3, 4]]);
+    hud.canvasLine([new Vec2(0, 0), new Vec2(5, 5), new Vec2(9, 1)], 'green');
+    assert.deepEqual(calls, [['m', 0, 0], ['l', 5, 5], ['l', 9, 1]]);
+    const start = new Vec2(1, 2);
+    const end = new Vec2(3, 4);
+    lines.length = 0;
+    for (let i = 0; i < 1000; i++) {
+      hud.segment(start, end, 'green');
+      hud.rect(bounds, 'green');
+      lines.length = 0;
+    }
+    const before = process.memoryUsage().heapUsed;
+    for (let i = 0; i < 20000; i++) {
+      hud.segment(start, end, 'green');
+      hud.rect(bounds, 'green');
+      lines.length = 0;
+    }
+    assert.ok(process.memoryUsage().heapUsed - before < 2e6, 'segment and rect stay allocation-free');
   }],
 ];
 

@@ -30,7 +30,7 @@
  *     porcelain pedestal & sculpted oval bowl, rear flush cistern tank with chrome handle, contoured seat ring & hinged open lid,
  *     and recessed standing bowl water (`y = 0..31`).
  */
-import { Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
+import { Rect, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { blitTile, field, mix, plate, rivet, rust, SHADOW, Tile } from './floor.js';
 import { mulberry32 } from './rng.js';
 
@@ -623,6 +623,22 @@ export function dispenserAtlas() {
   };
 }
 
+const argV3a = new Vec3();
+const argV3b = new Vec3();
+const argV3c = new Vec3();
+const argV3d = new Vec3();
+const argV2a = new Vec2();
+const argV2b = new Vec2();
+const argV2c = new Vec2();
+const argV2d = new Vec2();
+const argUv = new Rect();
+// Writes the corners exactly (not via centre and size) so UVs stay bit-identical.
+const uvBox = (u0, v0, u1, v1) => {
+  argUv.topLeftCorner.setScalar(u0, v0);
+  argUv.bottomRightCorner.setScalar(u1, v1);
+  return argUv;
+};
+
 function pushTri(vertices, normals, uvs, p0, p1, p2, uv0, uv1, uv2) {
   scratchEdgeA.setScalar(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
   scratchEdgeB.setScalar(p2.x - p0.x, p2.y - p0.y, p2.z - p0.z);
@@ -639,7 +655,11 @@ function pushTri(vertices, normals, uvs, p0, p1, p2, uv0, uv1, uv2) {
   uvs.push(uv0.x, uv0.y, uv1.x, uv1.y, uv2.x, uv2.y);
 }
 
-function pushQuad(vertices, normals, uvs, c0, c1, c2, c3, u0, v0, u1, v1) {
+function pushQuad(vertices, normals, uvs, c0, c1, c2, c3, uv) {
+  const u0 = uv.topLeftCorner.x;
+  const v0 = uv.topLeftCorner.y;
+  const u1 = uv.bottomRightCorner.x;
+  const v1 = uv.bottomRightCorner.y;
   scratchUvA.setScalar(u0, v1);
   scratchUvB.setScalar(u1, v1);
   scratchUvC.setScalar(u1, v0);
@@ -666,20 +686,29 @@ function pushBoxPart(vertices, normals, uvs, minPt, maxPt, faceUvs) {
   const p010 = new Vec3(x0, y1, z0);
 
   if (faceUvs.front)
-    pushQuad(vertices, normals, uvs, p001, p101, p111, p011, faceUvs.front.u0, faceUvs.front.v0, faceUvs.front.u1, faceUvs.front.v1);
+    pushQuad(vertices, normals, uvs, p001, p101, p111, p011, uvBox(faceUvs.front.u0, faceUvs.front.v0, faceUvs.front.u1, faceUvs.front.v1));
   if (faceUvs.back)
-    pushQuad(vertices, normals, uvs, p100, p000, p010, p110, faceUvs.back.u0, faceUvs.back.v0, faceUvs.back.u1, faceUvs.back.v1);
+    pushQuad(vertices, normals, uvs, p100, p000, p010, p110, uvBox(faceUvs.back.u0, faceUvs.back.v0, faceUvs.back.u1, faceUvs.back.v1));
   if (faceUvs.right)
-    pushQuad(vertices, normals, uvs, p101, p100, p110, p111, faceUvs.right.u0, faceUvs.right.v0, faceUvs.right.u1, faceUvs.right.v1);
+    pushQuad(vertices, normals, uvs, p101, p100, p110, p111, uvBox(faceUvs.right.u0, faceUvs.right.v0, faceUvs.right.u1, faceUvs.right.v1));
   if (faceUvs.left)
-    pushQuad(vertices, normals, uvs, p000, p001, p011, p010, faceUvs.left.u0, faceUvs.left.v0, faceUvs.left.u1, faceUvs.left.v1);
+    pushQuad(vertices, normals, uvs, p000, p001, p011, p010, uvBox(faceUvs.left.u0, faceUvs.left.v0, faceUvs.left.u1, faceUvs.left.v1));
   if (faceUvs.top)
-    pushQuad(vertices, normals, uvs, p011, p111, p110, p010, faceUvs.top.u0, faceUvs.top.v0, faceUvs.top.u1, faceUvs.top.v1);
+    pushQuad(vertices, normals, uvs, p011, p111, p110, p010, uvBox(faceUvs.top.u0, faceUvs.top.v0, faceUvs.top.u1, faceUvs.top.v1));
   if (faceUvs.bottom)
-    pushQuad(vertices, normals, uvs, p000, p100, p101, p001, faceUvs.bottom.u0, faceUvs.bottom.v0, faceUvs.bottom.u1, faceUvs.bottom.v1);
+    pushQuad(vertices, normals, uvs, p000, p100, p101, p001, uvBox(faceUvs.bottom.u0, faceUvs.bottom.v0, faceUvs.bottom.u1, faceUvs.bottom.v1));
 }
 
-function pushFrustumRing(vertices, normals, uvs, y0, y1, r0, r1, uStart, uEnd, v0, v1, segs = 12) {
+/** A frustum ring from `base` to `top` (Vec3, centred on x/z), narrowing from `radius.x` to `radius.y`; `uv` spans (uStart, v0)..(uEnd, v1). */
+function pushFrustumRing(vertices, normals, uvs, base, top, radius, uv, segs = 12) {
+  const y0 = base.y;
+  const y1 = top.y;
+  const r0 = radius.x;
+  const r1 = radius.y;
+  const uStart = uv.topLeftCorner.x;
+  const v0 = uv.topLeftCorner.y;
+  const uEnd = uv.bottomRightCorner.x;
+  const v1 = uv.bottomRightCorner.y;
   for (let i = 0; i < segs; i++) {
     const f0 = i / segs;
     const f1 = (i + 1) / segs;
@@ -695,11 +724,16 @@ function pushFrustumRing(vertices, normals, uvs, y0, y1, r0, r1, uStart, uEnd, v
     const t0 = new Vec3(c0 * r1, y1, s0 * r1);
     const u0 = Utils.lerp(uStart, uEnd, f0);
     const u1 = Utils.lerp(uStart, uEnd, f1);
-    pushQuad(vertices, normals, uvs, b1, b0, t0, t1, u0, v0, u1, v1);
+    pushQuad(vertices, normals, uvs, b1, b0, t0, t1, uvBox(u0, v0, u1, v1));
   }
 }
 
-function pushTopDisc(vertices, normals, uvs, y, r, uCenter, vCenter, uRadius, vRadius, segs = 12) {
+function pushTopDisc(vertices, normals, uvs, pos, r, uvCentre, uvRadius, segs = 12) {
+  const y = pos.y;
+  const uCenter = uvCentre.x;
+  const vCenter = uvCentre.y;
+  const uRadius = uvRadius.x;
+  const vRadius = uvRadius.y;
   const center = new Vec3(0, y, 0);
   const uvCenter = new Vec2(uCenter, vCenter);
   for (let i = 0; i < segs; i++) {
@@ -889,8 +923,8 @@ export function dispenserMesh() {
   );
 
   // 8. Top Funnel Receiver Collar Ring (y = 26.5 .. 28.2, 12-sided frustum)
-  pushFrustumRing(vertices, normals, uvs, 26.5, 28.2, 5.1, 3.3, trimBlueU0, trimBlueU1, 0.15, 0.85, 12);
-  pushTopDisc(vertices, normals, uvs, 28.2, 3.3, (trimBlueU0 + trimBlueU1) * 0.5, 0.5, (trimBlueU1 - trimBlueU0) * 0.4, 0.3, 12);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 26.5, 0), argV3b.setScalar(0, 28.2, 0), argV2a.setScalar(5.1, 3.3), uvBox(trimBlueU0, 0.15, trimBlueU1, 0.85), 12);
+  pushTopDisc(vertices, normals, uvs, argV3a.setScalar(0, 28.2, 0), 3.3, argV2a.setScalar((trimBlueU0 + trimBlueU1) * 0.5, 0.5), argV2b.setScalar((trimBlueU1 - trimBlueU0) * 0.4, 0.3), 12);
 
   // 9. Inverted 5-Gallon Polycarbonate Water Bottle / Carboy (y = 28.2 .. 42.0, 12-sided lathe profile)
   const bottleProfile = [
@@ -905,10 +939,10 @@ export function dispenserMesh() {
   ];
   for (let i = 0; i < bottleProfile.length; i++) {
     const seg = bottleProfile[i];
-    pushFrustumRing(vertices, normals, uvs, seg.y0, seg.y1, seg.r0, seg.r1, bottleU0, bottleU1, seg.v0, seg.v1, 12);
+    pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, seg.y0, 0), argV3b.setScalar(0, seg.y1, 0), argV2a.setScalar(seg.r0, seg.r1), uvBox(bottleU0, seg.v0, bottleU1, seg.v1), 12);
   }
   const bottleUC = (bottleU0 + bottleU1) * 0.5;
-  pushTopDisc(vertices, normals, uvs, 42.0, 3.8, bottleUC, 0.08, (bottleU1 - bottleU0) * 0.35, 0.06, 12);
+  pushTopDisc(vertices, normals, uvs, argV3a.setScalar(0, 42.0, 0), 3.8, argV2a.setScalar(bottleUC, 0.08), argV2b.setScalar((bottleU1 - bottleU0) * 0.35, 0.06), 12);
 
   return flipV({
     vertices: new Float32Array(vertices),
@@ -975,8 +1009,8 @@ export function dispenserWreckMesh() {
   );
 
   // 3. Exposed internal cold-water chiller reservoir ring in the center of the ruptured deck (y = 13.8 .. 15.2)
-  pushFrustumRing(vertices, normals, uvs, 13.8, 15.2, 3.8, 3.4, bottleU0, bottleU1, 0.62, 0.88, 10);
-  pushTopDisc(vertices, normals, uvs, 14.9, 3.3, (bottleU0 + bottleU1) * 0.5, 0.72, (bottleU1 - bottleU0) * 0.32, 0.18, 10);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 13.8, 0), argV3b.setScalar(0, 15.2, 0), argV2a.setScalar(3.8, 3.4), uvBox(bottleU0, 0.62, bottleU1, 0.88), 10);
+  pushTopDisc(vertices, normals, uvs, argV3a.setScalar(0, 14.9, 0), 3.3, argV2a.setScalar((bottleU0 + bottleU1) * 0.5, 0.72), argV2b.setScalar((bottleU1 - bottleU0) * 0.32, 0.18), 10);
 
   // 4. Jagged shattered polycarbonate bottle neck shards still wedged around the chiller rim
   for (let i = 0; i < 6; i++) {
@@ -1163,10 +1197,10 @@ export function dispenserShrapnelParts() {
   const topVerts = [];
   const topNorms = [];
   const topUvs = [];
-  pushFrustumRing(topVerts, topNorms, topUvs, -3.2, -0.8, 5.6, 5.8, bottleU0, bottleU1, 0.3, 0.5, 10);
-  pushFrustumRing(topVerts, topNorms, topUvs, -0.8, 1.8, 5.8, 5.2, bottleU0, bottleU1, 0.12, 0.3, 10);
-  pushFrustumRing(topVerts, topNorms, topUvs, 1.8, 3.2, 5.2, 3.7, bottleU0, bottleU1, 0.02, 0.12, 10);
-  pushTopDisc(topVerts, topNorms, topUvs, 3.2, 3.7, bottleUC, 0.08, (bottleU1 - bottleU0) * 0.35, 0.06, 10);
+  pushFrustumRing(topVerts, topNorms, topUvs, argV3a.setScalar(0, -3.2, 0), argV3b.setScalar(0, -0.8, 0), argV2a.setScalar(5.6, 5.8), uvBox(bottleU0, 0.3, bottleU1, 0.5), 10);
+  pushFrustumRing(topVerts, topNorms, topUvs, argV3a.setScalar(0, -0.8, 0), argV3b.setScalar(0, 1.8, 0), argV2a.setScalar(5.8, 5.2), uvBox(bottleU0, 0.12, bottleU1, 0.3), 10);
+  pushFrustumRing(topVerts, topNorms, topUvs, argV3a.setScalar(0, 1.8, 0), argV3b.setScalar(0, 3.2, 0), argV2a.setScalar(5.2, 3.7), uvBox(bottleU0, 0.02, bottleU1, 0.12), 10);
+  pushTopDisc(topVerts, topNorms, topUvs, argV3a.setScalar(0, 3.2, 0), 3.7, argV2a.setScalar(bottleUC, 0.08), argV2b.setScalar((bottleU1 - bottleU0) * 0.35, 0.06), 10);
 
   // 2. Five flying shards (3 curved blue polycarbonate carboy shards + 1 front bezel panel + 1 cup-holder tube)
   const shards = [];
@@ -1200,8 +1234,8 @@ export function dispenserShrapnelParts() {
       const t1 = new Vec3(x1 * 1.05, jagTop1, z1 + 0.35);
       const bu0 = Utils.lerp(bottleU0, bottleU1, uBase + (j / subSegs) * uSpan);
       const bu1 = Utils.lerp(bottleU0, bottleU1, uBase + ((j + 1) / subSegs) * uSpan);
-      pushQuad(sVerts, sNorms, sUvs, b0, b1, t1, t0, bu0, 0.28, bu1, 0.78);
-      pushQuad(sVerts, sNorms, sUvs, b1, b0, t0, t1, bu0, 0.28, bu1, 0.78);
+      pushQuad(sVerts, sNorms, sUvs, b0, b1, t1, t0, uvBox(bu0, 0.28, bu1, 0.78));
+      pushQuad(sVerts, sNorms, sUvs, b1, b0, t0, t1, uvBox(bu0, 0.28, bu1, 0.78));
     }
     shards.push(flipV({
       vertices: new Float32Array(sVerts),
@@ -1284,7 +1318,19 @@ export function createDispenserBreakPose() {
   };
 }
 
-function writeBallisticArc(posTarget, rotTarget, startX, startY, startZ, endX, endY, endZ, spinX, spinY, spinZ, restPitch, restYaw, restRoll, t, peakLift) {
+function writeBallisticArc(posTarget, rotTarget, start, end, spin, rest, t, peakLift) {
+  const startX = start.x;
+  const startY = start.y;
+  const startZ = start.z;
+  const endX = end.x;
+  const endY = end.y;
+  const endZ = end.z;
+  const spinX = spin.x;
+  const spinY = spin.y;
+  const spinZ = spin.z;
+  const restPitch = rest.x;
+  const restYaw = rest.y;
+  const restRoll = rest.z;
   const clamped = Utils.clamp(t, 0, 1);
   const out = 1 - (1 - clamped) * (1 - clamped);
   const x = Utils.lerp(startX, endX, out);
@@ -1335,24 +1381,7 @@ export function dispenserBreakPose(elapsed, seed = 0, target = createDispenserBr
   const topDist = 17 + ((Math.cos(seed * 4.3) + 1) * 0.5) * 8;
   const topEndX = Math.sin(topSpread) * topDist;
   const topEndZ = Math.cos(topSpread) * topDist;
-  writeBallisticArc(
-    target.carboyTop.pos,
-    target.carboyTop.rot,
-    0,
-    36.0,
-    0,
-    topEndX,
-    3.6,
-    topEndZ,
-    Trigo.pi * 2.4,
-    topSpread + Trigo.pi * 1.1,
-    Trigo.pi * 1.7,
-    Trigo.halfpi - 0.18,
-    topSpread + 0.6,
-    0.22,
-    t / topDuration,
-    14,
-  );
+  writeBallisticArc(target.carboyTop.pos, target.carboyTop.rot, argV3a.setScalar(0, 36.0, 0), argV3b.setScalar(topEndX, 3.6, topEndZ), argV3c.setScalar(Trigo.pi * 2.4, topSpread + Trigo.pi * 1.1, Trigo.pi * 1.7), argV3d.setScalar(Trigo.halfpi - 0.18, topSpread + 0.6, 0.22), t / topDuration, 14);
 
   // 4. Five shards (3 polycarbonate bottle shards + front bezel + side cup tube) fly out into the room (+Z / ±X)
   for (let i = 0; i < DISPENSER_SHARD_COUNT; i++) {
@@ -1367,24 +1396,7 @@ export function dispenserBreakPose(elapsed, seed = 0, target = createDispenserBr
     const duration = 0.62 + hash * 0.22;
     const peakLift = 10 + (1 - hash) * 10;
     const dirSign = i % 2 === 0 ? 1 : -1;
-    writeBallisticArc(
-      shard.pos,
-      shard.rot,
-      startX,
-      startY,
-      startZ,
-      Math.sin(fan) * dist,
-      0.85,
-      Math.max(2.5, Math.cos(fan) * dist),
-      dirSign * Trigo.pi * (2.2 + hash),
-      fan + dirSign * 1.5,
-      -dirSign * Trigo.pi * 1.7,
-      Trigo.halfpi - 0.12,
-      fan + 0.35 * dirSign,
-      (hash - 0.5) * 0.24,
-      t / duration,
-      peakLift,
-    );
+    writeBallisticArc(shard.pos, shard.rot, argV3a.setScalar(startX, startY, startZ), argV3b.setScalar(Math.sin(fan) * dist, 0.85, Math.max(2.5, Math.cos(fan) * dist)), argV3c.setScalar(dirSign * Trigo.pi * (2.2 + hash), fan + dirSign * 1.5, -dirSign * Trigo.pi * 1.7), argV3d.setScalar(Trigo.halfpi - 0.12, fan + 0.35 * dirSign, (hash - 0.5) * 0.24), t / duration, peakLift);
   }
 
   return target;
@@ -1530,7 +1542,9 @@ export function tableAtlas() {
   };
 }
 
-function buildRefectoryChair(vertices, normals, uvs, cx, cz, dirZ, chairU0, chairU1, uvRect, skipBack = false) {
+function buildRefectoryChair(vertices, normals, uvs, pos, dirZ, chairU0, chairU1, uvRect, skipBack = false) {
+  const cx = pos.x;
+  const cz = pos.y;
   const shellFaces = {
     front: uvRect(chairU0, 0.04, chairU1, 0.66),
     back: uvRect(chairU0, 0.04, chairU1, 0.66),
@@ -1631,8 +1645,8 @@ export function tableMesh() {
   pushBoxPart(vertices, normals, uvs, new Vec3(5.2, 19.4, -8.6), new Vec3(13.8, 20.1, -2.2), trayFaces);
 
   // Two cylindrical insulated thermo-mugs (y = 19.4 .. 22.8)
-  pushCylinderAt(vertices, normals, uvs, -3.4, 5.2, 19.4, 22.8, 1.15, 1.15, trayU0, trayU1, 0.66, 0.96, 8);
-  pushCylinderAt(vertices, normals, uvs, 3.4, -5.2, 19.4, 22.8, 1.15, 1.15, trayU0, trayU1, 0.66, 0.96, 8);
+  pushCylinderAt(vertices, normals, uvs, argV3a.setScalar(-3.4, 19.4, 5.2), argV3b.setScalar(-3.4, 22.8, 5.2), argV2a.setScalar(1.15, 1.15), uvBox(trayU0, 0.66, trayU1, 0.96), 8);
+  pushCylinderAt(vertices, normals, uvs, argV3a.setScalar(3.4, 19.4, -5.2), argV3b.setScalar(3.4, 22.8, -5.2), argV2a.setScalar(1.15, 1.15), uvBox(trayU0, 0.66, trayU1, 0.96), 8);
 
   // Center condiment & napkin dispenser caddy (y = 19.4 .. 23.2)
   pushBoxPart(vertices, normals, uvs, new Vec3(-2.2, 19.4, -1.6), new Vec3(2.2, 23.2, 1.6), {
@@ -1644,10 +1658,10 @@ export function tableMesh() {
   });
 
   // 5. Four Refectory Chairs (2 on +Z side facing -Z, 2 on -Z side facing +Z, reaching y = 30.0)
-  buildRefectoryChair(vertices, normals, uvs, -9.5, 11.8, 1, chairU0, chairU1, uvRect, false);
-  buildRefectoryChair(vertices, normals, uvs, 9.5, 11.8, 1, chairU0, chairU1, uvRect, false);
-  buildRefectoryChair(vertices, normals, uvs, -9.5, -11.8, -1, chairU0, chairU1, uvRect, false);
-  buildRefectoryChair(vertices, normals, uvs, 9.5, -11.8, -1, chairU0, chairU1, uvRect, false);
+  buildRefectoryChair(vertices, normals, uvs, argV2a.setScalar(-9.5, 11.8), 1, chairU0, chairU1, uvRect, false);
+  buildRefectoryChair(vertices, normals, uvs, argV2a.setScalar(9.5, 11.8), 1, chairU0, chairU1, uvRect, false);
+  buildRefectoryChair(vertices, normals, uvs, argV2a.setScalar(-9.5, -11.8), -1, chairU0, chairU1, uvRect, false);
+  buildRefectoryChair(vertices, normals, uvs, argV2a.setScalar(9.5, -11.8), -1, chairU0, chairU1, uvRect, false);
 
   return flipV({
     vertices: new Float32Array(vertices),
@@ -1699,10 +1713,10 @@ export function tableWreckMesh() {
   pushBoxPart(vertices, normals, uvs, new Vec3(5.8, 16.8, -11.0), new Vec3(19.0, 19.2, 11.0), slabFaces);
 
   // Surviving chairs (front-right chair backrest blown off)
-  buildRefectoryChair(vertices, normals, uvs, -9.5, 12.4, 1, chairU0, chairU1, uvRect, false);
-  buildRefectoryChair(vertices, normals, uvs, 9.8, 12.6, 1, chairU0, chairU1, uvRect, true);
-  buildRefectoryChair(vertices, normals, uvs, -9.5, -12.2, -1, chairU0, chairU1, uvRect, false);
-  buildRefectoryChair(vertices, normals, uvs, 9.5, -12.2, -1, chairU0, chairU1, uvRect, true);
+  buildRefectoryChair(vertices, normals, uvs, argV2a.setScalar(-9.5, 12.4), 1, chairU0, chairU1, uvRect, false);
+  buildRefectoryChair(vertices, normals, uvs, argV2a.setScalar(9.8, 12.6), 1, chairU0, chairU1, uvRect, true);
+  buildRefectoryChair(vertices, normals, uvs, argV2a.setScalar(-9.5, -12.2), -1, chairU0, chairU1, uvRect, false);
+  buildRefectoryChair(vertices, normals, uvs, argV2a.setScalar(9.5, -12.2), -1, chairU0, chairU1, uvRect, true);
 
   return flipV({
     vertices: new Float32Array(vertices),
@@ -1819,7 +1833,7 @@ export function tableShrapnelParts() {
   const mVerts = [];
   const mNorms = [];
   const mUvs = [];
-  pushCylinderAt(mVerts, mNorms, mUvs, 0, 0, -1.7, 1.7, 1.2, 1.2, trayU0, trayU1, 0.66, 0.96, 8);
+  pushCylinderAt(mVerts, mNorms, mUvs, argV3a.setScalar(0, -1.7, 0), argV3b.setScalar(0, 1.7, 0), argV2a.setScalar(1.2, 1.2), uvBox(trayU0, 0.66, trayU1, 0.96), 8);
   shards.push(flipV({ vertices: new Float32Array(mVerts), normals: new Float32Array(mNorms), uvs: new Float32Array(mUvs) }));
 
   const carboyTop = flipV({
@@ -1852,24 +1866,7 @@ export function tableBreakPose(elapsed, seed = 0, target = createTableBreakPose(
   const topDuration = 0.82;
   const topSpread = Math.sin(seed * 2.5 + 0.4) * 0.8;
   const topDist = 14 + ((Math.cos(seed * 3.9) + 1) * 0.5) * 8;
-  writeBallisticArc(
-    target.carboyTop.pos,
-    target.carboyTop.rot,
-    0,
-    19.0,
-    0,
-    Math.sin(topSpread) * topDist,
-    1.2,
-    Math.cos(topSpread) * topDist,
-    Trigo.pi * 2.0,
-    topSpread + Trigo.pi * 0.8,
-    Trigo.pi * 1.4,
-    0.08,
-    topSpread + 0.4,
-    0.12,
-    t / topDuration,
-    12,
-  );
+  writeBallisticArc(target.carboyTop.pos, target.carboyTop.rot, argV3a.setScalar(0, 19.0, 0), argV3b.setScalar(Math.sin(topSpread) * topDist, 1.2, Math.cos(topSpread) * topDist), argV3c.setScalar(Trigo.pi * 2.0, topSpread + Trigo.pi * 0.8, Trigo.pi * 1.4), argV3d.setScalar(0.08, topSpread + 0.4, 0.12), t / topDuration, 12);
 
   for (let i = 0; i < TABLE_SHARD_COUNT; i++) {
     const shard = target.shards[i];
@@ -1882,24 +1879,7 @@ export function tableBreakPose(elapsed, seed = 0, target = createTableBreakPose(
     const duration = 0.58 + hash * 0.22;
     const peakLift = 9 + (1 - hash) * 9;
     const dirSign = i % 2 === 0 ? 1 : -1;
-    writeBallisticArc(
-      shard.pos,
-      shard.rot,
-      startX,
-      startY,
-      startZ,
-      Math.sin(fan) * dist,
-      0.85,
-      Math.cos(fan) * dist,
-      dirSign * Trigo.pi * (2.0 + hash),
-      fan + dirSign * 1.3,
-      -dirSign * Trigo.pi * 1.5,
-      Trigo.halfpi - 0.1,
-      fan + 0.25 * dirSign,
-      (hash - 0.5) * 0.2,
-      t / duration,
-      peakLift,
-    );
+    writeBallisticArc(shard.pos, shard.rot, argV3a.setScalar(startX, startY, startZ), argV3b.setScalar(Math.sin(fan) * dist, 0.85, Math.cos(fan) * dist), argV3c.setScalar(dirSign * Trigo.pi * (2.0 + hash), fan + dirSign * 1.3, -dirSign * Trigo.pi * 1.5), argV3d.setScalar(Trigo.halfpi - 0.1, fan + 0.25 * dirSign, (hash - 0.5) * 0.2), t / duration, peakLift);
   }
   return target;
 }
@@ -2190,7 +2170,17 @@ export function deskAtlas() {
   };
 }
 
-function pushCylinderAt(vertices, normals, uvs, cx, cz, y0, y1, r0, r1, uStart, uEnd, v0, v1, segs = 8) {
+function pushCylinderAt(vertices, normals, uvs, base, top, radius, uv, segs = 8) {
+  const cx = base.x;
+  const cz = base.z;
+  const y0 = base.y;
+  const y1 = top.y;
+  const r0 = radius.x;
+  const r1 = radius.y;
+  const uStart = uv.topLeftCorner.x;
+  const v0 = uv.topLeftCorner.y;
+  const uEnd = uv.bottomRightCorner.x;
+  const v1 = uv.bottomRightCorner.y;
   for (let i = 0; i < segs; i++) {
     const f0 = i / segs;
     const f1 = (i + 1) / segs;
@@ -2206,11 +2196,13 @@ function pushCylinderAt(vertices, normals, uvs, cx, cz, y0, y1, r0, r1, uStart, 
     const t0 = new Vec3(cx + c0 * r1, y1, cz + s0 * r1);
     const u0 = Utils.lerp(uStart, uEnd, f0);
     const u1 = Utils.lerp(uStart, uEnd, f1);
-    pushQuad(vertices, normals, uvs, b1, b0, t0, t1, u0, v0, u1, v1);
+    pushQuad(vertices, normals, uvs, b1, b0, t0, t1, uvBox(u0, v0, u1, v1));
   }
 }
 
-function buildChairParts(vertices, normals, uvs, chairX, chairZ, chairU0, chairU1, uvRect, wrecked = false) {
+function buildChairParts(vertices, normals, uvs, pos, chairU0, chairU1, uvRect, wrecked = false) {
+  const chairX = pos.x;
+  const chairZ = pos.y;
   const fabricV0 = 0.04;
   const fabricV1 = 0.66;
   const baseV0 = 0.72;
@@ -2234,7 +2226,7 @@ function buildChairParts(vertices, normals, uvs, chairX, chairZ, chairU0, chairU
     pushBoxPart(vertices, normals, uvs, new Vec3(chairX + dx - 0.9, 0, chairZ + dz - 0.9), new Vec3(chairX + dx + 0.9, 1.0, chairZ + dz + 0.9), baseFaces);
 
   // 2. Pneumatic Cylinder Column (y = 2.0 .. 11.8)
-  pushCylinderAt(vertices, normals, uvs, chairX, chairZ, 2.0, 11.8, 1.25, 1.05, chairU0, chairU1, chromeV0, chromeV1, 8);
+  pushCylinderAt(vertices, normals, uvs, argV3a.setScalar(chairX, 2.0, chairZ), argV3b.setScalar(chairX, 11.8, chairZ), argV2a.setScalar(1.25, 1.05), uvBox(chairU0, chromeV0, chairU1, chromeV1), 8);
 
   // 3. Contoured Upholstered Seat Cushion (y = 11.8 .. 14.4)
   const seatFaces = {
@@ -2396,7 +2388,7 @@ function deskMeshAuthored() {
   });
 
   // 9. Swivel Office Task Chair tucked in front of the desk (centered at x = 1.2, z = 8.8, facing -Z)
-  buildChairParts(vertices, normals, uvs, 1.2, 8.8, chairU0, chairU1, uvRect, false);
+  buildChairParts(vertices, normals, uvs, argV2a.setScalar(1.2, 8.8), chairU0, chairU1, uvRect, false);
 
   return {
     vertices: new Float32Array(vertices),
@@ -2516,7 +2508,7 @@ function deskWreckMeshAuthored() {
   });
 
   // 5. Knocked-back office chair in front of the desk (shifted slightly to z = 10.2)
-  buildChairParts(vertices, normals, uvs, 1.6, 10.2, chairU0, chairU1, uvRect, true);
+  buildChairParts(vertices, normals, uvs, argV2a.setScalar(1.6, 10.2), chairU0, chairU1, uvRect, true);
 
   return {
     vertices: new Float32Array(vertices),
@@ -2774,24 +2766,7 @@ export function deskBreakPose(elapsed, seed = 0, target = createDeskBreakPose())
   const topDist = 16 + ((Math.cos(seed * 4.1) + 1) * 0.5) * 7;
   const topEndX = 1.6 + Math.sin(topSpread) * topDist;
   const topEndZ = Math.max(4.0, Math.cos(topSpread) * topDist);
-  writeBallisticArc(
-    target.monitorTop.pos,
-    target.monitorTop.rot,
-    1.6,
-    31.0,
-    -6.0,
-    topEndX,
-    3.2,
-    topEndZ,
-    Trigo.pi * 2.2,
-    topSpread + Trigo.pi * 0.9,
-    Trigo.pi * 1.5,
-    Trigo.halfpi - 0.14,
-    topSpread + 0.45,
-    0.18,
-    t / topDuration,
-    13,
-  );
+  writeBallisticArc(target.monitorTop.pos, target.monitorTop.rot, argV3a.setScalar(1.6, 31.0, -6.0), argV3b.setScalar(topEndX, 3.2, topEndZ), argV3c.setScalar(Trigo.pi * 2.2, topSpread + Trigo.pi * 0.9, Trigo.pi * 1.5), argV3d.setScalar(Trigo.halfpi - 0.14, topSpread + 0.45, 0.18), t / topDuration, 13);
 
   // 4. Five shards (2 CRT screen glass shards + PC tower cover + keyboard half + chair armrest) fly out into +Z / ±X
   for (let i = 0; i < DESK_SHARD_COUNT; i++) {
@@ -2805,24 +2780,7 @@ export function deskBreakPose(elapsed, seed = 0, target = createDeskBreakPose())
     const duration = 0.6 + hash * 0.22;
     const peakLift = 9 + (1 - hash) * 10;
     const dirSign = i % 2 === 0 ? 1 : -1;
-    writeBallisticArc(
-      shard.pos,
-      shard.rot,
-      startX,
-      startY,
-      startZ,
-      Math.sin(fan) * dist,
-      0.9,
-      Math.max(3.5, Math.cos(fan) * dist),
-      dirSign * Trigo.pi * (2.1 + hash),
-      fan + dirSign * 1.4,
-      -dirSign * Trigo.pi * 1.6,
-      Trigo.halfpi - 0.1,
-      fan + 0.3 * dirSign,
-      (hash - 0.5) * 0.22,
-      t / duration,
-      peakLift,
-    );
+    writeBallisticArc(shard.pos, shard.rot, argV3a.setScalar(startX, startY, startZ), argV3b.setScalar(Math.sin(fan) * dist, 0.9, Math.max(3.5, Math.cos(fan) * dist)), argV3c.setScalar(dirSign * Trigo.pi * (2.1 + hash), fan + dirSign * 1.4, -dirSign * Trigo.pi * 1.6), argV3d.setScalar(Trigo.halfpi - 0.1, fan + 0.3 * dirSign, (hash - 0.5) * 0.22), t / duration, peakLift);
   }
 
   return target;
@@ -3056,7 +3014,7 @@ export function ovenMesh() {
     top: uvRect((cookU0 + cookU1) * 0.5, 0.04, cookU1, 0.96),
   });
   // Cylindrical stainless stockpot with lid on the front-left burner
-  pushCylinderAt(vertices, normals, uvs, -6.4, 3.8, 27.9, 33.2, 3.6, 3.6, trimU0, trimU1, 0.05, 0.42, 10);
+  pushCylinderAt(vertices, normals, uvs, argV3a.setScalar(-6.4, 27.9, 3.8), argV3b.setScalar(-6.4, 33.2, 3.8), argV2a.setScalar(3.6, 3.6), uvBox(trimU0, 0.05, trimU1, 0.42), 10);
   pushBoxPart(vertices, normals, uvs, new Vec3(-10.0, 33.2, 0.2), new Vec3(-2.8, 33.8, 7.4), chromeFaces);
 
   // 6. Rear Stainless Exhaust Backsplash & Flue Riser (x = -13.0 .. 13.0, y = 26.8 .. 36.0, z = -11.0 .. -7.6)
@@ -3204,7 +3162,7 @@ export function ovenShrapnelParts() {
   const potVerts = [];
   const potNorms = [];
   const potUvs = [];
-  pushCylinderAt(potVerts, potNorms, potUvs, 0, 0, -2.6, 2.6, 3.4, 3.4, trimU0, trimU1, 0.05, 0.42, 8);
+  pushCylinderAt(potVerts, potNorms, potUvs, argV3a.setScalar(0, -2.6, 0), argV3b.setScalar(0, 2.6, 0), argV2a.setScalar(3.4, 3.4), uvBox(trimU0, 0.05, trimU1, 0.42), 8);
   shards.push(flipV({ vertices: new Float32Array(potVerts), normals: new Float32Array(potNorms), uvs: new Float32Array(potUvs) }));
 
   // Shards 1 & 2: Two cast-iron stovetop burner grates
@@ -3767,7 +3725,10 @@ export function plantAtlas() {
  * floor plane), rising at `pitch` and bending down by `droop` over its `length`. `fold` lifts the two edges into a shallow V
  * along the midrib. Normals are smooth across the blade, `foliage` is the leaf cell's u range.
  */
-function pushLeaf(vertices, normals, uvs, foliage, ox, oy, oz, yaw, length, width, pitch, droop, fold = 0.35, segs = 6) {
+function pushLeaf(vertices, normals, uvs, foliage, pos, yaw, length, width, pitch, droop, fold = 0.35, segs = 6) {
+  const ox = pos.x;
+  const oy = pos.y;
+  const oz = pos.z;
   const dx = Math.cos(yaw);
   const dz = Math.sin(yaw);
   const sx = -dz;
@@ -3830,7 +3791,13 @@ function pushLeaf(vertices, normals, uvs, foliage, ox, oy, oz, yaw, length, widt
 }
 
 /** Pushes a slim round cane from (`cx`, `y0`, `cz`) up to `y1`, narrowing from `r0` to `r1`, with smooth radial normals. */
-function pushCane(vertices, normals, uvs, stem, cx, cz, y0, y1, r0, r1, segs = 7) {
+function pushCane(vertices, normals, uvs, stem, base, top, radius, segs = 7) {
+  const cx = base.x;
+  const cz = base.z;
+  const y0 = base.y;
+  const y1 = top.y;
+  const r0 = radius.x;
+  const r1 = radius.y;
   const slope = (r0 - r1) / Math.max(y1 - y0, 0.001);
   const ring = Math.hypot(1, slope);
   for (let i = 0; i < segs; i++) {
@@ -3870,17 +3837,17 @@ export function buildOfficePlant() {
   const soilHalf = (soil.u1 - soil.u0) * 0.45;
 
   // 1. Terracotta planter pot (y = 0 .. 15.0): a bellied wall, a thick rolled rim and a flat foot
-  pushFrustumRing(vertices, normals, uvs, 0, 1.2, 5.6, 6.0, pot.u0, pot.u1, 0.82, 0.95, 20);
-  pushFrustumRing(vertices, normals, uvs, 1.2, 9.5, 6.0, 7.9, pot.u0, pot.u1, 0.3, 0.82, 20);
-  pushFrustumRing(vertices, normals, uvs, 9.5, 12.8, 7.9, 8.4, pot.u0, pot.u1, 0.2, 0.3, 20);
-  pushFrustumRing(vertices, normals, uvs, 12.8, 13.4, 8.4, 9.0, pot.u0, pot.u1, 0.1, 0.2, 20);
-  pushFrustumRing(vertices, normals, uvs, 13.4, 15.0, 9.0, 8.8, pot.u0, pot.u1, 0.05, 0.1, 20);
-  pushFrustumRing(vertices, normals, uvs, 15.0, 14.2, 8.8, 8.0, pot.u0, pot.u1, 0.05, 0.1, 20);
-  pushTopDisc(vertices, normals, uvs, 0, 5.6, potMid, 0.5, potHalf, 0.4, 20);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 0, 0), argV3b.setScalar(0, 1.2, 0), argV2a.setScalar(5.6, 6.0), uvBox(pot.u0, 0.82, pot.u1, 0.95), 20);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 1.2, 0), argV3b.setScalar(0, 9.5, 0), argV2a.setScalar(6.0, 7.9), uvBox(pot.u0, 0.3, pot.u1, 0.82), 20);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 9.5, 0), argV3b.setScalar(0, 12.8, 0), argV2a.setScalar(7.9, 8.4), uvBox(pot.u0, 0.2, pot.u1, 0.3), 20);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 12.8, 0), argV3b.setScalar(0, 13.4, 0), argV2a.setScalar(8.4, 9.0), uvBox(pot.u0, 0.1, pot.u1, 0.2), 20);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 13.4, 0), argV3b.setScalar(0, 15.0, 0), argV2a.setScalar(9.0, 8.8), uvBox(pot.u0, 0.05, pot.u1, 0.1), 20);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 15.0, 0), argV3b.setScalar(0, 14.2, 0), argV2a.setScalar(8.8, 8.0), uvBox(pot.u0, 0.05, pot.u1, 0.1), 20);
+  pushTopDisc(vertices, normals, uvs, argV3a.setScalar(0, 0, 0), 5.6, argV2a.setScalar(potMid, 0.5), argV2b.setScalar(potHalf, 0.4), 20);
 
   // 2. Potting soil heaped a little in the middle
-  pushFrustumRing(vertices, normals, uvs, 14.2, 14.9, 8.0, 5.6, soil.u0, soil.u1, 0.2, 0.8, 20);
-  pushTopDisc(vertices, normals, uvs, 14.9, 5.6, soilMid, 0.5, soilHalf * 0.7, 0.35, 20);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 14.2, 0), argV3b.setScalar(0, 14.9, 0), argV2a.setScalar(8.0, 5.6), uvBox(soil.u0, 0.2, soil.u1, 0.8), 20);
+  pushTopDisc(vertices, normals, uvs, argV3a.setScalar(0, 14.9, 0), 5.6, argV2a.setScalar(soilMid, 0.5), argV2b.setScalar(soilHalf * 0.7, 0.35), 20);
 
   // 3. Three slim canes of different heights, each carrying a crown of arching leaves; shorter leaves spring from the soil
   const rnd = mulberry32(8710);
@@ -3890,20 +3857,17 @@ export function buildOfficePlant() {
     { x: 2.4, z: -1.8, top: 22.8, leaves: 7, length: 9.6, pitch: 1.12 },
   ];
   for (const cane of canes) {
-    pushCane(vertices, normals, uvs, stem, cane.x, cane.z, 14.5, cane.top, 0.78, 0.5);
+    pushCane(vertices, normals, uvs, stem, argV3a.setScalar(cane.x, 14.5, cane.z), argV3b.setScalar(cane.x, cane.top, cane.z), argV2a.setScalar(0.78, 0.5));
     for (let i = 0; i < cane.leaves; i++) {
       const yaw = (i / cane.leaves) * Trigo.twopi + rnd() * 0.5;
       // leaves alternate between young and upright and old and drooping
       const old = i % 2;
-      pushLeaf(vertices, normals, uvs, foliage, cane.x, cane.top - 0.4, cane.z, yaw,
-        cane.length * (0.8 + rnd() * 0.3), 3.2 + rnd() * 0.8,
-        cane.pitch - old * 0.5 + rnd() * 0.2, 0.9 + old * 0.7 + rnd() * 0.4, 0.4, 6);
+      pushLeaf(vertices, normals, uvs, foliage, argV3a.setScalar(cane.x, cane.top - 0.4, cane.z), yaw, cane.length * (0.8 + rnd() * 0.3), 3.2 + rnd() * 0.8, cane.pitch - old * 0.5 + rnd() * 0.2, 0.9 + old * 0.7 + rnd() * 0.4, 0.4, 6);
     }
   }
   for (let i = 0; i < 7; i++) {
     const yaw = (i / 7) * Trigo.twopi + 0.3 + rnd() * 0.4;
-    pushLeaf(vertices, normals, uvs, foliage, Math.cos(yaw) * 1.6, 14.7, Math.sin(yaw) * 1.6, yaw,
-      8.0 + rnd() * 2.5, 3.4 + rnd() * 0.8, 0.85 + rnd() * 0.3, 0.9 + rnd() * 0.5, 0.45, 6);
+    pushLeaf(vertices, normals, uvs, foliage, argV3a.setScalar(Math.cos(yaw) * 1.6, 14.7, Math.sin(yaw) * 1.6), yaw, 8.0 + rnd() * 2.5, 3.4 + rnd() * 0.8, 0.85 + rnd() * 0.3, 0.9 + rnd() * 0.5, 0.45, 6);
   }
 
   return flipV({
@@ -3941,8 +3905,8 @@ export function plantWreckMesh() {
   const potMid = (pot.u0 + pot.u1) * 0.5;
 
   // 1. The pot's lower half (y = 0 .. 8.0), its base disc, and the broken edge it leaves
-  pushFrustumRing(vertices, normals, uvs, 0, 8.0, 6.2, 7.5, pot.u0, pot.u1, 0.5, 0.9, 12);
-  pushTopDisc(vertices, normals, uvs, 0, 6.2, potMid, 0.5, (pot.u1 - pot.u0) * 0.4, 0.4, 12);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 0, 0), argV3b.setScalar(0, 8.0, 0), argV2a.setScalar(6.2, 7.5), uvBox(pot.u0, 0.5, pot.u1, 0.9), 12);
+  pushTopDisc(vertices, normals, uvs, argV3a.setScalar(0, 0, 0), 6.2, argV2a.setScalar(potMid, 0.5), argV2b.setScalar((pot.u1 - pot.u0) * 0.4, 0.4), 12);
   for (let i = 0; i < 12; i++) {
     // a saw-tooth rim: the pot wall is torn away higher in some places than others
     const a0 = (i / 12) * Trigo.twopi;
@@ -3961,15 +3925,15 @@ export function plantWreckMesh() {
   }
 
   // 2. Spilled potting soil heaped in the pot, higher in the middle
-  pushTopDisc(vertices, normals, uvs, 8.2, 7.2, (soil.u0 + soil.u1) * 0.5, 0.5, (soil.u1 - soil.u0) * 0.45, 0.45, 12);
-  pushFrustumRing(vertices, normals, uvs, 8.2, 9.4, 7.0, 4.4, soil.u0, soil.u1, 0.2, 0.7, 10);
-  pushTopDisc(vertices, normals, uvs, 9.4, 4.4, (soil.u0 + soil.u1) * 0.5, 0.5, (soil.u1 - soil.u0) * 0.3, 0.3, 10);
+  pushTopDisc(vertices, normals, uvs, argV3a.setScalar(0, 8.2, 0), 7.2, argV2a.setScalar((soil.u0 + soil.u1) * 0.5, 0.5), argV2b.setScalar((soil.u1 - soil.u0) * 0.45, 0.45), 12);
+  pushFrustumRing(vertices, normals, uvs, argV3a.setScalar(0, 8.2, 0), argV3b.setScalar(0, 9.4, 0), argV2a.setScalar(7.0, 4.4), uvBox(soil.u0, 0.2, soil.u1, 0.7), 10);
+  pushTopDisc(vertices, normals, uvs, argV3a.setScalar(0, 9.4, 0), 4.4, argV2a.setScalar((soil.u0 + soil.u1) * 0.5, 0.5), argV2b.setScalar((soil.u1 - soil.u0) * 0.3, 0.3), 10);
 
   // 3. A snapped cane stub and a few leaves torn off and lying on the soil
-  pushCane(vertices, normals, uvs, stem, 0, 0, 9.2, 14.0, 0.8, 0.55);
-  pushLeaf(vertices, normals, uvs, foliage, -1.0, 9.5, 0.8, 2.6, 5.8, 3.0, 0.12, 0.25, 0.25, 4);
-  pushLeaf(vertices, normals, uvs, foliage, 1.2, 9.5, -1.0, -0.9, 5.6, 3.0, 0.1, 0.3, 0.25, 4);
-  pushLeaf(vertices, normals, uvs, foliage, 0.8, 9.6, 1.4, 0.7, 4.6, 2.6, 0.14, 0.2, 0.25, 4);
+  pushCane(vertices, normals, uvs, stem, argV3a.setScalar(0, 9.2, 0), argV3b.setScalar(0, 14.0, 0), argV2a.setScalar(0.8, 0.55));
+  pushLeaf(vertices, normals, uvs, foliage, argV3a.setScalar(-1.0, 9.5, 0.8), 2.6, 5.8, 3.0, 0.12, 0.25, 0.25, 4);
+  pushLeaf(vertices, normals, uvs, foliage, argV3a.setScalar(1.2, 9.5, -1.0), -0.9, 5.6, 3.0, 0.1, 0.3, 0.25, 4);
+  pushLeaf(vertices, normals, uvs, foliage, argV3a.setScalar(0.8, 9.6, 1.4), 0.7, 4.6, 2.6, 0.14, 0.2, 0.25, 4);
 
   return flipV({
     vertices: new Float32Array(vertices),
@@ -4021,9 +3985,9 @@ export function plantShrapnelParts() {
   const crownVerts = [];
   const crownNorms = [];
   const crownUvs = [];
-  pushCane(crownVerts, crownNorms, crownUvs, stem, 0, 0, -4.5, -0.5, 0.6, 0.5);
+  pushCane(crownVerts, crownNorms, crownUvs, stem, argV3a.setScalar(0, -4.5, 0), argV3b.setScalar(0, -0.5, 0), argV2a.setScalar(0.6, 0.5));
   for (let i = 0; i < 7; i++)
-    pushLeaf(crownVerts, crownNorms, crownUvs, foliage, 0, -0.5, 0, (i / 7) * Trigo.twopi, 6.4 + (i % 2) * 1.4, 2.8, 0.7 - (i % 2) * 0.35, 0.9, 0.35, 4);
+    pushLeaf(crownVerts, crownNorms, crownUvs, foliage, argV3a.setScalar(0, -0.5, 0), (i / 7) * Trigo.twopi, 6.4 + (i % 2) * 1.4, 2.8, 0.7 - (i % 2) * 0.35, 0.9, 0.35, 4);
 
   const shards = [];
   // three curved pieces of the pot wall, each a jagged strip of the terracotta
@@ -4054,8 +4018,8 @@ export function plantShrapnelParts() {
       const t1 = new Vec3(x1 * 1.04, top1, z1 + 0.3);
       const u0 = Utils.lerp(pot.u0, pot.u1, uBase + (j / subSegs) * uSpan);
       const u1 = Utils.lerp(pot.u0, pot.u1, uBase + ((j + 1) / subSegs) * uSpan);
-      pushQuad(verts, norms, uvs, b0, b1, t1, t0, u0, 0.3, u1, 0.85);
-      pushQuad(verts, norms, uvs, b1, b0, t0, t1, u0, 0.3, u1, 0.85);
+      pushQuad(verts, norms, uvs, b0, b1, t1, t0, uvBox(u0, 0.3, u1, 0.85));
+      pushQuad(verts, norms, uvs, b1, b0, t0, t1, uvBox(u0, 0.3, u1, 0.85));
     }
     shards.push(flipV({ vertices: new Float32Array(verts), normals: new Float32Array(norms), uvs: new Float32Array(uvs) }));
   }
@@ -4065,7 +4029,7 @@ export function plantShrapnelParts() {
     const norms = [];
     const uvs = [];
     for (let i = 0; i < 3; i++)
-      pushLeaf(verts, norms, uvs, foliage, 0, 0, 0, (i / 3) * Trigo.twopi + s * 0.9, 4.6, 2.2, 0.06, 0.12, 0.25, 3);
+      pushLeaf(verts, norms, uvs, foliage, argV3a.setScalar(0, 0, 0), (i / 3) * Trigo.twopi + s * 0.9, 4.6, 2.2, 0.06, 0.12, 0.25, 3);
     shards.push(flipV({ vertices: new Float32Array(verts), normals: new Float32Array(norms), uvs: new Float32Array(uvs) }));
   }
   return {
@@ -4097,24 +4061,7 @@ export function plantBreakPose(elapsed, seed = 0, target = createPlantBreakPose(
   const topDuration = 0.8;
   const topSpread = Math.sin(seed * 2.3 + 0.5) * 0.8;
   const topDist = 12 + ((Math.cos(seed * 3.7) + 1) * 0.5) * 6;
-  writeBallisticArc(
-    target.carboyTop.pos,
-    target.carboyTop.rot,
-    0,
-    18.0,
-    0,
-    Math.sin(topSpread) * topDist,
-    1.5,
-    Math.cos(topSpread) * topDist,
-    Trigo.pi * 2.2,
-    topSpread + Trigo.pi * 0.6,
-    Trigo.pi * 1.2,
-    0.1,
-    topSpread + 0.3,
-    0.1,
-    t / topDuration,
-    10,
-  );
+  writeBallisticArc(target.carboyTop.pos, target.carboyTop.rot, argV3a.setScalar(0, 18.0, 0), argV3b.setScalar(Math.sin(topSpread) * topDist, 1.5, Math.cos(topSpread) * topDist), argV3c.setScalar(Trigo.pi * 2.2, topSpread + Trigo.pi * 0.6, Trigo.pi * 1.2), argV3d.setScalar(0.1, topSpread + 0.3, 0.1), t / topDuration, 10);
 
   for (let i = 0; i < PLANT_SHARD_COUNT; i++) {
     const shard = target.shards[i];
@@ -4126,24 +4073,7 @@ export function plantBreakPose(elapsed, seed = 0, target = createPlantBreakPose(
     const dist = 10 + hash * 10;
     const duration = 0.55 + hash * 0.25;
     const peakLift = 8 + (1 - hash) * 8;
-    writeBallisticArc(
-      shard.pos,
-      shard.rot,
-      startX,
-      startY,
-      startZ,
-      Math.cos(fan) * dist,
-      0.8,
-      Math.sin(fan) * dist,
-      Trigo.pi * (2 + hash),
-      fan + Trigo.pi * 0.5,
-      Trigo.pi * 1.5,
-      0.15,
-      fan,
-      0.2,
-      t / duration,
-      peakLift,
-    );
+    writeBallisticArc(shard.pos, shard.rot, argV3a.setScalar(startX, startY, startZ), argV3b.setScalar(Math.cos(fan) * dist, 0.8, Math.sin(fan) * dist), argV3c.setScalar(Trigo.pi * (2 + hash), fan + Trigo.pi * 0.5, Trigo.pi * 1.5), argV3d.setScalar(0.15, fan, 0.2), t / duration, peakLift);
   }
   return target;
 }
@@ -4357,7 +4287,19 @@ export function toiletAtlas() {
   };
 }
 
-function pushOvalFrustum(vertices, normals, uvs, cz0, cz1, y0, y1, rx0, rz0, rx1, rz1, uStart, uEnd, v0, v1, segs = 14, inward = false) {
+function pushOvalFrustum(vertices, normals, uvs, base, top, baseRadius, topRadius, uv, segs = 14, inward = false) {
+  const cz0 = base.z;
+  const cz1 = top.z;
+  const y0 = base.y;
+  const y1 = top.y;
+  const rx0 = baseRadius.x;
+  const rz0 = baseRadius.y;
+  const rx1 = topRadius.x;
+  const rz1 = topRadius.y;
+  const uStart = uv.topLeftCorner.x;
+  const v0 = uv.topLeftCorner.y;
+  const uEnd = uv.bottomRightCorner.x;
+  const v1 = uv.bottomRightCorner.y;
   for (let i = 0; i < segs; i++) {
     const f0 = i / segs;
     const f1 = (i + 1) / segs;
@@ -4374,13 +4316,23 @@ function pushOvalFrustum(vertices, normals, uvs, cz0, cz1, y0, y1, rx0, rz0, rx1
     const u0 = Utils.lerp(uStart, uEnd, f0);
     const u1 = Utils.lerp(uStart, uEnd, f1);
     if (inward)
-      pushQuad(vertices, normals, uvs, b0, b1, t1, t0, u0, v0, u1, v1);
+      pushQuad(vertices, normals, uvs, b0, b1, t1, t0, uvBox(u0, v0, u1, v1));
     else
-      pushQuad(vertices, normals, uvs, b1, b0, t0, t1, u0, v0, u1, v1);
+      pushQuad(vertices, normals, uvs, b1, b0, t0, t1, uvBox(u0, v0, u1, v1));
   }
 }
 
-function pushOvalRingCap(vertices, normals, uvs, cz, y, rxOuter, rzOuter, rxInner, rzInner, uCenter, vCenter, uRadius, vRadius, segs = 14) {
+function pushOvalRingCap(vertices, normals, uvs, pos, outer, inner, uvCentre, uvRadius, segs = 14) {
+  const cz = pos.z;
+  const y = pos.y;
+  const rxOuter = outer.x;
+  const rzOuter = outer.y;
+  const rxInner = inner.x;
+  const rzInner = inner.y;
+  const uCenter = uvCentre.x;
+  const vCenter = uvCentre.y;
+  const uRadius = uvRadius.x;
+  const vRadius = uvRadius.y;
   for (let i = 0; i < segs; i++) {
     const a0 = (i / segs) * Trigo.twopi;
     const a1 = ((i + 1) / segs) * Trigo.twopi;
@@ -4401,7 +4353,15 @@ function pushOvalRingCap(vertices, normals, uvs, cz, y, rxOuter, rzOuter, rxInne
   }
 }
 
-function pushOvalDisc(vertices, normals, uvs, cz, y, rx, rz, uCenter, vCenter, uRadius, vRadius, segs = 14) {
+function pushOvalDisc(vertices, normals, uvs, pos, radius, uvCentre, uvRadius, segs = 14) {
+  const cz = pos.z;
+  const y = pos.y;
+  const rx = radius.x;
+  const rz = radius.y;
+  const uCenter = uvCentre.x;
+  const vCenter = uvCentre.y;
+  const uRadius = uvRadius.x;
+  const vRadius = uvRadius.y;
   const center = new Vec3(0, y, cz);
   const uvCenter = new Vec2(uCenter, vCenter);
   for (let i = 0; i < segs; i++) {
@@ -4453,11 +4413,11 @@ export function toiletMesh() {
   const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
 
   // 1. Flanged Oval Porcelain Pedestal Base & Sculpted Bowl Outer Belly (y = 0 .. 16.2)
-  pushOvalDisc(vertices, normals, uvs, 2.0, 0, 5.2, 7.2, (porcU0 + porcU1) * 0.5, 0.85, (porcU1 - porcU0) * 0.35, 0.1, 14);
-  pushOvalFrustum(vertices, normals, uvs, 2.0, 2.0, 0, 2.0, 5.2, 7.2, 4.6, 6.6, porcU0, porcU1, 0.78, 0.98, 14);
-  pushOvalFrustum(vertices, normals, uvs, 2.0, 2.4, 2.0, 8.2, 4.6, 6.6, 4.9, 7.2, porcU0, porcU1, 0.42, 0.78, 14);
-  pushOvalFrustum(vertices, normals, uvs, 2.4, 3.0, 8.2, 13.6, 4.9, 7.2, 6.8, 8.6, porcU0, porcU1, 0.18, 0.42, 14);
-  pushOvalFrustum(vertices, normals, uvs, 3.0, 3.0, 13.6, 16.2, 6.8, 8.6, 7.0, 8.8, porcU0, porcU1, 0.03, 0.2, 14);
+  pushOvalDisc(vertices, normals, uvs, argV3a.setScalar(0, 0, 2.0), argV2a.setScalar(5.2, 7.2), argV2b.setScalar((porcU0 + porcU1) * 0.5, 0.85), argV2c.setScalar((porcU1 - porcU0) * 0.35, 0.1), 14);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 0, 2.0), argV3b.setScalar(0, 2.0, 2.0), argV2a.setScalar(5.2, 7.2), argV2b.setScalar(4.6, 6.6), uvBox(porcU0, 0.78, porcU1, 0.98), 14);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 2.0, 2.0), argV3b.setScalar(0, 8.2, 2.4), argV2a.setScalar(4.6, 6.6), argV2b.setScalar(4.9, 7.2), uvBox(porcU0, 0.42, porcU1, 0.78), 14);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 8.2, 2.4), argV3b.setScalar(0, 13.6, 3.0), argV2a.setScalar(4.9, 7.2), argV2b.setScalar(6.8, 8.6), uvBox(porcU0, 0.18, porcU1, 0.42), 14);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 13.6, 3.0), argV3b.setScalar(0, 16.2, 3.0), argV2a.setScalar(6.8, 8.6), argV2b.setScalar(7.0, 8.8), uvBox(porcU0, 0.03, porcU1, 0.2), 14);
 
   // Rear porcelain trapway housing & cistern mounting deck (x = -5.4 .. 5.4, y = 0 .. 16.2, z = -9.4 .. 0.8)
   pushBoxPart(vertices, normals, uvs, new Vec3(-5.0, 0, -8.8), new Vec3(5.0, 13.6, 0.4), {
@@ -4476,14 +4436,14 @@ export function toiletMesh() {
   });
 
   // 2. Hollowed Inner Porcelain Bowl Cavity & Standing Bowl Water (y = 11.4 .. 16.2)
-  pushOvalRingCap(vertices, normals, uvs, 3.0, 16.2, 7.0, 8.8, 4.7, 6.4, (porcU0 + porcU1) * 0.5, 0.1, (porcU1 - porcU0) * 0.4, 0.08, 14);
-  pushOvalFrustum(vertices, normals, uvs, 2.8, 3.0, 11.4, 16.2, 3.5, 4.7, 4.7, 6.4, porcU0, porcU1, 0.08, 0.38, 14, true);
-  pushOvalDisc(vertices, normals, uvs, 2.9, 12.2, 4.1, 5.5, waterUC, 0.5, waterUSpan, 0.42, 14);
+  pushOvalRingCap(vertices, normals, uvs, argV3a.setScalar(0, 16.2, 3.0), argV2a.setScalar(7.0, 8.8), argV2b.setScalar(4.7, 6.4), argV2c.setScalar((porcU0 + porcU1) * 0.5, 0.1), argV2d.setScalar((porcU1 - porcU0) * 0.4, 0.08), 14);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 11.4, 2.8), argV3b.setScalar(0, 16.2, 3.0), argV2a.setScalar(3.5, 4.7), argV2b.setScalar(4.7, 6.4), uvBox(porcU0, 0.08, porcU1, 0.38), 14, true);
+  pushOvalDisc(vertices, normals, uvs, argV3a.setScalar(0, 12.2, 2.9), argV2a.setScalar(4.1, 5.5), argV2b.setScalar(waterUC, 0.5), argV2c.setScalar(waterUSpan, 0.42), 14);
 
   // 3. Contoured Oval Toilet Seat Ring, Chrome Hinge Brackets & Raised Open Lid
-  pushOvalFrustum(vertices, normals, uvs, 3.0, 3.0, 16.2, 17.1, 6.8, 8.6, 6.6, 8.4, seatU0, seatU1, 0.06, 0.58, 14);
-  pushOvalFrustum(vertices, normals, uvs, 3.0, 3.0, 16.2, 17.1, 4.4, 6.1, 4.5, 6.2, seatU0, seatU1, 0.06, 0.58, 14, true);
-  pushOvalRingCap(vertices, normals, uvs, 3.0, 17.1, 6.6, 8.4, 4.5, 6.2, seatUC, 0.3, seatUSpan, 0.24, 14);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 16.2, 3.0), argV3b.setScalar(0, 17.1, 3.0), argV2a.setScalar(6.8, 8.6), argV2b.setScalar(6.6, 8.4), uvBox(seatU0, 0.06, seatU1, 0.58), 14);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 16.2, 3.0), argV3b.setScalar(0, 17.1, 3.0), argV2a.setScalar(4.4, 6.1), argV2b.setScalar(4.5, 6.2), uvBox(seatU0, 0.06, seatU1, 0.58), 14, true);
+  pushOvalRingCap(vertices, normals, uvs, argV3a.setScalar(0, 17.1, 3.0), argV2a.setScalar(6.6, 8.4), argV2b.setScalar(4.5, 6.2), argV2c.setScalar(seatUC, 0.3), argV2d.setScalar(seatUSpan, 0.24), 14);
 
   const chromeFaces = {
     front: uvRect(chromeU0, 0.68, chromeU1, 0.96),
@@ -4562,11 +4522,11 @@ export function toiletWreckMesh() {
   const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
 
   // 1. Surviving lower porcelain pedestal foot & lower bowl stump (y = 0 .. 11.2)
-  pushOvalDisc(vertices, normals, uvs, 2.0, 0, 5.2, 7.2, (porcU0 + porcU1) * 0.5, 0.85, (porcU1 - porcU0) * 0.35, 0.1, 12);
-  pushOvalFrustum(vertices, normals, uvs, 2.0, 2.0, 0, 2.0, 5.2, 7.2, 4.6, 6.6, porcU0, porcU1, 0.78, 0.98, 12);
-  pushOvalFrustum(vertices, normals, uvs, 2.0, 2.4, 2.0, 8.2, 4.6, 6.6, 4.9, 7.2, porcU0, porcU1, 0.42, 0.78, 12);
-  pushOvalFrustum(vertices, normals, uvs, 2.4, 2.8, 8.2, 11.2, 4.9, 7.2, 6.1, 7.9, porcU0, porcU1, 0.24, 0.42, 12);
-  pushOvalDisc(vertices, normals, uvs, 2.8, 10.6, 5.6, 7.3, waterUC, 0.5, waterUSpan, 0.42, 12);
+  pushOvalDisc(vertices, normals, uvs, argV3a.setScalar(0, 0, 2.0), argV2a.setScalar(5.2, 7.2), argV2b.setScalar((porcU0 + porcU1) * 0.5, 0.85), argV2c.setScalar((porcU1 - porcU0) * 0.35, 0.1), 12);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 0, 2.0), argV3b.setScalar(0, 2.0, 2.0), argV2a.setScalar(5.2, 7.2), argV2b.setScalar(4.6, 6.6), uvBox(porcU0, 0.78, porcU1, 0.98), 12);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 2.0, 2.0), argV3b.setScalar(0, 8.2, 2.4), argV2a.setScalar(4.6, 6.6), argV2b.setScalar(4.9, 7.2), uvBox(porcU0, 0.42, porcU1, 0.78), 12);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 8.2, 2.4), argV3b.setScalar(0, 11.2, 2.8), argV2a.setScalar(4.9, 7.2), argV2b.setScalar(6.1, 7.9), uvBox(porcU0, 0.24, porcU1, 0.42), 12);
+  pushOvalDisc(vertices, normals, uvs, argV3a.setScalar(0, 10.6, 2.8), argV2a.setScalar(5.6, 7.3), argV2b.setScalar(waterUC, 0.5), argV2c.setScalar(waterUSpan, 0.42), 12);
 
   // Jagged fractured porcelain teeth around the shattered bowl rim (y = 11.2 .. 14.8)
   for (let i = 0; i < 10; i++) {
@@ -4708,8 +4668,8 @@ export function toiletShrapnelParts() {
       const t1 = new Vec3(x1 * 1.04, halfH, z1 + 0.3);
       const u0 = Utils.lerp(porcU0, porcU1, (j / subSegs) * 0.45 + s * 0.45);
       const u1 = Utils.lerp(porcU0, porcU1, ((j + 1) / subSegs) * 0.45 + s * 0.45);
-      pushQuad(sVerts, sNorms, sUvs, b0, b1, t1, t0, u0, 0.05, u1, 0.55);
-      pushQuad(sVerts, sNorms, sUvs, b1, b0, t0, t1, u0, 0.05, u1, 0.55);
+      pushQuad(sVerts, sNorms, sUvs, b0, b1, t1, t0, uvBox(u0, 0.05, u1, 0.55));
+      pushQuad(sVerts, sNorms, sUvs, b1, b0, t0, t1, uvBox(u0, 0.05, u1, 0.55));
     }
     shards.push({ vertices: new Float32Array(sVerts), normals: new Float32Array(sNorms), uvs: new Float32Array(sUvs) });
   }

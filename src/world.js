@@ -99,6 +99,8 @@ const ROOM_LIGHT_GAIN = 1.35;
 export const MARS_AMBIENT_COLOR = new Vec3(1.04, 0.86, 0.72);
 export const MARS_DUST_TINT = new Vec3(1.2, 7.5, 1.8);
 export { MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar };
+// scratch tile for level queries
+const tileAt = new Vec2();
 const scratchHolePos = new Vec3();
 const scratchHoleNormal = new Vec2();
 const scratchHoleMark = { pos: scratchHolePos, normal: scratchHoleNormal, top: 0, seed: 0, kind: undefined, lo: undefined, hi: undefined, slope: undefined };
@@ -130,7 +132,7 @@ const scratchBlastMark = { pos: scratchHolePos, normal: scratchHoleNormal, top: 
  * door is a single slab that does not sit in the middle of its tile, so it is worked out from where the door really is.
  * Mirrors `buildDoor`.
  */
-function doorMarkInset(door, mark) {
+function doorMarkInset(door, pos, normal) {
   if (!door.center)
     return door.secret ? 0 : DOOR_INSET;
   const faceHalf = door.secret
@@ -142,19 +144,16 @@ function doorMarkInset(door, mark) {
         // a blast door's slab is DOOR_THICKNESS thick, and the face that shows is the inner one (see `secretDoorBox`: the
         // door meshes cull back faces and RoostR takes clockwise triangles as front ones)
         : TILE / 2 - DOOR_INSET - DOOR_THICKNESS;
-  const alongX = Math.abs(mark.nx) > 0.5;
-  const fromCentre = alongX ? (mark.x - door.center.x) * Math.sign(mark.nx) : (mark.y - door.center.y) * Math.sign(mark.ny);
+  const alongX = Math.abs(normal.x) > 0.5;
+  const fromCentre = alongX ? (pos.x - door.center.x) * Math.sign(normal.x) : (pos.y - door.center.y) * Math.sign(normal.y);
   return fromCentre - faceHalf;
 }
 
 /** Fills the shared scratch blast mark from a door-bound wall mark, shifted by the door's inset and drop. */
 function fillDoorBlast(mark, inset, drop, height) {
   const bm = scratchBlastMark;
-  bm.pos.x = mark.x - mark.nx * inset;
-  bm.pos.y = mark.y - mark.ny * inset;
-  bm.pos.z = mark.z - drop;
-  bm.normal.x = mark.nx;
-  bm.normal.y = mark.ny;
+  bm.pos.setScalar(mark.pos.x - mark.normal.x * inset, mark.pos.y - mark.normal.y * inset, mark.pos.z - drop);
+  bm.normal.copy(mark.normal);
   bm.top = mark.top * height;
   bm.seed = mark.seed;
   bm.tier = mark.tier;
@@ -168,11 +167,8 @@ function fillDoorBlast(mark, inset, drop, height) {
 /** Builds the quad of a stored blast mark into `out`; null when nothing of it is left. */
 function blastQuadOf(mark, out) {
   const bm = scratchBlastMark;
-  bm.pos.x = mark.x;
-  bm.pos.y = mark.y;
-  bm.pos.z = mark.z;
-  bm.normal.x = mark.nx;
-  bm.normal.y = mark.ny;
+  bm.pos.copy(mark.pos);
+  bm.normal.copy(mark.normal);
   bm.top = mark.top;
   bm.seed = mark.seed;
   bm.tier = mark.tier;
@@ -190,6 +186,7 @@ function burnQuadOf(mark, out) {
   return mark.kind === SURFACE.WALL ? burnWallQuad(scratchBlastMark, out) : burnFlatQuad(scratchBlastMark, out);
 }
 const scratchMarkPos2 = new Vec2();
+const scratchInsetNormal = new Vec2();
 // shared output of the mark adapters; only dissolving marks use it, as their quad is rebuilt and consumed every frame
 const scratchMarkQuad = { corners: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], uv: [0, 0, 0, 0] };
 const scratchFloorOpts = { pos: scratchMarkPos2, size: 0, seed: 0, height: undefined };
@@ -197,6 +194,14 @@ const scratchGibOpts = { pos: scratchMarkPos2, size: 0, variant: undefined, angl
 const scratchPrintOpts = { pos: scratchMarkPos2, angle: 0, side: 0, strength: 0, scale: 0 };
 const scratchSplatMark = { pos: new Vec3(), normal: new Vec2(), size: 0, top: 0, seed: 0, age: undefined, lo: undefined, hi: undefined, slope: undefined };
 const scratchParticleOpts = { pos: new Vec3(), gib: false, variant: undefined, scale: undefined, visualScale: undefined };
+
+// scratch for pouring blood into the merged tiles
+const scratchCssSize = new Vec2();
+const scratchRenderSize = new Vec2();
+const scratchStampPos = new Vec2();
+const scratchWallNormal = new Vec2();
+const scratchPourBounds = new Rect();
+const scratchPourUv = new Rect();
 
 // state of the one `syncViews` prune in flight, so its `forEach` callback is a single function instead of a closure per call
 const prune = { host: null, map: null, stamp: 0 };
@@ -217,7 +222,7 @@ function floorSplatOf(mark) {
 }
 
 function floorGibOf(mark) {
-  scratchMarkPos2.setScalar(mark.x, mark.y);
+  scratchMarkPos2.copy(mark.pos);
   scratchGibOpts.size = mark.size;
   scratchGibOpts.variant = mark.variant;
   scratchGibOpts.angle = mark.angle;
@@ -319,6 +324,7 @@ const SECTOR_TILES = 16;
 const scratchTile = new Vec2();
 const scratchSectorTile = new Vec2();
 const scratchSectorGrid = new Vec2();
+const UNBOUNDED_GRID = new Vec2(Infinity, Infinity);
 
 /** The tile range a sector covers, one tile of margin each side and clamped to the grid, as a fresh Rect (chunks keep it). */
 function makeSectorBounds(sectorTile, gridSize) {
@@ -328,7 +334,7 @@ function makeSectorBounds(sectorTile, gridSize) {
   return bounds;
 }
 
-function partitionQuadsBySector(quads, sectorGrid, sectorWorldSize = SECTOR_TILES * TILE, width = Infinity, rowCount = Infinity) {
+function partitionQuadsBySector(quads, sectorGrid, sectorWorldSize = SECTOR_TILES * TILE, gridSize = UNBOUNDED_GRID) {
   if (!quads.length)
     return [];
   const buckets = new Map();
@@ -344,7 +350,7 @@ function partitionQuadsBySector(quads, sectorGrid, sectorWorldSize = SECTOR_TILE
         faces: [],
         center: new Vec2((scratchFog.x + 0.5) * sectorWorldSize, (scratchFog.y + 0.5) * sectorWorldSize),
         radius: sectorWorldSize * 0.85,
-        bounds: Number.isFinite(width) ? makeSectorBounds(scratchSectorTile.setScalar(scratchFog.x * SECTOR_TILES, scratchFog.y * SECTOR_TILES), scratchSectorGrid.setScalar(width, rowCount)) : null,
+        bounds: Number.isFinite(gridSize.x) ? makeSectorBounds(scratchSectorTile.setScalar(scratchFog.x * SECTOR_TILES, scratchFog.y * SECTOR_TILES), gridSize) : null,
       };
       buckets.set(key, bucket);
     }
@@ -353,7 +359,7 @@ function partitionQuadsBySector(quads, sectorGrid, sectorWorldSize = SECTOR_TILE
   return [...buckets.values()];
 }
 
-function partitionTrianglesBySector(vertices, sectorGrid, sectorWorldSize = SECTOR_TILES * TILE, width = Infinity, rowCount = Infinity) {
+function partitionTrianglesBySector(vertices, sectorGrid, sectorWorldSize = SECTOR_TILES * TILE, gridSize = UNBOUNDED_GRID) {
   if (!vertices.length)
     return [];
   const buckets = new Map();
@@ -367,7 +373,7 @@ function partitionTrianglesBySector(vertices, sectorGrid, sectorWorldSize = SECT
         vertices: [],
         center: new Vec2((scratchFog.x + 0.5) * sectorWorldSize, (scratchFog.y + 0.5) * sectorWorldSize),
         radius: sectorWorldSize * 0.85,
-        bounds: Number.isFinite(width) ? makeSectorBounds(scratchSectorTile.setScalar(scratchFog.x * SECTOR_TILES, scratchFog.y * SECTOR_TILES), scratchSectorGrid.setScalar(width, rowCount)) : null,
+        bounds: Number.isFinite(gridSize.x) ? makeSectorBounds(scratchSectorTile.setScalar(scratchFog.x * SECTOR_TILES, scratchFog.y * SECTOR_TILES), gridSize) : null,
       };
       buckets.set(key, bucket);
     }
@@ -923,7 +929,7 @@ export class World {
     this.downQuad.setCustomUniform('sourceTexel', new Vec2(1 / this.width, 1 / this.height));
     this.downQuad.setCustomUniform('span', this.glowDivisor);
     this.glowQuad.setCustomUniform('glowTexel', new Vec2(1 / glowWidth, 1 / glowHeight));
-    this.overlay.resize(cssWidth, cssHeight, this.width, this.height);
+    this.overlay.resize(scratchCssSize.setScalar(cssWidth, cssHeight), scratchRenderSize.setScalar(this.width, this.height));
 
     // keep the horizontal field of view stable whatever the window shape
     const aspect = this.width / this.height;
@@ -1505,7 +1511,7 @@ export class World {
         if (mark.door !== door)
           continue;
         const hm = scratchHoleMark;
-        const inset = doorMarkInset(door, mark);
+        const inset = doorMarkInset(door, scratchMarkPos2.setScalar(mark.x, mark.y), scratchInsetNormal.setScalar(mark.nx, mark.ny));
         hm.pos.x = mark.x - mark.nx * inset;
         hm.pos.y = mark.y - mark.ny * inset;
         hm.pos.z = mark.z - drop;
@@ -1546,7 +1552,7 @@ export class World {
               continue;
             if (seen++ < skip)
               continue;
-            fillDoorBlast(mark, doorMarkInset(door, mark), drop, height);
+            fillDoorBlast(mark, doorMarkInset(door, mark.pos, mark.normal), drop, height);
             const quad = pass === 0 ? burnWallQuad(scratchBlastMark, scratchHoleQuad) : blastWallQuad(scratchBlastMark, scratchHoleQuad);
             if (quad)
               blasts.quad(quad.corners, quad.uv);
@@ -1577,7 +1583,7 @@ export class World {
         continue;
       fillWallOpts(mark);
       const sunk = scratchSplatMark;
-      const inset = doorMarkInset(door, mark);
+      const inset = doorMarkInset(door, scratchMarkPos2.setScalar(mark.x, mark.y), scratchInsetNormal.setScalar(mark.nx, mark.ny));
       sunk.pos.setScalar(mark.x - mark.nx * inset, mark.y - mark.ny * inset, mark.z - drop);
       sunk.top = mark.top * height;
       const quad = wallSplatQuad(sunk, scratchMarkQuad);
@@ -1751,7 +1757,7 @@ export class World {
     for (let i = 0; i < stamps.length; i++) {
       const st = stamps[i];
       // out of tiles: that splat is drawn as a quad of its own
-      if (!floorBlood.stamp(st.x, st.y, st.size, st.seed)) {
+      if (!floorBlood.stamp(scratchStampPos.setScalar(st.x, st.y), st.size, st.seed)) {
         this.looseFloor.push(st);
         if (this.looseFloor.length > BLOOD.floor)
           this.looseFloor.shift();
@@ -1793,7 +1799,7 @@ export class World {
         continue;
       const nx = axisX ? Math.sign(splat.nx) : 0;
       const ny = axisY ? Math.sign(splat.ny) : 0;
-      const surface = mb.wall(nx, ny, Math.round(axisX ? splat.x : splat.y));
+      const surface = mb.wall(scratchWallNormal.setScalar(nx, ny), Math.round(axisX ? splat.x : splat.y));
       const opts = fillWallOpts(splat);
       const quad = wallSplatQuad(opts);
       if (quad)
@@ -1813,7 +1819,7 @@ export class World {
     let vMin = Infinity;
     let vMax = -Infinity;
     for (let k = 0; k < 12; k += 3) {
-      const u = c[k] * surface.tx + c[k + 2] * surface.ty;
+      const u = c[k] * surface.tangent.x + c[k + 2] * surface.tangent.y;
       uMin = Math.min(uMin, u);
       uMax = Math.max(uMax, u);
       vMin = Math.min(vMin, c[k + 1]);
@@ -1821,9 +1827,13 @@ export class World {
     }
     // a stem that narrows has a bottom edge shorter than its top (corners 0-3 are the bottom, 6-9 the top)
     const span = uMax - uMin || 1;
-    const bottom = Math.abs((c[3] - c[0]) * surface.tx + (c[5] - c[2]) * surface.ty) / span;
-    const top = Math.abs((c[6] - c[9]) * surface.tx + (c[8] - c[11]) * surface.ty) / span;
-    this.floorBlood.stampRect(surface, uMin, uMax, vMin, vMax, quad.uv, bottom || 1, top || 1);
+    const bottom = Math.abs((c[3] - c[0]) * surface.tangent.x + (c[5] - c[2]) * surface.tangent.y) / span;
+    const top = Math.abs((c[6] - c[9]) * surface.tangent.x + (c[8] - c[11]) * surface.tangent.y) / span;
+    scratchPourBounds.topLeftCorner.setScalar(uMin, vMin);
+    scratchPourBounds.bottomRightCorner.setScalar(uMax, vMax);
+    scratchPourUv.topLeftCorner.setScalar(quad.uv[0], quad.uv[1]);
+    scratchPourUv.bottomRightCorner.setScalar(quad.uv[2], quad.uv[3]);
+    this.floorBlood.stampRect(surface, scratchPourBounds, scratchPourUv, bottom || 1, top || 1);
   }
 
   /** One quad over a tile, with the tile's own texture. */
@@ -1965,7 +1975,7 @@ export class World {
       return true;
     };
     const isSolidNeighbor = (tx, ty) => {
-      if (!level || !level.inBounds(tx, ty))
+      if (!level || !level.inBounds(tileAt.setScalar(tx, ty)))
         return true;
       const k = level.kind[ty * level.width + tx];
       return k === WALL || k === EXIT || k === DOOR;
@@ -2105,7 +2115,7 @@ export class World {
         const nx = x + (d === 0 ? -1 : d === 1 ? 1 : 0);
         const ny = y + (d === 2 ? -1 : d === 3 ? 1 : 0);
         const nidx = ny * width + nx;
-        const base = level.inBounds(nx, ny) && kind[nidx] !== DOOR && kind[nidx] !== PILLAR && level.hasCardinalFace(nidx, d ^ 1) ? baseHeight[nidx] : 0;
+        const base = level.inBounds(tileAt.setScalar(nx, ny)) && kind[nidx] !== DOOR && kind[nidx] !== PILLAR && level.hasCardinalFace(nidx, d ^ 1) ? baseHeight[nidx] : 0;
         const along = d < 2 ? y : x;
         const group = groups.get(id) ?? { d, kind: kind[idx], top: Math.min(baseHeight[idx], ROOF), base: Math.min(base, ROOF), x, y, from: along, to: along };
         group.from = Math.min(group.from, along);
@@ -2120,9 +2130,9 @@ export class World {
     const outdoorFaces = [];
     const hide = [];
     const isMars = level.planet === 'mars';
-    const solid = (x, y) => level.inBounds(x, y) && (kind[y * width + x] === WALL || kind[y * width + x] === EXIT);
+    const solid = (x, y) => level.inBounds(tileAt.setScalar(x, y)) && (kind[y * width + x] === WALL || kind[y * width + x] === EXIT);
     const isCorridorDoor = (tx, ty) => {
-      if (!level.inBounds(tx, ty))
+      if (!level.inBounds(tileAt.setScalar(tx, ty)))
         return false;
       const idx = ty * width + tx;
       return kind[idx] === DOOR && !level.doors.get(idx)?.secret;
@@ -2130,11 +2140,11 @@ export class World {
     const doorCorridorInfo = (tx, ty, dir) => {
       // the walls either side of any door, a secret one included, wear the door's own side-wall panels (never pipes or
       // other wall pieces); while a secret door is shut its disguised block hides them
-      if (level.inBounds(tx, ty) && kind[ty * width + tx] === DOOR) {
+      if (level.inBounds(tileAt.setScalar(tx, ty)) && kind[ty * width + tx] === DOOR) {
         const door = level.doors.get(ty * width + tx);
         return { door: true, lock: door?.lock ?? null };
       }
-      if (level.inBounds(tx, ty) && kind[ty * width + tx] === FLOOR) {
+      if (level.inBounds(tileAt.setScalar(tx, ty)) && kind[ty * width + tx] === FLOOR) {
         const px = dir < 2 ? tx : tx - 1;
         const py = dir < 2 ? ty - 1 : ty;
         const qx = dir < 2 ? tx : tx + 1;
@@ -2298,13 +2308,13 @@ export class World {
           const nx = tx + (d === 0 ? -1 : d === 1 ? 1 : 0);
           const ny = ty + (d === 2 ? -1 : d === 3 ? 1 : 0);
           const nIdx = ny * width + nx;
-          if (level.inBounds(nx, ny)) {
+          if (level.inBounds(tileAt.setScalar(nx, ny))) {
             if (isSlime && (level.slime[nIdx] || level.emptyPit?.[nIdx]))
               continue;
             if (isEmptyPit && level.emptyPit?.[nIdx])
               continue;
           }
-          const topEdge = isEmptyPit && level.inBounds(nx, ny) && level.slime[nIdx]
+          const topEdge = isEmptyPit && level.inBounds(tileAt.setScalar(nx, ny)) && level.slime[nIdx]
             ? -ACID_SURFACE_DEPTH - 0.35
             : -0.2;
           const axis = d < 2 ? 'x' : 'z';
@@ -2373,19 +2383,19 @@ export class World {
     const sectorGrid = new Grid(new Vec2((width + SECTOR_TILES) * TILE, (rowCount + SECTOR_TILES) * TILE), sectorWorldSize);
     this.skyMesh = isMars ? this.track(this.marsSkyBatch(), this.staticMeshes) : null;
     // Register opaque wall occluders first so Early-Z rejects distant floor, dirt, crate, boulder, and ceiling fragments behind walls
-    const wallSectors = partitionQuadsBySector(faces, sectorGrid, sectorWorldSize, width, rowCount);
+    const wallSectors = partitionQuadsBySector(faces, sectorGrid, sectorWorldSize, scratchSectorGrid.setScalar(width, rowCount));
     if (wallSectors.length)
       for (const sec of wallSectors)
         registerStaticChunk(this.staticChunks, this.track(this.wallBatch(sec.faces, false), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
     else
       this.track(this.wallBatch(faces, false), this.staticMeshes);
     if (doorFaces.length)
-      for (const sec of partitionQuadsBySector(doorFaces, sectorGrid, sectorWorldSize, width, rowCount))
+      for (const sec of partitionQuadsBySector(doorFaces, sectorGrid, sectorWorldSize, scratchSectorGrid.setScalar(width, rowCount)))
         registerStaticChunk(this.staticChunks, this.track(this.wallBatch(sec.faces, false, true), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
     if (outdoorFaces.length)
-      for (const sec of partitionQuadsBySector(outdoorFaces, sectorGrid, sectorWorldSize, width, rowCount))
+      for (const sec of partitionQuadsBySector(outdoorFaces, sectorGrid, sectorWorldSize, scratchSectorGrid.setScalar(width, rowCount)))
         registerStaticChunk(this.staticChunks, this.track(this.wallBatch(sec.faces, true), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
-    const hideSectors = partitionTrianglesBySector(hide, sectorGrid, sectorWorldSize, width, rowCount);
+    const hideSectors = partitionTrianglesBySector(hide, sectorGrid, sectorWorldSize, scratchSectorGrid.setScalar(width, rowCount));
     if (hideSectors.length)
       for (const sec of hideSectors)
         registerStaticChunk(this.staticChunks, this.track(this.solid(sec.vertices), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
@@ -2407,7 +2417,7 @@ export class World {
         const door = level.doors.get(ty * width + tx);
         return { lock: door?.lock ?? null, alongY: Boolean(door?.alongY), vestibule: false };
       }
-      if (level.inBounds(tx, ty) && kind[ty * width + tx] === FLOOR) {
+      if (level.inBounds(tileAt.setScalar(tx, ty)) && kind[ty * width + tx] === FLOOR) {
         if (isCorridorDoor(tx - 1, ty) && isCorridorDoor(tx + 1, ty)) {
           const lock = level.doors.get(ty * width + tx - 1)?.lock ?? level.doors.get(ty * width + tx + 1)?.lock ?? null;
           return { lock, alongY: false, vestibule: true };
@@ -2622,7 +2632,7 @@ export class World {
       attachMaterialMaps(this, batch, atlas);
     }
     const isCorridorDoor = (tx, ty) => {
-      if (!level.inBounds(tx, ty))
+      if (!level.inBounds(tileAt.setScalar(tx, ty)))
         return false;
       const idx = ty * level.width + tx;
       return level.kind[idx] === DOOR && !level.doors?.get(idx)?.secret;
@@ -2632,7 +2642,7 @@ export class World {
         const door = level.doors?.get(ty * level.width + tx);
         return { lock: door?.lock ?? null, alongY: Boolean(door?.alongY), vestibule: false };
       }
-      if (level.inBounds(tx, ty) && level.kind[ty * level.width + tx] === FLOOR) {
+      if (level.inBounds(tileAt.setScalar(tx, ty)) && level.kind[ty * level.width + tx] === FLOOR) {
         if (isCorridorDoor(tx - 1, ty) && isCorridorDoor(tx + 1, ty)) {
           const lock = level.doors?.get(ty * level.width + tx - 1)?.lock ?? level.doors?.get(ty * level.width + tx + 1)?.lock ?? null;
           return { lock, alongY: false, vestibule: true };
@@ -2884,19 +2894,19 @@ export class World {
           const z0 = ty * TILE;
           const z1 = z0 + TILE;
           batch.quad([x0, botY, z1, x1, botY, z1, x1, botY, z0, x0, botY, z0], bottomUv);
-          if (!(level.inBounds(tx - 1, ty) && level.emptyPit[ty * level.width + (tx - 1)])) {
+          if (!(level.inBounds(tileAt.setScalar(tx - 1, ty)) && level.emptyPit[ty * level.width + (tx - 1)])) {
             batch.quad([x0 + 0.15, rimY, z0, x0 + 0.15, rimY, z1, x0 + 0.15, topY, z1, x0 + 0.15, topY, z0], rimUv);
             batch.quad([x0 + 0.15, botY, z0, x0 + 0.15, botY, z1, x0 + 0.15, rimY, z1, x0 + 0.15, rimY, z0], wallUv);
           }
-          if (!(level.inBounds(tx + 1, ty) && level.emptyPit[ty * level.width + (tx + 1)])) {
+          if (!(level.inBounds(tileAt.setScalar(tx + 1, ty)) && level.emptyPit[ty * level.width + (tx + 1)])) {
             batch.quad([x1 - 0.15, rimY, z1, x1 - 0.15, rimY, z0, x1 - 0.15, topY, z0, x1 - 0.15, topY, z1], rimUv);
             batch.quad([x1 - 0.15, botY, z1, x1 - 0.15, botY, z0, x1 - 0.15, rimY, z0, x1 - 0.15, rimY, z1], wallUv);
           }
-          if (!(level.inBounds(tx, ty - 1) && level.emptyPit[(ty - 1) * level.width + tx])) {
+          if (!(level.inBounds(tileAt.setScalar(tx, ty - 1)) && level.emptyPit[(ty - 1) * level.width + tx])) {
             batch.quad([x1, rimY, z0 + 0.15, x0, rimY, z0 + 0.15, x0, topY, z0 + 0.15, x1, topY, z0 + 0.15], rimUv);
             batch.quad([x1, botY, z0 + 0.15, x0, botY, z0 + 0.15, x0, rimY, z0 + 0.15, x1, rimY, z0 + 0.15], wallUv);
           }
-          if (!(level.inBounds(tx, ty + 1) && level.emptyPit[(ty + 1) * level.width + tx])) {
+          if (!(level.inBounds(tileAt.setScalar(tx, ty + 1)) && level.emptyPit[(ty + 1) * level.width + tx])) {
             batch.quad([x0, rimY, z1 - 0.15, x1, rimY, z1 - 0.15, x1, topY, z1 - 0.15, x0, topY, z1 - 0.15], rimUv);
             batch.quad([x0, botY, z1 - 0.15, x1, botY, z1 - 0.15, x1, rimY, z1 - 0.15, x0, rimY, z1 - 0.15], wallUv);
           }
@@ -2920,7 +2930,7 @@ export class World {
           if (b.horizontal && Number.isInteger(b.x) && Number.isInteger(b.y))
             barrelTiles.add(b.y * level.width + b.x);
       const hasNeighborAcid = (nx, ny) => {
-        if (!level.inBounds(nx, ny))
+        if (!level.inBounds(tileAt.setScalar(nx, ny)))
           return false;
         const nidx = ny * level.width + nx;
         return Boolean(level.acidSplash[nidx] || level.slime?.[nidx] || barrelTiles.has(nidx));
@@ -2988,7 +2998,7 @@ export class World {
     const edgeOpen = (tx, ty, d) => {
       const nx = tx + (d === 0 ? -1 : d === 1 ? 1 : 0);
       const ny = ty + (d === 2 ? -1 : d === 3 ? 1 : 0);
-      return !(level.inBounds(nx, ny) && level.slime[ny * level.width + nx]);
+      return !(level.inBounds(tileAt.setScalar(nx, ny)) && level.slime[ny * level.width + nx]);
     };
     let tileCount = 0;
     let rimCount = 0;

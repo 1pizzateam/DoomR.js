@@ -163,7 +163,7 @@ export class HeadView {
     this.camera.setTarget(new Vec3(0, 0.3, 1));
 
     this.visible = false;
-    this.cssHeight = 1;
+    this.cssSize = new Vec2(1, 1);
     this.scaleX = 1;
     this.scaleY = 1;
     this.x = 0;
@@ -179,11 +179,11 @@ export class HeadView {
     this.lastPickup = false;
   }
 
-  /** The canvas is `width` x `height` backing pixels for `cssWidth` x `cssHeight` CSS pixels. */
-  resize(cssWidth, cssHeight, width, height) {
-    this.cssHeight = cssHeight;
-    this.scaleX = width / cssWidth;
-    this.scaleY = height / cssHeight;
+  /** The canvas is `renderSize` backing pixels for `cssSize` CSS pixels (both Vec2). */
+  resize(cssSize, renderSize) {
+    this.cssSize.copy(cssSize);
+    this.scaleX = renderSize.x / cssSize.x;
+    this.scaleY = renderSize.y / cssSize.y;
   }
 
   /** Where the face box is: a Rect in CSS pixels, y down. */
@@ -194,7 +194,7 @@ export class HeadView {
     this.w = Math.max(1, Math.round((br.x - tl.x) * this.scaleX));
     this.h = Math.max(1, Math.round((br.y - tl.y) * this.scaleY));
     // GL viewports are y up
-    this.y = Math.round((this.cssHeight - br.y) * this.scaleY);
+    this.y = Math.round((this.cssSize.y - br.y) * this.scaleY);
     this.visible = true;
   }
 

@@ -121,7 +121,7 @@ const tests = {
           continue;
         const nx = x + (d === 0 ? -1 : d === 1 ? 1 : 0);
         const ny = y + (d === 2 ? -1 : d === 3 ? 1 : 0);
-        if (!level.isWalkable(nx, ny))
+        if (!level.isWalkable(new Vec2(nx, ny)))
           continue;
         const nidx = ny * level.width + nx;
         if (level.diag[nidx] && level.hasCardinalFace(nidx, d ^ 1))
@@ -205,6 +205,21 @@ const tests = {
     marks[0].dissolving = true;
     marks[1].dissolving = true;
     assert.equal(host.cachedQuad(marks[0], build), host.scratch, 'AC-8: dissolving mark reuses the scratch');
+  },
+
+  'AC-8 blood impact and boulder placement reuse scratch vectors'() {
+    const game = new Game();
+    game.load(0, { health: 100, shells: 0, bullets: 0, rockets: 0, weapons: { knife: true }, weapon: 'knife' });
+    const blood = game.blood;
+    const cell = new Vec2(2, 2);
+    const pos = new Vec3(2.5 * TILE, 2 * TILE, 10);
+    const normal = new Vec2(0, -1);
+    const first = blood.boulderPlacement(cell, pos, normal, 64, 8);
+    assert.ok(first.pos instanceof Vec2, 'AC-8: placement carries pos: Vec2');
+    assert.equal(blood.boulderPlacement(cell, pos, normal, 64, 8), first, 'AC-8: placement record is reused');
+    assert.equal(first.pos, blood.boulderPlacement(cell, pos, normal, 64, 8).pos, 'AC-8: placement pos is reused');
+    assert.ok(!/\{\s*x:\s*cx/.test(body(bloodSrc, 'boulderPlacement')), 'AC-8: no placement literal');
+    assert.ok(!body(bloodSrc, 'wallFace').includes('new Vec'), 'AC-8: wallFace allocates no vectors');
   },
 };
 
