@@ -528,6 +528,9 @@ const checks = [
       assert.ok(Math.abs(Math.abs(blastFlatQuad(flat).corners[1] - base) - 0.15) < 1e-6);
       assert.ok(Math.abs(Math.abs(burnFlatQuad(flat).corners[1] - base) - 0.1) < 1e-6);
     }
+    const hangarFlat = { pos: new Vec3(100, 50, 128), size: 30, variant: 0, ceiling: true };
+    assert.ok(Math.abs(blastFlatQuad(hangarFlat).corners[1] - (128 - 0.15)) < 1e-6);
+    assert.ok(Math.abs(burnFlatQuad(hangarFlat).corners[1] - (128 - 0.1)) < 1e-6);
     assert.ok(0.1 < 0.15 && 0.15 < 0.25);
   }],
   ['AC-7 syncBlasts and syncDoorMarks stay allocation free and use ring order', () => {

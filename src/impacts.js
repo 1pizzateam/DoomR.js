@@ -1586,7 +1586,8 @@ export function burnFlatQuad({ pos, tier, size, ceiling = false, variant = 0 }, 
 
 function flatQuadIn(pos, size, ceiling, variant, out, cell, lift) {
   const half = size / 2;
-  const height = ceiling ? CEILING_HEIGHT - lift : lift;
+  const ceilHeight = pos.z > 0 ? pos.z : CEILING_HEIGHT;
+  const height = ceiling ? ceilHeight - lift : lift;
   const dest = out ?? { corners: new Array(12), uv: new Array(4) };
   const c = dest.corners;
   // the corners go round the square, started a quarter turn further on for each variant

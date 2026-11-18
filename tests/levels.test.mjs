@@ -921,6 +921,7 @@ try {
     SPACESHIP_SHARD_COUNT,
     spaceshipAtlas,
     spaceshipMesh,
+    spaceshipActiveMesh,
     buildSpaceship,
     spaceshipWreckMesh,
     spaceshipDebrisMesh,
@@ -943,9 +944,12 @@ try {
   assert.equal(atlas.relief.length, 512 * 128);
 
   const intact = spaceshipMesh();
+  const active = spaceshipActiveMesh();
   assert.ok(intact.vertices.length >= 1800 && intact.vertices.length % 3 === 0);
   assert.equal(intact.normals.length, intact.vertices.length);
   assert.equal(intact.uvs.length * 3, intact.vertices.length * 2);
+  assert.equal(active.vertices.length, intact.vertices.length);
+  assert.ok(active.uvs.some((u, idx) => Math.abs(u - intact.uvs[idx]) > 1e-4), 'active spaceship mesh switches reactor core UVs to glowing plasma');
 
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
@@ -987,6 +991,7 @@ try {
   const hangarLevel = new Level({ name: 'HangarBay', rows: hangarRows });
   assert.equal(hangarLevel.furnitures.length, 1);
   assert.equal(hangarLevel.furnitures[0].type, 'spaceship');
+  assert.equal(hangarLevel.furnitures[0].reactorsActive, false, 'spaceship reactors are inactive when parked in the hangar');
   assert.equal(hangarLevel.arena, null, 'hangar room keeps its roof (not an unroofed outdoor arena)');
   assert.ok(hangarLevel.hangar instanceof Set, 'hangar room containing a spaceship is tracked in level.hangar');
   assert.ok(hangarLevel.hangar.has(2 * hangarLevel.width + 4), 'spaceship tile is in double-height hangar');
@@ -1013,6 +1018,10 @@ try {
   hangarGame.blood.ceilingSplat(new Vec2(4.5 * 64, 5.5 * 64), 4);
   assert.ok(Math.abs(hangarGame.blood.ceiling[0].height - (HANGAR_CEILING - 1.6)) < 1e-5, 'hangar blood ceiling splat sticks at y = 126.4');
   assert.ok(Math.abs(hangarGame.blood.ceiling[1].height - (CEILING - 1.6)) < 1e-5, 'standard room blood ceiling splat sticks at y = 62.4');
+  hangarGame.blastSurfaces(new Vec2(4.5 * 64, 2.5 * 64), 175, 1);
+  hangarGame.blastSurfaces(new Vec2(4.5 * 64, 5.5 * 64), 175, 1);
+  assert.equal(hangarGame.rubble.slots[2][0].pos.z, HANGAR_CEILING, 'hangar ceiling blast mark sits at HANGAR_CEILING (128)');
+  assert.equal(hangarGame.rubble.slots[2][1].pos.z, CEILING, 'standard room ceiling blast mark sits at CEILING (64)');
   const ship = hangarGame.furnitures[0];
   assert.equal(ship.type, 'spaceship');
   assert.equal(ship.body.shape, 'aabb', 'spaceship uses a multi-tile AABB collision hull');

@@ -111,6 +111,7 @@ export class Rubble {
     const slot = this.next(kind, severity);
     slot.pos.x = pos.x;
     slot.pos.y = pos.y;
+    slot.pos.z = pos.z || 0;
     slot.size = Utils.lerp(FLAT_SIZE[0], FLAT_SIZE[1], severity);
     return slot;
   }

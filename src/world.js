@@ -26,7 +26,7 @@ import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
 import { keycardAtlas, keycardMesh } from './keycard.js';
 import { CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, SWITCH_LEVER_ANGLE, SWITCH_LEVER_HINGE, SWITCH_TINTS, chestAtlas, chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from './cache.js';
-import { buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createOvenBreakPose, createPlantBreakPose, createSinkBreakPose, createSpaceshipBreakPose, createTableBreakPose, createToiletBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, ovenAtlas, ovenBreakPose, ovenDebrisMesh, ovenMesh, ovenShrapnelParts, ovenWreckMesh, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, sinkAtlas, sinkBreakPose, sinkMesh, sinkPuddleMesh, sinkShrapnelParts, sinkWreckMesh, spaceshipAtlas, spaceshipBreakPose, spaceshipDebrisMesh, spaceshipMesh, spaceshipShrapnelParts, spaceshipWreckMesh, tableAtlas, tableBreakPose, tableDebrisMesh, tableMesh, tableShrapnelParts, tableWreckMesh, TOILET_DOOR_PIVOT, toiletAtlas, toiletBreakPose, toiletDoorMesh, toiletMesh, toiletPuddleMesh, toiletShrapnelParts, toiletWreckMesh, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
+import { buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createOvenBreakPose, createPlantBreakPose, createSinkBreakPose, createSpaceshipBreakPose, createTableBreakPose, createToiletBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, ovenAtlas, ovenBreakPose, ovenDebrisMesh, ovenMesh, ovenShrapnelParts, ovenWreckMesh, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, sinkAtlas, sinkBreakPose, sinkMesh, sinkPuddleMesh, sinkShrapnelParts, sinkWreckMesh, spaceshipActiveMesh, spaceshipAtlas, spaceshipBreakPose, spaceshipDebrisMesh, spaceshipMesh, spaceshipShrapnelParts, spaceshipWreckMesh, tableAtlas, tableBreakPose, tableDebrisMesh, tableMesh, tableShrapnelParts, tableWreckMesh, TOILET_DOOR_PIVOT, toiletAtlas, toiletBreakPose, toiletDoorMesh, toiletMesh, toiletPuddleMesh, toiletShrapnelParts, toiletWreckMesh, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
 import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, knifeAtlas, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from './arsenal.js';
 import { WEAPONS } from './weapon.js';
 import { armorAtlas, armorMesh } from './armor.js';
@@ -431,7 +431,7 @@ const FURNITURE_KINDS = {
   sink: { atlas: sinkAtlas, intact: sinkMesh, wreck: sinkWreckMesh, debris: sinkPuddleMesh, shrapnel: sinkShrapnelParts, createPose: createSinkBreakPose, pose: sinkBreakPose },
   plant: { atlas: plantAtlas, intact: buildOfficePlant, wreck: plantWreckMesh, debris: plantDebrisMesh, shrapnel: plantShrapnelParts, createPose: createPlantBreakPose, pose: plantBreakPose },
   toilet: { atlas: toiletAtlas, intact: toiletMesh, wreck: toiletWreckMesh, debris: toiletPuddleMesh, shrapnel: toiletShrapnelParts, createPose: createToiletBreakPose, pose: toiletBreakPose, door: toiletDoorMesh, doorPivot: TOILET_DOOR_PIVOT },
-  spaceship: { atlas: spaceshipAtlas, intact: spaceshipMesh, wreck: spaceshipWreckMesh, debris: spaceshipDebrisMesh, shrapnel: spaceshipShrapnelParts, createPose: createSpaceshipBreakPose, pose: spaceshipBreakPose },
+  spaceship: { atlas: spaceshipAtlas, intact: spaceshipMesh, active: spaceshipActiveMesh, wreck: spaceshipWreckMesh, debris: spaceshipDebrisMesh, shrapnel: spaceshipShrapnelParts, createPose: createSpaceshipBreakPose, pose: spaceshipBreakPose },
 };
 
 function sinkToFloor(quads) {
@@ -3434,7 +3434,13 @@ export class World {
       return mesh;
     };
 
-    const intact = makePart(intactGeo, skinMaterial, true);
+    const reactorsActive = Boolean(furniture?.reactorsActive);
+    const intact = makePart(intactGeo, skinMaterial, !art.active || !reactorsActive);
+    let activeIntact = null;
+    if (art.active) {
+      const activeGeo = (cache.active ??= art.active());
+      activeIntact = makePart(activeGeo, skinMaterial, reactorsActive);
+    }
     const wreck = makePart(wreckGeo, wreckMaterial, false);
     const puddle = makePart(puddleGeo, wreckMaterial, false);
     const carboyTop = makePart(shrapnelGeo.carboyTop, wreckMaterial, false);
@@ -3456,6 +3462,8 @@ export class World {
       type: kind,
       root,
       intact,
+      activeIntact,
+      lastReactorsActive: reactorsActive,
       wreck,
       puddle,
       carboyTop,
@@ -3499,13 +3507,34 @@ export class World {
         view.door.setRotation(scratchRot.setScalar(0, -Utils.smoothstep(0, 1, doorOpen) * 1.62, 0));
       }
     }
+    if (view.activeIntact) {
+      const reactorsActive = Boolean(furniture.reactorsActive);
+      if (reactorsActive !== view.lastReactorsActive) {
+        view.lastReactorsActive = reactorsActive;
+        view.intactSettled = false;
+        if (reactorsActive) {
+          view.intact.setInactive();
+          view.activeIntact.setActive();
+        } else {
+          view.activeIntact.setInactive();
+          view.intact.setActive();
+        }
+      }
+    }
 
     if (!furniture.gone) {
       if (view.wasGone) {
         view.wasGone = false;
         view.intactSettled = false;
         view.wreckSettled = false;
-        view.intact.setActive();
+        if (view.activeIntact && view.lastReactorsActive) {
+          view.intact.setInactive();
+          view.activeIntact.setActive();
+        } else {
+          if (view.activeIntact)
+            view.activeIntact.setInactive();
+          view.intact.setActive();
+        }
         view.wreck.setInactive();
         view.puddle.setInactive();
         view.carboyTop.setInactive();
@@ -3542,6 +3571,8 @@ export class World {
       view.intactSettled = false;
       view.wreckSettled = false;
       view.intact.setInactive();
+      if (view.activeIntact)
+        view.activeIntact.setInactive();
       view.wreck.setActive();
       view.puddle.setActive();
       view.carboyTop.setActive();

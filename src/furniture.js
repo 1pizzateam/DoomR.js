@@ -5144,16 +5144,33 @@ function drawSpaceshipEngineCell(rnd) {
   }
   t.relief(6, 6, 54, 54, -1.8, 1.5);
 
-  // Upper-right (x = 66..125, y = 2..64): Slotted reactor heat-exchanger louvers & piping
-  t.rect(66, 4, 58, 58, SHIP_HULL_DARK, 0.92);
-  for (let ly = 8; ly < 58; ly += 5) {
-    t.rect(70, ly, 50, 2, SHIP_SEAM_DARK, 0.95);
-    t.rect(70, ly + 2, 50, 1, SHIP_HULL_LIGHT, 0.45);
-    t.groove(70, ly + 1, 119, ly + 1, 1.5, 0.9);
+  // Upper-right (x = 66..125, y = 2..64): Powered-down cold reactor exhaust core (inactive hangar state)
+  t.rect(66, 4, 58, 58, SHIP_SEAM_DARK, 0.98);
+  for (let y = 6; y < 62; y++) {
+    for (let x = 68; x < 124; x++) {
+      const dx = x - 96;
+      const dy = y - 34;
+      const r = Math.hypot(dx, dy) / 28;
+      if (r <= 1) {
+        const angle = Math.atan2(dy, dx);
+        const vane = Math.cos(angle * 16);
+        const ring = Math.cos(r * Math.PI * 3.5) * 0.5 + 0.5;
+        const baseCol = r < 0.34
+          ? SHIP_NOZZLE_METAL
+          : r < 0.52
+            ? SHIP_SEAM_DARK
+            : r < 0.84
+              ? (vane > 0.35 ? SHIP_HULL_BASE : SHIP_HULL_DARK)
+              : SHIP_NOZZLE_METAL;
+        t.set(x, y, mix(baseCol, SHIP_HULL_LIGHT, ring * 0.16), 1);
+      } else {
+        t.set(x, y, SHIP_SEAM_DARK, 1);
+      }
+    }
   }
-  t.rect(95, 6, 2, 54, SHIP_NOZZLE_HEAT, 0.7);
+  t.relief(68, 6, 56, 56, -1.6, 1.4);
 
-  // Lower-left (x = 2..62, y = 66..125): Glowing cyan-white fusion afterburner plasma core
+  // Lower-left (x = 2..62, y = 66..125): Glowing cyan-white fusion afterburner plasma core (active state)
   t.rect(2, 66, 60, 58, SHIP_PLASMA_RIM, 0.98);
   for (let y = 68; y < 124; y++) {
     for (let x = 4; x < 60; x++) {
@@ -5167,10 +5184,19 @@ function drawSpaceshipEngineCell(rnd) {
     }
   }
 
-  // Lower-right (x = 66..125, y = 66..125): Rib-reinforced heat-blued thruster nozzle petals & chrome oleo struts
-  t.rect(66, 66, 58, 58, SHIP_NOZZLE_METAL, 0.95);
-  for (let y = 68; y < 124; y++) {
-    const heat = Utils.clamp((y - 68) / 56, 0, 1);
+  // Lower-right upper half (x = 66..125, y = 66..94): Slotted reactor heat-exchanger louvers & piping
+  t.rect(66, 66, 58, 28, SHIP_HULL_DARK, 0.92);
+  for (let ly = 69; ly < 92; ly += 5) {
+    t.rect(70, ly, 50, 2, SHIP_SEAM_DARK, 0.95);
+    t.rect(70, ly + 2, 50, 1, SHIP_HULL_LIGHT, 0.45);
+    t.groove(70, ly + 1, 119, ly + 1, 1.5, 0.9);
+  }
+  t.rect(95, 67, 2, 26, SHIP_NOZZLE_HEAT, 0.7);
+
+  // Lower-right lower half (x = 66..125, y = 96..125): Rib-reinforced heat-blued thruster nozzle petals & chrome struts
+  t.rect(66, 96, 58, 28, SHIP_NOZZLE_METAL, 0.95);
+  for (let y = 97; y < 124; y++) {
+    const heat = Utils.clamp((y - 97) / 27, 0, 1);
     for (let x = 68; x < 124; x++) {
       t.set(x, y, SHIP_NOZZLE_HEAT, heat * 0.42);
       if ((x - 68) % 7 === 0)
@@ -5626,7 +5652,8 @@ function pushCanopySection(vertices, normals, uvs, zSpan, aftArch, fwdArch, uvGl
  *   missiles, 12-point sculpted outboard VTOL tilt-engine nacelles (`x = +-68..+-95`), canted airfoil tail fins (`y = 60..110`),
  *   and twin 20-segment main aft fusion thruster bells (`z = -160..-132`) with recessed glowing cyan-white plasma cores.
  */
-export function spaceshipMesh() {
+export function spaceshipMesh(options = {}) {
+  const reactorsActive = typeof options === 'boolean' ? options : Boolean(options?.reactorsActive);
   const vertices = [];
   const normals = [];
   const uvs = [];
@@ -5643,9 +5670,12 @@ export function spaceshipMesh() {
   const uvFlirSensor = shipCellUv(SPACESHIP_COCKPIT, new Vec2(0.54, 0.96), new Vec2(0.60, 0.96));
 
   const uvTurbineIntake = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.04, 0.48), new Vec2(0.04, 0.48));
-  const uvEngineLouvers = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.52, 0.96), new Vec2(0.04, 0.48));
-  const uvPlasmaCore = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.06, 0.46), new Vec2(0.54, 0.94));
-  const uvNozzlePetals = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.54, 0.96), new Vec2(0.54, 0.96));
+  const uvReactorInactive = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.54, 0.96), new Vec2(0.04, 0.48));
+  const uvReactorActive = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.06, 0.46), new Vec2(0.54, 0.94));
+  const uvEngineLouvers = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.54, 0.96), new Vec2(0.53, 0.73));
+  const uvNozzlePetals = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.54, 0.96), new Vec2(0.76, 0.96));
+  const uvPlasmaCore = reactorsActive ? uvReactorActive : uvReactorInactive;
+  const uvReactorConeSide = reactorsActive ? uvReactorActive : uvNozzlePetals;
 
   const uvWingSkin = shipCellUv(SPACESHIP_WING, new Vec2(0.04, 0.96), new Vec2(0.04, 0.52));
   const uvRocketPod = shipCellUv(SPACESHIP_WING, new Vec2(0.04, 0.50), new Vec2(0.58, 0.96));
@@ -6490,7 +6520,7 @@ export function spaceshipMesh() {
       new Vec2(ex, ey),
       new Vec2(-159.5, -148),
       new Vec2(1.2, 5.8),
-      uvPlasmaCore,
+      uvReactorConeSide,
       uvPlasmaCore,
       null,
       12,
@@ -6519,6 +6549,13 @@ export function spaceshipMesh() {
 }
 
 export const buildSpaceship = spaceshipMesh;
+
+/**
+ * Builds the 3D UAC Heavy Assault Dropship mesh with its fusion reactors and VTOL thrusters ignited (active state).
+ */
+export function spaceshipActiveMesh() {
+  return spaceshipMesh({ reactorsActive: true });
+}
 
 /**
  * Builds the intact heavy hull mesh for the indestructible spaceship (satisfies the `FURNITURE_KINDS` interface).

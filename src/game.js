@@ -930,6 +930,7 @@ export class Game {
       gone: false,
       deadTime: 0,
       phase: ((entry.x * 13 + entry.y * 7) & 31) * 0.2,
+      reactorsActive: Boolean(entry.reactorsActive ?? false),
     };
     body.ref = furniture;
     this.scene.addBody(body);
@@ -1480,8 +1481,10 @@ export class Game {
       blastMark.setScalar(blastCheck.x, blastCheck.y, 0);
       if (level.slime[cell] !== 1 && level.emptyPit?.[cell] !== 1)
         rubble.addFloor(blastMark, severity);
-      if (!level.isOutdoor(blastCheck))
+      if (!level.isOutdoor(blastCheck)) {
+        blastMark.z = level.ceilingAt ? level.ceilingAt(cell) : CEILING;
         rubble.addCeiling(blastMark, severity);
+      }
       break;
     }
   }

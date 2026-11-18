@@ -664,7 +664,7 @@ export class Level {
     }
   }
 
-  createFurniture(tile, type = 'dispenser', wallSide = null, angle = null) {
+  createFurniture(tile, type = 'dispenser', wallSide = null, angle = null, reactorsActive = null) {
     const { x, y } = tile;
     const idx = y * this.width + x;
     const resolvedWallSide = Number.isInteger(wallSide) && wallSide >= 0 && wallSide < 4
@@ -696,6 +696,7 @@ export class Level {
     }
     if (typeof angle === 'number' && Number.isFinite(angle))
       resolvedAngle = angle;
+    const inHangar = Boolean(this.hangar?.has(idx));
     return {
       idx,
       x,
@@ -705,11 +706,12 @@ export class Level {
       wallSide: resolvedWallSide,
       pos,
       angle: resolvedAngle,
+      reactorsActive: typeof reactorsActive === 'boolean' ? reactorsActive : (type === 'spaceship' ? !inHangar : false),
     };
   }
 
   buildFurnitures() {
-    // optional per-piece overrides from the level's `furnitures` list ({ x, y, wallSide, angle }); otherwise automatic
+    // optional per-piece overrides from the level's `furnitures` list ({ x, y, wallSide, angle, reactorsActive }); otherwise automatic
     const defsByIdx = new Map();
     for (const entry of this.furnitureDefs)
       if (entry && Number.isInteger(entry.x) && Number.isInteger(entry.y))
@@ -717,7 +719,7 @@ export class Level {
     for (let i = 0; i < this.furnitureTiles.length; i++) {
       const tile = this.furnitureTiles[i];
       const entry = defsByIdx.get(tile.idx);
-      this.furnitures.push(this.createFurniture(tileArg.setScalar(tile.x, tile.y), tile.type, entry?.wallSide, entry?.angle));
+      this.furnitures.push(this.createFurniture(tileArg.setScalar(tile.x, tile.y), tile.type, entry?.wallSide, entry?.angle, entry?.reactorsActive));
     }
   }
 
