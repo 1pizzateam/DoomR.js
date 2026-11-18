@@ -34,6 +34,7 @@ export class TitleDirector {
     this.t = 0;
     this.lit = false;
     this.barrel = null;
+    this.cam = { x: 0, y: 0, eye: 0, lookX: 0, lookY: 0, lookEye: 0, roll: 0, zoom: 1 };
   }
 
   /** Reloads the level and starts the film from the first shot. */
@@ -92,16 +93,16 @@ export class TitleDirector {
     const u = Utils.clamp(this.t / shot.duration, 0, 1);
     const e = u * 0.6 + Utils.smoothstep(0, 1, u) * 0.4; // mostly steady, easing slightly at both ends
     const sway = Math.sin(game.time * 0.8 + this.shot) * 1.4;
-    game.cam = {
-      x: mix(shot.from[0], shot.to[0], e),
-      y: mix(shot.from[1], shot.to[1], e),
-      eye: mix(shot.from[2], shot.to[2], e) + sway,
-      lookX: mix(shot.look[0][0], shot.look[1][0], e),
-      lookY: mix(shot.look[0][1], shot.look[1][1], e),
-      lookEye: mix(shot.look[0][2], shot.look[1][2], e),
-      roll: shot.roll + Math.sin(game.time * 0.5) * 0.015,
-      zoom: mix(shot.zoom[0], shot.zoom[1], e),
-    };
+    const cam = this.cam;
+    cam.x = mix(shot.from[0], shot.to[0], e);
+    cam.y = mix(shot.from[1], shot.to[1], e);
+    cam.eye = mix(shot.from[2], shot.to[2], e) + sway;
+    cam.lookX = mix(shot.look[0][0], shot.look[1][0], e);
+    cam.lookY = mix(shot.look[0][1], shot.look[1][1], e);
+    cam.lookEye = mix(shot.look[0][2], shot.look[1][2], e);
+    cam.roll = shot.roll + Math.sin(game.time * 0.5) * 0.015;
+    cam.zoom = mix(shot.zoom[0], shot.zoom[1], e);
+    game.cam = cam;
     game.fade = 1 - Utils.clamp(Math.min(this.t, shot.duration - this.t) / FADE, 0, 1);
   }
 }

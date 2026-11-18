@@ -39,6 +39,10 @@ export class Input {
     this.metaHeld = new Set();
     this.metaTainted = new Set();
     this.mouseDX = 0;
+    this.controls = {
+      forward: 0, strafe: 0, turn: 0, run: false, jump: false, crouch: false, fire: false,
+      grenade: false, use: false, nightVision: false, weapon: 0, mouseX: 0,
+    };
     this.mousePos = new Vec2(-1, -1);
     this.mouseMoved = false;
     this.pressed = new Set();
@@ -362,20 +366,19 @@ export class Input {
     else if (this.took('weapon3')) weapon = 3;
     else if (this.took('weapon4')) weapon = 4;
     const keys = this.keys;
-    const controls = {
-      forward: this.axis('moveForward', 'moveBack'),
-      strafe: this.axis('strafeRight', 'strafeLeft'),
-      turn: this.axis('turnRight', 'turnLeft'),
-      run: keys.has('run'),
-      jump: keys.has('jump'),
-      crouch: keys.has('crouch'),
-      fire: keys.has('fire'),
-      grenade: this.took('grenade'),
-      use: this.took('use'),
-      nightVision: this.took('nightVision'),
-      weapon,
-      mouseX: this.mouseDX,
-    };
+    const controls = this.controls;
+    controls.forward = this.axis('moveForward', 'moveBack');
+    controls.strafe = this.axis('strafeRight', 'strafeLeft');
+    controls.turn = this.axis('turnRight', 'turnLeft');
+    controls.run = keys.has('run');
+    controls.jump = keys.has('jump');
+    controls.crouch = keys.has('crouch');
+    controls.fire = keys.has('fire');
+    controls.grenade = this.took('grenade');
+    controls.use = this.took('use');
+    controls.nightVision = this.took('nightVision');
+    controls.weapon = weapon;
+    controls.mouseX = this.mouseDX;
     this.mouseDX = 0;
     return controls;
   }

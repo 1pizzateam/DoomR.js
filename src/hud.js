@@ -35,6 +35,26 @@ const FONT = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 const HINT_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.75, glow: 3 });
 const HINT_DIM_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.45, glow: 2 });
 
+const LABEL_STYLE = Object.freeze({ size: 11, alpha: 0.8 });
+const HEALTH_NUM_STYLE = Object.freeze({ size: 20, weight: 700 });
+const KILLS_STYLE = Object.freeze({ size: 12, align: 'center', alpha: 0.8 });
+const GRENADE_COUNT_STYLE = Object.freeze({ size: 12, align: 'right' });
+const GRENADE_LABEL_STYLE = Object.freeze({ size: 10, align: 'right', alpha: 0.8 });
+const BERSERK_STYLE = Object.freeze({ size: 11, weight: 700, alpha: 0.95 });
+const AMMO_IDLE_LABEL_STYLE = Object.freeze({ size: 11, align: 'right', alpha: 0.8 });
+const AMMO_IDLE_COUNT_STYLE = Object.freeze({ size: 20, align: 'right', weight: 700 });
+const scratchTextStyle = { size: 14, align: 'left', alpha: 1, weight: 600, glow: 6 };
+
+/** Fills and returns the shared dynamic text style; always writes all five fields so no value leaks between calls. */
+function setTextStyle(size, align, weight, alpha, glow) {
+  scratchTextStyle.size = size;
+  scratchTextStyle.align = align;
+  scratchTextStyle.weight = weight;
+  scratchTextStyle.alpha = alpha;
+  scratchTextStyle.glow = glow;
+  return scratchTextStyle;
+}
+
 const USE_PROMPT_TOP = 20;
 const USE_PROMPT_H = 16;
 const USE_PROMPT_CHAR_W = 6.6;
@@ -800,11 +820,11 @@ export class Hud {
     const hx = faceBR.x + 18;
     const overcharged = player.health > 100;
     const healthCol = overcharged ? BLUE : player.health <= 30 ? RED : player.health <= 50 ? ORANGE : GREEN;
-    this.text(overcharged ? 'SOUL' : 'HEALTH', hx, base - 24, BLUE, { size: 11, alpha: 0.8 });
+    this.text(overcharged ? 'SOUL' : 'HEALTH', hx, base - 24, BLUE, LABEL_STYLE);
     this.drawBar(hx, base, 160, 20, Utils.clamp(player.health / 100, 0, 1), GREEN, ORANGE, RED, 0.5, 0.3);
     if (overcharged)
       this.drawBar(hx, base - 3, 160, 20, Utils.clamp((player.health - 100) / 100, 0, 1), BLUE, BLUE);
-    this.text(String(Math.ceil(player.health)), hx + 170, base, healthCol, { size: 20, weight: 700 });
+    this.text(String(Math.ceil(player.health)), hx + 170, base, healthCol, HEALTH_NUM_STYLE);
     this.drawArmor(hx + 226, base, player);
     this.drawPowerups(hx + 394, base, player);
     this.drawArms(width - 360, base, player);
@@ -812,11 +832,11 @@ export class Hud {
     this.drawAmmo(width - 28, base, player, weaponDef);
     this.drawGrenades(width - 28, base, player);
 
-    this.text(`${game.kills}/${game.totalEnemies} kills`, width / 2, 26, BLUE, { size: 12, align: 'center', alpha: 0.8 });
+    this.text(`${game.kills}/${game.totalEnemies} kills`, width / 2, 26, BLUE, KILLS_STYLE);
 
     if (game.message.age < game.message.life) {
       const fade = Utils.clamp((game.message.life - game.message.age) * 2, 0, 1);
-      this.text(game.message.text, width / 2, 56, GREEN, { size: 16, align: 'center', alpha: fade });
+      this.text(game.message.text, width / 2, 56, GREEN, setTextStyle(16, 'center', 600, fade, 6));
     }
 
     if ((player.radSuit ?? 0) > 0) {
@@ -874,16 +894,12 @@ export class Hud {
   drawPowerups(x, base, player) {
     let offset = 0;
     if (player.berserk) {
-      this.text('BERSERK', x, base - 24 + offset, RED, { size: 11, weight: 700, alpha: 0.95 });
+      this.text('BERSERK', x, base - 24 + offset, RED, BERSERK_STYLE);
       offset += 14;
     }
     if ((player.radSuit ?? 0) > 0) {
       const blink = player.radSuit > 5 || Math.floor(player.radSuit * 4) % 2 === 0;
-      this.text(`RAD ${Math.ceil(player.radSuit)}s`, x, base - 24 + offset, GREEN, {
-        size: 11,
-        weight: 700,
-        alpha: blink ? 0.95 : 0.3,
-      });
+      this.text(`RAD ${Math.ceil(player.radSuit)}s`, x, base - 24 + offset, GREEN, setTextStyle(11, 'left', 700, blink ? 0.95 : 0.3, 6));
       offset += 14;
     }
     if (player.hasNightVision) {
@@ -891,11 +907,7 @@ export class Hud {
       const pct = Math.min(100, Math.max(0, Math.round((bat / 45) * 100)));
       const active = Boolean(player.nightVisionActive && bat > 0);
       const blink = !active || bat > 5 || Math.floor(bat * 4) % 2 === 0;
-      this.text(`NVG ${pct}%`, x, base - 24 + offset, active ? GREEN : BLUE, {
-        size: 11,
-        weight: 700,
-        alpha: active ? (blink ? 0.95 : 0.3) : 0.72,
-      });
+      this.text(`NVG ${pct}%`, x, base - 24 + offset, active ? GREEN : BLUE, setTextStyle(11, 'left', 700, active ? (blink ? 0.95 : 0.3) : 0.72, 6));
     }
   }
 
@@ -905,18 +917,14 @@ export class Hud {
     const isBlue = player.armorType === 'blue';
     const col = isBlue ? BLUE : GREEN;
     const maxArmor = isBlue || armor > 100 ? 200 : 100;
-    this.text('ARMOR', x, base - 24, BLUE, { size: 11, alpha: 0.8 });
+    this.text('ARMOR', x, base - 24, BLUE, LABEL_STYLE);
     this.drawBar(x, base, 112, 14, Utils.clamp(armor / maxArmor, 0, 1), col, col);
-    this.text(String(armor), x + 122, base, armor > 0 ? col : BLUE, {
-      size: 20,
-      weight: 700,
-      alpha: armor > 0 ? 1 : 0.4,
-    });
+    this.text(String(armor), x + 122, base, armor > 0 ? col : BLUE, setTextStyle(20, 'left', 700, armor > 0 ? 1 : 0.4, 6));
   }
 
   /** Classic Doom ARMS indicator (slots 1–4) on the lower HUD bar. */
   drawArms(x, base, player) {
-    this.text('ARMS', x, base - 24, BLUE, { size: 11, alpha: 0.8 });
+    this.text('ARMS', x, base - 24, BLUE, LABEL_STYLE);
     for (let slot = 1; slot <= 4; slot++) {
       const name = WEAPON_SLOTS[slot];
       const owned =
@@ -931,19 +939,13 @@ export class Hud {
       const sx = x + (slot - 1) * 22;
       const sy = base - 16;
       this.rect(setRect(sx, sy, 16, 16), col, active ? 1 : owned ? 0.8 : 0.24);
-      this.text(String(slot), sx + 8, base - 3, col, {
-        size: 12,
-        align: 'center',
-        weight: active ? 800 : 600,
-        alpha: active ? 1 : owned ? 0.9 : 0.32,
-        glow: active ? 10 : 4,
-      });
+      this.text(String(slot), sx + 8, base - 3, col, setTextStyle(12, 'center', active ? 800 : 600, active ? 1 : owned ? 0.9 : 0.32, active ? 10 : 4));
     }
   }
 
   /** Three security keycard slots (Blue, Yellow, Red) on the lower HUD bar. */
   drawKeys(x, base, keys) {
-    this.text('KEYS', x, base - 24, BLUE, { size: 11, alpha: 0.8 });
+    this.text('KEYS', x, base - 24, BLUE, LABEL_STYLE);
     for (let i = 0; i < KEYCARD_SLOTS.length; i++) {
       const [name, col] = KEYCARD_SLOTS[i];
       const held = Boolean(keys?.[name]);
@@ -983,8 +985,8 @@ export class Hud {
   /** Remaining grenade stock above the ammo tally. */
   drawGrenades(rightX, base, player) {
     const count = Utils.clamp(player.grenades, 0, GRENADE_COUNTS.length - 1);
-    this.text(GRENADE_COUNTS[count], rightX, base - 50, count <= 1 ? ORANGE : GREEN, { size: 12, align: 'right' });
-    this.text('GRENADES', rightX - 18, base - 50, BLUE, { size: 10, align: 'right', alpha: 0.8 });
+    this.text(GRENADE_COUNTS[count], rightX, base - 50, count <= 1 ? ORANGE : GREEN, GRENADE_COUNT_STYLE);
+    this.text('GRENADES', rightX - 18, base - 50, BLUE, GRENADE_LABEL_STYLE);
   }
 
   /** Active weapon ammo readout and classic Doom 3-pool tally (Bullets, Shells, Rockets). */
@@ -1022,28 +1024,14 @@ export class Hud {
           ? ORANGE
           : GREEN;
     const activeSize = activeFlash > 0 ? 20 + Math.round(Math.sin(activeFlashNorm * Trigo.pi) * 6) : 20;
-    this.text(ammoDef ? ammoDef.label : 'MELEE', rightX - 96, base - 24, activeFlash > 0 ? activeCol : BLUE, {
-      size: 11,
-      align: 'right',
-      alpha: activeFlash > 0 ? 1 : 0.8,
-      glow: activeFlash > 0 ? 12 : 6,
-    });
-    this.text(ammoDef ? String(activeCount) : '--', rightX - 96, base, activeCol, {
-      size: activeSize,
-      align: 'right',
-      weight: activeFlash > 0 ? 800 : 700,
-      glow: activeFlash > 0 ? 16 : 6,
-    });
+    this.text(ammoDef ? ammoDef.label : 'MELEE', rightX - 96, base - 24, activeFlash > 0 ? activeCol : BLUE,
+      activeFlash > 0 ? setTextStyle(11, 'right', 600, 1, 12) : AMMO_IDLE_LABEL_STYLE);
+    this.text(ammoDef ? String(activeCount) : '--', rightX - 96, base, activeCol,
+      activeFlash > 0 ? setTextStyle(activeSize, 'right', 800, 1, 16) : AMMO_IDLE_COUNT_STYLE);
     if (activeFlash > 0) {
       const delta = player.ammoDelta?.[ammoType] ?? 0;
       if (delta > 0)
-        this.text(`+${delta}`, rightX - 96, base - 36 - (1 - activeFlashNorm) * 6, ORANGE, {
-          size: 12,
-          align: 'right',
-          weight: 800,
-          alpha: Math.min(1, activeFlashNorm * 1.5),
-          glow: 12,
-        });
+        this.text(`+${delta}`, rightX - 96, base - 36 - (1 - activeFlashNorm) * 6, ORANGE, setTextStyle(12, 'right', 800, Math.min(1, activeFlashNorm * 1.5), 12));
       this.rect(setRect(rightX - 154, base - 21, 64, 26), activeCol, 0.35 + 0.55 * activeFlashNorm);
     }
 
@@ -1061,30 +1049,13 @@ export class Hud {
       const valueCol = flash > 0 ? flashCol : count <= def.low ? ORANGE : isActive ? GREEN : BLUE;
       const rowSize = flash > 0 ? 10 + Math.round(flashNorm * 2) : 10;
       const rowGlow = flash > 0 ? 14 : 6;
-      this.text(def.short, rightX - 82, rowY, labelCol, {
-        size: rowSize,
-        weight: flash > 0 || isActive ? 800 : 600,
-        alpha: flash > 0 || isActive ? 1 : 0.72,
-        glow: rowGlow,
-      });
-      this.text(`${shown}/${def.max}`, rightX, rowY, valueCol, {
-        size: rowSize,
-        align: 'right',
-        weight: flash > 0 || isActive ? 800 : 600,
-        alpha: flash > 0 || isActive ? 1 : 0.82,
-        glow: rowGlow,
-      });
+      this.text(def.short, rightX - 82, rowY, labelCol, setTextStyle(rowSize, 'left', flash > 0 || isActive ? 800 : 600, flash > 0 || isActive ? 1 : 0.72, rowGlow));
+      this.text(`${shown}/${def.max}`, rightX, rowY, valueCol, setTextStyle(rowSize, 'right', flash > 0 || isActive ? 800 : 600, flash > 0 || isActive ? 1 : 0.82, rowGlow));
       if (flash > 0) {
         this.rect(setRect(rightX - 86, rowY - 9, 90, 11), flashCol, 0.35 + 0.55 * flashNorm);
         const delta = player.ammoDelta?.[key] ?? 0;
         if (!isActive && delta > 0)
-          this.text(`+${delta}`, rightX - 90, rowY, ORANGE, {
-            size: 10,
-            align: 'right',
-            weight: 800,
-            alpha: Math.min(1, flashNorm * 1.5),
-            glow: 12,
-          });
+          this.text(`+${delta}`, rightX - 90, rowY, ORANGE, setTextStyle(10, 'right', 800, Math.min(1, flashNorm * 1.5), 12));
       }
     }
   }
