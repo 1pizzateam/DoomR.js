@@ -555,13 +555,13 @@ export class Blood {
    * Splat on the ceiling, where blood thrown up lands. For a few seconds it lets go of a drop or two, which fall back
    * down. The times come from its own seed, so nothing is taken from the game's random numbers.
    */
-  ceilingSplat(pos, size) {
+  ceilingSplat(pos, size, ceil = this.ceilingHeight(pos)) {
     const { x, y } = pos;
     const seed = this.rand.integer(1, 2147483647);
     const drops = [];
     for (let i = 0; i < 1 + (seed % 3); i++)
       drops.push(0.8 + (((seed >>> (3 + i * 5)) % 100) / 100) * 4);
-    this.ceiling.push({ x, y, size, seed, height: CEILING - 1.6, age: 0, drops });
+    this.ceiling.push({ x, y, size, seed, height: ceil - 1.6, age: 0, drops });
     if (this.ceiling.length > BLOOD.ceiling)
       this.ceiling.shift();
     this.version++;
@@ -754,6 +754,17 @@ export class Blood {
     return (level.kind[idx] === FLOOR || level.kind[idx] === DOOR || level.kind[idx] === PILLAR || level.diag[idx] > 0) && !level.arena?.has(idx);
   }
 
+  ceilingHeight(pos) {
+    const { level } = this;
+    if (!level?.ceilingAt)
+      return CEILING;
+    const tx = Math.floor(pos.x / TILE);
+    const ty = Math.floor(pos.y / TILE);
+    if (!level.inBounds(tx, ty))
+      return CEILING;
+    return level.ceilingAt(ty * level.width + tx);
+  }
+
   land(p) {
     const s = p.scale ?? 1;
     if (p.gib) {
@@ -847,12 +858,13 @@ export class Blood {
         continue;
       }
       // thrown up as far as the ceiling, it sticks there (not over the warden's room, which has none)
-      if (nz >= CEILING && p.vz > 0 && this.hitsCeiling(next)) {
+      const ceil = this.ceilingHeight(next);
+      if (nz >= ceil && p.vz > 0 && this.hitsCeiling(next)) {
         if (p.gib || this.rand.float(0, 1) < 0.55)
-          this.ceilingSplat(this.at.setScalar(next.x, next.y), (p.gib ? this.float(4.8, 8.5) : this.float(1.6, 4.0)) * (p.scale ?? 1));
+          this.ceilingSplat(this.at.setScalar(next.x, next.y), (p.gib ? this.float(4.8, 8.5) : this.float(1.6, 4.0)) * (p.scale ?? 1), ceil);
         if (p.gib && p.bounces > 0) {
           p.bounces--;
-          p.z = CEILING - 1;
+          p.z = ceil - 1;
           p.vz = -Math.abs(p.vz) * 0.3;
           if (p.age < p.life) {
             this.particles[keep++] = p;
@@ -965,7 +977,7 @@ export class Blood {
           const d = this.acquire();
           d.x = splat.x + ((splat.seed % 7) - 3);
           d.y = splat.y + ((splat.seed % 5) - 2);
-          d.z = CEILING - 1.8;
+          d.z = (splat.height ?? (CEILING - 1.6)) - 0.2;
           d.vx = 0;
           d.vy = 0;
           d.vz = 0;

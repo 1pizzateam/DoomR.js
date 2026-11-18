@@ -7,6 +7,8 @@ export const EYE = 32;
 export const CROUCH_EYE = 18;
 /** The ceiling is one wall texture high. Blood thrown up this far lands on it. */
 export const CEILING = 64;
+/** Hangar bays housing a dropship ('v') have a double-height ceiling (2 wall tiers high). */
+export const HANGAR_CEILING = 128;
 
 export const FLOOR = 0;
 export const WALL = 1;
@@ -76,7 +78,7 @@ const PICKUPS = {
   V: 'radsuit',
   N: 'nightvision',
 };
-const FURNITURES = { d: 'dispenser', t: 'desk', f: 'table', e: 'oven', l: 'sink', p: 'plant', j: 'toilet' };
+const FURNITURES = { d: 'dispenser', t: 'desk', f: 'table', e: 'oven', l: 'sink', p: 'plant', j: 'toilet', v: 'spaceship' };
 
 // Face directions: the side of a tile a ray enters through (0: -x, 1: +x, 2: -y, 3: +y).
 const DX = [-1, 1, 0, 0];
@@ -91,6 +93,7 @@ export const OVEN_WALL_OFFSET = 18;
 export const SINK_WALL_OFFSET = 18;
 export const PLANT_WALL_OFFSET = 16;
 export const TOILET_WALL_OFFSET = 18;
+export const SPACESHIP_WALL_OFFSET = 0;
 const SWITCH_WALL_OFFSET = 2;
 const FURNITURE_WALL_OFFSETS = {
   dispenser: DISPENSER_WALL_OFFSET,
@@ -100,6 +103,7 @@ const FURNITURE_WALL_OFFSETS = {
   sink: SINK_WALL_OFFSET,
   plant: PLANT_WALL_OFFSET,
   toilet: TOILET_WALL_OFFSET,
+  spaceship: SPACESHIP_WALL_OFFSET,
 };
 
 /**
@@ -171,6 +175,7 @@ export class Level {
     this.indoor = this.findIndoor();
     this.outdoor = this.findOutdoor();
     this.bossArena = this.findBossArena();
+    this.hangar = this.findHangar();
     this.arena = this.findArena();
     this.secrets = this.findSecrets();
     this.findRooms();
@@ -863,15 +868,52 @@ export class Level {
     return arena;
   }
 
-  findArena() {
-    if (this.outdoor) {
-      const arena = new Set(this.outdoor);
-      if (this.bossArena)
-        for (const idx of this.bossArena)
-          arena.add(idx);
-      return arena;
+  /**
+   * Hangar bay: every floor, pillar, or facing diagonal tile reachable from a `'spaceship'` furniture tile (`'v'`)
+   * without passing through a door. Hangar bays keep an enclosed ceiling raised to `HANGAR_CEILING` (128 units).
+   */
+  findHangar() {
+    const spaceships = this.furnitureTiles.filter((tile) => tile.type === 'spaceship');
+    if (!spaceships.length)
+      return null;
+    const { width } = this;
+    const hangar = new Set();
+    const stack = spaceships.map((tile) => tile.idx);
+    while (stack.length) {
+      const idx = stack.pop();
+      if (hangar.has(idx) || (this.kind[idx] !== FLOOR && this.kind[idx] !== PILLAR))
+        continue;
+      hangar.add(idx);
+      const x = idx % width;
+      const y = (idx - x) / width;
+      for (let d = 0; d < 4; d++) {
+        const nx = x + DX[d];
+        const ny = y + DY[d];
+        if (!this.inBounds(nx, ny))
+          continue;
+        const nidx = ny * width + nx;
+        if (this.diag[nidx] > 0 && !this.hasCardinalFace(nidx, d ^ 1))
+          hangar.add(nidx);
+        else
+          stack.push(nidx);
+      }
     }
-    return this.bossArena;
+    return hangar.size ? hangar : null;
+  }
+
+  /** Ceiling height at tile index `idx`: `HANGAR_CEILING` (128) inside hangar bays, `CEILING` (64) elsewhere. */
+  ceilingAt(idx) {
+    return this.hangar?.has(idx) ? HANGAR_CEILING : CEILING;
+  }
+
+  findArena() {
+    if (!this.outdoor && !this.bossArena)
+      return null;
+    const arena = new Set(this.outdoor ?? []);
+    if (this.bossArena)
+      for (const idx of this.bossArena)
+        arena.add(idx);
+    return arena.size ? arena : null;
   }
 
   /** Whether a 2D world point (`Vec2`) lies inside an arena. */

@@ -26,7 +26,7 @@ import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
 import { keycardAtlas, keycardMesh } from './keycard.js';
 import { CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, SWITCH_LEVER_ANGLE, SWITCH_LEVER_HINGE, SWITCH_TINTS, chestAtlas, chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from './cache.js';
-import { buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createOvenBreakPose, createPlantBreakPose, createSinkBreakPose, createTableBreakPose, createToiletBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, ovenAtlas, ovenBreakPose, ovenDebrisMesh, ovenMesh, ovenShrapnelParts, ovenWreckMesh, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, sinkAtlas, sinkBreakPose, sinkMesh, sinkPuddleMesh, sinkShrapnelParts, sinkWreckMesh, tableAtlas, tableBreakPose, tableDebrisMesh, tableMesh, tableShrapnelParts, tableWreckMesh, toiletAtlas, toiletBreakPose, toiletMesh, toiletPuddleMesh, toiletShrapnelParts, toiletWreckMesh, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
+import { buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createOvenBreakPose, createPlantBreakPose, createSinkBreakPose, createSpaceshipBreakPose, createTableBreakPose, createToiletBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, ovenAtlas, ovenBreakPose, ovenDebrisMesh, ovenMesh, ovenShrapnelParts, ovenWreckMesh, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, sinkAtlas, sinkBreakPose, sinkMesh, sinkPuddleMesh, sinkShrapnelParts, sinkWreckMesh, spaceshipAtlas, spaceshipBreakPose, spaceshipDebrisMesh, spaceshipMesh, spaceshipShrapnelParts, spaceshipWreckMesh, tableAtlas, tableBreakPose, tableDebrisMesh, tableMesh, tableShrapnelParts, tableWreckMesh, TOILET_DOOR_PIVOT, toiletAtlas, toiletBreakPose, toiletDoorMesh, toiletMesh, toiletPuddleMesh, toiletShrapnelParts, toiletWreckMesh, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
 import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, knifeAtlas, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from './arsenal.js';
 import { WEAPONS } from './weapon.js';
 import { armorAtlas, armorMesh } from './armor.js';
@@ -390,7 +390,8 @@ const FURNITURE_KINDS = {
   oven: { atlas: ovenAtlas, intact: ovenMesh, wreck: ovenWreckMesh, debris: ovenDebrisMesh, shrapnel: ovenShrapnelParts, createPose: createOvenBreakPose, pose: ovenBreakPose },
   sink: { atlas: sinkAtlas, intact: sinkMesh, wreck: sinkWreckMesh, debris: sinkPuddleMesh, shrapnel: sinkShrapnelParts, createPose: createSinkBreakPose, pose: sinkBreakPose },
   plant: { atlas: plantAtlas, intact: buildOfficePlant, wreck: plantWreckMesh, debris: plantDebrisMesh, shrapnel: plantShrapnelParts, createPose: createPlantBreakPose, pose: plantBreakPose },
-  toilet: { atlas: toiletAtlas, intact: toiletMesh, wreck: toiletWreckMesh, debris: toiletPuddleMesh, shrapnel: toiletShrapnelParts, createPose: createToiletBreakPose, pose: toiletBreakPose },
+  toilet: { atlas: toiletAtlas, intact: toiletMesh, wreck: toiletWreckMesh, debris: toiletPuddleMesh, shrapnel: toiletShrapnelParts, createPose: createToiletBreakPose, pose: toiletBreakPose, door: toiletDoorMesh, doorPivot: TOILET_DOOR_PIVOT },
+  spaceship: { atlas: spaceshipAtlas, intact: spaceshipMesh, wreck: spaceshipWreckMesh, debris: spaceshipDebrisMesh, shrapnel: spaceshipShrapnelParts, createPose: createSpaceshipBreakPose, pose: spaceshipBreakPose },
 };
 
 function sinkToFloor(quads) {
@@ -1988,22 +1989,24 @@ export class World {
     const furnitures = game.furnitures ?? level?.furnitures ?? EMPTY;
     for (let i = 0; i < furnitures.length; i++) {
       const f = furnitures[i];
-      if (!canCastOnFloor(f.pos))
+      const isSpaceship = f.type === 'spaceship';
+      if (!isSpaceship && !canCastOnFloor(f.pos))
         continue;
       this.resolveShadowLightDir(f.pos, scratchShadowDir);
       const isDesk = f.type === 'desk';
-      const isWide = isDesk || f.type === 'table';
+      const isWide = isDesk || f.type === 'table' || f.type === 'toilet';
       const alongX = f.wallSide === 1 || f.wallSide === 3 || Math.abs(Math.sin(f.angle ?? 0)) > 0.7;
-      const halfX = isWide ? (alongX ? 22.0 : 19.0) : (f.gone ? 16.5 : 17.5);
-      const halfZ = isWide ? (alongX ? 19.0 : 22.0) : (f.gone ? 16.5 : 17.5);
-      const height = f.gone ? 18.0 : 38.0;
+      const halfX = isSpaceship ? (alongX ? 96.0 : 156.0) : isWide ? (alongX ? 22.0 : 19.0) : (f.gone ? 16.5 : 17.5);
+      const halfZ = isSpaceship ? (alongX ? 156.0 : 96.0) : isWide ? (alongX ? 19.0 : 22.0) : (f.gone ? 16.5 : 17.5);
+      const height = isSpaceship ? 96.0 : (f.gone ? 18.0 : 38.0);
       writeFloorShadowQuad(
         scratchShadowCorners,
         scratchShadowOrigin.setScalar(f.pos.x, floorY, f.pos.y),
         scratchShadowDir,
         scratchShadowBounds.setScalar(halfX, halfZ, height)
       );
-      clampToTileWalls(f.pos);
+      if (!isSpaceship)
+        clampToTileWalls(f.pos);
       batch.quad(scratchShadowCorners, SHADOW_UV_BOX);
     }
 
@@ -2179,8 +2182,17 @@ export class World {
           const adjX = d < 2 ? nx : a;
           const adjY = d < 2 ? a : ny;
           const adjIdx = adjY * width + adjX;
+          const tileRoof = level.ceilingAt ? level.ceilingAt(adjIdx) : ROOF;
           const tileRoofless = level.arena?.has(adjIdx);
-          const tileToRoof = top < ROOF && !tileRoofless;
+          const tileToRoof = top < tileRoof && !tileRoofless;
+          if (tileRoof > ROOF && !tileRoofless) {
+            const ta0 = a * TILE - (a === group.from ? lap0 : 0);
+            const ta1 = (a + 1) * TILE + (a === group.to ? lap1 : 0);
+            const tileLap = axis === 'x'
+              ? faceCorners(axis, new Vec3(plane, Math.max(top, ROOF), ta0), new Vec3(plane, tileRoof, ta1))
+              : faceCorners(axis, new Vec3(ta0, Math.max(top, ROOF), plane), new Vec3(ta1, tileRoof, plane));
+            hide.push(...quadTriangles(tileLap, offset));
+          }
           const corridor = group.kind !== EXIT ? doorCorridorInfo(adjX, adjY, d) : null;
           const quads = wallFaceQuads({
             axis,
@@ -2188,7 +2200,7 @@ export class World {
             from: a,
             to: a,
             base,
-            top: tileToRoof ? ROOF : top,
+            top: tileToRoof ? tileRoof : top,
             tile: new Vec2(group.x, group.y),
             d,
             exit: group.kind === EXIT,
@@ -2197,7 +2209,7 @@ export class World {
           });
           // the pipes tile carries real 3D pipes, standing out of the wall
           if (group.kind !== EXIT && !corridor && !(isMars && !level.isIndoorTile(adjIdx))) {
-            const pipes = wallPipeQuads({ axis, plane, a, base, top: tileToRoof ? ROOF : top, tile: new Vec2(group.x, group.y), d });
+            const pipes = wallPipeQuads({ axis, plane, a, base, top: tileToRoof ? tileRoof : top, tile: new Vec2(group.x, group.y), d });
             if (pipes.length) {
               // blood and bullet holes look this up to land on the pipes instead of behind them
               level.pipeFaces.add((axis === 'x' ? a * width + group.x : group.y * width + a) * 4 + d);
@@ -2220,7 +2232,8 @@ export class World {
       const df = level.diagInfo(idx);
       if (!df)
         continue;
-      const top = Math.min(baseHeight[idx], ROOF);
+      const diagRoof = level.ceilingAt ? level.ceilingAt(idx) : ROOF;
+      const top = Math.min(baseHeight[idx], diagRoof);
       const tx = (df.b.x - df.a.x) / TILE;
       const ty = (df.b.y - df.a.y) / TILE;
       const offset = new Vec3(-df.normal.x * 0.9, 0, -df.normal.y * 0.9);
@@ -2232,10 +2245,10 @@ export class World {
       ];
       hide.push(...quadTriangles(lap(WALL_FLOOR_Y, top), offset));
       const roofless = level.arena?.has(idx);
-      const toRoof = kind[idx] !== PILLAR && top < ROOF && !roofless;
+      const toRoof = kind[idx] !== PILLAR && top < diagRoof && !roofless;
       if (toRoof)
-        hide.push(...quadTriangles(lap(top, ROOF), offset));
-      const quads = diagWallFaceQuads({ a: df.a, b: df.b, heights: new Vec2(0, toRoof ? ROOF : top), tile: new Vec2(df.x, df.y), diag: df.diag, exit: kind[idx] === EXIT });
+        hide.push(...quadTriangles(lap(top, diagRoof), offset));
+      const quads = diagWallFaceQuads({ a: df.a, b: df.b, heights: new Vec2(0, toRoof ? diagRoof : top), tile: new Vec2(df.x, df.y), diag: df.diag, exit: kind[idx] === EXIT });
       sinkToFloor(quads);
       if (isMars && !level.isIndoorTile(idx))
         outdoorFaces.push(...quads);
@@ -2250,25 +2263,27 @@ export class World {
         continue;
       const { x, y } = door;
       const top = Math.min(door.baseHeight ?? baseHeight[door.idx], ROOF);
-      if (top >= ROOF)
-        continue;
       const alongY = solid(x - 1, y) && solid(x + 1, y);
       for (const end of [0, 1]) {
         // an end that opens onto the giant's room gets no lintel
         const outX = alongY ? x : x + (end ? 1 : -1);
         const outY = alongY ? y + (end ? 1 : -1) : y;
-        if (level.arena?.has(outY * width + outX))
+        const outIdx = outY * width + outX;
+        if (level.arena?.has(outIdx))
+          continue;
+        const endRoof = level.ceilingAt ? level.ceilingAt(outIdx) : ROOF;
+        if (top >= endRoof)
           continue;
         const inset = end ? -0.9 : 0.9;
         const corners = alongY
-          ? faceCorners('z', new Vec3(x * TILE, top, (y + end) * TILE), new Vec3((x + 1) * TILE, ROOF, (y + end) * TILE))
-          : faceCorners('x', new Vec3((x + end) * TILE, top, y * TILE), new Vec3((x + end) * TILE, ROOF, (y + 1) * TILE));
+          ? faceCorners('z', new Vec3(x * TILE, top, (y + end) * TILE), new Vec3((x + 1) * TILE, endRoof, (y + end) * TILE))
+          : faceCorners('x', new Vec3((x + end) * TILE, top, y * TILE), new Vec3((x + end) * TILE, endRoof, (y + 1) * TILE));
         hide.push(...quadTriangles(corners, alongY ? new Vec3(0, 0, inset) : new Vec3(inset, 0, 0)));
         // and the lintel is textured wall as well
         const quads = wallFaceQuads(alongY
-          ? { axis: 'z', plane: (y + end) * TILE, from: x, to: x, base: top, top: ROOF, tile: new Vec2(x, y), d: 2 + end, exit: false }
-          : { axis: 'x', plane: (x + end) * TILE, from: y, to: y, base: top, top: ROOF, tile: new Vec2(x, y), d: end, exit: false });
-        if (isMars && !level.isIndoorTile(outY * width + outX))
+          ? { axis: 'z', plane: (y + end) * TILE, from: x, to: x, base: top, top: endRoof, tile: new Vec2(x, y), d: 2 + end, exit: false }
+          : { axis: 'x', plane: (x + end) * TILE, from: y, to: y, base: top, top: endRoof, tile: new Vec2(x, y), d: end, exit: false });
+        if (isMars && !level.isIndoorTile(outIdx))
           outdoorFaces.push(...quads);
         else
           faces.push(...quads);
@@ -2321,14 +2336,17 @@ export class World {
     const roofHide = [];
     for (let y = 0; y < rowCount; y++) {
       let start = 0;
+      let activeRoof = 0;
       for (let x = 0; x <= width; x++) {
         const idx = y * width + x;
         const roofed = x < width && (isMars ? level.isIndoorTile(idx) : !level.arena?.has(idx));
-        if (roofed)
+        const tileRoof = roofed ? (level.ceilingAt ? level.ceilingAt(idx) : ROOF) : 0;
+        if (tileRoof === activeRoof)
           continue;
-        if (x > start)
-          roofHide.push(...quadTriangles([new Vec3(start * TILE, ROOF, y * TILE), new Vec3(x * TILE, ROOF, y * TILE), new Vec3(x * TILE, ROOF, (y + 1) * TILE), new Vec3(start * TILE, ROOF, (y + 1) * TILE)]));
-        start = x + 1;
+        if (activeRoof > 0 && x > start)
+          roofHide.push(...quadTriangles([new Vec3(start * TILE, activeRoof, y * TILE), new Vec3(x * TILE, activeRoof, y * TILE), new Vec3(x * TILE, activeRoof, (y + 1) * TILE), new Vec3(start * TILE, activeRoof, (y + 1) * TILE)]));
+        start = x;
+        activeRoof = tileRoof;
       }
     }
 
@@ -2341,7 +2359,15 @@ export class World {
       const y = (idx - x) / width;
       const df = level.diagInfo(idx);
       if (baseHeight[idx] >= EYE + 8) {
-        const top = ROOF - 0.25;
+        let wallRoof = df && level.ceilingAt ? level.ceilingAt(idx) : ROOF;
+        if (!df && level.ceilingAt)
+          for (let d = 0; d < 4; d++) {
+            const nx = x + (d === 0 ? -1 : d === 1 ? 1 : 0);
+            const ny = y + (d === 2 ? -1 : d === 3 ? 1 : 0);
+            if (level.inBounds(nx, ny))
+              wallRoof = Math.max(wallRoof, level.ceilingAt(ny * width + nx));
+          }
+        const top = wallRoof - 0.25;
         const corners = df
           ? [df.s.x, top, df.s.y, df.a.x, top, df.a.y, df.b.x, top, df.b.y, df.s.x, top, df.s.y]
           : [x * TILE, top, y * TILE, (x + 1) * TILE, top, y * TILE, (x + 1) * TILE, top, (y + 1) * TILE, x * TILE, top, (y + 1) * TILE];
@@ -2645,7 +2671,6 @@ export class World {
       return null;
     };
     // just under the invisible roof, so the roof never hides it
-    const y = ROOF - 1.2;
     batch.begin();
     for (let ty = y0Bound; ty < y1Bound; ty++) {
       for (let tx = x0Bound; tx < x1Bound; tx++) {
@@ -2655,6 +2680,8 @@ export class World {
         const doorInfo = doorInfoAt(tx, ty);
         if (Boolean(doorInfo) !== Boolean(doorCeiling))
           continue;
+        const tileRoof = doorCeiling ? ROOF : (level.ceilingAt ? level.ceilingAt(idx) : ROOF);
+        const y = tileRoof - 1.2;
         const x0 = tx * TILE;
         const z0 = ty * TILE;
         if (doorCeiling) {
@@ -3101,7 +3128,8 @@ export class World {
         if (!level.teleporter?.[idx])
           continue;
         center.setScalar((tx + 0.5) * TILE, baseY, (ty + 0.5) * TILE);
-        size.setScalar(TILE, level.arena?.has(idx) ? 0 : ROOF - 1.2);
+        const cellRoof = level.ceilingAt ? level.ceilingAt(idx) : ROOF;
+        size.setScalar(TILE, level.arena?.has(idx) ? 0 : cellRoof - 1.2);
         const machineQuads = teleporterMachineQuads(center, size);
         for (const q of machineQuads)
           allQuads.push(q);
@@ -3398,6 +3426,13 @@ export class World {
     const puddle = makePart(puddleGeo, wreckMaterial, false);
     const carboyTop = makePart(shrapnelGeo.carboyTop, wreckMaterial, false);
     const shards = shrapnelGeo.shards.map((shardGeo) => makePart(shardGeo, wreckMaterial, false));
+    let door = null;
+    if (art.door) {
+      const doorGeo = (cache.door ??= art.door());
+      door = makePart(doorGeo, skinMaterial, true);
+      if (art.doorPivot)
+        door.setPosition(art.doorPivot);
+    }
 
     const yaw = Trigo.halfpi - (furniture?.angle ?? 0);
     if (furniture?.pos)
@@ -3412,6 +3447,8 @@ export class World {
       puddle,
       carboyTop,
       shards,
+      door,
+      lastDoorOpen: -1,
       skinMaterial,
       wreckMaterial,
       pose: art.createPose(),
@@ -3436,11 +3473,19 @@ export class World {
     const time = this.frameTime;
     const cullDistSq = this.frameCullDistSq;
     const occludeFog = this.frameOccludeFog;
-    if ((Number.isFinite(cullDistSq) && furniture.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(furniture.pos))) {
+    const isSpaceship = view.type === 'spaceship' || furniture.type === 'spaceship';
+    if (!isSpaceship && ((Number.isFinite(cullDistSq) && furniture.pos.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(furniture.pos)))) {
       view.root.setInactive();
       return;
     }
     view.root.setActive();
+    if (view.door) {
+      const doorOpen = furniture.doorOpen ?? 0;
+      if (doorOpen !== view.lastDoorOpen) {
+        view.lastDoorOpen = doorOpen;
+        view.door.setRotation(scratchRot.setScalar(0, -Utils.smoothstep(0, 1, doorOpen) * 1.62, 0));
+      }
+    }
 
     if (!furniture.gone) {
       if (view.wasGone) {
@@ -3459,13 +3504,15 @@ export class World {
         return;
       if (hurt > 0) {
         const pulse = Math.min(1, hurt / 0.16);
-        const flash = 1 + pulse * 0.45;
+        const flash = 1 + pulse * (isSpaceship ? 0.18 : 0.45);
         scratchPos.setScalar(flash, flash, flash);
         view.skinMaterial.setDiffuse(scratchPos);
-        const tilt = Math.sin(time * 75 + (furniture.phase ?? 0)) * 0.055 * pulse;
-        view.intact.setRotation(scratchRot.setScalar(tilt, 0, -tilt * 0.7));
-        const s = 1 + 0.035 * pulse;
-        view.intact.setScale(scratchScale.setScalar(s, 1 - 0.025 * pulse, s));
+        if (!isSpaceship) {
+          const tilt = Math.sin(time * 75 + (furniture.phase ?? 0)) * 0.055 * pulse;
+          view.intact.setRotation(scratchRot.setScalar(tilt, 0, -tilt * 0.7));
+          const s = 1 + 0.035 * pulse;
+          view.intact.setScale(scratchScale.setScalar(s, 1 - 0.025 * pulse, s));
+        }
         view.intactSettled = false;
       } else {
         scratchPos.setScalar(1, 1, 1);

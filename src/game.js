@@ -14,7 +14,7 @@ import { KNIFE_ATTACKS } from './arsenal.js';
 import { POWERUP_TYPES } from './powerups.js';
 import { defaultActionLabel } from './keymap.js';
 import { GRENADE_SCALE, GRENADE_START } from './grenade.js';
-import { DESK_HP, DESK_RADIUS, DISPENSER_HP, DISPENSER_RADIUS, OVEN_HP, OVEN_RADIUS, PLANT_HP, PLANT_RADIUS, SINK_HP, SINK_RADIUS, TABLE_HP, TABLE_RADIUS, TOILET_HP, TOILET_RADIUS } from './furniture.js';
+import { DESK_HP, DESK_RADIUS, DISPENSER_HP, DISPENSER_RADIUS, OVEN_HP, OVEN_RADIUS, PLANT_HP, PLANT_RADIUS, SINK_HP, SINK_RADIUS, SPACESHIP_HP, SPACESHIP_RADIUS, TABLE_HP, TABLE_RADIUS, TOILET_HP, TOILET_RADIUS } from './furniture.js';
 
 const FURNITURE_STATS = {
   dispenser: { radius: DISPENSER_RADIUS, hp: DISPENSER_HP },
@@ -24,6 +24,7 @@ const FURNITURE_STATS = {
   sink: { radius: SINK_RADIUS, hp: SINK_HP },
   plant: { radius: PLANT_RADIUS, hp: PLANT_HP },
   toilet: { radius: TOILET_RADIUS, hp: TOILET_HP },
+  spaceship: { radius: SPACESHIP_RADIUS, hp: SPACESHIP_HP },
 };
 
 /** Collision categories: every body filters on what it should react to. */
@@ -872,11 +873,15 @@ export class Game {
   addFurniture(entry) {
     const type = entry.type ?? 'dispenser';
     const { radius, hp } = FURNITURE_STATS[type] ?? FURNITURE_STATS.dispenser;
-    const body = makeBody(entry.pos, radius, {
-      type: 'static',
-      category: CAT.BARREL,
-      mask: CAT.PLAYER | CAT.ENEMY | CAT.SHOT,
-    });
+    const resolvedAngle = entry.angle ?? 0;
+    const alongX = Math.abs(Math.cos(resolvedAngle)) > 0.7;
+    const body = type === 'spaceship'
+      ? new Physics(entry.pos.clone(), new Vec2(), alongX ? new Vec2(304, 180) : new Vec2(180, 304), 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY | CAT.SHOT, 0, 'static')
+      : makeBody(entry.pos, radius, {
+          type: 'static',
+          category: CAT.BARREL,
+          mask: CAT.PLAYER | CAT.ENEMY | CAT.SHOT,
+        });
     const furniture = {
       kind: 'furniture',
       type,
@@ -887,7 +892,7 @@ export class Game {
       wallSide: entry.wallSide,
       body,
       pos: body.position,
-      angle: entry.angle ?? 0,
+      angle: resolvedAngle,
       hp,
       hurt: 0,
       gone: false,
@@ -896,6 +901,32 @@ export class Game {
     };
     body.ref = furniture;
     this.scene.addBody(body);
+    if (type === 'toilet') {
+      const fwdX = Math.cos(resolvedAngle);
+      const fwdY = Math.sin(resolvedAngle);
+      const rightX = Math.sin(resolvedAngle);
+      const rightY = -Math.cos(resolvedAngle);
+      const stallSize = alongX ? new Vec2(40.4, 3.2) : new Vec2(3.2, 40.4);
+      const doorSize = alongX ? new Vec2(3.2, 31.2) : new Vec2(31.2, 3.2);
+      const leftPos = new Vec2(entry.pos.x + rightX * -23.8 + fwdX * 6.5, entry.pos.y + rightY * -23.8 + fwdY * 6.5);
+      const rightPos = new Vec2(entry.pos.x + rightX * 23.8 + fwdX * 6.5, entry.pos.y + rightY * 23.8 + fwdY * 6.5);
+      const doorPos = new Vec2(entry.pos.x + fwdX * 25.8, entry.pos.y + fwdY * 25.8);
+      const leftBody = new Physics(leftPos, new Vec2(), stallSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY, 0, 'static');
+      const rightBody = new Physics(rightPos, new Vec2(), stallSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY, 0, 'static');
+      const doorBody = new Physics(doorPos.clone(), new Vec2(), doorSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY, 0, 'static');
+      const stallRef = { kind: 'stall', furniture };
+      leftBody.ref = stallRef;
+      rightBody.ref = stallRef;
+      doorBody.ref = stallRef;
+      this.scene.addBody(leftBody);
+      this.scene.addBody(rightBody);
+      this.scene.addBody(doorBody);
+      furniture.doorOpen = 0;
+      furniture.doorTarget = 0;
+      furniture.doorPos = doorPos;
+      furniture.doorBody = doorBody;
+      furniture.stallBodies = [leftBody, rightBody];
+    }
     this.furnitures.push(furniture);
     return furniture;
   }
@@ -916,6 +947,14 @@ export class Game {
   hitFurniture(furniture, amount) {
     if (!furniture || furniture.gone)
       return;
+    if (!Number.isFinite(furniture.hp)) {
+      furniture.hurt = 0.08;
+      if (this.player)
+        this.player.hitMarker = 0.15;
+      this.burst(furniture.pos.x, furniture.pos.y, 24, 'spark');
+      this.emit('clang', furniture.pos);
+      return;
+    }
     furniture.hp -= amount;
     furniture.hurt = 0.16;
     if (this.player)
@@ -940,6 +979,29 @@ export class Game {
         furniture.hurt = Math.max(0, furniture.hurt - dt);
       if (furniture.gone)
         furniture.deadTime = (furniture.deadTime ?? 0) + dt;
+      if (furniture.type === 'toilet') {
+        if (furniture.doorTarget === 0 && this.player) {
+          const dx = this.player.pos.x - furniture.pos.x;
+          const dy = this.player.pos.y - furniture.pos.y;
+          const fwdX = Math.cos(furniture.angle);
+          const fwdY = Math.sin(furniture.angle);
+          const rightX = Math.sin(furniture.angle);
+          const rightY = -Math.cos(furniture.angle);
+          const lx = dx * rightX + dy * rightY;
+          const lz = dx * fwdX + dy * fwdY;
+          if (Math.abs(lx) < 15.8 && Math.abs(lz - 25.8) < PLAYER_RADIUS + 3.2) {
+            furniture.doorTarget = 1;
+            this.emit('doorOpen', furniture.doorPos);
+          }
+        }
+        const target = furniture.doorTarget ?? 0;
+        const cur = furniture.doorOpen ?? 0;
+        if (cur !== target) {
+          const step = dt * 3.5;
+          furniture.doorOpen = target > cur ? Math.min(target, cur + step) : Math.max(target, cur - step);
+          furniture.doorBody?.setActive(furniture.doorOpen < 0.45);
+        }
+      }
     }
   }
 
@@ -2459,6 +2521,7 @@ export class Game {
     target.door = null;
     target.cache = null;
     target.switch = null;
+    target.furniture = null;
     target.verb = '';
     target.lock = null;
     target.promptable = false;
@@ -2479,6 +2542,7 @@ export class Game {
     let best = null;
     let bestCache = null;
     let bestSwitch = null;
+    let bestToilet = null;
     let bestDistance = USE_RANGE;
     const { doorsList } = this.level;
     for (let i = 0; i < doorsList.length; i++) {
@@ -2492,6 +2556,18 @@ export class Game {
         bestDistance = distance;
       }
     }
+    for (let i = 0; i < this.furnitures.length; i++) {
+      const f = this.furnitures[i];
+      if (f.type !== 'toilet' || !f.doorPos)
+        continue;
+      const toDoor = this.toPlayer.subVectors(f.doorPos, player.pos);
+      const distance = toDoor.getMagnitude();
+      if (distance > 0 && distance < bestDistance && toDoor.dotProduct(facing) / distance > USE_DOT) {
+        bestToilet = f;
+        best = null;
+        bestDistance = distance;
+      }
+    }
     for (let i = 0; i < this.caches.length; i++) {
       const cache = this.caches[i];
       if (cache.state === 'emptied' || (cache.state !== 'closed' && !cache.contents.length))
@@ -2502,6 +2578,7 @@ export class Game {
         continue;
       if (distance < CACHE_TOUCH_RANGE + 1e-3 || (distance > 0 && toCache.dotProduct(facing) / distance > USE_DOT)) {
         bestCache = cache;
+        bestToilet = null;
         best = null;
         bestDistance = distance;
       }
@@ -2515,6 +2592,7 @@ export class Game {
       if (distance > 0 && distance < bestDistance && toSwitch.dotProduct(facing) / distance > USE_DOT) {
         bestSwitch = sw;
         bestCache = null;
+        bestToilet = null;
         best = null;
         bestDistance = distance;
       }
@@ -2530,6 +2608,11 @@ export class Game {
       target.verb = bestCache.state === 'closed'
         ? (bestCache.locked ? USE_VERBS.unlock : USE_VERBS.loot)
         : USE_VERBS.take;
+      target.promptable = !this.chestLock?.active;
+    } else if (bestToilet) {
+      target.kind = 'toiletDoor';
+      target.furniture = bestToilet;
+      target.verb = bestToilet.doorTarget ? USE_VERBS.close : USE_VERBS.open;
       target.promptable = !this.chestLock?.active;
     } else if (best) {
       target.kind = 'door';
@@ -2601,6 +2684,12 @@ export class Game {
         this.startChestLock(target.cache);
       else
         this.openCache(target.cache);
+      return;
+    }
+    if (target.kind === 'toiletDoor') {
+      const f = target.furniture;
+      f.doorTarget = f.doorTarget ? 0 : 1;
+      this.emit(f.doorTarget ? 'doorOpen' : 'doorClose', f.doorPos);
       return;
     }
     if (target.kind === 'door') {

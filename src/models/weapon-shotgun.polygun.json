@@ -35,10 +35,10 @@
     "cellSize": 32,
     "frames": 4,
     "cells": {
-      "body": 0,
-      "barrel": 1,
-      "grip": 2,
-      "muzzle": 3
+      "c0": 0,
+      "c1": 1,
+      "c2": 2,
+      "c3": 3
     },
     "cellNames": [
       "0: Gunmetal Receiver",

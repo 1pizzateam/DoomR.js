@@ -1058,7 +1058,6 @@ export const CEILING_FRAGMENT = ceilingPbrShader.fragment;
  */
 export function ceilingLightFixtures(level) {
   const fixtures = [];
-  const lightY = CEILING - 2;
   for (let ty = 0; ty < level.rowCount; ty++)
     for (let tx = 0; tx < level.width; tx++) {
       const idx = ty * level.width + tx;
@@ -1068,11 +1067,14 @@ export function ceilingLightFixtures(level) {
         continue;
       if (ceilingCellFor(scratchTile.setScalar(tx, ty)) !== CEILING_CELLS.light)
         continue;
+      const cellCeil = level.ceilingAt ? level.ceilingAt(idx) : (level.hangar?.has(idx) ? 128 : CEILING);
+      const lightY = cellCeil - 2;
       let h = Math.imul(tx * 73856093 ^ ty * 19349663 ^ 17, 2654435761);
       h = (h ^ (h >>> 15)) >>> 0;
       fixtures.push({
         tile: new Vec2(tx, ty),
         position: new Vec3((tx + 0.5) * TILE, lightY, (ty + 0.5) * TILE),
+        ceiling: cellCeil,
         phase: (h % 628) / 100,
         flicker: h % 5 === 0,
       });
@@ -1360,8 +1362,6 @@ export function ceilingLightCones(fixtures) {
   const quadsPerFixture = 4;
   const vertices = new Float32Array(fixtures.length * quadsPerFixture * 18);
   const uvs = new Float32Array(fixtures.length * quadsPerFixture * 12);
-  const yTop = CEILING - 1.4;
-  const yBot = 10;
   const topX = 22;
   const botX = 38;
   const topZ = 6;
@@ -1377,6 +1377,9 @@ export function ceilingLightCones(fixtures) {
   for (let i = 0; i < fixtures.length; i++) {
     const cx = fixtures[i].position.x;
     const cz = fixtures[i].position.z;
+    const ceil = fixtures[i].ceiling ?? (fixtures[i].position.y > CEILING ? 128 : CEILING);
+    const yTop = ceil - 1.4;
+    const yBot = yTop - 52.6;
     for (let s = 0; s < sheets.length; s++) {
       const [tx0, tz0, tx1, tz1, bx0, bz0, bx1, bz1] = sheets[s];
       const corners = [

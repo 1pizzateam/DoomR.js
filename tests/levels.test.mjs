@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { Vec2, Vec3 } from '@1pizzateam/spock';
 import { LEVELS } from '../src/levels.js';
-import { CEILING, DESK_WALL_OFFSET, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DISPENSER_WALL_OFFSET, Level, PILLAR, TILE, WALL } from '../src/level.js';
+import { CEILING, DESK_WALL_OFFSET, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DISPENSER_WALL_OFFSET, HANGAR_CEILING, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from '../src/cache.js';
 import { buildConferenceTable, buildKitchenSink, buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createPlantBreakPose, createSinkBreakPose, createTableBreakPose, DESK_ATLAS, DESK_HP, DESK_SHARD_COUNT, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, DISPENSER_ATLAS, DISPENSER_HP, DISPENSER_SHARD_COUNT, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, FURNITURE_VERTEX, PLANT_SHARD_COUNT, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, SHADOW_ATLAS, SHADOW_FRAGMENT, SHADOW_VERTEX, shadowAtlas, sinkAtlas, sinkBreakPose, tableAtlas, tableBreakPose, writeFloorShadowQuad, writeWallShadowQuad } from '../src/furniture.js';
 import { Game } from '../src/game.js';
@@ -805,16 +805,18 @@ try {
   console.log(`FAIL ${switchValidationAc7TestName}\n     ${error.message}`);
 }
 
-const toiletFurnitureTestName = 'facility toilet furniture tile (j), procedural atlas, 3D mesh, wreck, puddle, shrapnel, and break pose';
+const toiletFurnitureTestName = 'facility toilet furniture tile (j), restroom stall walls, swinging battant door, procedural atlas, 3D mesh, wreck, puddle, shrapnel, and break pose';
 try {
   const {
     TOILET_RADIUS,
     TOILET_WALL_OFFSET,
     TOILET_HP,
     TOILET_SHARD_COUNT,
+    TOILET_DOOR_PIVOT,
     toiletAtlas,
     toiletMesh,
     buildToilet,
+    toiletDoorMesh,
     toiletWreckMesh,
     toiletPuddleMesh,
     toiletShrapnelParts,
@@ -827,6 +829,7 @@ try {
   assert.equal(TOILET_HP, 1);
   assert.equal(TOILET_SHARD_COUNT, 5);
   assert.equal(buildToilet, toiletMesh);
+  assert.ok(TOILET_DOOR_PIVOT && Math.abs(TOILET_DOOR_PIVOT.x - -15.6) < 1e-4 && Math.abs(TOILET_DOOR_PIVOT.z - 25.8) < 1e-4);
 
   const atlas = toiletAtlas();
   assert.equal(atlas.name, 'toilet');
@@ -838,6 +841,20 @@ try {
   const intact = toiletMesh();
   assert.ok(intact.vertices.length > 0 && intact.vertices.length % 3 === 0);
   assert.ok(intact.uvs.length * 3 === intact.vertices.length * 2);
+
+  let minX = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i < intact.vertices.length; i += 3) {
+    minX = Math.min(minX, intact.vertices[i]);
+    maxX = Math.max(maxX, intact.vertices[i]);
+    maxY = Math.max(maxY, intact.vertices[i + 1]);
+  }
+  assert.ok(maxX - minX >= 48, 'toilet mesh includes left and right restroom stall partition walls');
+  assert.ok(maxY >= 50, 'toilet stall headrail reaches ~52 units high');
+
+  const doorGeo = toiletDoorMesh();
+  assert.ok(doorGeo.vertices.length > 0 && doorGeo.vertices.length % 3 === 0);
+  assert.equal(doorGeo.normals.length, doorGeo.vertices.length);
+  assert.equal(doorGeo.uvs.length * 3, doorGeo.vertices.length * 2);
 
   const wreck = toiletWreckMesh();
   assert.ok(wreck.vertices.length > 0 && wreck.vertices.length < intact.vertices.length);
@@ -855,24 +872,156 @@ try {
   assert.ok(pose.shards[0].pos.y > 0.7);
   assert.ok(pose.puddleScale.x > 0.25);
 
+  const toiletRows = [
+    '#######',
+    '#..j..#',
+    '#..P..#',
+    '#######',
+  ];
   const toiletLevel = new Level({
     name: 'ToiletRoom',
-    rows: [
-      '#######',
-      '#..j..#',
-      '#..P..#',
-      '#######',
-    ],
+    rows: toiletRows,
   });
   assert.equal(toiletLevel.furnitures.length, 1);
   assert.equal(toiletLevel.furnitures[0].type, 'toilet');
   assert.equal(toiletLevel.furnitures[0].x, 3);
   assert.equal(toiletLevel.furnitures[0].y, 1);
   assert.equal(toiletLevel.furnitures[0].wallSide, 3);
+
+  const toiletGame = new Game();
+  toiletGame.load({ name: 'ToiletRoom', rows: toiletRows });
+  const tf = toiletGame.furnitures[0];
+  assert.equal(tf.type, 'toilet');
+  assert.equal(tf.doorOpen, 0);
+  assert.equal(tf.doorTarget, 0);
+  assert.equal(tf.stallBodies.length, 2, 'toilet stall registers 2 side partition AABB bodies');
+  assert.equal(tf.doorBody.active, true, 'closed battant door collider is active');
+  toiletGame.player.pos.setScalar(tf.doorPos.x, tf.doorPos.y + 28);
+  toiletGame.player.angle = -Math.PI * 0.5;
+  assert.equal(toiletGame.findUseTarget(), true, 'facing toilet stall battant door within USE_RANGE is promptable');
+  assert.equal(toiletGame.useTarget.kind, 'toiletDoor');
+  toiletGame.use();
+  assert.equal(tf.doorTarget, 1, 'using the stall door swings it open');
+  toiletGame.updateFurnitures(0.4);
+  assert.equal(tf.doorOpen, 1);
+  assert.equal(tf.doorBody.active, false, 'open battant door disables doorway collider');
   console.log(`ok   ${toiletFurnitureTestName}`);
 } catch (error) {
   failed = true;
   console.log(`FAIL ${toiletFurnitureTestName}\n     ${error.message}`);
+}
+
+const spaceshipFurnitureTestName = 'massive spaceship furniture tile (v), 512x128 atlas, ~190x110x320 3D dropship mesh, double-height hangar ceiling (128), and indestructible hull';
+try {
+  const {
+    SPACESHIP_RADIUS,
+    SPACESHIP_WALL_OFFSET,
+    SPACESHIP_HP,
+    SPACESHIP_SHARD_COUNT,
+    spaceshipAtlas,
+    spaceshipMesh,
+    buildSpaceship,
+    spaceshipWreckMesh,
+    spaceshipDebrisMesh,
+    spaceshipShrapnelParts,
+    createSpaceshipBreakPose,
+    spaceshipBreakPose,
+  } = await import('../src/furniture.js');
+
+  assert.equal(SPACESHIP_RADIUS, 95);
+  assert.equal(SPACESHIP_WALL_OFFSET, 0);
+  assert.equal(SPACESHIP_HP, Infinity);
+  assert.equal(SPACESHIP_SHARD_COUNT, 5);
+  assert.equal(buildSpaceship, spaceshipMesh);
+
+  const atlas = spaceshipAtlas();
+  assert.equal(atlas.name, 'spaceship');
+  assert.equal(atlas.width, 512);
+  assert.equal(atlas.height, 128);
+  assert.equal(atlas.data.length, 512 * 128 * 4);
+  assert.equal(atlas.relief.length, 512 * 128);
+
+  const intact = spaceshipMesh();
+  assert.ok(intact.vertices.length >= 1800 && intact.vertices.length % 3 === 0);
+  assert.equal(intact.normals.length, intact.vertices.length);
+  assert.equal(intact.uvs.length * 3, intact.vertices.length * 2);
+
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
+  for (let i = 0; i < intact.vertices.length; i += 3) {
+    minX = Math.min(minX, intact.vertices[i]);
+    maxX = Math.max(maxX, intact.vertices[i]);
+    minY = Math.min(minY, intact.vertices[i + 1]);
+    maxY = Math.max(maxY, intact.vertices[i + 1]);
+    minZ = Math.min(minZ, intact.vertices[i + 2]);
+    maxZ = Math.max(maxZ, intact.vertices[i + 2]);
+  }
+  assert.equal(minY, 0, 'spaceship landing gear rests on y = 0');
+  assert.ok(maxY >= 105 && maxY <= 112, `spaceship tail fins rise above 64-unit hangar walls to ~110 (got ${maxY})`);
+  assert.ok(maxX - minX >= 180 && maxX - minX <= 196, `spaceship wingspan is ~190 units (~3 tiles, got ${maxX - minX})`);
+  assert.ok(maxZ - minZ >= 300 && maxZ - minZ <= 324, `spaceship hull length is ~320 units (~5 tiles, got ${maxZ - minZ})`);
+
+  const wreck = spaceshipWreckMesh();
+  assert.equal(wreck.vertices.length, intact.vertices.length);
+  const debris = spaceshipDebrisMesh();
+  assert.ok(debris.vertices.length > 0);
+  const shrapnel = spaceshipShrapnelParts();
+  assert.ok(shrapnel.carboyTop.vertices.length > 0);
+  assert.equal(shrapnel.shards.length, SPACESHIP_SHARD_COUNT);
+  const pose = createSpaceshipBreakPose();
+  spaceshipBreakPose(0.2, 7, pose);
+  assert.ok(pose.shards[0].pos.y > 0.5);
+
+  const hangarRows = [
+    '#########',
+    '#.......#',
+    '#...v...#',
+    '#.......#',
+    '####D####',
+    '#...P...#',
+    '#...X...#',
+    '#########',
+  ];
+  const hangarLevel = new Level({ name: 'HangarBay', rows: hangarRows });
+  assert.equal(hangarLevel.furnitures.length, 1);
+  assert.equal(hangarLevel.furnitures[0].type, 'spaceship');
+  assert.equal(hangarLevel.arena, null, 'hangar room keeps its roof (not an unroofed outdoor arena)');
+  assert.ok(hangarLevel.hangar instanceof Set, 'hangar room containing a spaceship is tracked in level.hangar');
+  assert.ok(hangarLevel.hangar.has(2 * hangarLevel.width + 4), 'spaceship tile is in double-height hangar');
+  assert.ok(!hangarLevel.hangar.has(5 * hangarLevel.width + 4), 'room behind door is not in hangar');
+  assert.equal(hangarLevel.ceilingAt(2 * hangarLevel.width + 4), HANGAR_CEILING, 'hangar tile ceiling is 128 (2 * TILE)');
+  assert.equal(hangarLevel.ceilingAt(5 * hangarLevel.width + 4), CEILING, 'standard room ceiling remains 64 (TILE)');
+
+  const { ceilingLightFixtures, ceilingLightCones } = await import('../src/ceiling.js');
+  const fixtures = ceilingLightFixtures(hangarLevel);
+  const hangarFixtures = fixtures.filter((f) => f.ceiling === HANGAR_CEILING);
+  const standardFixtures = fixtures.filter((f) => f.ceiling === CEILING);
+  assert.ok(hangarFixtures.length > 0, 'hangar bay has ceiling light fixtures at double height');
+  assert.ok(hangarFixtures.every((f) => f.position.y === HANGAR_CEILING - 2), 'hangar light fixtures sit at y = 126');
+  assert.ok(standardFixtures.every((f) => f.position.y === CEILING - 2), 'standard light fixtures sit at y = 62');
+  const cones = ceilingLightCones(hangarFixtures);
+  let maxConeY = -Infinity;
+  for (let i = 1; i < cones.vertices.length; i += 3)
+    maxConeY = Math.max(maxConeY, cones.vertices[i]);
+  assert.ok(Math.abs(maxConeY - (HANGAR_CEILING - 1.4)) < 1e-4, `hangar light cones hang from y = ${HANGAR_CEILING - 1.4}`);
+
+  const hangarGame = new Game();
+  hangarGame.load({ name: 'HangarBay', rows: hangarRows });
+  hangarGame.blood.ceilingSplat(new Vec2(4.5 * 64, 2.5 * 64), 4);
+  hangarGame.blood.ceilingSplat(new Vec2(4.5 * 64, 5.5 * 64), 4);
+  assert.ok(Math.abs(hangarGame.blood.ceiling[0].height - (HANGAR_CEILING - 1.6)) < 1e-5, 'hangar blood ceiling splat sticks at y = 126.4');
+  assert.ok(Math.abs(hangarGame.blood.ceiling[1].height - (CEILING - 1.6)) < 1e-5, 'standard room blood ceiling splat sticks at y = 62.4');
+  const ship = hangarGame.furnitures[0];
+  assert.equal(ship.type, 'spaceship');
+  assert.equal(ship.body.shape, 'aabb', 'spaceship uses a multi-tile AABB collision hull');
+  hangarGame.hitFurniture(ship, 999);
+  assert.equal(ship.gone, false, 'spaceship hull is indestructible');
+  assert.equal(ship.hp, Infinity);
+  console.log(`ok   ${spaceshipFurnitureTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${spaceshipFurnitureTestName}\n     ${error.message}`);
 }
 
 process.exit(failed ? 1 : 0);

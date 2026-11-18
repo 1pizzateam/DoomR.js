@@ -133,6 +133,19 @@ export const TOILET_WALL_OFFSET = 18;
 export const TOILET_HP = 1;
 export const TOILET_SHARD_COUNT = 5;
 
+const SPACESHIP_HULL = { x: 0, width: 128, height: 128 };
+const SPACESHIP_COCKPIT = { x: 128, width: 128, height: 128 };
+const SPACESHIP_ENGINE = { x: 256, width: 128, height: 128 };
+const SPACESHIP_WING = { x: 384, width: 128, height: 128 };
+
+const SPACESHIP_CELL = 128;
+const SPACESHIP_FRAMES = 4;
+const SPACESHIP_ATLAS = { width: 512, height: 128 };
+export const SPACESHIP_RADIUS = 95;
+export const SPACESHIP_WALL_OFFSET = 0;
+export const SPACESHIP_HP = Infinity;
+export const SPACESHIP_SHARD_COUNT = 5;
+
 export const FURNITURE_VERTEX = `
 attribute vec3 aVertexPosition;
 attribute vec3 aVertexNormal;
@@ -4155,6 +4168,13 @@ const PORCELAIN_SHADOW = [38, 46, 58];
 const SEAT_BASE = [162, 172, 184];
 const SEAT_LIGHT = [196, 204, 216];
 const SEAT_DARK = [98, 108, 122];
+const STALL_PANEL = [56, 72, 92];
+const STALL_LIGHT = [84, 104, 128];
+const STALL_DARK = [34, 46, 62];
+const STALL_TRIM = [142, 154, 168];
+
+/** Pivot point (`Vec3`) on the inner edge of the front-left stall pilaster where the swinging battant door is hinged. */
+export const TOILET_DOOR_PIVOT = new Vec3(-15.6, 0, 25.8);
 
 function drawToiletPorcelain(rnd) {
   const t = new Tile(TOILET_PORCELAIN.width, TOILET_PORCELAIN.height);
@@ -4203,52 +4223,95 @@ function drawToiletPorcelain(rnd) {
 
 function drawToiletCistern(rnd) {
   const t = new Tile(TOILET_CISTERN.width, TOILET_CISTERN.height);
-  plate(t, 0, 0, TOILET_CISTERN.width, TOILET_CISTERN.height, rnd, PORCELAIN_BASE);
+  plate(t, 0, 0, 32, TOILET_CISTERN.height, rnd, PORCELAIN_BASE);
+  plate(t, 32, 0, 32, TOILET_CISTERN.height, rnd, STALL_PANEL);
 
-  // Overhanging beveled porcelain cistern tank lid (y = 2..12)
-  t.rect(2, 2, 60, 10, PORCELAIN_LIGHT, 0.78);
-  for (let x = 2; x < 62; x++) {
+  // Left half (x = 0..31): Porcelain Cistern Tank, Overhanging Lid, Chrome Flush Lever & Supply Valve
+  t.rect(1, 2, 30, 10, PORCELAIN_LIGHT, 0.78);
+  for (let x = 1; x < 31; x++) {
     t.set(x, 3, SEAT_LIGHT, 0.85);
     t.set(x, 11, PORCELAIN_DARK, 0.85);
     t.set(x, 12, SHADOW, 0.88);
   }
   // Dual-flush chrome button badge inlaid in the center of the tank lid
-  t.rect(25, 4, 14, 5, STAINLESS_LIGHT, 0.9);
-  t.rect(26, 5, 5, 3, STAINLESS_DARK, 0.75);
-  t.rect(32, 5, 6, 3, SEAT_LIGHT, 0.85);
+  t.rect(11, 4, 10, 5, STAINLESS_LIGHT, 0.9);
+  t.rect(12, 5, 4, 3, STAINLESS_DARK, 0.75);
+  t.rect(17, 5, 3, 3, SEAT_LIGHT, 0.85);
 
-  // Main cistern front wall with recessed beveled inspection panel (x = 7..57, y = 16..46)
-  t.rect(7, 16, 50, 30, PORCELAIN_DARK, 0.24);
+  // Main cistern front wall with recessed beveled inspection panel (x = 3..29, y = 16..46)
+  t.rect(3, 16, 26, 30, PORCELAIN_DARK, 0.24);
   for (let y = 17; y < 45; y++)
-    for (let x = 8; x < 56; x++) {
-      const sheen = Math.sin(((x - 8) / 48) * Trigo.pi) * 0.36;
+    for (let x = 4; x < 28; x++) {
+      const sheen = Math.sin(((x - 4) / 24) * Trigo.pi) * 0.36;
       t.set(x, y, PORCELAIN_LIGHT, sheen);
     }
-  for (let x = 7; x < 57; x++) {
+  for (let x = 3; x < 29; x++) {
     t.set(x, 16, PORCELAIN_SHADOW, 0.7);
     t.set(x, 45, PORCELAIN_LIGHT, 0.75);
   }
 
-  // Left-mounted chrome flush lever escutcheon & handle bar (x = 9..23, y = 19..25)
-  t.rect(9, 19, 6, 6, STAINLESS_DARK, 0.9);
-  t.rect(10, 20, 13, 4, STAINLESS_LIGHT, 0.92);
-  t.rect(11, 21, 11, 2, SEAT_LIGHT, 0.85);
+  // Left-mounted chrome flush lever escutcheon & handle bar (x = 4..13, y = 19..25)
+  t.rect(4, 19, 4, 6, STAINLESS_DARK, 0.9);
+  t.rect(5, 20, 8, 4, STAINLESS_LIGHT, 0.92);
+  t.rect(6, 21, 6, 2, SEAT_LIGHT, 0.85);
 
   // Lower band (y = 49..63): Chrome water supply valve, braided riser pipe & rubber tank gasket
-  t.rect(1, 49, 62, 14, STAINLESS_BASE, 0.85);
-  for (let x = 2; x < 62; x++) {
+  t.rect(1, 49, 30, 14, STAINLESS_BASE, 0.85);
+  for (let x = 1; x < 31; x++) {
     t.set(x, 50, STAINLESS_LIGHT, 0.8);
     t.set(x, 56, PORCELAIN_SHADOW, 0.85);
   }
-  t.rect(4, 58, 12, 5, COLD_BLUE, 0.9);
+  t.rect(3, 58, 8, 5, COLD_BLUE, 0.9);
 
-  // Relief: overhanging cistern lid, lid seam groove, recessed front panel, and raised chrome flush handle
-  t.relief(2, 2, 60, 10, 1.2, 1.0);
-  t.groove(2, 12.5, 61, 12.5, 1.6, 1.2);
-  t.relief(7, 16, 50, 30, -0.5, 1.2);
-  t.relief(9, 19, 14, 6, 1.1, 0.6);
+  // Right half (x = 32..63): Powder-Coated Restroom Cubicle Partition & Swinging Battant Door Panel
+  // Top anodized aluminum headrail & cap-rail trim (y = 1..6)
+  t.rect(32, 1, 32, 5, STALL_TRIM, 0.88);
+  for (let x = 32; x < 64; x++) {
+    t.set(x, 1, SEAT_LIGHT, 0.85);
+    t.set(x, 5, STALL_DARK, 0.85);
+  }
+  // Main enameled steel stall partition & door surface (y = 7..56)
+  for (let y = 7; y < 56; y++)
+    for (let x = 33; x < 63; x++) {
+      const sheen = Math.sin(((x - 33) / 30) * Trigo.pi) * 0.28;
+      t.set(x, y, STALL_LIGHT, sheen);
+    }
+  // Recessed beveled battant door inner panel (x = 36..59, y = 11..51)
+  t.rect(36, 11, 24, 40, STALL_DARK, 0.35);
+  for (let x = 36; x < 60; x++) {
+    t.set(x, 11, PORCELAIN_SHADOW, 0.8);
+    t.set(x, 50, STALL_LIGHT, 0.72);
+  }
+  for (let y = 11; y < 51; y++) {
+    t.set(36, y, PORCELAIN_SHADOW, 0.75);
+    t.set(59, y, STALL_LIGHT, 0.68);
+  }
+  // Horizontal privacy ventilation louver slots in the lower door panel (y = 38..48)
+  for (const ly of [38, 41, 44, 47])
+    for (let lx = 39; lx < 57; lx++) {
+      t.set(lx, ly, PORCELAIN_SHADOW, 0.88);
+      t.set(lx, ly + 1, STALL_LIGHT, 0.65);
+    }
+  // Chrome rotary door latch & Vacant/Occupied indicator window (x = 53..61, y = 26..32)
+  t.rect(53, 26, 8, 6, STAINLESS_LIGHT, 0.9);
+  t.rect(54, 28, 3, 2, LED_GREEN, 0.85);
+  t.rect(57, 28, 3, 2, HOT_RED, 0.85);
 
-  for (const [rx, ry] of [[14, 52], [50, 52]])
+  // Bottom stainless-steel pilaster floor shoe (y = 57..63)
+  t.rect(32, 57, 32, 6, KICKPLATE, 0.9);
+  for (let x = 32; x < 64; x++)
+    t.set(x, 57, STALL_TRIM, 0.75);
+
+  // Relief: cistern lid, recessed cistern panel, stall headrail, recessed door bevel, louver slots & rotary latch
+  t.relief(1, 2, 30, 10, 1.2, 1.0);
+  t.groove(1, 12.5, 30, 12.5, 1.6, 1.2);
+  t.relief(3, 16, 26, 30, -0.5, 1.2);
+  t.relief(4, 19, 9, 6, 1.1, 0.6);
+  t.relief(32, 1, 32, 5, 1.0, 0.8);
+  t.relief(36, 11, 24, 40, -0.6, 1.2);
+  t.relief(53, 26, 8, 6, 1.1, 0.6);
+
+  for (const [rx, ry] of [[7, 52], [25, 52], [35, 9], [60, 9], [35, 53], [60, 53]])
     rivet(t, rx, ry);
 
   rust(t, rnd, 0.12);
@@ -4419,14 +4482,155 @@ function pushOvalDisc(vertices, normals, uvs, cz, y, rx, rz, uCenter, vCenter, u
   }
 }
 
+function buildToiletStall(vertices, normals, uvs, porcU0, porcU1, stallU0, stallU1, chromeU0, chromeU1) {
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+  const panelFaces = {
+    front: uvRect(stallU0, 0.12, stallU1, 0.88),
+    back: uvRect(stallU0, 0.12, stallU1, 0.88),
+    left: uvRect(stallU0, 0.12, stallU1, 0.88),
+    right: uvRect(stallU0, 0.12, stallU1, 0.88),
+    top: uvRect(stallU0, 0.02, stallU1, 0.1),
+    bottom: uvRect(stallU0, 0.82, stallU1, 0.9),
+  };
+  const railFaces = {
+    front: uvRect(stallU0, 0.02, stallU1, 0.1),
+    back: uvRect(stallU0, 0.02, stallU1, 0.1),
+    left: uvRect(stallU0, 0.02, stallU1, 0.1),
+    right: uvRect(stallU0, 0.02, stallU1, 0.1),
+    top: uvRect(stallU0, 0.02, stallU1, 0.1),
+    bottom: uvRect(stallU0, 0.02, stallU1, 0.1),
+  };
+  const shoeFaces = {
+    front: uvRect(stallU0, 0.9, stallU1, 0.99),
+    back: uvRect(stallU0, 0.9, stallU1, 0.99),
+    left: uvRect(stallU0, 0.9, stallU1, 0.99),
+    right: uvRect(stallU0, 0.9, stallU1, 0.99),
+    top: uvRect(stallU0, 0.02, stallU1, 0.1),
+    bottom: uvRect(stallU0, 0.9, stallU1, 0.99),
+  };
+  const chromeFaces = {
+    front: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    back: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    left: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    right: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    top: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    bottom: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+  };
+
+  // 1. Left & Right Cubicle Side Partition Panels (y = 7.2 .. 49.0, z = -13.6 .. 25.0)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-24.6, 7.2, -13.6), new Vec3(-23.0, 49.0, 25.0), panelFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(23.0, 7.2, -13.6), new Vec3(24.6, 49.0, 25.0), panelFaces);
+
+  // Side partition top anodized aluminum cap rails (y = 49.0 .. 50.4)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-24.8, 49.0, -13.6), new Vec3(-22.8, 50.4, 25.0), railFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(22.8, 49.0, -13.6), new Vec3(24.8, 50.4, 25.0), railFaces);
+
+  // Brushed-chrome pedestal support legs under left & right partitions (y = 0 .. 7.2) + floor shoes
+  for (const sx of [-23.8, 23.8])
+    for (const sz of [-6.0, 15.0]) {
+      pushBoxPart(vertices, normals, uvs, new Vec3(sx - 0.9, 0, sz - 0.9), new Vec3(sx + 0.9, 1.4, sz + 0.9), shoeFaces);
+      pushBoxPart(vertices, normals, uvs, new Vec3(sx - 0.55, 1.4, sz - 0.55), new Vec3(sx + 0.55, 7.2, sz + 0.55), chromeFaces);
+    }
+
+  // Rear chrome wall-fixing U-brackets anchoring partitions to the rear bulkhead wall (z = -13.8 .. -12.0)
+  for (const sx of [-23.8, 23.8])
+    for (const by of [13.0, 41.0])
+      pushBoxPart(vertices, normals, uvs, new Vec3(sx - 1.0, by, -13.8), new Vec3(sx + 1.0, by + 3.2, -12.0), chromeFaces);
+
+  // 2. Front Floor-to-Headrail Pilaster Door Jambs (z = 25.0 .. 26.6, y = 0 .. 50.4)
+  // Left pilaster (x = -24.8 .. -15.6) & stainless floor shoe
+  pushBoxPart(vertices, normals, uvs, new Vec3(-25.0, 0, 24.8), new Vec3(-15.4, 2.2, 26.8), shoeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-24.8, 2.2, 25.0), new Vec3(-15.6, 50.4, 26.6), panelFaces);
+  // Right pilaster (x = 15.6 .. 24.8) & stainless floor shoe + chrome latch keeper strike
+  pushBoxPart(vertices, normals, uvs, new Vec3(15.4, 0, 24.8), new Vec3(25.0, 2.2, 26.8), shoeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(15.6, 2.2, 25.0), new Vec3(24.8, 50.4, 26.6), panelFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(14.9, 26.2, 24.8), new Vec3(15.8, 29.6, 26.8), chromeFaces);
+
+  // 3. Overhead Anodized Aluminum Anti-Grip Headrail Bar spanning the front of the cubicle (y = 50.4 .. 52.2)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-25.0, 50.4, 24.8), new Vec3(25.0, 52.2, 26.8), railFaces);
+
+  // 4. Wall-Mounted Chrome Toilet Paper Dispenser & Roll on the inside of the right partition wall
+  pushBoxPart(vertices, normals, uvs, new Vec3(20.6, 19.2, 0.8), new Vec3(23.0, 20.8, 6.4), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(21.0, 16.2, 1.2), new Vec3(22.8, 19.2, 6.0), {
+    front: uvRect(porcU0, 0.04, porcU1, 0.22),
+    back: uvRect(porcU0, 0.04, porcU1, 0.22),
+    left: uvRect(porcU0, 0.04, porcU1, 0.22),
+    right: uvRect(porcU0, 0.04, porcU1, 0.22),
+    bottom: uvRect(porcU0, 0.04, porcU1, 0.22),
+  });
+}
+
 /**
- * Builds the 3D Facility Toilet Bowl mesh standing on `y = 0`, centered on `x/z`, with the rear cistern tank at `-Z`
- * and the sculpted oval bowl projecting forward toward `+Z`:
+ * Builds the 3D Hinged Swinging Stall Door ("porte battante") mesh in hinge-local space (pivot at `TOILET_DOOR_PIVOT`):
+ * - Suspended door panel (`x = 0.3..30.9, y = 7.6..48.6, z = -0.65..0.65`) with bottom & top clearance gaps,
+ *   recessed beveled panel, and lower privacy ventilation louver slots.
+ * - Upper & lower brushed-chrome gravity-pivot barrel hinges along `x = 0`.
+ * - Double-sided chrome rotary Vacant/Occupied indicator latch & pull handle on the free edge (`x = 26.4..30.4`).
+ */
+export function toiletDoorMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = TOILET_ATLAS.width;
+  const inset = 0.35 / W;
+  const stallU0 = (TOILET_CISTERN.x + 32) / W + inset;
+  const stallU1 = (TOILET_CISTERN.x + TOILET_CISTERN.width) / W - inset;
+  const chromeU0 = TOILET_SEAT.x / W + inset;
+  const chromeU1 = (TOILET_SEAT.x + 31) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const chromeFaces = {
+    front: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    back: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    left: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    right: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    top: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    bottom: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+  };
+
+  // Main swinging battant door leaf (suspended at y = 7.6 .. 48.6 with top & bottom clearance gaps)
+  pushBoxPart(vertices, normals, uvs, new Vec3(0.35, 7.6, -0.65), new Vec3(30.85, 48.6, 0.65), {
+    front: uvRect(stallU0, 0.11, stallU1, 0.88),
+    back: uvRect(stallU1, 0.11, stallU0, 0.88),
+    left: uvRect(stallU0, 0.02, stallU1, 0.1),
+    right: uvRect(stallU0, 0.02, stallU1, 0.1),
+    top: uvRect(stallU0, 0.02, stallU1, 0.1),
+    bottom: uvRect(stallU0, 0.82, stallU1, 0.9),
+  });
+
+  // Upper & lower chrome gravity-pivot barrel hinges at the left pilaster edge (x = -0.35 .. 1.0)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-0.35, 11.0, -0.95), new Vec3(1.0, 14.4, 0.95), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-0.35, 42.0, -0.95), new Vec3(1.0, 45.4, 0.95), chromeFaces);
+
+  // Rotary Vacant/Occupied latch housing & horizontal pull handle near the right edge (x = 26.2 .. 30.4)
+  pushBoxPart(vertices, normals, uvs, new Vec3(26.2, 26.0, -1.15), new Vec3(30.4, 29.8, 1.15), {
+    front: uvRect(stallU0 + (stallU1 - stallU0) * 0.62, 0.4, stallU1, 0.52),
+    back: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    left: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    right: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    top: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+    bottom: uvRect(chromeU0, 0.68, chromeU1, 0.96),
+  });
+  pushBoxPart(vertices, normals, uvs, new Vec3(27.2, 26.8, -1.85), new Vec3(29.4, 29.0, 1.85), chromeFaces);
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+/**
+ * Builds the 3D Facility Toilet Cubicle & Bowl mesh standing on `y = 0`, centered on `x/z`, with the rear cistern tank at `-Z`,
+ * sculpted oval bowl projecting forward toward `+Z`, side partition walls on chrome pedestal legs, front pilaster jambs,
+ * overhead headrail bar, and wall-mounted toilet paper dispenser:
  * - Flanged vitreous-china pedestal foot & sculpted oval bowl (`y = 0..16.2`, `z = -8.6..11.8`) with recessed inner
  *   porcelain walls and standing bowl water at `y = 12.2`.
  * - Contoured oval toilet seat ring (`y = 16.2..17.1`), chrome hinge posts, and raised hinged cover lid (`y = 17.1..28.4`).
  * - Rear porcelain flush cistern tank (`y = 15.8..29.2`), beveled tank lid with chrome dual-flush button (`y = 29.2..31.0`),
  *   left-side chrome flush handle lever, and rear water supply stop-valve & riser pipe.
+ * - Restroom cubicle side partition walls (`x = ±23.8, y = 7.2..50.4`), front pilasters (`z = 25.0..26.6`), and headrail (`y = 50.4..52.2`).
  */
 export function toiletMesh() {
   const vertices = [];
@@ -4438,7 +4642,9 @@ export function toiletMesh() {
   const porcU0 = TOILET_PORCELAIN.x / W + inset;
   const porcU1 = (TOILET_PORCELAIN.x + TOILET_PORCELAIN.width) / W - inset;
   const cistU0 = TOILET_CISTERN.x / W + inset;
-  const cistU1 = (TOILET_CISTERN.x + TOILET_CISTERN.width) / W - inset;
+  const cistU1 = (TOILET_CISTERN.x + 31) / W - inset;
+  const stallU0 = (TOILET_CISTERN.x + 32) / W + inset;
+  const stallU1 = (TOILET_CISTERN.x + TOILET_CISTERN.width) / W - inset;
   const seatU0 = TOILET_SEAT.x / W + inset;
   const seatU1 = (TOILET_SEAT.x + TOILET_SEAT.width) / W - inset;
   const chromeU0 = TOILET_SEAT.x / W + inset;
@@ -4451,6 +4657,9 @@ export function toiletMesh() {
   const seatUSpan = (seatU1 - seatU0) * 0.42;
 
   const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  // 0. Restroom Stall Cubicle Partition Walls, Chrome Pedestal Legs, Front Pilasters & Overhead Headrail
+  buildToiletStall(vertices, normals, uvs, porcU0, porcU1, stallU0, stallU1, chromeU0, chromeU1);
 
   // 1. Flanged Oval Porcelain Pedestal Base & Sculpted Bowl Outer Belly (y = 0 .. 16.2)
   pushOvalDisc(vertices, normals, uvs, 2.0, 0, 5.2, 7.2, (porcU0 + porcU1) * 0.5, 0.85, (porcU1 - porcU0) * 0.35, 0.1, 14);
@@ -4540,8 +4749,8 @@ export function toiletMesh() {
 export const buildToilet = toiletMesh;
 
 /**
- * Builds the 3D wrecked Facility Toilet Bowl left standing after destruction:
- * fractured porcelain pedestal stump (`y = 0..12.6`) with jagged ceramic teeth around the shattered bowl rim,
+ * Builds the 3D wrecked Facility Toilet Cubicle & Bowl left standing after destruction:
+ * cubicle partition walls with fractured porcelain pedestal stump (`y = 0..12.6`), jagged ceramic teeth around the shattered bowl rim,
  * exposed siphon water pool, snapped supply pipe stub, and cracked rear cistern base mount.
  */
 export function toiletWreckMesh() {
@@ -4553,6 +4762,8 @@ export function toiletWreckMesh() {
   const inset = 0.35 / W;
   const porcU0 = TOILET_PORCELAIN.x / W + inset;
   const porcU1 = (TOILET_PORCELAIN.x + TOILET_PORCELAIN.width) / W - inset;
+  const stallU0 = (TOILET_CISTERN.x + 32) / W + inset;
+  const stallU1 = (TOILET_CISTERN.x + TOILET_CISTERN.width) / W - inset;
   const chromeU0 = TOILET_SEAT.x / W + inset;
   const chromeU1 = (TOILET_SEAT.x + 31) / W - inset;
   const waterU0 = TOILET_WATER.x / W + inset;
@@ -4560,6 +4771,9 @@ export function toiletWreckMesh() {
   const waterUC = (waterU0 + waterU1) * 0.5;
   const waterUSpan = (waterU1 - waterU0) * 0.44;
   const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  // 0. Standing Restroom Cubicle Partition Walls, Pilasters & Headrail around the wrecked bowl
+  buildToiletStall(vertices, normals, uvs, porcU0, porcU1, stallU0, stallU1, chromeU0, chromeU1);
 
   // 1. Surviving lower porcelain pedestal foot & lower bowl stump (y = 0 .. 11.2)
   pushOvalDisc(vertices, normals, uvs, 2.0, 0, 5.2, 7.2, (porcU0 + porcU1) * 0.5, 0.85, (porcU1 - porcU0) * 0.35, 0.1, 12);
@@ -4666,7 +4880,7 @@ export function toiletShrapnelParts() {
   const porcU0 = TOILET_PORCELAIN.x / W + inset;
   const porcU1 = (TOILET_PORCELAIN.x + TOILET_PORCELAIN.width) / W - inset;
   const cistU0 = TOILET_CISTERN.x / W + inset;
-  const cistU1 = (TOILET_CISTERN.x + TOILET_CISTERN.width) / W - inset;
+  const cistU1 = (TOILET_CISTERN.x + 31) / W - inset;
   const seatU0 = TOILET_SEAT.x / W + inset;
   const seatU1 = (TOILET_SEAT.x + TOILET_SEAT.width) / W - inset;
   const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
@@ -4781,6 +4995,1024 @@ export function createToiletBreakPose() {
  */
 export function toiletBreakPose(elapsed, seed = 0, target = createToiletBreakPose()) {
   return dispenserBreakPose(elapsed, seed + 4.3, target);
+}
+
+const SHIP_HULL_BASE = [46, 56, 72];
+const SHIP_HULL_LIGHT = [76, 90, 112];
+const SHIP_HULL_DARK = [22, 28, 38];
+const SHIP_SEAM_DARK = [12, 16, 24];
+const SHIP_BELLY_DARK = [18, 22, 30];
+const SHIP_HAZARD_GOLD = [214, 156, 28];
+const SHIP_HAZARD_DARK = [20, 22, 26];
+const SHIP_ACCENT_TEAL = [44, 156, 198];
+const SHIP_STENCIL_WHITE = [196, 212, 228];
+const SHIP_GLASS_DEEP = [14, 42, 74];
+const SHIP_GLASS_MID = [28, 92, 146];
+const SHIP_GLASS_GLINT = [118, 214, 252];
+const SHIP_HUD_GREEN = [48, 224, 168];
+const SHIP_RADOME_DARK = [16, 20, 28];
+const SHIP_PLASMA_CORE = [220, 250, 255];
+const SHIP_PLASMA_CYAN = [64, 208, 255];
+const SHIP_PLASMA_RIM = [24, 98, 168];
+const SHIP_NOZZLE_METAL = [34, 40, 52];
+const SHIP_NOZZLE_HEAT = [68, 54, 44];
+const SHIP_STROBE_RED = [238, 48, 42];
+const SHIP_STROBE_GREEN = [42, 232, 96];
+
+function drawSpaceshipHullCell(rnd) {
+  const w = SPACESHIP_HULL.width;
+  const h = SPACESHIP_HULL.height;
+  const t = new Tile(w, h);
+  plate(t, 0, 0, w, h, rnd, SHIP_HULL_BASE);
+
+  // Upper armored hull plates (y = 0..66) with panel seams, access hatches & rivets
+  for (let y = 2; y < 66; y++) {
+    const sheen = Math.sin((y / 66) * Math.PI) * 0.16;
+    for (let x = 2; x < w - 2; x++) {
+      if (sheen > 0)
+        t.set(x, y, SHIP_HULL_LIGHT, sheen);
+    }
+  }
+  for (const sy of [22, 44, 66]) {
+    t.rect(2, sy, w - 4, 1, SHIP_SEAM_DARK, 0.88);
+    t.rect(2, sy + 1, w - 4, 1, SHIP_HULL_LIGHT, 0.42);
+    t.groove(2, sy, w - 3, sy, 1.4, 0.9);
+  }
+  for (const sx of [32, 64, 96]) {
+    t.rect(sx, 2, 1, 64, SHIP_SEAM_DARK, 0.82);
+    t.rect(sx + 1, 2, 1, 64, SHIP_HULL_LIGHT, 0.36);
+    t.groove(sx, 2, sx, 65, 1.3, 0.8);
+  }
+  // Recessed maintenance inspection hatches & rivets
+  t.rect(8, 6, 20, 12, SHIP_HULL_DARK, 0.55);
+  t.relief(8, 6, 20, 12, -1.1, 0.8);
+  t.rect(68, 26, 24, 14, SHIP_HULL_DARK, 0.55);
+  t.relief(68, 26, 24, 14, -1.1, 0.8);
+  for (const rx of [6, 28, 36, 60, 68, 92, 100, 122]) {
+    for (const ry of [5, 19, 26, 41, 48, 63])
+      rivet(t, rx, ry);
+  }
+
+  // High-visibility diagonal amber/black hazard chevron band (y = 68..91)
+  t.rect(2, 68, w - 4, 24, SHIP_HAZARD_DARK, 0.95);
+  for (let y = 70; y < 90; y++) {
+    for (let x = 3; x < w - 3; x++) {
+      const stripe = ((x + (y - 70) * 2) >> 3) & 1;
+      t.set(x, y, stripe ? SHIP_HAZARD_GOLD : SHIP_HAZARD_DARK, 1);
+    }
+  }
+  t.rect(2, 68, w - 4, 1, SHIP_SEAM_DARK, 0.92);
+  t.rect(2, 91, w - 4, 1, SHIP_SEAM_DARK, 0.92);
+  t.relief(2, 68, w - 4, 24, 0.8, 0.9);
+
+  // Lower-left: Squadron teal-cyan stripe & UAC block stencil markings (x = 2..63, y = 94..125)
+  t.rect(2, 94, 62, 32, SHIP_HULL_DARK, 0.9);
+  t.rect(4, 98, 58, 8, SHIP_ACCENT_TEAL, 0.88);
+  t.rect(4, 98, 58, 1, SHIP_GLASS_GLINT, 0.65);
+  for (const bx of [8, 18, 28, 42, 52]) {
+    t.rect(bx, 110, 7, 11, SHIP_STENCIL_WHITE, 0.86);
+    t.rect(bx + 2, 113, 3, 5, SHIP_HULL_DARK, 0.9);
+  }
+
+  // Lower-right: Dark thermal-ablative ventral belly tiles (x = 64..125, y = 94..125)
+  t.rect(64, 94, 62, 32, SHIP_BELLY_DARK, 0.95);
+  for (let ty = 96; ty < 124; ty += 8) {
+    t.rect(65, ty, 60, 1, SHIP_SEAM_DARK, 0.85);
+    t.groove(65, ty, 124, ty, 1.2, 0.7);
+    for (let tx = 66; tx < 124; tx += 12)
+      t.rect(tx, ty, 1, 8, SHIP_SEAM_DARK, 0.8);
+  }
+  rust(t, rnd, 0.14);
+  return t;
+}
+
+function drawSpaceshipCockpitCell(rnd) {
+  const w = SPACESHIP_COCKPIT.width;
+  const h = SPACESHIP_COCKPIT.height;
+  const t = new Tile(w, h);
+  plate(t, 0, 0, w, h, rnd, SHIP_HULL_DARK);
+
+  // Upper region (y = 2..72): Polarized sapphire-cyan armored ballistic canopy glass
+  t.rect(3, 3, w - 6, 70, SHIP_GLASS_DEEP, 0.96);
+  for (let y = 5; y < 71; y++) {
+    const vNorm = (y - 5) / 66;
+    for (let x = 5; x < w - 5; x++) {
+      const uNorm = (x - 5) / (w - 10);
+      const grad = Utils.clamp(1 - vNorm * 0.7 + Math.sin(uNorm * Math.PI) * 0.25, 0, 1);
+      t.set(x, y, SHIP_GLASS_MID, grad * 0.72);
+      const diag = (x * 0.75 + y * 1.1) % 44;
+      if (diag < 5.5)
+        t.set(x, y, SHIP_GLASS_GLINT, (1 - diag / 5.5) * 0.78);
+    }
+  }
+  // Glowing holographic tactical HUD projection inside lower canopy (y = 46..62)
+  t.rect(22, 46, 36, 16, SHIP_HUD_GREEN, 0.38);
+  t.rect(26, 54, 28, 1, SHIP_HUD_GREEN, 0.85);
+  t.rect(40, 48, 1, 12, SHIP_HUD_GREEN, 0.85);
+  t.rect(70, 46, 36, 16, SHIP_HUD_GREEN, 0.38);
+  t.rect(74, 54, 28, 1, SHIP_HUD_GREEN, 0.85);
+  // Heavy titanium canopy frame mullions & rivets
+  t.rect(2, 2, w - 4, 4, SHIP_HULL_BASE, 0.96);
+  t.rect(2, 70, w - 4, 4, SHIP_HULL_BASE, 0.96);
+  t.relief(5, 6, 56, 63, -1.4, 1.1);
+  t.relief(67, 6, 54, 63, -1.4, 1.1);
+  for (const mx of [2, 62, 122]) {
+    t.rect(mx, 2, 4, 72, SHIP_HULL_BASE, 0.96);
+    for (let ry = 8; ry < 70; ry += 12)
+      rivet(t, mx + 2, ry);
+  }
+
+  // Lower-left (x = 2..63, y = 76..125): Carbon-composite nose radome & phased-array radar rings
+  t.rect(2, 76, 62, 50, SHIP_RADOME_DARK, 0.96);
+  for (let y = 78; y < 124; y++) {
+    for (let x = 4; x < 62; x++) {
+      const dist = Math.hypot(x - 33, y - 101);
+      const ring = Math.sin(dist * 0.52);
+      if (ring > 0.65)
+        t.set(x, y, SHIP_HULL_BASE, 0.38);
+    }
+  }
+  t.rect(8, 101, 50, 1, SHIP_ACCENT_TEAL, 0.45);
+  t.rect(33, 80, 1, 42, SHIP_ACCENT_TEAL, 0.45);
+
+  // Lower-right (x = 66..125, y = 76..125): FLIR optical sensor aperture & avionics bay
+  t.rect(66, 76, 60, 50, SHIP_HULL_DARK, 0.94);
+  for (let y = 80; y < 122; y++) {
+    for (let x = 70; x < 122; x++) {
+      const d = Math.hypot(x - 96, y - 101);
+      if (d < 16)
+        t.set(x, y, d < 7 ? SHIP_GLASS_GLINT : d < 12 ? SHIP_ACCENT_TEAL : SHIP_GLASS_DEEP, 1);
+    }
+  }
+  t.relief(80, 85, 32, 32, 1.2, 1.2);
+  return t;
+}
+
+function drawSpaceshipEngineCell(rnd) {
+  const w = SPACESHIP_ENGINE.width;
+  const h = SPACESHIP_ENGINE.height;
+  const t = new Tile(w, h);
+  plate(t, 0, 0, w, h, rnd, SHIP_NOZZLE_METAL);
+
+  // Upper-left (x = 2..62, y = 2..64): Radial jet turbine compressor intake blades
+  for (let y = 4; y < 62; y++) {
+    for (let x = 4; x < 62; x++) {
+      const dx = x - 33;
+      const dy = y - 33;
+      const r = Math.hypot(dx, dy);
+      if (r < 27) {
+        const angle = Math.atan2(dy, dx);
+        const blade = Math.sin(angle * 12 + r * 0.18);
+        const col = r < 7 ? SHIP_HULL_LIGHT : blade > 0 ? SHIP_HULL_BASE : SHIP_SEAM_DARK;
+        t.set(x, y, col, 1);
+      }
+    }
+  }
+  t.relief(6, 6, 54, 54, -1.8, 1.5);
+
+  // Upper-right (x = 66..125, y = 2..64): Slotted reactor heat-exchanger louvers & piping
+  t.rect(66, 4, 58, 58, SHIP_HULL_DARK, 0.92);
+  for (let ly = 8; ly < 58; ly += 5) {
+    t.rect(70, ly, 50, 2, SHIP_SEAM_DARK, 0.95);
+    t.rect(70, ly + 2, 50, 1, SHIP_HULL_LIGHT, 0.45);
+    t.groove(70, ly + 1, 119, ly + 1, 1.5, 0.9);
+  }
+  t.rect(95, 6, 2, 54, SHIP_NOZZLE_HEAT, 0.7);
+
+  // Lower-left (x = 2..62, y = 66..125): Glowing cyan-white fusion afterburner plasma core
+  t.rect(2, 66, 60, 58, SHIP_PLASMA_RIM, 0.98);
+  for (let y = 68; y < 124; y++) {
+    for (let x = 4; x < 60; x++) {
+      const r = Math.hypot(x - 32, y - 96) / 28;
+      if (r <= 1) {
+        const ring = Math.cos(r * Math.PI * 3.5) * 0.5 + 0.5;
+        const coreCol = r < 0.38 ? SHIP_PLASMA_CORE : r < 0.72 ? mix(SHIP_PLASMA_CORE, SHIP_PLASMA_CYAN, (r - 0.38) / 0.34) : mix(SHIP_PLASMA_CYAN, SHIP_PLASMA_RIM, (r - 0.72) / 0.28);
+        t.set(x, y, mix(coreCol, SHIP_PLASMA_CORE, ring * 0.28), 1);
+      } else
+        t.set(x, y, SHIP_SEAM_DARK, 1);
+    }
+  }
+
+  // Lower-right (x = 66..125, y = 66..125): Rib-reinforced heat-blued thruster nozzle petals & chrome oleo struts
+  t.rect(66, 66, 58, 58, SHIP_NOZZLE_METAL, 0.95);
+  for (let y = 68; y < 124; y++) {
+    const heat = Utils.clamp((y - 68) / 56, 0, 1);
+    for (let x = 68; x < 124; x++) {
+      t.set(x, y, SHIP_NOZZLE_HEAT, heat * 0.42);
+      if ((x - 68) % 7 === 0)
+        t.set(x, y, SHIP_SEAM_DARK, 1);
+      else if ((x - 68) % 7 === 1)
+        t.set(x, y, SHIP_HULL_LIGHT, 0.48);
+    }
+  }
+  return t;
+}
+
+function drawSpaceshipWingCell(rnd) {
+  const w = SPACESHIP_WING.width;
+  const h = SPACESHIP_WING.height;
+  const t = new Tile(w, h);
+  plate(t, 0, 0, w, h, rnd, SHIP_HULL_BASE);
+
+  // Upper region (y = 2..68): Swept wing composite armor skin, flap hinge lines & vortex generators
+  t.rect(2, 24, w - 4, 1, SHIP_SEAM_DARK, 0.88);
+  t.rect(2, 25, w - 4, 1, SHIP_HULL_LIGHT, 0.45);
+  t.rect(2, 52, w - 4, 1, SHIP_SEAM_DARK, 0.88);
+  t.groove(2, 24, w - 3, 24, 1.3, 0.8);
+  t.groove(2, 52, w - 3, 52, 1.3, 0.8);
+  for (let x = 8; x < w - 8; x += 16) {
+    t.rect(x, 4, 1, 62, SHIP_SEAM_DARK, 0.75);
+    t.rect(x + 4, 54, 8, 10, SHIP_HULL_DARK, 0.7);
+    rivet(t, x + 3, 8);
+    rivet(t, x + 3, 48);
+  }
+  t.rect(6, 30, w - 12, 8, SHIP_ACCENT_TEAL, 0.82);
+  t.rect(6, 30, w - 12, 1, SHIP_STENCIL_WHITE, 0.65);
+
+  // Lower-left (x = 2..64, y = 72..125): Multi-tube AGM rocket launcher face & rotary cannon barrels
+  t.rect(2, 72, 62, 52, SHIP_SEAM_DARK, 0.96);
+  for (const cy of [86, 110]) {
+    for (const cx of [14, 33, 52]) {
+      for (let y = cy - 8; y <= cy + 8; y++) {
+        for (let x = cx - 8; x <= cx + 8; x++) {
+          const r = Math.hypot(x - cx, y - cy);
+          if (r < 7.5)
+            t.set(x, y, r < 3.5 ? SHIP_HAZARD_GOLD : r < 5.5 ? SHIP_SEAM_DARK : SHIP_HULL_LIGHT, 1);
+        }
+      }
+    }
+  }
+
+  // Lower-right (x = 68..125, y = 72..125): Port red & starboard green wingtip navigation strobes
+  t.rect(68, 72, 56, 25, SHIP_STROBE_RED, 0.96);
+  t.rect(74, 77, 44, 15, [255, 190, 180], 0.85);
+  t.rect(68, 99, 56, 25, SHIP_STROBE_GREEN, 0.96);
+  t.rect(74, 104, 44, 15, [190, 255, 210], 0.85);
+  return t;
+}
+
+/**
+ * Generates the 512 x 128 RGBA texture atlas (with height relief) for the massive UAC Heavy Assault Dropship:
+ * - Cell 0 (`SPACESHIP_HULL`, `x = 0..127`): Naval-gunmetal armored fuselage plating, amber/black chevron hazard stripes,
+ *   squadron teal accents, block stencils, and scorched ventral thermal tiles.
+ * - Cell 1 (`SPACESHIP_COCKPIT`, `x = 128..255`): Polarized sapphire-cyan multi-pane ballistic canopy glass with specular glints,
+ *   holographic green HUD glow, carbon nose radome, and FLIR optical sensor aperture.
+ * - Cell 2 (`SPACESHIP_ENGINE`, `x = 256..383`): Radial turbine intake blades, reactor cooling louvers, glowing cyan-white
+ *   fusion afterburner plasma core, and heat-blued thruster nozzle petals.
+ * - Cell 3 (`SPACESHIP_WING`, `x = 384..511`): Swept delta-wing composite armor skin, multi-tube AGM missile pod face,
+ *   and high-intensity port-red / starboard-green wingtip navigation strobes.
+ */
+export function spaceshipAtlas() {
+  const { width, height } = SPACESHIP_ATLAS;
+  const data = new Uint8Array(width * height * 4);
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
+  blit(drawSpaceshipHullCell(mulberry32(8801)), SPACESHIP_HULL.x);
+  blit(drawSpaceshipCockpitCell(mulberry32(8802)), SPACESHIP_COCKPIT.x);
+  blit(drawSpaceshipEngineCell(mulberry32(8803)), SPACESHIP_ENGINE.x);
+  blit(drawSpaceshipWingCell(mulberry32(8804)), SPACESHIP_WING.x);
+  return {
+    name: 'spaceship',
+    data,
+    relief,
+    width,
+    height,
+    cell: SPACESHIP_CELL,
+    frames: SPACESHIP_FRAMES,
+    hull: SPACESHIP_HULL,
+    cockpit: SPACESHIP_COCKPIT,
+    engine: SPACESHIP_ENGINE,
+    wing: SPACESHIP_WING,
+  };
+}
+
+function shipCellUv(cell, uSpan, vSpan) {
+  const W = SPACESHIP_ATLAS.width;
+  return {
+    u0: (cell.x + uSpan.x * cell.width) / W,
+    v0: vSpan.x,
+    u1: (cell.x + uSpan.y * cell.width) / W,
+    v1: vSpan.y,
+  };
+}
+
+function pushShipQuad(vertices, normals, uvs, c0, c1, c2, c3, uv) {
+  pushQuad(vertices, normals, uvs, c0, c1, c2, c3, uv.u0, uv.v0, uv.u1, uv.v1);
+}
+
+function pushShipBox(vertices, normals, uvs, minPt, maxPt, uv, topUv = uv, bottomUv = uv) {
+  pushBoxPart(vertices, normals, uvs, minPt, maxPt, {
+    front: uv,
+    back: uv,
+    left: uv,
+    right: uv,
+    top: topUv,
+    bottom: bottomUv,
+  });
+}
+
+function pushShipFrustum(vertices, normals, uvs, ySpan, bottomHalfXZ, topHalfXZ, centerXZ, faceUvs) {
+  const y0 = ySpan.x;
+  const y1 = ySpan.y;
+  const bx = bottomHalfXZ.x;
+  const bz = bottomHalfXZ.y;
+  const tx = topHalfXZ.x;
+  const tz = topHalfXZ.y;
+  const cx = centerXZ.x;
+  const cz = centerXZ.z;
+
+  const b00 = new Vec3(cx - bx, y0, cz - bz);
+  const b10 = new Vec3(cx + bx, y0, cz - bz);
+  const b11 = new Vec3(cx + bx, y0, cz + bz);
+  const b01 = new Vec3(cx - bx, y0, cz + bz);
+  const t00 = new Vec3(cx - tx, y1, cz - tz);
+  const t10 = new Vec3(cx + tx, y1, cz - tz);
+  const t11 = new Vec3(cx + tx, y1, cz + tz);
+  const t01 = new Vec3(cx - tx, y1, cz + tz);
+
+  pushShipQuad(vertices, normals, uvs, b01, b11, t11, t01, faceUvs.side);
+  pushShipQuad(vertices, normals, uvs, b10, b00, t00, t10, faceUvs.side);
+  pushShipQuad(vertices, normals, uvs, b11, b10, t10, t11, faceUvs.side);
+  pushShipQuad(vertices, normals, uvs, b00, b01, t01, t00, faceUvs.side);
+  if (faceUvs.top)
+    pushShipQuad(vertices, normals, uvs, t01, t11, t10, t00, faceUvs.top);
+  if (faceUvs.bottom)
+    pushShipQuad(vertices, normals, uvs, b00, b10, b11, b01, faceUvs.bottom);
+}
+
+/**
+ * Pushes a sculpted fuselage section connecting two octagonal cross-sections at `z0` (aft) and `z1` (forward).
+ */
+function pushSpaceshipFuselageSection(vertices, normals, uvs, zSpan, aftProfile, fwdProfile, faceUvMap) {
+  const z0 = zSpan.x;
+  const z1 = zSpan.y;
+  const cy0 = aftProfile.x;
+  const hw0 = aftProfile.y;
+  const hh0 = aftProfile.z;
+  const cy1 = fwdProfile.x;
+  const hw1 = fwdProfile.y;
+  const hh1 = fwdProfile.z;
+
+  const ring = (cy, hw, hh, z) => [
+    new Vec3(-hw * 0.58, cy + hh, z),
+    new Vec3(hw * 0.58, cy + hh, z),
+    new Vec3(hw, cy + hh * 0.42, z),
+    new Vec3(hw, cy - hh * 0.45, z),
+    new Vec3(hw * 0.62, cy - hh, z),
+    new Vec3(-hw * 0.62, cy - hh, z),
+    new Vec3(-hw, cy - hh * 0.45, z),
+    new Vec3(-hw, cy + hh * 0.42, z),
+  ];
+
+  const r0 = ring(cy0, hw0, hh0, z0);
+  const r1 = ring(cy1, hw1, hh1, z1);
+  const faceUvs = [
+    faceUvMap.top,
+    faceUvMap.upperSide,
+    faceUvMap.side,
+    faceUvMap.lowerSide,
+    faceUvMap.belly,
+    faceUvMap.lowerSide,
+    faceUvMap.side,
+    faceUvMap.upperSide,
+  ];
+  for (let i = 0; i < 8; i++) {
+    const next = (i + 1) % 8;
+    pushShipQuad(vertices, normals, uvs, r0[i], r0[next], r1[next], r1[i], faceUvs[i]);
+  }
+}
+
+/**
+ * Pushes a swept wing or fin panel connecting an inner root chord to an outer tip chord.
+ */
+function pushSweptWing(vertices, normals, uvs, rootX, tipX, rootZ, tipZ, rootY, tipY, uvSkin, uvEdge) {
+  const isStbd = tipX >= rootX;
+  const xIn = isStbd ? rootX : tipX;
+  const xOut = isStbd ? tipX : rootX;
+  const zRIn = isStbd ? rootZ.x : tipZ.x;
+  const zFIn = isStbd ? rootZ.y : tipZ.y;
+  const zROut = isStbd ? tipZ.x : rootZ.x;
+  const zFOut = isStbd ? tipZ.y : rootZ.y;
+  const yBIn = isStbd ? rootY.x : tipY.x;
+  const yTIn = isStbd ? rootY.y : tipY.y;
+  const yBOut = isStbd ? tipY.x : rootY.x;
+  const yTOut = isStbd ? tipY.y : rootY.y;
+
+  const inRearTop = new Vec3(xIn, yTIn, zRIn);
+  const inFrontTop = new Vec3(xIn, yTIn, zFIn);
+  const inRearBot = new Vec3(xIn, yBIn, zRIn);
+  const inFrontBot = new Vec3(xIn, yBIn, zFIn);
+  const outRearTop = new Vec3(xOut, yTOut, zROut);
+  const outFrontTop = new Vec3(xOut, yTOut, zFOut);
+  const outRearBot = new Vec3(xOut, yBOut, zROut);
+  const outFrontBot = new Vec3(xOut, yBOut, zFOut);
+
+  pushShipQuad(vertices, normals, uvs, inFrontTop, outFrontTop, outRearTop, inRearTop, uvSkin);
+  pushShipQuad(vertices, normals, uvs, inRearBot, outRearBot, outFrontBot, inFrontBot, uvSkin);
+  pushShipQuad(vertices, normals, uvs, inFrontBot, outFrontBot, outFrontTop, inFrontTop, uvEdge);
+  pushShipQuad(vertices, normals, uvs, outRearBot, inRearBot, inRearTop, outRearTop, uvEdge);
+  pushShipQuad(vertices, normals, uvs, outFrontBot, outRearBot, outRearTop, outFrontTop, uvEdge);
+  pushShipQuad(vertices, normals, uvs, inRearBot, inFrontBot, inFrontTop, inRearTop, uvEdge);
+}
+
+/**
+ * Pushes a horizontal octagonal cylinder / thruster bell along the Z axis from `z0` to `z1`.
+ */
+function pushAxialOctagonalTube(vertices, normals, uvs, centerXY, zSpan, radii, uvSide, uvRearCap, uvFrontCap) {
+  const cx = centerXY.x;
+  const cy = centerXY.y;
+  const z0 = zSpan.x;
+  const z1 = zSpan.y;
+  const r0 = radii.x;
+  const r1 = radii.y;
+  const sides = 8;
+  const ring0 = [];
+  const ring1 = [];
+  for (let i = 0; i < sides; i++) {
+    const a = ((i + 0.5) / sides) * Trigo.twopi;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    ring0.push(new Vec3(cx + ca * r0, cy + sa * r0, z0));
+    ring1.push(new Vec3(cx + ca * r1, cy + sa * r1, z1));
+  }
+  for (let i = 0; i < sides; i++) {
+    const next = (i + 1) % sides;
+    pushShipQuad(vertices, normals, uvs, ring0[i], ring1[i], ring1[next], ring0[next], uvSide);
+  }
+  if (uvRearCap) {
+    const c0 = new Vec3(cx, cy, z0);
+    const uc = (uvRearCap.u0 + uvRearCap.u1) * 0.5;
+    const vc = (uvRearCap.v0 + uvRearCap.v1) * 0.5;
+    const ur = (uvRearCap.u1 - uvRearCap.u0) * 0.48;
+    const vr = (uvRearCap.v1 - uvRearCap.v0) * 0.48;
+    for (let i = 0; i < sides; i++) {
+      const next = (i + 1) % sides;
+      const a0 = ((i + 0.5) / sides) * Trigo.twopi;
+      const a1 = ((next + 0.5) / sides) * Trigo.twopi;
+      scratchUvA.setScalar(uc, vc);
+      scratchUvB.setScalar(uc + Math.cos(a1) * ur, vc + Math.sin(a1) * vr);
+      scratchUvC.setScalar(uc + Math.cos(a0) * ur, vc + Math.sin(a0) * vr);
+      pushTri(vertices, normals, uvs, c0, ring0[next], ring0[i], scratchUvA, scratchUvB, scratchUvC);
+    }
+  }
+  if (uvFrontCap) {
+    const c1 = new Vec3(cx, cy, z1);
+    const uc = (uvFrontCap.u0 + uvFrontCap.u1) * 0.5;
+    const vc = (uvFrontCap.v0 + uvFrontCap.v1) * 0.5;
+    const ur = (uvFrontCap.u1 - uvFrontCap.u0) * 0.48;
+    const vr = (uvFrontCap.v1 - uvFrontCap.v0) * 0.48;
+    for (let i = 0; i < sides; i++) {
+      const next = (i + 1) % sides;
+      const a0 = ((i + 0.5) / sides) * Trigo.twopi;
+      const a1 = ((next + 0.5) / sides) * Trigo.twopi;
+      scratchUvA.setScalar(uc, vc);
+      scratchUvB.setScalar(uc + Math.cos(a0) * ur, vc + Math.sin(a0) * vr);
+      scratchUvC.setScalar(uc + Math.cos(a1) * ur, vc + Math.sin(a1) * vr);
+      pushTri(vertices, normals, uvs, c1, ring1[i], ring1[next], scratchUvA, scratchUvB, scratchUvC);
+    }
+  }
+}
+
+/**
+ * Builds the massive 3D UAC Heavy Assault Dropship (`SC-09 "Valkyrie"`) mesh (`190 x 110 x 320` units, ~3 x 5 tiles):
+ * - Spans `x in [-95, +95]`, `y in [0, 110]` (rising well above the 64-unit hangar wall height), and `z in [-160, +160]`.
+ * - Features a tri-gear heavy hydraulic landing undercarriage (`y = 0..24`), chined stealth-armored multi-station fuselage
+ *   (`z = -142..+160`), aft hydraulic assault boarding ramp, stepped tandem ballistic cockpit canopy (`z = +24..+126`),
+ *   chin-mounted twin 30mm rotary autocannon turret & FLIR sensor pod, dorsal reactor spine with twin turbine intake scoops
+ *   and radar mast (`y = 68..106`), forward canards, swept delta wings with underwing AGM rocket pods & anti-ship missiles,
+ *   outboard wingtip VTOL tilt-engine nacelles with navigation strobes (`x = +-68..+-95`), twin canted vertical tail fins
+ *   (`y = 64..110`), and twin main aft fusion thruster bells (`z = -160..-132`) with glowing cyan-white plasma cores.
+ */
+export function spaceshipMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const uvHullPlate = shipCellUv(SPACESHIP_HULL, new Vec2(0.04, 0.96), new Vec2(0.04, 0.50));
+  const uvHullSeam = shipCellUv(SPACESHIP_HULL, new Vec2(0.06, 0.94), new Vec2(0.16, 0.38));
+  const uvHullHazard = shipCellUv(SPACESHIP_HULL, new Vec2(0.04, 0.96), new Vec2(0.54, 0.71));
+  const uvHullSquadron = shipCellUv(SPACESHIP_HULL, new Vec2(0.04, 0.48), new Vec2(0.75, 0.96));
+  const uvHullBelly = shipCellUv(SPACESHIP_HULL, new Vec2(0.52, 0.96), new Vec2(0.75, 0.96));
+
+  const uvCanopyGlass = shipCellUv(SPACESHIP_COCKPIT, new Vec2(0.06, 0.94), new Vec2(0.06, 0.52));
+  const uvCanopyHud = shipCellUv(SPACESHIP_COCKPIT, new Vec2(0.16, 0.84), new Vec2(0.34, 0.52));
+  const uvRadome = shipCellUv(SPACESHIP_COCKPIT, new Vec2(0.04, 0.48), new Vec2(0.60, 0.96));
+  const uvFlirSensor = shipCellUv(SPACESHIP_COCKPIT, new Vec2(0.54, 0.96), new Vec2(0.60, 0.96));
+
+  const uvTurbineIntake = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.04, 0.48), new Vec2(0.04, 0.48));
+  const uvEngineLouvers = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.52, 0.96), new Vec2(0.04, 0.48));
+  const uvPlasmaCore = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.06, 0.46), new Vec2(0.54, 0.94));
+  const uvNozzlePetals = shipCellUv(SPACESHIP_ENGINE, new Vec2(0.54, 0.96), new Vec2(0.54, 0.96));
+
+  const uvWingSkin = shipCellUv(SPACESHIP_WING, new Vec2(0.04, 0.96), new Vec2(0.04, 0.52));
+  const uvRocketPod = shipCellUv(SPACESHIP_WING, new Vec2(0.04, 0.50), new Vec2(0.58, 0.96));
+  const uvStrobeRed = shipCellUv(SPACESHIP_WING, new Vec2(0.56, 0.94), new Vec2(0.58, 0.74));
+  const uvStrobeGreen = shipCellUv(SPACESHIP_WING, new Vec2(0.56, 0.94), new Vec2(0.79, 0.95));
+
+  const fuselageUvs = {
+    top: uvHullPlate,
+    upperSide: uvHullSquadron,
+    side: uvHullPlate,
+    lowerSide: uvHullHazard,
+    belly: uvHullBelly,
+  };
+
+  // 1. MULTI-STATION CHINED MAIN FUSELAGE HULL (z = -142..+160, y = 16..68)
+  const stations = [
+    { z: -142, profile: new Vec3(44, 24, 18) },
+    { z: -106, profile: new Vec3(43, 33, 22) },
+    { z: -56, profile: new Vec3(42, 38, 25) },
+    { z: 18, profile: new Vec3(42, 38, 25) },
+    { z: 68, profile: new Vec3(39, 31, 21) },
+    { z: 114, profile: new Vec3(35, 21, 15) },
+    { z: 146, profile: new Vec3(32, 10, 8) },
+  ];
+  for (let i = 0; i < stations.length - 1; i++) {
+    const s0 = stations[i];
+    const s1 = stations[i + 1];
+    pushSpaceshipFuselageSection(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(s0.z, s1.z),
+      s0.profile,
+      s1.profile,
+      i === 4 ? { ...fuselageUvs, upperSide: uvHullHazard } : fuselageUvs,
+    );
+  }
+  // Sharp forward radar nose cone tip (z = +146..+160) & pitot spike
+  pushSpaceshipFuselageSection(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(146, 160),
+    new Vec3(32, 10, 8),
+    new Vec3(31, 2.2, 2.0),
+    { top: uvRadome, upperSide: uvRadome, side: uvRadome, lowerSide: uvRadome, belly: uvRadome },
+  );
+  pushShipBox(vertices, normals, uvs, new Vec3(-1.8, 29.2, 158), new Vec3(1.8, 32.8, 160), uvRadome);
+  // Aft fuselage bulkhead plate (z = -142) & lowered hydraulic assault boarding ramp (z = -148..-112, y = 3..22)
+  pushShipBox(vertices, normals, uvs, new Vec3(-22, 26, -143), new Vec3(22, 60, -140), uvEngineLouvers);
+  pushSweptWing(
+    vertices,
+    normals,
+    uvs,
+    -15,
+    15,
+    new Vec2(-148, -112),
+    new Vec2(-148, -112),
+    new Vec2(3.5, 20),
+    new Vec2(3.5, 20),
+    uvHullHazard,
+    uvHullBelly,
+  );
+  for (const side of [-1, 1])
+    pushShipBox(vertices, normals, uvs, new Vec3(side * 13.5 - 1.5, 10, -138), new Vec3(side * 13.5 + 1.5, 28, -124), uvNozzlePetals);
+
+  // Lateral fuselage armor chines, troop-bay airlock doors & forward weapon sponsons
+  for (const side of [-1, 1]) {
+    const xIn = side > 0 ? 35 : -43;
+    const xOut = side > 0 ? 43 : -35;
+    pushShipBox(vertices, normals, uvs, new Vec3(xIn, 22, -38), new Vec3(xOut, 56, 12), uvHullSquadron);
+    pushShipBox(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(side > 0 ? 42 : -44.5, 25, -32),
+      new Vec3(side > 0 ? 44.5 : -42, 52, 6),
+      uvHullHazard,
+    );
+    pushShipBox(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(side > 0 ? 26 : -36, 26, 54),
+      new Vec3(side > 0 ? 36 : -26, 44, 106),
+      uvHullSeam,
+    );
+  }
+
+  // 2. STEPPED TANDEM ARMORED COCKPIT & BALLISTIC CANOPY (y = 44..74, z = +20..+126)
+  pushShipFrustum(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(46, 62),
+    new Vec2(16, 19),
+    new Vec2(16, 13.5),
+    new Vec3(0, 0, 108),
+    { top: uvCanopyGlass, bottom: uvHullBelly, side: uvCanopyGlass },
+  );
+  pushShipFrustum(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(54, 72.5),
+    new Vec2(17.5, 35),
+    new Vec2(11.5, 26),
+    new Vec3(0, 0, 59),
+    { top: uvCanopyGlass, bottom: uvCanopyHud, side: uvCanopyGlass },
+  );
+  for (const frameZ of [36, 62, 88, 110]) {
+    const halfW = frameZ > 90 ? 14.5 : 17.8;
+    const topY = frameZ > 90 ? 63.2 : 73.2;
+    pushShipBox(vertices, normals, uvs, new Vec3(-halfW, 48, frameZ - 1.8), new Vec3(halfW, topY, frameZ + 1.8), uvHullPlate);
+  }
+
+  // 3. CHIN-MOUNTED TWIN 30MM ROTARY AUTOCANNON TURRET & FLIR GIMBAL (z = +102..+158)
+  pushShipBox(vertices, normals, uvs, new Vec3(-10, 15, 104), new Vec3(10, 24, 130), uvHullSeam);
+  pushShipFrustum(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(11.5, 16.5),
+    new Vec2(7.5, 8.5),
+    new Vec2(5.5, 6.5),
+    new Vec3(0, 0, 121),
+    { top: uvHullSeam, bottom: uvFlirSensor, side: uvFlirSensor },
+  );
+  for (const side of [-1, 1]) {
+    const bx = side * 6.2;
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(bx, 18.5),
+      new Vec2(124, 148),
+      new Vec2(2.6, 2.4),
+      uvNozzlePetals,
+      null,
+      uvRocketPod,
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(bx, 18.5),
+      new Vec2(148, 158),
+      new Vec2(1.7, 1.9),
+      uvHullSeam,
+      null,
+      uvRocketPod,
+    );
+  }
+
+  // 4. TRI-GEAR HEAVY HYDRAULIC LANDING UNDERCARRIAGE (y = 0..24)
+  pushShipBox(vertices, normals, uvs, new Vec3(-3.5, 4, 98), new Vec3(3.5, 23, 105), uvNozzlePetals);
+  pushShipBox(vertices, normals, uvs, new Vec3(-2.2, 7, 92), new Vec3(2.2, 21, 98), uvHullHazard);
+  pushShipFrustum(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(0, 4.5),
+    new Vec2(11, 15),
+    new Vec2(8.5, 11.5),
+    new Vec3(0, 0, 101),
+    { top: uvHullPlate, bottom: uvHullBelly, side: uvHullHazard },
+  );
+
+  for (const side of [-1, 1]) {
+    const gx = side * 44;
+    pushShipBox(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(side > 0 ? 26 : -48, 14, -54),
+      new Vec3(side > 0 ? 48 : -26, 24, -24),
+      uvHullSeam,
+    );
+    for (const sz of [-48, -29])
+      pushShipBox(vertices, normals, uvs, new Vec3(gx - 3.6, 4.5, sz - 3.6), new Vec3(gx + 3.6, 20.5, sz + 3.6), uvNozzlePetals);
+    pushShipFrustum(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(0, 5.2),
+      new Vec2(10.5, 25),
+      new Vec2(8.2, 21),
+      new Vec3(gx, 0, -39),
+      { top: uvHullPlate, bottom: uvHullBelly, side: uvHullHazard },
+    );
+  }
+
+  // 5. DORSAL REACTOR SPINE, TWIN TURBINE INTAKE SCOOPS & RADAR MAST (y = 64..106)
+  pushShipFrustum(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(64, 82),
+    new Vec2(21, 76),
+    new Vec2(13, 64),
+    new Vec3(0, 0, -50),
+    { top: uvHullPlate, bottom: uvHullBelly, side: uvEngineLouvers },
+  );
+  for (const side of [-1, 1]) {
+    const ix = side * 14.5;
+    pushShipBox(vertices, normals, uvs, new Vec3(ix - 7.5, 65, -18), new Vec3(ix + 7.5, 80, 34), uvHullPlate);
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(ix, 72.5),
+      new Vec2(26, 38),
+      new Vec2(6.8, 6.2),
+      uvHullSeam,
+      null,
+      uvTurbineIntake,
+    );
+  }
+  pushSweptWing(
+    vertices,
+    normals,
+    uvs,
+    -2.5,
+    2.5,
+    new Vec2(-34, 2),
+    new Vec2(-34, 2),
+    new Vec2(80, 102),
+    new Vec2(80, 102),
+    uvHullSquadron,
+    uvHullHazard,
+  );
+  pushShipBox(vertices, normals, uvs, new Vec3(-6.5, 101, -36), new Vec3(6.5, 106, -12), uvRadome);
+
+  // 6. FORWARD CANARDS, SWEPT DELTA WINGS & UNDERWING ORDNANCE (x = +-28..+-82)
+  for (const side of [-1, 1]) {
+    pushSweptWing(
+      vertices,
+      normals,
+      uvs,
+      side * 26,
+      side * 56,
+      new Vec2(72, 108),
+      new Vec2(64, 84),
+      new Vec2(36, 41.5),
+      new Vec2(34.5, 38.5),
+      uvWingSkin,
+      uvHullHazard,
+    );
+    pushSweptWing(
+      vertices,
+      normals,
+      uvs,
+      side * 35,
+      side * 74,
+      new Vec2(-88, 34),
+      new Vec2(-92, -6),
+      new Vec2(45, 56),
+      new Vec2(41, 49),
+      uvWingSkin,
+      uvHullSeam,
+    );
+
+    const pylon1X = side * 49;
+    const pylon2X = side * 62;
+    pushShipBox(vertices, normals, uvs, new Vec3(pylon1X - 2.2, 34, -44), new Vec3(pylon1X + 2.2, 47, 10), uvHullSeam);
+    pushShipBox(vertices, normals, uvs, new Vec3(pylon2X - 2.0, 33, -52), new Vec3(pylon2X + 2.0, 45, -2), uvHullSeam);
+
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(pylon1X, 31),
+      new Vec2(-48, 22),
+      new Vec2(6.5, 6.2),
+      uvHullSquadron,
+      uvNozzlePetals,
+      uvRocketPod,
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(pylon2X, 30.5),
+      new Vec2(-58, 18),
+      new Vec2(3.8, 3.8),
+      uvHullHazard,
+      uvPlasmaCore,
+      uvRadome,
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(pylon2X, 30.5),
+      new Vec2(18, 30),
+      new Vec2(3.8, 0.8),
+      uvRadome,
+      null,
+      uvRadome,
+    );
+  }
+
+  // 7. OUTBOARD WINGTIP VTOL TILT-ENGINE NACELLES & STROBES (x = +-68..+-95)
+  for (const side of [-1, 1]) {
+    const nx = side * 80;
+    const xMin = side > 0 ? 69 : -91;
+    const xMax = side > 0 ? 91 : -69;
+    pushShipFrustum(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(34, 60),
+      new Vec2(11, 56),
+      new Vec2(9, 48),
+      new Vec3(nx, 0, -40),
+      { top: uvWingSkin, bottom: uvHullBelly, side: uvEngineLouvers },
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(nx, 46.5),
+      new Vec2(10, 26),
+      new Vec2(9.2, 8.2),
+      uvHullHazard,
+      null,
+      uvTurbineIntake,
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(nx, 46.5),
+      new Vec2(-112, -94),
+      new Vec2(7.4, 9.8),
+      uvNozzlePetals,
+      uvPlasmaCore,
+      null,
+    );
+    pushSweptWing(
+      vertices,
+      normals,
+      uvs,
+      side * 88,
+      side * 95,
+      new Vec2(-88, -8),
+      new Vec2(-82, -32),
+      new Vec2(42, 52),
+      new Vec2(54, 72),
+      uvWingSkin,
+      uvHullHazard,
+    );
+    const uvStrobe = side < 0 ? uvStrobeRed : uvStrobeGreen;
+    pushShipBox(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(side > 0 ? 90.5 : -94.5, 43, -46),
+      new Vec3(side > 0 ? 94.5 : -90.5, 49, -22),
+      uvStrobe,
+    );
+    pushShipBox(vertices, normals, uvs, new Vec3(xMin + 2, 58, -74), new Vec3(xMax - 2, 63, -12), uvHullSquadron);
+  }
+
+  // 8. TWIN CANTED VERTICAL TAIL FINS (y = 60..110) & MAIN AFT FUSION DRIVES (z = -160..-132)
+  for (const side of [-1, 1]) {
+    const rootX = side * 21;
+    const tipX = side * 37;
+    pushSweptWing(
+      vertices,
+      normals,
+      uvs,
+      rootX,
+      tipX,
+      new Vec2(-144, -74),
+      new Vec2(-148, -108),
+      new Vec2(60, 68),
+      new Vec2(104, 110),
+      uvWingSkin,
+      uvHullSquadron,
+    );
+    pushShipBox(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(tipX - 2.4, 106, -146),
+      new Vec3(tipX + 2.4, 110, -116),
+      side < 0 ? uvStrobeRed : uvStrobeGreen,
+    );
+
+    const ex = side * 17;
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(ex, 44),
+      new Vec2(-150, -136),
+      new Vec2(15.2, 16.5),
+      uvHullHazard,
+      null,
+      null,
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(ex, 44),
+      new Vec2(-160, -144),
+      new Vec2(12.2, 14.8),
+      uvNozzlePetals,
+      uvPlasmaCore,
+      null,
+    );
+  }
+
+  // Central aft tailcone reactor exhaust fairing & auxiliary thruster between the main bells (z = -154..-138)
+  pushAxialOctagonalTube(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(0, 44),
+    new Vec2(-154, -138),
+    new Vec2(5.5, 7.5),
+    uvNozzlePetals,
+    uvPlasmaCore,
+    null,
+  );
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export const buildSpaceship = spaceshipMesh;
+
+/**
+ * Builds the intact heavy hull mesh for the indestructible spaceship (satisfies the `FURNITURE_KINDS` interface).
+ */
+export function spaceshipWreckMesh() {
+  return spaceshipMesh();
+}
+
+/**
+ * Builds the settled floor-debris mesh for the spaceship (satisfies the `FURNITURE_KINDS` interface).
+ */
+export function spaceshipDebrisMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+  const uvHull = shipCellUv(SPACESHIP_HULL, new Vec2(0.06, 0.94), new Vec2(0.06, 0.48));
+  pushShipBox(vertices, normals, uvs, new Vec3(-6, 0.1, -6), new Vec3(6, 2.2, 6), uvHull);
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+/**
+ * Builds the 5 animated shrapnel meshes for the spaceship (`FURNITURE_KINDS` interface parity).
+ */
+export function spaceshipShrapnelParts() {
+  const uvHull = shipCellUv(SPACESHIP_HULL, new Vec2(0.06, 0.94), new Vec2(0.06, 0.48));
+  const uvHazard = shipCellUv(SPACESHIP_HULL, new Vec2(0.06, 0.94), new Vec2(0.54, 0.71));
+  const topVerts = [];
+  const topNorms = [];
+  const topUvs = [];
+  pushShipBox(topVerts, topNorms, topUvs, new Vec3(-5, -1.5, -5), new Vec3(5, 1.5, 5), uvHull);
+  const specs = [
+    new Vec3(3.5, 1.2, 4.5),
+    new Vec3(3.0, 1.0, 4.0),
+    new Vec3(2.8, 0.8, 3.2),
+    new Vec3(4.0, 0.9, 2.8),
+    new Vec3(2.5, 1.4, 2.5),
+  ];
+  const shards = specs.map((half, i) => {
+    const v = [];
+    const n = [];
+    const t = [];
+    pushShipBox(v, n, t, new Vec3(-half.x, -half.y, -half.z), new Vec3(half.x, half.y, half.z), i & 1 ? uvHazard : uvHull);
+    return flipV({
+      vertices: new Float32Array(v),
+      normals: new Float32Array(n),
+      uvs: new Float32Array(t),
+    });
+  });
+  return {
+    carboyTop: flipV({
+      vertices: new Float32Array(topVerts),
+      normals: new Float32Array(topNorms),
+      uvs: new Float32Array(topUvs),
+    }),
+    shards,
+  };
+}
+
+/**
+ * Allocates a reusable zero-allocation break-pose target for `spaceshipBreakPose()`.
+ */
+export function createSpaceshipBreakPose() {
+  return createDispenserBreakPose();
+}
+
+/**
+ * Computes the ballistic shrapnel trajectory pose for `spaceshipShrapnelParts()` into `target`.
+ */
+export function spaceshipBreakPose(elapsed, seed = 0, target = createSpaceshipBreakPose()) {
+  return dispenserBreakPose(elapsed, seed + 5.7, target);
 }
 
 export const SHADOW_ATLAS = { width: 128, height: 64 };
