@@ -896,7 +896,7 @@ export class Level {
       for (let d = 0; d < 4; d++) {
         const nx = x + DX[d];
         const ny = y + DY[d];
-        if (!this.inBounds(nx, ny))
+        if (!this.inBounds(tileAt.setScalar(nx, ny)))
           continue;
         const nidx = ny * width + nx;
         if (this.diag[nidx] > 0 && !this.hasCardinalFace(nidx, d ^ 1))

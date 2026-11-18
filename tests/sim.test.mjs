@@ -920,6 +920,26 @@ const tests = {
     assert.ok(shot.pos.x < 192 - 5, 'grenade stays on the near side of the wall');
   },
 
+  'grenade thrown over a cover crate passes over it instead of hitting an invisible wall'() {
+    const game = rocketSelfDamageGame('#P.o.....#');
+    const enemy = game.addEnemy('boss', new Vec2(360, 160));
+    game.player.angle = 0;
+    const hpBefore = game.player.health;
+    game.update(1 / 60, input({ grenade: true }));
+    const shot = game.shots[0];
+    for (let frame = 1; frame < 48; frame++) {
+      game.update(1 / 60, idle);
+      if (shot.pos.x >= 192 && shot.pos.x <= 256)
+        assert.ok(shot.z >= 32, `grenade clears cover crate top (z=${shot.z})`);
+    }
+    assert.equal(shot.dead, false);
+    assert.ok(shot.pos.x > 256, `grenade passes over the cover crate at [192, 256] (x=${shot.pos.x})`);
+    run(game, shot.life - shot.age + 1 / 60);
+    assert.equal(shot.dead, true);
+    assert.ok(enemy.hp < enemy.def.hp, 'grenade detonating beyond the cover crate damages the enemy behind it');
+    assert.equal(game.player.health, hpBefore, 'cover crate shields the player on the near side');
+  },
+
   'AC-4 grenade splash damages reachable enemies and barrels but not targets behind walls'() {
     const game = rocketSelfDamageGame('#P..#....#');
     const nearby = game.addEnemy('boss', new Vec2(200, 210));
@@ -4356,7 +4376,7 @@ const tests = {
       assert.ok(fixture.tile instanceof Vec2 && fixture.position instanceof Vec3, 'fixtures use Vec2 tile coords and Vec3 positions');
       assert.equal(ceilingCellFor(new Vec2(fixture.tile.x, fixture.tile.y)), CEILING_CELLS.light, 'every fixture sits on a ceiling light cell');
       assert.equal(fixture.position.x, (fixture.tile.x + 0.5) * 64);
-      assert.equal(fixture.position.y, 62);
+      assert.equal(fixture.position.y, level.ceilingAt(fixture.tile.y * level.width + fixture.tile.x) - 2);
       assert.equal(fixture.position.z, (fixture.tile.y + 0.5) * 64);
     }
 

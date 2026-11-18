@@ -2374,7 +2374,7 @@ export class World {
           for (let d = 0; d < 4; d++) {
             const nx = x + (d === 0 ? -1 : d === 1 ? 1 : 0);
             const ny = y + (d === 2 ? -1 : d === 3 ? 1 : 0);
-            if (level.inBounds(nx, ny))
+            if (level.inBounds(tileAt.setScalar(nx, ny)))
               wallRoof = Math.max(wallRoof, level.ceilingAt(ny * width + nx));
           }
         const top = wallRoof - 0.25;

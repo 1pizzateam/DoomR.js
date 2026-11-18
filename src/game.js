@@ -4,7 +4,7 @@ import { Blood, makeFeet } from './blood.js';
 import { Rubble, severityOf } from './rubble.js';
 import { faceDirOf, pipePlacements } from './pipes.js';
 import { CONE_RANGE, Fog, marsFogNearFar } from './fog.js';
-import { BASE_FLOOR_LEVEL, CACHE_WALL_OFFSET, CEILING, CROUCH_EYE, DOOR, EYE, Level, TILE, WALL } from './level.js';
+import { BASE_FLOOR_LEVEL, CACHE_WALL_OFFSET, CEILING, CROUCH_EYE, DOOR, EYE, Level, PILLAR, TILE, WALL } from './level.js';
 export { CACHE_WALL_OFFSET };
 import { LEVELS } from './levels.js';
 import { WEAPON_SLOTS, WEAPONS } from './weapon.js';
@@ -204,6 +204,7 @@ export class Game {
     this.actorDistance = 0;
     this.actorFilter = (body) => body.ref?.state !== 'dead' && body.position.getDistance(this.actorPoint) < this.actorDistance;
     this.actorQuery = { mask: CAT.ENEMY, filter: this.actorFilter };
+    this.wallQuery = { mask: CAT.WALL, ignoreBody: null };
     this.dustPool = [];
     this.dustFree = [];
     this.blood = new Blood();
@@ -617,8 +618,18 @@ export class Game {
       inter.pause = 0.35;
   }
 
+  pillarAt(point) {
+    if (!this.pillarBodies)
+      return null;
+    for (let i = 0; i < this.pillarBodies.length; i++)
+      if (this.pillarBodies[i].containsPoint(point))
+        return this.pillarBodies[i];
+    return null;
+  }
+
   canReach(from, target) {
-    return this.scene.hasLineOfSight(from, target, QUERY_WALL);
+    this.wallQuery.ignoreBody = this.pillarAt(from);
+    return this.scene.hasLineOfSight(from, target, this.wallQuery);
   }
 
   /** Queue a sound event (carrying a `pos` Vec2 copy) at a position (the player's, when none is given). */
@@ -673,6 +684,7 @@ export class Game {
   addWalls() {
     const { level } = this;
     this.diagWalls = [];
+    this.pillarBodies = [];
     for (let y = 0; y < level.rowCount; y++) {
       let x = 0;
       while (x < level.width) {
@@ -690,10 +702,21 @@ export class Game {
           continue;
         }
         // merge horizontal runs of solid full tiles into one wide AABB
+        const isPillar = kind === PILLAR;
         let run = 1;
-        while (x + run < level.width && level.kind[idx + run] && level.kind[idx + run] !== DOOR && !level.diag[idx + run])
+        while (
+          x + run < level.width &&
+          level.kind[idx + run] &&
+          level.kind[idx + run] !== DOOR &&
+          !level.diag[idx + run] &&
+          (level.kind[idx + run] === PILLAR) === isPillar
+        )
           run++;
-        this.addStaticBox(new Vec2((x + run / 2) * TILE, (y + 0.5) * TILE), new Vec2(run * TILE, TILE));
+        const body = this.addStaticBox(new Vec2((x + run / 2) * TILE, (y + 0.5) * TILE), new Vec2(run * TILE, TILE));
+        if (isPillar) {
+          body.ref.pillar = true;
+          this.pillarBodies.push(body);
+        }
         x += run;
       }
     }
@@ -960,7 +983,7 @@ export class Game {
       furniture.hurt = 0.08;
       if (this.player)
         this.player.hitMarker = 0.15;
-      this.burst(furniture.pos.x, furniture.pos.y, 24, 'spark');
+      this.burst(this.burstPos.setScalar(furniture.pos.x, furniture.pos.y, 24), 'spark');
       this.emit('clang', furniture.pos);
       return;
     }
@@ -1334,6 +1357,9 @@ export class Game {
     body.setDamping(0.2);
     body.setBullet(true);
     body.ignoreCollisionWith(this.player.body);
+    if (this.pillarBodies)
+      for (let i = 0; i < this.pillarBodies.length; i++)
+        body.ignoreCollisionWith(this.pillarBodies[i]);
     const shot = {
       kind: 'grenade',
       team: 'player',
@@ -1390,7 +1416,8 @@ export class Game {
     let marked = false;
     for (let i = 0; i < BLAST_RAYS; i++) {
       blastTo.setScalar(pos.x + BLAST_RAY_COS[i] * radius, pos.y + BLAST_RAY_SIN[i] * radius);
-      const hit = this.scene.raycast(pos, blastTo, QUERY_WALL);
+      this.wallQuery.ignoreBody = this.pillarAt(pos);
+      const hit = this.scene.raycast(pos, blastTo, this.wallQuery);
       if (!hit)
         continue;
       const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
@@ -3841,8 +3868,9 @@ export class Game {
     for (const shot of this.shots) {
       shot.age += dt;
       if (shot.kind === 'grenade') {
-        shot.z = Math.max(6, shot.z + shot.vz * dt);
-        shot.vz = shot.z <= 6 ? 0 : shot.vz - JUMP_GRAVITY * dt;
+        const floor = (this.level.kind[this.level.grid.getCell(shot.pos)] === PILLAR ? this.level.heightAtPoint(shot.pos) : 0) + 6;
+        shot.z = Math.max(floor, shot.z + shot.vz * dt);
+        shot.vz = shot.z <= floor && shot.vz <= 0 ? 0 : shot.vz - JUMP_GRAVITY * dt;
       }
       if (!shot.dead && shot.age > shot.life) {
         shot.dead = true;

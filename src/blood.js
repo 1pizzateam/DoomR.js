@@ -767,7 +767,7 @@ export class Blood {
       return CEILING;
     const tx = Math.floor(pos.x / TILE);
     const ty = Math.floor(pos.y / TILE);
-    if (!level.inBounds(tx, ty))
+    if (!level.inBounds(tileAt.setScalar(tx, ty)))
       return CEILING;
     return level.ceilingAt(ty * level.width + tx);
   }

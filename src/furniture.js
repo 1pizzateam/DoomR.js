@@ -4962,8 +4962,9 @@ const SHIP_HULL_LIGHT = [76, 90, 112];
 const SHIP_HULL_DARK = [22, 28, 38];
 const SHIP_SEAM_DARK = [12, 16, 24];
 const SHIP_BELLY_DARK = [18, 22, 30];
-const SHIP_HAZARD_GOLD = [214, 156, 28];
-const SHIP_HAZARD_DARK = [20, 22, 26];
+const SHIP_HAZARD_GOLD = [188, 138, 38];
+const SHIP_HAZARD_HIGHLIGHT = [224, 178, 72];
+const SHIP_HAZARD_DARK = [24, 28, 36];
 const SHIP_ACCENT_TEAL = [44, 156, 198];
 const SHIP_STENCIL_WHITE = [196, 212, 228];
 const SHIP_GLASS_DEEP = [14, 42, 74];
@@ -5013,17 +5014,30 @@ function drawSpaceshipHullCell(rnd) {
       rivet(t, rx, ry);
   }
 
-  // High-visibility diagonal amber/black hazard chevron band (y = 68..91)
-  t.rect(2, 68, w - 4, 24, SHIP_HAZARD_DARK, 0.95);
-  for (let y = 70; y < 90; y++) {
-    for (let x = 3; x < w - 3; x++) {
-      const stripe = ((x + (y - 70) * 2) >> 3) & 1;
-      t.set(x, y, stripe ? SHIP_HAZARD_GOLD : SHIP_HAZARD_DARK, 1);
+  // Framed dark-steel structural armor trim & weathered ochre-gold tactical caution band (y = 68..91)
+  t.rect(2, 68, w - 4, 24, SHIP_HAZARD_DARK, 0.88);
+  t.rect(2, 68, w - 4, 2, SHIP_SEAM_DARK, 0.94);
+  t.rect(2, 70, w - 4, 1, SHIP_HULL_LIGHT, 0.45);
+  t.rect(2, 89, w - 4, 1, SHIP_HULL_LIGHT, 0.35);
+  t.rect(2, 90, w - 4, 2, SHIP_SEAM_DARK, 0.94);
+  for (let y = 73; y <= 86; y++) {
+    const vNorm = (y - 73) / 13;
+    const crown = Math.sin(vNorm * Math.PI);
+    const bandCol = mix(SHIP_HAZARD_GOLD, SHIP_HAZARD_HIGHLIGHT, crown * 0.55);
+    for (let x = 4; x < w - 4; x++) {
+      const inBlock = (x % 16) >= 3 && (x % 16) <= 13;
+      const isCenterGroove = y === 79 || y === 80;
+      if (inBlock && !isCenterGroove)
+        t.set(x, y, bandCol, 0.78);
+      else
+        t.set(x, y, SHIP_HAZARD_DARK, 0.86);
     }
   }
-  t.rect(2, 68, w - 4, 1, SHIP_SEAM_DARK, 0.92);
-  t.rect(2, 91, w - 4, 1, SHIP_SEAM_DARK, 0.92);
-  t.relief(2, 68, w - 4, 24, 0.8, 0.9);
+  for (let rx = 18; rx < w - 10; rx += 16) {
+    rivet(t, rx, 71);
+    rivet(t, rx, 88);
+  }
+  t.relief(3, 72, w - 6, 16, 0.7, 0.8);
 
   // Lower-left: Squadron teal-cyan stripe & UAC block stencil markings (x = 2..63, y = 94..125)
   t.rect(2, 94, 62, 32, SHIP_HULL_DARK, 0.9);
@@ -5257,7 +5271,7 @@ function shipCellUv(cell, uSpan, vSpan) {
 }
 
 function pushShipQuad(vertices, normals, uvs, c0, c1, c2, c3, uv) {
-  pushQuad(vertices, normals, uvs, c0, c1, c2, c3, uv.u0, uv.v0, uv.u1, uv.v1);
+  pushQuad(vertices, normals, uvs, c0, c1, c2, c3, uvBox(uv.u0, uv.v0, uv.u1, uv.v1));
 }
 
 function pushShipBox(vertices, normals, uvs, minPt, maxPt, uv, topUv = uv, bottomUv = uv) {
@@ -5301,7 +5315,7 @@ function pushShipFrustum(vertices, normals, uvs, ySpan, bottomHalfXZ, topHalfXZ,
 }
 
 /**
- * Pushes a sculpted fuselage section connecting two octagonal cross-sections at `z0` (aft) and `z1` (forward).
+ * Pushes a sculpted fuselage section connecting two 16-point chined aerospace cross-sections at `z0` (aft) and `z1` (forward).
  */
 function pushSpaceshipFuselageSection(vertices, normals, uvs, zSpan, aftProfile, fwdProfile, faceUvMap) {
   const z0 = zSpan.x;
@@ -5314,36 +5328,101 @@ function pushSpaceshipFuselageSection(vertices, normals, uvs, zSpan, aftProfile,
   const hh1 = fwdProfile.z;
 
   const ring = (cy, hw, hh, z) => [
-    new Vec3(-hw * 0.58, cy + hh, z),
-    new Vec3(hw * 0.58, cy + hh, z),
-    new Vec3(hw, cy + hh * 0.42, z),
-    new Vec3(hw, cy - hh * 0.45, z),
-    new Vec3(hw * 0.62, cy - hh, z),
-    new Vec3(-hw * 0.62, cy - hh, z),
-    new Vec3(-hw, cy - hh * 0.45, z),
-    new Vec3(-hw, cy + hh * 0.42, z),
+    new Vec3(-hw * 0.24, cy + hh, z),
+    new Vec3(hw * 0.24, cy + hh, z),
+    new Vec3(hw * 0.56, cy + hh * 0.94, z),
+    new Vec3(hw * 0.82, cy + hh * 0.72, z),
+    new Vec3(hw * 0.96, cy + hh * 0.38, z),
+    new Vec3(hw, cy + hh * 0.04, z),
+    new Vec3(hw * 0.97, cy - hh * 0.34, z),
+    new Vec3(hw * 0.84, cy - hh * 0.68, z),
+    new Vec3(hw * 0.60, cy - hh * 0.92, z),
+    new Vec3(hw * 0.26, cy - hh, z),
+    new Vec3(-hw * 0.26, cy - hh, z),
+    new Vec3(-hw * 0.60, cy - hh * 0.92, z),
+    new Vec3(-hw * 0.84, cy - hh * 0.68, z),
+    new Vec3(-hw * 0.97, cy - hh * 0.34, z),
+    new Vec3(-hw, cy + hh * 0.04, z),
+    new Vec3(-hw * 0.96, cy + hh * 0.38, z),
+    new Vec3(-hw * 0.82, cy + hh * 0.72, z),
+    new Vec3(-hw * 0.56, cy + hh * 0.94, z),
   ];
 
   const r0 = ring(cy0, hw0, hh0, z0);
   const r1 = ring(cy1, hw1, hh1, z1);
   const faceUvs = [
     faceUvMap.top,
+    faceUvMap.top,
+    faceUvMap.upperSide,
     faceUvMap.upperSide,
     faceUvMap.side,
+    faceUvMap.side,
+    faceUvMap.lowerSide,
     faceUvMap.lowerSide,
     faceUvMap.belly,
+    faceUvMap.belly,
+    faceUvMap.belly,
+    faceUvMap.lowerSide,
     faceUvMap.lowerSide,
     faceUvMap.side,
+    faceUvMap.side,
     faceUvMap.upperSide,
+    faceUvMap.upperSide,
+    faceUvMap.top,
   ];
-  for (let i = 0; i < 8; i++) {
-    const next = (i + 1) % 8;
+  const n = r0.length;
+  for (let i = 0; i < n; i++) {
+    const next = (i + 1) % n;
     pushShipQuad(vertices, normals, uvs, r0[i], r0[next], r1[next], r1[i], faceUvs[i]);
   }
 }
 
 /**
- * Pushes a swept wing or fin panel connecting an inner root chord to an outer tip chord.
+ * Pushes a sculpted 12-point aerodynamic nacelle section connecting `z0` (aft) and `z1` (forward) around `centerXY`.
+ */
+function pushSpaceshipNacelleSection(vertices, normals, uvs, centerXY, zSpan, aftHalfWH, fwdHalfWH, faceUvMap) {
+  const cx = centerXY.x;
+  const cy = centerXY.y;
+  const z0 = zSpan.x;
+  const z1 = zSpan.y;
+  const ring = (hw, hh, z) => [
+    new Vec3(cx - hw * 0.38, cy + hh, z),
+    new Vec3(cx + hw * 0.38, cy + hh, z),
+    new Vec3(cx + hw * 0.80, cy + hh * 0.76, z),
+    new Vec3(cx + hw, cy + hh * 0.28, z),
+    new Vec3(cx + hw, cy - hh * 0.28, z),
+    new Vec3(cx + hw * 0.80, cy - hh * 0.76, z),
+    new Vec3(cx + hw * 0.38, cy - hh, z),
+    new Vec3(cx - hw * 0.38, cy - hh, z),
+    new Vec3(cx - hw * 0.80, cy - hh * 0.76, z),
+    new Vec3(cx - hw, cy - hh * 0.28, z),
+    new Vec3(cx - hw, cy + hh * 0.28, z),
+    new Vec3(cx - hw * 0.80, cy + hh * 0.76, z),
+  ];
+  const r0 = ring(aftHalfWH.x, aftHalfWH.y, z0);
+  const r1 = ring(fwdHalfWH.x, fwdHalfWH.y, z1);
+  const uvsBySeg = [
+    faceUvMap.top,
+    faceUvMap.upper,
+    faceUvMap.side,
+    faceUvMap.side,
+    faceUvMap.lower,
+    faceUvMap.bottom,
+    faceUvMap.bottom,
+    faceUvMap.lower,
+    faceUvMap.side,
+    faceUvMap.side,
+    faceUvMap.upper,
+    faceUvMap.top,
+  ];
+  for (let i = 0; i < 12; i++) {
+    const next = (i + 1) % 12;
+    pushShipQuad(vertices, normals, uvs, r0[i], r0[next], r1[next], r1[i], uvsBySeg[i]);
+  }
+}
+
+/**
+ * Pushes a cambered multi-segment supercritical airfoil wing or fin panel connecting an inner root chord to an outer tip chord.
  */
 function pushSweptWing(vertices, normals, uvs, rootX, tipX, rootZ, tipZ, rootY, tipY, uvSkin, uvEdge) {
   const isStbd = tipX >= rootX;
@@ -5358,34 +5437,69 @@ function pushSweptWing(vertices, normals, uvs, rootX, tipX, rootZ, tipZ, rootY, 
   const yBOut = isStbd ? tipY.x : rootY.x;
   const yTOut = isStbd ? tipY.y : rootY.y;
 
-  const inRearTop = new Vec3(xIn, yTIn, zRIn);
-  const inFrontTop = new Vec3(xIn, yTIn, zFIn);
-  const inRearBot = new Vec3(xIn, yBIn, zRIn);
-  const inFrontBot = new Vec3(xIn, yBIn, zFIn);
-  const outRearTop = new Vec3(xOut, yTOut, zROut);
-  const outFrontTop = new Vec3(xOut, yTOut, zFOut);
-  const outRearBot = new Vec3(xOut, yBOut, zROut);
-  const outFrontBot = new Vec3(xOut, yBOut, zFOut);
+  // 5 chordwise stations (0.0 = trailing edge, 0.25 = aft spar, 0.62 = max camber crown, 0.88 = leading shoulder, 1.0 = leading edge)
+  const chordFracs = [0.0, 0.24, 0.60, 0.88, 1.0];
+  const topProfile = [0.58, 0.88, 1.0, 0.82, 0.52];
+  const botProfile = [0.42, 0.16, 0.0, 0.18, 0.48];
 
-  pushShipQuad(vertices, normals, uvs, inFrontTop, outFrontTop, outRearTop, inRearTop, uvSkin);
-  pushShipQuad(vertices, normals, uvs, inRearBot, outRearBot, outFrontBot, inFrontBot, uvSkin);
-  pushShipQuad(vertices, normals, uvs, inFrontBot, outFrontBot, outFrontTop, inFrontTop, uvEdge);
-  pushShipQuad(vertices, normals, uvs, outRearBot, inRearBot, inRearTop, outRearTop, uvEdge);
-  pushShipQuad(vertices, normals, uvs, outFrontBot, outRearBot, outRearTop, outFrontTop, uvEdge);
-  pushShipQuad(vertices, normals, uvs, inRearBot, inFrontBot, inFrontTop, inRearTop, uvEdge);
+  const makeAirfoilStations = (x, zRear, zFront, yBot, yTop) => {
+    const dz = zFront - zRear;
+    const dy = yTop - yBot;
+    const topPts = [];
+    const botPts = [];
+    for (let i = 0; i < chordFracs.length; i++) {
+      const z = zRear + dz * chordFracs[i];
+      topPts.push(new Vec3(x, yBot + dy * topProfile[i], z));
+      botPts.push(new Vec3(x, yBot + dy * botProfile[i], z));
+    }
+    return { topPts, botPts };
+  };
+
+  // Subdivide spanwise into 2 sections for smoother airfoil twist/taper
+  const spanFracs = [0.0, 0.52, 1.0];
+  const stations = spanFracs.map((t) =>
+    makeAirfoilStations(
+      xIn + (xOut - xIn) * t,
+      zRIn + (zROut - zRIn) * t,
+      zFIn + (zFOut - zFIn) * t,
+      yBIn + (yBOut - yBIn) * t,
+      yTIn + (yTOut - yTIn) * t,
+    ),
+  );
+
+  for (let s = 0; s < stations.length - 1; s++) {
+    const st0 = stations[s];
+    const st1 = stations[s + 1];
+    for (let c = 0; c < chordFracs.length - 1; c++) {
+      const stripUv = c === 0 || c === chordFracs.length - 2 ? uvEdge : uvSkin;
+      pushShipQuad(vertices, normals, uvs, st0.topPts[c + 1], st1.topPts[c + 1], st1.topPts[c], st0.topPts[c], stripUv);
+      pushShipQuad(vertices, normals, uvs, st0.botPts[c], st1.botPts[c], st1.botPts[c + 1], st0.botPts[c + 1], stripUv);
+    }
+    // Leading & trailing edge closures
+    const last = chordFracs.length - 1;
+    pushShipQuad(vertices, normals, uvs, st0.botPts[last], st1.botPts[last], st1.topPts[last], st0.topPts[last], uvEdge);
+    pushShipQuad(vertices, normals, uvs, st1.botPts[0], st0.botPts[0], st0.topPts[0], st1.topPts[0], uvEdge);
+  }
+
+  // Root & tip rib endcaps
+  const rootSt = stations[0];
+  const tipSt = stations[stations.length - 1];
+  for (let c = 0; c < chordFracs.length - 1; c++) {
+    pushShipQuad(vertices, normals, uvs, tipSt.botPts[c + 1], tipSt.botPts[c], tipSt.topPts[c], tipSt.topPts[c + 1], uvEdge);
+    pushShipQuad(vertices, normals, uvs, rootSt.botPts[c], rootSt.botPts[c + 1], rootSt.topPts[c + 1], rootSt.topPts[c], uvEdge);
+  }
 }
 
 /**
- * Pushes a horizontal octagonal cylinder / thruster bell along the Z axis from `z0` to `z1`.
+ * Pushes a high-resolution horizontal cylinder / thruster bell along the Z axis from `z0` to `z1` (16 radial segments by default).
  */
-function pushAxialOctagonalTube(vertices, normals, uvs, centerXY, zSpan, radii, uvSide, uvRearCap, uvFrontCap) {
+function pushAxialOctagonalTube(vertices, normals, uvs, centerXY, zSpan, radii, uvSide, uvRearCap, uvFrontCap, sides = 16) {
   const cx = centerXY.x;
   const cy = centerXY.y;
   const z0 = zSpan.x;
   const z1 = zSpan.y;
   const r0 = radii.x;
   const r1 = radii.y;
-  const sides = 8;
   const ring0 = [];
   const ring1 = [];
   for (let i = 0; i < sides; i++) {
@@ -5434,14 +5548,83 @@ function pushAxialOctagonalTube(vertices, normals, uvs, centerXY, zSpan, radii, 
 }
 
 /**
- * Builds the massive 3D UAC Heavy Assault Dropship (`SC-09 "Valkyrie"`) mesh (`190 x 110 x 320` units, ~3 x 5 tiles):
+ * Pushes a cylindrical wheel/tire with hubcaps along the X axle at `center` (`Vec3`), with `radius` (`y/z`) and `halfWidth` (`x`).
+ */
+function pushLandingWheel(vertices, normals, uvs, center, radiusAndWidth, uvTire, uvHub, sides = 16) {
+  const x0 = center.x - radiusAndWidth.y;
+  const x1 = center.x + radiusAndWidth.y;
+  const cy = center.y;
+  const cz = center.z;
+  const r = radiusAndWidth.x;
+  const ringL = [];
+  const ringR = [];
+  for (let i = 0; i < sides; i++) {
+    const a = (i / sides) * Trigo.twopi;
+    const py = cy + Math.sin(a) * r;
+    const pz = cz + Math.cos(a) * r;
+    ringL.push(new Vec3(x0, py, pz));
+    ringR.push(new Vec3(x1, py, pz));
+  }
+  const cL = new Vec3(x0, cy, cz);
+  const cR = new Vec3(x1, cy, cz);
+  const uc = (uvHub.u0 + uvHub.u1) * 0.5;
+  const vc = (uvHub.v0 + uvHub.v1) * 0.5;
+  const ur = (uvHub.u1 - uvHub.u0) * 0.45;
+  const vr = (uvHub.v1 - uvHub.v0) * 0.45;
+  for (let i = 0; i < sides; i++) {
+    const next = (i + 1) % sides;
+    pushShipQuad(vertices, normals, uvs, ringL[i], ringR[i], ringR[next], ringL[next], uvTire);
+    const a0 = (i / sides) * Trigo.twopi;
+    const a1 = (next / sides) * Trigo.twopi;
+    scratchUvA.setScalar(uc, vc);
+    scratchUvB.setScalar(uc + Math.cos(a1) * ur, vc + Math.sin(a1) * vr);
+    scratchUvC.setScalar(uc + Math.cos(a0) * ur, vc + Math.sin(a0) * vr);
+    pushTri(vertices, normals, uvs, cL, ringL[next], ringL[i], scratchUvA, scratchUvB, scratchUvC);
+    pushTri(vertices, normals, uvs, cR, ringR[i], ringR[next], scratchUvA, scratchUvC, scratchUvB);
+  }
+}
+
+/**
+ * Pushes a sculpted multi-facet geodesic canopy section between `z0` and `z1`.
+ */
+function pushCanopySection(vertices, normals, uvs, zSpan, aftArch, fwdArch, uvGlass, uvFrame) {
+  const z0 = zSpan.x;
+  const z1 = zSpan.y;
+  // Each archVec is Vec3(baseY, crownY, halfWidth)
+  const buildArch = (arch, z) => {
+    const yBase = arch.x;
+    const yTop = arch.y;
+    const hw = arch.z;
+    const h = yTop - yBase;
+    return [
+      new Vec3(-hw, yBase, z),
+      new Vec3(-hw * 0.88, yBase + h * 0.46, z),
+      new Vec3(-hw * 0.54, yBase + h * 0.84, z),
+      new Vec3(-hw * 0.18, yTop, z),
+      new Vec3(hw * 0.18, yTop, z),
+      new Vec3(hw * 0.54, yBase + h * 0.84, z),
+      new Vec3(hw * 0.88, yBase + h * 0.46, z),
+      new Vec3(hw, yBase, z),
+    ];
+  };
+  const a0 = buildArch(aftArch, z0);
+  const a1 = buildArch(fwdArch, z1);
+  for (let i = 0; i < a0.length - 1; i++) {
+    const paneUv = i === 3 ? uvFrame : uvGlass;
+    pushShipQuad(vertices, normals, uvs, a0[i], a1[i], a1[i + 1], a0[i + 1], paneUv);
+  }
+}
+
+/**
+ * Builds the high-definition 3D UAC Heavy Assault Dropship (`SC-09 "Valkyrie"`) mesh (`190 x 110 x 320` units, ~3 x 5 tiles):
  * - Spans `x in [-95, +95]`, `y in [0, 110]` (rising well above the 64-unit hangar wall height), and `z in [-160, +160]`.
- * - Features a tri-gear heavy hydraulic landing undercarriage (`y = 0..24`), chined stealth-armored multi-station fuselage
- *   (`z = -142..+160`), aft hydraulic assault boarding ramp, stepped tandem ballistic cockpit canopy (`z = +24..+126`),
- *   chin-mounted twin 30mm rotary autocannon turret & FLIR sensor pod, dorsal reactor spine with twin turbine intake scoops
- *   and radar mast (`y = 68..106`), forward canards, swept delta wings with underwing AGM rocket pods & anti-ship missiles,
- *   outboard wingtip VTOL tilt-engine nacelles with navigation strobes (`x = +-68..+-95`), twin canted vertical tail fins
- *   (`y = 64..110`), and twin main aft fusion thruster bells (`z = -160..-132`) with glowing cyan-white plasma cores.
+ * - High-poly 18-point chined stealth fuselage across 16 longitudinal stations (`z = -144..+160`) with multi-stage ogive radome,
+ *   aft hydraulic assault boarding ramp, geodesic wrap-around tandem ballistic cockpit canopy (`z = +12..+134`) with pilot &
+ *   weapons-officer seats/HUDs, chin-mounted 6-barrel 30mm Gatling rotary cannon & spherical FLIR gimbal, wheeled tri-gear
+ *   hydraulic landing undercarriage (`y = 0..24`), dorsal reactor spine with twin 16-segment turbine intakes & AWACS radar dome,
+ *   cambered supercritical airfoil canards & swept delta wings with slotted flaps, 19-tube AGM rocket pods & finned anti-ship
+ *   missiles, 12-point sculpted outboard VTOL tilt-engine nacelles (`x = +-68..+-95`), canted airfoil tail fins (`y = 60..110`),
+ *   and twin 20-segment main aft fusion thruster bells (`z = -160..-132`) with recessed glowing cyan-white plasma cores.
  */
 export function spaceshipMesh() {
   const vertices = [];
@@ -5473,23 +5656,39 @@ export function spaceshipMesh() {
     top: uvHullPlate,
     upperSide: uvHullSquadron,
     side: uvHullPlate,
-    lowerSide: uvHullHazard,
+    lowerSide: uvHullSeam,
+    belly: uvHullBelly,
+  };
+  const radomeUvs = {
+    top: uvRadome,
+    upperSide: uvRadome,
+    side: uvRadome,
+    lowerSide: uvRadome,
     belly: uvHullBelly,
   };
 
-  // 1. MULTI-STATION CHINED MAIN FUSELAGE HULL (z = -142..+160, y = 16..68)
+  // 1. 16-STATION 18-POINT SCULPTED CHINED FUSELAGE & OGIVE RADOME (z = -144..+160)
   const stations = [
-    { z: -142, profile: new Vec3(44, 24, 18) },
-    { z: -106, profile: new Vec3(43, 33, 22) },
-    { z: -56, profile: new Vec3(42, 38, 25) },
-    { z: 18, profile: new Vec3(42, 38, 25) },
-    { z: 68, profile: new Vec3(39, 31, 21) },
-    { z: 114, profile: new Vec3(35, 21, 15) },
-    { z: 146, profile: new Vec3(32, 10, 8) },
+    { z: -144, profile: new Vec3(44.5, 22.5, 17.0) },
+    { z: -126, profile: new Vec3(43.8, 28.5, 20.0) },
+    { z: -102, profile: new Vec3(43.0, 34.0, 22.8) },
+    { z: -76, profile: new Vec3(42.4, 37.2, 24.5) },
+    { z: -46, profile: new Vec3(42.0, 38.6, 25.4) },
+    { z: -14, profile: new Vec3(42.0, 38.8, 25.5) },
+    { z: 18, profile: new Vec3(41.8, 38.2, 25.0) },
+    { z: 46, profile: new Vec3(40.5, 35.0, 23.2) },
+    { z: 72, profile: new Vec3(38.8, 30.2, 20.6) },
+    { z: 96, profile: new Vec3(36.8, 24.8, 17.5) },
+    { z: 116, profile: new Vec3(34.8, 19.2, 14.2) },
+    { z: 132, profile: new Vec3(33.2, 14.0, 10.6) },
+    { z: 144, profile: new Vec3(32.0, 9.2, 7.2) },
+    { z: 152, profile: new Vec3(31.4, 5.2, 4.2) },
+    { z: 157, profile: new Vec3(31.1, 2.2, 1.9) },
   ];
   for (let i = 0; i < stations.length - 1; i++) {
     const s0 = stations[i];
     const s1 = stations[i + 1];
+    const uvMap = s0.z >= 116 ? radomeUvs : fuselageUvs;
     pushSpaceshipFuselageSection(
       vertices,
       normals,
@@ -5497,398 +5696,819 @@ export function spaceshipMesh() {
       new Vec2(s0.z, s1.z),
       s0.profile,
       s1.profile,
-      i === 4 ? { ...fuselageUvs, upperSide: uvHullHazard } : fuselageUvs,
+      uvMap,
     );
   }
-  // Sharp forward radar nose cone tip (z = +146..+160) & pitot spike
-  pushSpaceshipFuselageSection(
+  // Precision nose pitot-static probe boom (z = +155..+160) & dual AOA sensor vanes
+  pushAxialOctagonalTube(
     vertices,
     normals,
     uvs,
-    new Vec2(146, 160),
-    new Vec3(32, 10, 8),
-    new Vec3(31, 2.2, 2.0),
-    { top: uvRadome, upperSide: uvRadome, side: uvRadome, lowerSide: uvRadome, belly: uvRadome },
+    new Vec2(0, 31.0),
+    new Vec2(154, 160),
+    new Vec2(1.8, 0.45),
+    uvNozzlePetals,
+    null,
+    uvRadome,
+    12,
   );
-  pushShipBox(vertices, normals, uvs, new Vec3(-1.8, 29.2, 158), new Vec3(1.8, 32.8, 160), uvRadome);
-  // Aft fuselage bulkhead plate (z = -142) & lowered hydraulic assault boarding ramp (z = -148..-112, y = 3..22)
-  pushShipBox(vertices, normals, uvs, new Vec3(-22, 26, -143), new Vec3(22, 60, -140), uvEngineLouvers);
-  pushSweptWing(
-    vertices,
-    normals,
-    uvs,
-    -15,
-    15,
-    new Vec2(-148, -112),
-    new Vec2(-148, -112),
-    new Vec2(3.5, 20),
-    new Vec2(3.5, 20),
-    uvHullHazard,
-    uvHullBelly,
-  );
-  for (const side of [-1, 1])
-    pushShipBox(vertices, normals, uvs, new Vec3(side * 13.5 - 1.5, 10, -138), new Vec3(side * 13.5 + 1.5, 28, -124), uvNozzlePetals);
-
-  // Lateral fuselage armor chines, troop-bay airlock doors & forward weapon sponsons
-  for (const side of [-1, 1]) {
-    const xIn = side > 0 ? 35 : -43;
-    const xOut = side > 0 ? 43 : -35;
-    pushShipBox(vertices, normals, uvs, new Vec3(xIn, 22, -38), new Vec3(xOut, 56, 12), uvHullSquadron);
-    pushShipBox(
-      vertices,
-      normals,
-      uvs,
-      new Vec3(side > 0 ? 42 : -44.5, 25, -32),
-      new Vec3(side > 0 ? 44.5 : -42, 52, 6),
-      uvHullHazard,
-    );
-    pushShipBox(
-      vertices,
-      normals,
-      uvs,
-      new Vec3(side > 0 ? 26 : -36, 26, 54),
-      new Vec3(side > 0 ? 36 : -26, 44, 106),
-      uvHullSeam,
-    );
-  }
-
-  // 2. STEPPED TANDEM ARMORED COCKPIT & BALLISTIC CANOPY (y = 44..74, z = +20..+126)
-  pushShipFrustum(
-    vertices,
-    normals,
-    uvs,
-    new Vec2(46, 62),
-    new Vec2(16, 19),
-    new Vec2(16, 13.5),
-    new Vec3(0, 0, 108),
-    { top: uvCanopyGlass, bottom: uvHullBelly, side: uvCanopyGlass },
-  );
-  pushShipFrustum(
-    vertices,
-    normals,
-    uvs,
-    new Vec2(54, 72.5),
-    new Vec2(17.5, 35),
-    new Vec2(11.5, 26),
-    new Vec3(0, 0, 59),
-    { top: uvCanopyGlass, bottom: uvCanopyHud, side: uvCanopyGlass },
-  );
-  for (const frameZ of [36, 62, 88, 110]) {
-    const halfW = frameZ > 90 ? 14.5 : 17.8;
-    const topY = frameZ > 90 ? 63.2 : 73.2;
-    pushShipBox(vertices, normals, uvs, new Vec3(-halfW, 48, frameZ - 1.8), new Vec3(halfW, topY, frameZ + 1.8), uvHullPlate);
-  }
-
-  // 3. CHIN-MOUNTED TWIN 30MM ROTARY AUTOCANNON TURRET & FLIR GIMBAL (z = +102..+158)
-  pushShipBox(vertices, normals, uvs, new Vec3(-10, 15, 104), new Vec3(10, 24, 130), uvHullSeam);
-  pushShipFrustum(
-    vertices,
-    normals,
-    uvs,
-    new Vec2(11.5, 16.5),
-    new Vec2(7.5, 8.5),
-    new Vec2(5.5, 6.5),
-    new Vec3(0, 0, 121),
-    { top: uvHullSeam, bottom: uvFlirSensor, side: uvFlirSensor },
-  );
-  for (const side of [-1, 1]) {
-    const bx = side * 6.2;
-    pushAxialOctagonalTube(
-      vertices,
-      normals,
-      uvs,
-      new Vec2(bx, 18.5),
-      new Vec2(124, 148),
-      new Vec2(2.6, 2.4),
-      uvNozzlePetals,
-      null,
-      uvRocketPod,
-    );
-    pushAxialOctagonalTube(
-      vertices,
-      normals,
-      uvs,
-      new Vec2(bx, 18.5),
-      new Vec2(148, 158),
-      new Vec2(1.7, 1.9),
-      uvHullSeam,
-      null,
-      uvRocketPod,
-    );
-  }
-
-  // 4. TRI-GEAR HEAVY HYDRAULIC LANDING UNDERCARRIAGE (y = 0..24)
-  pushShipBox(vertices, normals, uvs, new Vec3(-3.5, 4, 98), new Vec3(3.5, 23, 105), uvNozzlePetals);
-  pushShipBox(vertices, normals, uvs, new Vec3(-2.2, 7, 92), new Vec3(2.2, 21, 98), uvHullHazard);
-  pushShipFrustum(
-    vertices,
-    normals,
-    uvs,
-    new Vec2(0, 4.5),
-    new Vec2(11, 15),
-    new Vec2(8.5, 11.5),
-    new Vec3(0, 0, 101),
-    { top: uvHullPlate, bottom: uvHullBelly, side: uvHullHazard },
-  );
-
-  for (const side of [-1, 1]) {
-    const gx = side * 44;
-    pushShipBox(
-      vertices,
-      normals,
-      uvs,
-      new Vec3(side > 0 ? 26 : -48, 14, -54),
-      new Vec3(side > 0 ? 48 : -26, 24, -24),
-      uvHullSeam,
-    );
-    for (const sz of [-48, -29])
-      pushShipBox(vertices, normals, uvs, new Vec3(gx - 3.6, 4.5, sz - 3.6), new Vec3(gx + 3.6, 20.5, sz + 3.6), uvNozzlePetals);
-    pushShipFrustum(
-      vertices,
-      normals,
-      uvs,
-      new Vec2(0, 5.2),
-      new Vec2(10.5, 25),
-      new Vec2(8.2, 21),
-      new Vec3(gx, 0, -39),
-      { top: uvHullPlate, bottom: uvHullBelly, side: uvHullHazard },
-    );
-  }
-
-  // 5. DORSAL REACTOR SPINE, TWIN TURBINE INTAKE SCOOPS & RADAR MAST (y = 64..106)
-  pushShipFrustum(
-    vertices,
-    normals,
-    uvs,
-    new Vec2(64, 82),
-    new Vec2(21, 76),
-    new Vec2(13, 64),
-    new Vec3(0, 0, -50),
-    { top: uvHullPlate, bottom: uvHullBelly, side: uvEngineLouvers },
-  );
-  for (const side of [-1, 1]) {
-    const ix = side * 14.5;
-    pushShipBox(vertices, normals, uvs, new Vec3(ix - 7.5, 65, -18), new Vec3(ix + 7.5, 80, 34), uvHullPlate);
-    pushAxialOctagonalTube(
-      vertices,
-      normals,
-      uvs,
-      new Vec2(ix, 72.5),
-      new Vec2(26, 38),
-      new Vec2(6.8, 6.2),
-      uvHullSeam,
-      null,
-      uvTurbineIntake,
-    );
-  }
-  pushSweptWing(
-    vertices,
-    normals,
-    uvs,
-    -2.5,
-    2.5,
-    new Vec2(-34, 2),
-    new Vec2(-34, 2),
-    new Vec2(80, 102),
-    new Vec2(80, 102),
-    uvHullSquadron,
-    uvHullHazard,
-  );
-  pushShipBox(vertices, normals, uvs, new Vec3(-6.5, 101, -36), new Vec3(6.5, 106, -12), uvRadome);
-
-  // 6. FORWARD CANARDS, SWEPT DELTA WINGS & UNDERWING ORDNANCE (x = +-28..+-82)
   for (const side of [-1, 1]) {
     pushSweptWing(
       vertices,
       normals,
       uvs,
-      side * 26,
-      side * 56,
-      new Vec2(72, 108),
-      new Vec2(64, 84),
-      new Vec2(36, 41.5),
-      new Vec2(34.5, 38.5),
-      uvWingSkin,
+      side * 12.5,
+      side * 16.5,
+      new Vec2(126, 136),
+      new Vec2(128, 133),
+      new Vec2(31.5, 33.2),
+      new Vec2(31.8, 33.0),
+      uvNozzlePetals,
+      uvHullSeam,
+    );
+  }
+
+  // Aft fuselage bulkhead, recessed troop-bay doorway & lowered hydraulic assault boarding ramp (z = -150..-110)
+  pushShipBox(vertices, normals, uvs, new Vec3(-22, 26, -144), new Vec3(22, 60, -140), uvEngineLouvers);
+  pushShipBox(vertices, normals, uvs, new Vec3(-16, 24, -142), new Vec3(16, 52, -136), uvHullBelly);
+  pushSweptWing(
+    vertices,
+    normals,
+    uvs,
+    -15.5,
+    15.5,
+    new Vec2(-149, -112),
+    new Vec2(-149, -112),
+    new Vec2(3.2, 20.5),
+    new Vec2(3.2, 20.5),
+    uvHullBelly,
+    uvHullHazard,
+  );
+  // Anti-slip boarding ramp cleats & twin hydraulic actuator rams
+  for (let cz = -145; cz <= -118; cz += 6) {
+    const t = (cz - -149) / 37;
+    const cy = 4.2 + t * 15.5;
+    pushShipBox(vertices, normals, uvs, new Vec3(-13.5, cy, cz - 0.9), new Vec3(13.5, cy + 1.4, cz + 0.9), uvNozzlePetals);
+  }
+  for (const side of [-1, 1]) {
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(side * 14.0, 19.0),
+      new Vec2(-139, -120),
+      new Vec2(1.4, 1.1),
+      uvNozzlePetals,
+      uvHullSeam,
+      uvHullSeam,
+      10,
+    );
+  }
+
+  // Sculpted lateral fuselage armor chines, wing-root strake fillets, troop airlock doors & forward weapon sponsons
+  for (const side of [-1, 1]) {
+    const xIn = side > 0 ? 35 : -43.5;
+    const xOut = side > 0 ? 43.5 : -35;
+    pushShipBox(vertices, normals, uvs, new Vec3(xIn, 22, -42), new Vec3(xOut, 56, 14), uvHullSquadron);
+    pushShipBox(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(side > 0 ? 42.2 : -45.0, 24.5, -34),
+      new Vec3(side > 0 ? 45.0 : -42.2, 52.5, 8),
+      uvHullPlate,
+    );
+    // Airlock lower threshold caution sill
+    pushShipBox(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(side > 0 ? 42.4 : -45.2, 22.5, -34),
+      new Vec3(side > 0 ? 45.2 : -42.4, 25.0, 8),
       uvHullHazard,
     );
+    // Airlock door vertical stiffener ribs & grab handle
+    for (const rz of [-26, -13, 0]) {
+      pushShipBox(
+        vertices,
+        normals,
+        uvs,
+        new Vec3(side > 0 ? 44.6 : -45.8, 26, rz - 1.2),
+        new Vec3(side > 0 ? 45.8 : -44.6, 50, rz + 1.2),
+        uvHullSeam,
+      );
+    }
+    // Forward cheek avionics & RCS thruster sponsons (z = +48..+112)
+    pushShipFrustum(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(24, 45),
+      new Vec2(5.5, 31),
+      new Vec2(3.8, 24),
+      new Vec3(side * 31.5, 0, 78),
+      { top: uvHullPlate, bottom: uvHullBelly, side: uvHullSeam },
+    );
+    // Wing-root aerodynamic strake fillet blending fuselage into inner delta wing (z = -92..+52)
+    pushSweptWing(
+      vertices,
+      normals,
+      uvs,
+      side * 33,
+      side * 46,
+      new Vec2(-90, 52),
+      new Vec2(-88, 28),
+      new Vec2(42, 58),
+      new Vec2(44, 55),
+      uvHullPlate,
+      uvHullSeam,
+    );
+  }
+
+  // 2. GEODESIC TANDEM BALLISTIC CANOPY & DETAILED COCKPIT INTERIOR (y = 44..74, z = +12..+134)
+  const canopyStations = [
+    { z: 12, arch: new Vec3(53.0, 71.5, 16.5) },
+    { z: 34, arch: new Vec3(53.0, 73.5, 17.8) },
+    { z: 58, arch: new Vec3(52.0, 73.0, 17.4) },
+    { z: 80, arch: new Vec3(49.5, 68.5, 16.2) },
+    { z: 100, arch: new Vec3(46.8, 63.5, 14.8) },
+    { z: 118, arch: new Vec3(44.0, 56.5, 12.2) },
+    { z: 133, arch: new Vec3(41.2, 46.8, 8.2) },
+  ];
+  for (let i = 0; i < canopyStations.length - 1; i++) {
+    const c0 = canopyStations[i];
+    const c1 = canopyStations[i + 1];
+    pushCanopySection(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(c0.z, c1.z),
+      c0.arch,
+      c1.arch,
+      uvCanopyGlass,
+      uvHullPlate,
+    );
+  }
+  // Sculpted external titanium canopy arch ribs along station joints
+  for (const st of canopyStations) {
+    if (st.z <= 14 || st.z >= 130)
+      continue;
+    pushCanopySection(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(st.z - 1.3, st.z + 1.3),
+      new Vec3(st.arch.x, st.arch.y + 0.7, st.arch.z + 0.6),
+      new Vec3(st.arch.x, st.arch.y + 0.7, st.arch.z + 0.6),
+      uvHullPlate,
+      uvHullSeam,
+    );
+  }
+  // Tandem cockpit interior: pilot & weapons-officer ejection seats, glare-shields & glowing HUD combiners
+  for (const seatZ of [44, 88]) {
+    const seatY = seatZ > 65 ? 46 : 50;
+    // Armored seat bucket & twin headrest bolsters
+    pushShipBox(vertices, normals, uvs, new Vec3(-5.8, seatY, seatZ - 4.5), new Vec3(5.8, seatY + 13.5, seatZ - 1.2), uvHullBelly);
+    pushShipBox(vertices, normals, uvs, new Vec3(-4.6, seatY + 13.5, seatZ - 4.2), new Vec3(4.6, seatY + 18.2, seatZ - 1.5), uvHullHazard);
+    // Forward instrument console & holographic green HUD combiner glass
+    pushShipBox(vertices, normals, uvs, new Vec3(-7.5, seatY + 4.0, seatZ + 6.5), new Vec3(7.5, seatY + 10.5, seatZ + 12.5), uvHullSeam);
+    pushShipBox(vertices, normals, uvs, new Vec3(-4.8, seatY + 10.5, seatZ + 8.0), new Vec3(4.8, seatY + 15.8, seatZ + 9.2), uvCanopyHud);
+  }
+
+  // 3. CHIN-MOUNTED 6-BARREL 30MM GATLING ROTARY CANNON & SPHERICAL FLIR GIMBAL (z = +100..+159)
+  pushShipFrustum(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(14.5, 24.5),
+    new Vec2(11.5, 16.0),
+    new Vec2(13.5, 19.0),
+    new Vec3(0, 0, 116),
+    { top: uvHullSeam, bottom: uvHullBelly, side: uvHullSeam },
+  );
+  // Multi-ring spherical/geodesic FLIR electro-optical sensor turret (z = +116..+132)
+  const flirRings = [
+    { z: 115.0, r: 4.2 },
+    { z: 118.0, r: 6.8 },
+    { z: 122.0, r: 7.6 },
+    { z: 126.0, r: 6.8 },
+    { z: 129.2, r: 4.4 },
+  ];
+  for (let i = 0; i < flirRings.length - 1; i++) {
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(0, 14.0),
+      new Vec2(flirRings[i].z, flirRings[i + 1].z),
+      new Vec2(flirRings[i].r, flirRings[i + 1].r),
+      uvFlirSensor,
+      i === 0 ? uvHullSeam : null,
+      i === flirRings.length - 2 ? uvFlirSensor : null,
+      14,
+    );
+  }
+  // Twin chin weapon pods each housing a 6-barrel 30mm Gatling cluster + barrel spider clamps
+  for (const side of [-1, 1]) {
+    const cx = side * 7.2;
+    const cy = 18.8;
+    // Armored recoil drum & rotor drive housing
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(cx, cy),
+      new Vec2(118, 134),
+      new Vec2(3.6, 3.3),
+      uvHullSeam,
+      uvHullBelly,
+      uvNozzlePetals,
+      12,
+    );
+    // 3 barrel clamp discs along the Gatling cluster
+    for (const clampZ of [139, 148, 155.5]) {
+      pushAxialOctagonalTube(
+        vertices,
+        normals,
+        uvs,
+        new Vec2(cx, cy),
+        new Vec2(clampZ - 0.9, clampZ + 0.9),
+        new Vec2(2.85, 2.85),
+        uvHullHazard,
+        uvNozzlePetals,
+        uvNozzlePetals,
+        12,
+      );
+    }
+    // 6 individual high-velocity rotary barrels around the cluster perimeter
+    for (let b = 0; b < 6; b++) {
+      const a = (b / 6) * Trigo.twopi;
+      const bx = cx + Math.cos(a) * 1.85;
+      const by = cy + Math.sin(a) * 1.85;
+      pushAxialOctagonalTube(
+        vertices,
+        normals,
+        uvs,
+        new Vec2(bx, by),
+        new Vec2(133, 158.5),
+        new Vec2(0.58, 0.55),
+        uvNozzlePetals,
+        null,
+        uvRocketPod,
+        8,
+      );
+    }
+  }
+
+  // 4. WHEELED TRI-GEAR HEAVY HYDRAULIC LANDING UNDERCARRIAGE (y = 0..24)
+  // Forward twin-wheel nose gear (z = +94..+108, resting on y = 0)
+  pushShipBox(vertices, normals, uvs, new Vec3(-2.6, 5.5, 98.5), new Vec3(2.6, 23.5, 103.5), uvNozzlePetals);
+  pushShipBox(vertices, normals, uvs, new Vec3(-1.8, 8.0, 91.5), new Vec3(1.8, 22.0, 98.5), uvHullHazard);
+  // Nose gear open bay doors
+  for (const side of [-1, 1]) {
+    pushShipBox(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(side * 7.8 - 0.9, 13.5, 90),
+      new Vec3(side * 7.8 + 0.9, 22.5, 110),
+      uvHullPlate,
+    );
+    pushLandingWheel(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(side * 4.4, 5.2, 101.0),
+      new Vec2(5.2, 1.8),
+      uvHullBelly,
+      uvNozzlePetals,
+      16,
+    );
+  }
+
+  // Port & Starboard quad-wheel heavy main landing bogies (x = +-44, z = -54..-24, resting on y = 0)
+  for (const side of [-1, 1]) {
+    const gx = side * 44;
+    // Sponson wheel-well fairing & open armored bay doors
+    pushShipFrustum(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(14, 25),
+      new Vec2(11.5, 18),
+      new Vec2(9.5, 15),
+      new Vec3(side * 37, 0, -39),
+      { top: uvHullSeam, bottom: uvHullBelly, side: uvHullSeam },
+    );
+    pushShipBox(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(gx + side * 6.5 - 1.0, 10.5, -55),
+      new Vec3(gx + side * 6.5 + 1.0, 22.0, -23),
+      uvHullPlate,
+    );
+    // Main oleo-pneumatic shock strut, bogie beam & diagonal drag brace
+    pushShipBox(vertices, normals, uvs, new Vec3(gx - 2.6, 5.5, -42.5), new Vec3(gx + 2.6, 22.5, -35.5), uvNozzlePetals);
+    pushShipBox(vertices, normals, uvs, new Vec3(gx - 2.2, 4.2, -50.5), new Vec3(gx + 2.2, 7.6, -27.5), uvHullSeam);
+    for (const wz of [-47.5, -30.5]) {
+      for (const wxOff of [-4.2, 4.2]) {
+        pushLandingWheel(
+          vertices,
+          normals,
+          uvs,
+          new Vec3(gx + wxOff, 5.8, wz),
+          new Vec2(5.8, 1.9),
+          uvHullBelly,
+          uvNozzlePetals,
+          16,
+        );
+      }
+    }
+  }
+
+  // 5. SCULPTED DORSAL REACTOR SPINE, TWIN 16-SEGMENT TURBINE SCOOPS & AWACS RADAR DOME (y = 64..107)
+  const spineStations = [
+    { z: -136, arch: new Vec3(62, 76, 15.0) },
+    { z: -96, arch: new Vec3(64, 82, 19.5) },
+    { z: -48, arch: new Vec3(65, 84, 21.0) },
+    { z: -4, arch: new Vec3(65, 82, 19.5) },
+    { z: 24, arch: new Vec3(63, 75, 15.5) },
+  ];
+  for (let i = 0; i < spineStations.length - 1; i++) {
+    pushCanopySection(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(spineStations[i].z, spineStations[i + 1].z),
+      spineStations[i].arch,
+      spineStations[i + 1].arch,
+      uvEngineLouvers,
+      uvHullPlate,
+    );
+  }
+  // Twin 16-sided supersonic dorsal turbine intakes with central shock cones (x = +-14.5, z = -22..+40)
+  for (const side of [-1, 1]) {
+    const ix = side * 14.8;
+    const iy = 72.5;
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(ix, iy),
+      new Vec2(-22, 26),
+      new Vec2(7.6, 7.4),
+      uvHullPlate,
+      null,
+      null,
+      16,
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(ix, iy),
+      new Vec2(26, 39),
+      new Vec2(7.4, 6.4),
+      uvHullSeam,
+      null,
+      uvTurbineIntake,
+      16,
+    );
+    // Supersonic intake centerbody shock spike
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(ix, iy),
+      new Vec2(35, 44),
+      new Vec2(2.6, 0.3),
+      uvRadome,
+      null,
+      uvRadome,
+      12,
+    );
+  }
+  // Dorsal radar mast & 16-segment phased-array AWACS rotodome (y = 82..107, z = -38..-8)
+  pushSweptWing(
+    vertices,
+    normals,
+    uvs,
+    -2.6,
+    2.6,
+    new Vec2(-36, 0),
+    new Vec2(-34, -6),
+    new Vec2(80, 102),
+    new Vec2(80, 102),
+    uvHullSquadron,
+    uvHullSeam,
+  );
+  pushSpaceshipNacelleSection(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(0, 103.8),
+    new Vec2(-40, -24),
+    new Vec2(5.5, 1.8),
+    new Vec2(12.5, 3.0),
+    { top: uvRadome, upper: uvRadome, side: uvHullSquadron, lower: uvRadome, bottom: uvHullBelly },
+  );
+  pushSpaceshipNacelleSection(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(0, 103.8),
+    new Vec2(-24, -8),
+    new Vec2(12.5, 3.0),
+    new Vec2(5.5, 1.8),
+    { top: uvRadome, upper: uvRadome, side: uvHullSquadron, lower: uvRadome, bottom: uvHullBelly },
+  );
+
+  // 6. CAMBERED AIRFOIL CANARDS, SWEPT DELTA WINGS, SLOTTED FLAPS & ORDNANCE (x = +-26..+-82)
+  for (const side of [-1, 1]) {
+    // Forward Variable-Incidence Canard Foreplanes (z = +62..+110)
+    pushSweptWing(
+      vertices,
+      normals,
+      uvs,
+      side * 25,
+      side * 56,
+      new Vec2(72, 109),
+      new Vec2(63, 84),
+      new Vec2(35.8, 41.8),
+      new Vec2(34.5, 38.4),
+      uvWingSkin,
+      uvHullSeam,
+    );
+    // Main Inner & Outer Swept Supercritical Delta Wing Panels (x = +-35..+-74, z = -92..+38)
     pushSweptWing(
       vertices,
       normals,
       uvs,
       side * 35,
-      side * 74,
-      new Vec2(-88, 34),
-      new Vec2(-92, -6),
-      new Vec2(45, 56),
-      new Vec2(41, 49),
+      side * 55,
+      new Vec2(-86, 38),
+      new Vec2(-90, 16),
+      new Vec2(44.5, 56.5),
+      new Vec2(42.8, 52.8),
       uvWingSkin,
       uvHullSeam,
     );
+    pushSweptWing(
+      vertices,
+      normals,
+      uvs,
+      side * 55,
+      side * 74,
+      new Vec2(-90, 16),
+      new Vec2(-93, -6),
+      new Vec2(42.8, 52.8),
+      new Vec2(40.8, 48.8),
+      uvWingSkin,
+      uvHullSeam,
+    );
+    // Articulated trailing-edge slotted flaps & underwing flap-track actuator fairings
+    pushSweptWing(
+      vertices,
+      normals,
+      uvs,
+      side * 38,
+      side * 68,
+      new Vec2(-98, -86),
+      new Vec2(-100, -90),
+      new Vec2(40.5, 45.5),
+      new Vec2(39.0, 43.2),
+      uvWingSkin,
+      uvHullSeam,
+    );
+    for (const fx of [side * 44, side * 56, side * 66]) {
+      pushAxialOctagonalTube(
+        vertices,
+        normals,
+        uvs,
+        new Vec2(fx, 41.5),
+        new Vec2(-96, -70),
+        new Vec2(1.4, 2.2),
+        uvHullSeam,
+        uvNozzlePetals,
+        null,
+        10,
+      );
+    }
 
+    // Underwing ordnance pylons, 16-sided 19-tube AGM rocket pod & twin finned anti-ship missiles
     const pylon1X = side * 49;
     const pylon2X = side * 62;
-    pushShipBox(vertices, normals, uvs, new Vec3(pylon1X - 2.2, 34, -44), new Vec3(pylon1X + 2.2, 47, 10), uvHullSeam);
-    pushShipBox(vertices, normals, uvs, new Vec3(pylon2X - 2.0, 33, -52), new Vec3(pylon2X + 2.0, 45, -2), uvHullSeam);
+    pushSweptWing(
+      vertices,
+      normals,
+      uvs,
+      pylon1X - 1.8,
+      pylon1X + 1.8,
+      new Vec2(-46, 12),
+      new Vec2(-46, 12),
+      new Vec2(33, 47),
+      new Vec2(33, 47),
+      uvHullSeam,
+      uvHullPlate,
+    );
+    pushSweptWing(
+      vertices,
+      normals,
+      uvs,
+      pylon2X - 1.6,
+      pylon2X + 1.6,
+      new Vec2(-54, 4),
+      new Vec2(-54, 4),
+      new Vec2(32, 45),
+      new Vec2(32, 45),
+      uvHullSeam,
+      uvHullPlate,
+    );
 
+    // 19-tube cylindrical AGM rocket launcher pod (x = +-49, z = -54..+26)
     pushAxialOctagonalTube(
       vertices,
       normals,
       uvs,
-      new Vec2(pylon1X, 31),
-      new Vec2(-48, 22),
-      new Vec2(6.5, 6.2),
-      uvHullSquadron,
+      new Vec2(pylon1X, 30.8),
+      new Vec2(-54, -46),
+      new Vec2(4.6, 6.6),
       uvNozzlePetals,
-      uvRocketPod,
-    );
-    pushAxialOctagonalTube(
-      vertices,
-      normals,
-      uvs,
-      new Vec2(pylon2X, 30.5),
-      new Vec2(-58, 18),
-      new Vec2(3.8, 3.8),
-      uvHullHazard,
       uvPlasmaCore,
-      uvRadome,
+      null,
+      16,
     );
     pushAxialOctagonalTube(
       vertices,
       normals,
       uvs,
-      new Vec2(pylon2X, 30.5),
-      new Vec2(18, 30),
-      new Vec2(3.8, 0.8),
+      new Vec2(pylon1X, 30.8),
+      new Vec2(-46, 24),
+      new Vec2(6.6, 6.4),
+      uvHullSquadron,
+      null,
+      uvRocketPod,
+      16,
+    );
+
+    // Heavy anti-ship missile with multi-stage ogive seeker nose & cruciform fins (x = +-62, z = -60..+34)
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(pylon2X, 30.2),
+      new Vec2(-60, 18),
+      new Vec2(3.8, 3.8),
+      uvHullSquadron,
+      uvPlasmaCore,
+      null,
+      16,
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(pylon2X, 30.2),
+      new Vec2(18, 28),
+      new Vec2(3.8, 2.1),
       uvRadome,
       null,
-      uvRadome,
+      null,
+      16,
     );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(pylon2X, 30.2),
+      new Vec2(28, 34),
+      new Vec2(2.1, 0.35),
+      uvFlirSensor,
+      null,
+      uvFlirSensor,
+      16,
+    );
+    // Missile cruciform tail & seeker fins
+    for (const fz of [-56, 8]) {
+      pushShipBox(vertices, normals, uvs, new Vec3(pylon2X - 6.8, 29.6, fz), new Vec3(pylon2X + 6.8, 30.8, fz + 8), uvWingSkin);
+      pushShipBox(vertices, normals, uvs, new Vec3(pylon2X - 0.6, 23.4, fz), new Vec3(pylon2X + 0.6, 37.0, fz + 8), uvWingSkin);
+    }
   }
 
-  // 7. OUTBOARD WINGTIP VTOL TILT-ENGINE NACELLES & STROBES (x = +-68..+-95)
+  // 7. 12-POINT SCULPTED OUTBOARD VTOL TILT-ENGINE NACELLES & WINGTIPS (x = +-68..+-95)
+  const nacelleUvs = {
+    top: uvWingSkin,
+    upper: uvHullSquadron,
+    side: uvEngineLouvers,
+    lower: uvHullSeam,
+    bottom: uvHullBelly,
+  };
   for (const side of [-1, 1]) {
     const nx = side * 80;
-    const xMin = side > 0 ? 69 : -91;
-    const xMax = side > 0 ? 91 : -69;
+    const ny = 47.0;
+    const nacStations = [
+      { z: -98, wh: new Vec2(8.8, 9.2) },
+      { z: -78, wh: new Vec2(11.2, 12.2) },
+      { z: -42, wh: new Vec2(12.0, 13.5) },
+      { z: -6, wh: new Vec2(11.6, 13.0) },
+      { z: 16, wh: new Vec2(10.2, 11.2) },
+    ];
+    for (let i = 0; i < nacStations.length - 1; i++) {
+      pushSpaceshipNacelleSection(
+        vertices,
+        normals,
+        uvs,
+        new Vec2(nx, ny),
+        new Vec2(nacStations[i].z, nacStations[i + 1].z),
+        nacStations[i].wh,
+        nacStations[i + 1].wh,
+        nacelleUvs,
+      );
+    }
+    // Forward 16-sided supersonic turbine intake cowl & spinner cone (z = +14..+31)
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(nx, ny),
+      new Vec2(14, 28),
+      new Vec2(9.6, 8.4),
+      uvHullSeam,
+      null,
+      uvTurbineIntake,
+      16,
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(nx, ny),
+      new Vec2(26, 33),
+      new Vec2(3.2, 0.4),
+      uvNozzlePetals,
+      null,
+      uvRadome,
+      12,
+    );
+    // Aft 20-sided vectoring thruster nozzle & glowing cyan plasma core (z = -116..-96)
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(nx, ny),
+      new Vec2(-106, -96),
+      new Vec2(9.2, 8.4),
+      uvHullSeam,
+      null,
+      null,
+      20,
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(nx, ny),
+      new Vec2(-116, -104),
+      new Vec2(7.6, 9.5),
+      uvNozzlePetals,
+      uvPlasmaCore,
+      null,
+      20,
+    );
+    // Ventral VTOL hover thruster ring underneath nacelle (y = 30.5..35, z = -42)
     pushShipFrustum(
       vertices,
       normals,
       uvs,
-      new Vec2(34, 60),
-      new Vec2(11, 56),
-      new Vec2(9, 48),
-      new Vec3(nx, 0, -40),
-      { top: uvWingSkin, bottom: uvHullBelly, side: uvEngineLouvers },
+      new Vec2(30.5, 34.5),
+      new Vec2(6.8, 6.8),
+      new Vec2(8.0, 8.0),
+      new Vec3(nx, 0, -42),
+      { top: uvHullBelly, bottom: uvPlasmaCore, side: uvNozzlePetals },
     );
-    pushAxialOctagonalTube(
-      vertices,
-      normals,
-      uvs,
-      new Vec2(nx, 46.5),
-      new Vec2(10, 26),
-      new Vec2(9.2, 8.2),
-      uvHullHazard,
-      null,
-      uvTurbineIntake,
-    );
-    pushAxialOctagonalTube(
-      vertices,
-      normals,
-      uvs,
-      new Vec2(nx, 46.5),
-      new Vec2(-112, -94),
-      new Vec2(7.4, 9.8),
-      uvNozzlePetals,
-      uvPlasmaCore,
-      null,
-    );
+    // Outboard canted winglet fin & navigation strobe housing (x = +-88..+-95)
     pushSweptWing(
       vertices,
       normals,
       uvs,
       side * 88,
       side * 95,
-      new Vec2(-88, -8),
-      new Vec2(-82, -32),
+      new Vec2(-88, -6),
+      new Vec2(-82, -30),
       new Vec2(42, 52),
-      new Vec2(54, 72),
+      new Vec2(54, 74),
       uvWingSkin,
-      uvHullHazard,
+      uvHullSeam,
     );
     const uvStrobe = side < 0 ? uvStrobeRed : uvStrobeGreen;
     pushShipBox(
       vertices,
       normals,
       uvs,
-      new Vec3(side > 0 ? 90.5 : -94.5, 43, -46),
-      new Vec3(side > 0 ? 94.5 : -90.5, 49, -22),
+      new Vec3(side > 0 ? 90.5 : -94.8, 43.5, -48),
+      new Vec3(side > 0 ? 94.8 : -90.5, 49.5, -20),
       uvStrobe,
     );
-    pushShipBox(vertices, normals, uvs, new Vec3(xMin + 2, 58, -74), new Vec3(xMax - 2, 63, -12), uvHullSquadron);
   }
 
-  // 8. TWIN CANTED VERTICAL TAIL FINS (y = 60..110) & MAIN AFT FUSION DRIVES (z = -160..-132)
+  // 8. CAMBERED CANTED VERTICAL TAIL FINS (y = 60..110) & TWIN 20-SEGMENT MAIN AFT FUSION DRIVES (z = -160..-132)
   for (const side of [-1, 1]) {
     const rootX = side * 21;
-    const tipX = side * 37;
+    const tipX = side * 37.5;
     pushSweptWing(
       vertices,
       normals,
       uvs,
       rootX,
       tipX,
-      new Vec2(-144, -74),
+      new Vec2(-144, -72),
       new Vec2(-148, -108),
       new Vec2(60, 68),
       new Vec2(104, 110),
       uvWingSkin,
       uvHullSquadron,
     );
-    pushShipBox(
+    // Tailfin tip RWR sensor pod & anti-collision beacon (y = 106..110)
+    pushAxialOctagonalTube(
       vertices,
       normals,
       uvs,
-      new Vec3(tipX - 2.4, 106, -146),
-      new Vec3(tipX + 2.4, 110, -116),
+      new Vec2(tipX, 108.0),
+      new Vec2(-148, -104),
+      new Vec2(2.0, 1.4),
       side < 0 ? uvStrobeRed : uvStrobeGreen,
+      uvNozzlePetals,
+      uvRadome,
+      12,
     );
 
-    const ex = side * 17;
+    // Massive 20-segment multi-stage main aft fusion thruster bell (x = +-17, y = 44, z = -160..-132)
+    const ex = side * 17.2;
+    const ey = 44.0;
     pushAxialOctagonalTube(
       vertices,
       normals,
       uvs,
-      new Vec2(ex, 44),
-      new Vec2(-150, -136),
-      new Vec2(15.2, 16.5),
-      uvHullHazard,
+      new Vec2(ex, ey),
+      new Vec2(-146, -134),
+      new Vec2(16.4, 15.6),
+      uvEngineLouvers,
       null,
       null,
+      20,
     );
     pushAxialOctagonalTube(
       vertices,
       normals,
       uvs,
-      new Vec2(ex, 44),
-      new Vec2(-160, -144),
-      new Vec2(12.2, 14.8),
+      new Vec2(ex, ey),
+      new Vec2(-153, -145),
+      new Vec2(15.2, 16.6),
+      uvHullSeam,
+      null,
+      null,
+      20,
+    );
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(ex, ey),
+      new Vec2(-160, -152),
+      new Vec2(12.6, 15.2),
       uvNozzlePetals,
       uvPlasmaCore,
       null,
+      20,
+    );
+    // Central magnetic pinch exhaust cone inside thruster bell
+    pushAxialOctagonalTube(
+      vertices,
+      normals,
+      uvs,
+      new Vec2(ex, ey),
+      new Vec2(-159.5, -148),
+      new Vec2(1.2, 5.8),
+      uvPlasmaCore,
+      uvPlasmaCore,
+      null,
+      12,
     );
   }
 
-  // Central aft tailcone reactor exhaust fairing & auxiliary thruster between the main bells (z = -154..-138)
+  // Central aft tailcone auxiliary fusion thruster between the main bells (z = -156..-138)
   pushAxialOctagonalTube(
     vertices,
     normals,
     uvs,
-    new Vec2(0, 44),
-    new Vec2(-154, -138),
-    new Vec2(5.5, 7.5),
+    new Vec2(0, 44.0),
+    new Vec2(-156, -138),
+    new Vec2(5.6, 7.8),
     uvNozzlePetals,
     uvPlasmaCore,
     null,
+    16,
   );
 
   return flipV({
