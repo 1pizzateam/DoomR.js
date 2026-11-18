@@ -146,6 +146,15 @@ function clearEnemies(game) {
     game.damageEnemy(enemy, 999);
   game.enemies = [];
   game.kills = 0;
+  for (const f of game.furnitures) {
+    game.scene.removeBody(f.body);
+    if (f.doorBody)
+      game.scene.removeBody(f.doorBody);
+    if (f.stallBodies)
+      for (const b of f.stallBodies)
+        game.scene.removeBody(b);
+  }
+  game.furnitures = [];
 }
 
 function acidPitGame() {
