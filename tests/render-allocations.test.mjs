@@ -509,7 +509,8 @@ const checks = [
     const calls = [];
     const ctx = { beginPath() {}, moveTo(x, y) { calls.push(['m', x, y]); }, lineTo(x, y) { calls.push(['l', x, y]); }, stroke() {} };
     const lines = [];
-    const overlay = { glow: { line(points) { lines.push(points.map((p) => [p.x, p.y])); } } };
+    let capture = true;
+    const overlay = { glow: { line(points) { if (capture) lines.push(points.map((p) => [p.x, p.y])); } } };
     const hud = new Hud({ width: 800, height: 600, getContext: () => ctx }, overlay);
     const bounds = new Rect();
     bounds.topLeftCorner.setScalar(10, 20);
@@ -522,17 +523,16 @@ const checks = [
     assert.deepEqual(calls, [['m', 0, 0], ['l', 5, 5], ['l', 9, 1]]);
     const start = new Vec2(1, 2);
     const end = new Vec2(3, 4);
+    capture = false;
     lines.length = 0;
     for (let i = 0; i < 1000; i++) {
       hud.segment(start, end, 'green');
       hud.rect(bounds, 'green');
-      lines.length = 0;
     }
     const before = process.memoryUsage().heapUsed;
     for (let i = 0; i < 20000; i++) {
       hud.segment(start, end, 'green');
       hud.rect(bounds, 'green');
-      lines.length = 0;
     }
     assert.ok(process.memoryUsage().heapUsed - before < 2e6, 'segment and rect stay allocation-free');
   }],
