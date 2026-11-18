@@ -31,6 +31,11 @@ export const CAT = { WALL: 1, PLAYER: 2, ENEMY: 4, PICKUP: 8, SHOT: 16, BARREL: 
 export const ELEVATOR_RIDE_TIME = 6.6;
 
 // shared read-only query options: BumpR only reads them
+// scratch tiles for level queries and factories
+const tileAt = new Vec2();
+const tileArg = new Vec2();
+// read-only default impulse direction: never mutate
+const ZERO_DIR = new Vec2();
 const QUERY_WALL = Object.freeze({ mask: CAT.WALL });
 const QUERY_PLAYER = Object.freeze({ mask: CAT.PLAYER });
 const QUERY_ENEMY = Object.freeze({ mask: CAT.ENEMY });
@@ -213,11 +218,15 @@ export class Game {
     this.blastPiecePos = new Vec3();
     this.blastPieceNormal = new Vec2();
     this.blastPieceSpan = { lo: 0, hi: 0, top: 0, slope: 0, door: null };
-    this.blastFace = { x: 0, y: 0, nx: 0, ny: 0, idx: 0, top: 0, height: 0, door: null, span: null, lo: 0, hi: 0, slope: 0 };
+    this.blastFace = { pos: new Vec3(), normal: new Vec2(), idx: 0, top: 0, door: null, span: null, lo: 0, hi: 0, slope: 0 };
     // scratch vectors handed to the blood APIs, which read them immediately and keep no reference
     this.bloodPos = new Vec3();
     this.bloodDir = new Vec2();
     this.bloodNormal = new Vec2();
+    // scratch for effect positions and for shot and impulse directions and hit points; callees copy them at once
+    this.burstPos = new Vec3();
+    this.shotDir = new Vec2();
+    this.hitPoint3 = new Vec3();
     this.bloodAt = new Vec2();
     // sound events for main.js to hand to the audio layer; the rules never touch audio themselves
     this.events = [];
@@ -926,8 +935,8 @@ export class Game {
     furniture.gone = true;
     furniture.deadTime = 0;
     this.scene.removeBody(furniture.body);
-    this.burst(furniture.pos.x, furniture.pos.y, 18, 'spark');
-    this.burst(furniture.pos.x, furniture.pos.y, 34, 'spark');
+    this.burst(this.burstPos.setScalar(furniture.pos.x, furniture.pos.y, 18), 'spark');
+    this.burst(this.burstPos.setScalar(furniture.pos.x, furniture.pos.y, 34), 'spark');
     this.emit('clang', furniture.pos);
     const away = this.player ? this.player.pos.getDistance(furniture.pos) : Infinity;
     if (away < 260)
@@ -949,7 +958,7 @@ export class Game {
       const idx = Array.isArray(chestOrTiles) ? chestOrTiles[0] : chestOrTiles;
       const x = idx % this.level.width;
       const y = (idx - x) / this.level.width;
-      chest = this.level.createChest(x, y, contents, null, null, locked);
+      chest = this.level.createChest(tileArg.setScalar(x, y), contents, null, null, locked);
     }
     const list = [...(chest.contents ?? contents ?? [])];
     const items = list.map((type, slot) => ({
@@ -1210,7 +1219,7 @@ export class Game {
         this.hitBarrel(other.ref, BARREL.hp);
       else if (other.ref?.kind === 'furniture')
         this.hitFurniture(other.ref, DISPENSER_HP);
-      this.burst(shot.pos.x, shot.pos.y, EYE - 4, 'blast');
+      this.burst(this.burstPos.setScalar(shot.pos.x, shot.pos.y, EYE - 4), 'blast');
       this.emit('explode', shot.pos);
       this.blastSurfaces(shot.pos, FIREBALL_BLAST.radius, FIREBALL_BLAST.power);
     };
@@ -1289,10 +1298,10 @@ export class Game {
   blastOnPipes(face, severity, primary) {
     const { rubble, blastPiecePos, blastPieceNormal, blastPieceSpan } = this;
     const { seed, variant } = primary;
-    const pieces = pipePlacements(face.x, face.y, face.height, face.nx, face.ny, (primary.size * BLAST_SCORCH_REACH) / 2);
+    const pieces = pipePlacements(face.pos, face.normal, (primary.size * BLAST_SCORCH_REACH) / 2);
     for (const piece of pieces) {
-      blastPiecePos.setScalar(piece.x, piece.y, face.height);
-      blastPieceNormal.setScalar(piece.nx, piece.ny);
+      blastPiecePos.setScalar(piece.pos.x, piece.pos.y, face.pos.z);
+      blastPieceNormal.copy(piece.normal);
       blastPieceSpan.lo = piece.lo;
       blastPieceSpan.hi = piece.hi;
       blastPieceSpan.top = face.top;
@@ -1335,19 +1344,17 @@ export class Game {
       const mergePrev = marked && nx === lastNx && ny === lastNy && gapX * gapX + gapY * gapY < BLAST_WALL_GAP * BLAST_WALL_GAP;
       if (mergePrev && (severity <= lastSeverity || !lastSlot))
         continue;
-      const zHit = mergePrev ? lastSlot.z : this.player.eye - 2 + rubble.rand.float(-3, 3);
+      const zHit = mergePrev ? lastSlot.pos.z : this.player.eye - 2 + rubble.rand.float(-3, 3);
       blastWall.setScalar(hit.point.x, hit.point.y, zHit);
       if (!blood.wallFace(blastWall, blastNormal.setScalar(nx, ny), blastFace))
         continue;
       const door = blastFace.door;
       blastFace.top = door ? level.baseHeight[blastFace.idx] : blastFace.top;
-      blastMark.setScalar(blastFace.x, blastFace.y, door ? blastFace.height / (1 - door.open) : blastFace.height);
+      blastMark.setScalar(blastFace.pos.x, blastFace.pos.y, door ? blastFace.pos.z / (1 - door.open) : blastFace.pos.z);
       let slot;
       if (mergePrev) {
         slot = lastSlot;
-        slot.x = blastMark.x;
-        slot.y = blastMark.y;
-        slot.z = blastMark.z;
+        slot.pos.copy(blastMark);
         slot.severity = severity;
         slot.tier = severity < 0.34 - 1e-6 ? 0 : severity < 0.67 - 1e-6 ? 1 : 2;
         slot.size = Utils.lerp(26, 48, severity);
@@ -1363,7 +1370,7 @@ export class Game {
         if (!slot)
           continue;
       }
-      if (!door && level.pipeFaces?.has(blastFace.idx * 4 + faceDirOf(blastFace.nx, blastFace.ny)))
+      if (!door && level.pipeFaces?.has(blastFace.idx * 4 + faceDirOf(blastFace.normal)))
         this.blastOnPipes(blastFace, severity, slot);
       marked = true;
       lastX = hit.point.x;
@@ -1392,7 +1399,7 @@ export class Game {
 
   detonateRocket(shot, directRef = null) {
     const pos = shot.pos;
-    this.burst(pos.x, pos.y, 0, 'boom');
+    this.burst(this.burstPos.setScalar(pos.x, pos.y, 0), 'boom');
     this.emit('boom', pos);
     for (const enemy of this.enemies)
       enemy.volley = 0;
@@ -1428,7 +1435,7 @@ export class Game {
         dir.normalize();
       else
         dir.setScalar(1, 0);
-      this.mutilateCorpse(enemy, dir.x, dir.y, true);
+      this.mutilateCorpse(enemy, dir, true);
     }
     this.blastSurfaces(pos, shot.radius, 1);
     for (const body of this.scene.queryCircle(pos, shot.radius, QUERY_BARREL, this.queryScratch)) {
@@ -1586,7 +1593,7 @@ export class Game {
     barrel.deadTime = 0;
     this.scene.removeBody(barrel.body);
     const { x, y } = barrel.pos;
-    this.burst(x, y, 0, 'boom');
+    this.burst(this.burstPos.setScalar(x, y, 0), 'boom');
     this.emit('boom', barrel.pos);
 
     const away = this.player.pos.getDistance(barrel.pos);
@@ -1612,7 +1619,7 @@ export class Game {
         dir.normalize();
       else
         dir.setScalar(1, 0);
-      this.mutilateCorpse(enemy, dir.x, dir.y, true);
+      this.mutilateCorpse(enemy, dir, true);
     }
     this.blastSurfaces(barrel.pos, BARREL.blast, 1);
     for (const body of this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_BARREL, this.queryScratch)) {
@@ -1628,12 +1635,12 @@ export class Game {
     this.resolveGibs();
   }
 
-  burst(x, y, z, type) {
+  burst(pos, type) {
     this.effects.push({
       type,
-      x,
-      y,
-      z,
+      x: pos.x,
+      y: pos.y,
+      z: pos.z,
       age: 0,
       life: type === 'spark' ? 0.25 : type === 'boom' ? 0.8 : type === 'fireball' ? 0.55 : type === 'teleport' ? 0.55 : 0.45,
     });
@@ -1901,7 +1908,7 @@ export class Game {
     enemy.deathDirX = dirX;
     enemy.deathDirY = dirY;
     enemy.deathFountain = 0.08;
-    this.blood.gore(enemy.pos, enemy.def.gore, this.bloodDir.setScalar(dirX, dirY));
+    this.blood.gore(enemy.pos, enemy.def.gore, this.bloodDir.copy(this.toPlayer));
     // killing at point-blank range sprays the player too
     if (enemy.pos.getDistance(this.player.pos) < 130)
       this.blood.splat(Math.max(1, Math.round(4 * enemy.def.gore)), 0.8 + 0.5 * Math.min(enemy.def.gore, 2));
@@ -1919,7 +1926,7 @@ export class Game {
   }
 
   /** Blows an enemy or corpse apart ("XDeath"), launching directional fountains of arterial blood and bouncing gibs. */
-  gibEnemy(enemy, dirX = 0, dirY = 0) {
+  gibEnemy(enemy, dir = ZERO_DIR) {
     enemy.gibbed = true;
     enemy.gibbedAt = this.time;
     enemy.postGibHits = 0;
@@ -1931,7 +1938,7 @@ export class Game {
     const gore = enemy.def.gore;
     const sizeScale = Math.sqrt(gore);
     const freshKill = enemy.diedAt === this.time;
-    this.bloodDir.setScalar(dirX, dirY);
+    this.bloodDir.copy(dir);
     this.blood.gore(enemy.pos, gore * (freshKill ? 0.55 : 1.15), this.bloodDir);
     this.blood.spray(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, 26), this.bloodDir, Math.max(2, Math.round(36 * gore)), { speed: 290, spread: 165 * sizeScale, up: 320, scale: sizeScale });
     this.blood.spray(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, 30), this.bloodDir, Math.max(1, Math.round(2 * gore)), { speed: 170, spread: 230 * sizeScale, up: 380, gib: true, scale: sizeScale });
@@ -1943,7 +1950,7 @@ export class Game {
   }
 
   /** Mutilates a dead corpse when struck by shotgun pellets or a nearby explosion, shredding it into gibs and allowing 2 post-gib hits before exhausting. */
-  mutilateCorpse(enemy, dirX, dirY, forceGib = false) {
+  mutilateCorpse(enemy, dir, forceGib = false) {
     if (enemy.type === 'wraith')
       return;
     const gore = enemy.def.gore;
@@ -1957,7 +1964,7 @@ export class Game {
         enemy.postGibTime1 = enemy.deadTime;
       else
         enemy.postGibTime2 = enemy.deadTime;
-      this.bloodDir.setScalar(dirX, dirY);
+      this.bloodDir.copy(dir);
       this.bloodPos.setScalar(enemy.pos.x + this.rand.float(-8, 8) * sizeScale, enemy.pos.y + this.rand.float(-8, 8) * sizeScale, this.rand.float(6, 20));
       this.blood.hit(this.bloodPos, this.bloodDir, gore * 1.35);
       this.blood.spray(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, 12), this.bloodDir, Math.max(3, Math.round(3 * gore)), { speed: 165, spread: 160 * sizeScale, up: 240, gib: true, scale: sizeScale });
@@ -1967,18 +1974,18 @@ export class Game {
       return;
     }
     enemy.corpseDamage = (enemy.corpseDamage ?? 0) + (forceGib ? 999 : PELLET_DAMAGE);
-    this.bloodDir.setScalar(dirX, dirY);
+    this.bloodDir.copy(dir);
     this.bloodPos.setScalar(enemy.pos.x + this.rand.float(-8, 8) * sizeScale, enemy.pos.y + this.rand.float(-8, 8) * sizeScale, this.rand.float(6, 20));
     this.blood.hit(this.bloodPos, this.bloodDir, gore);
     this.emit('flesh', enemy.pos);
     if (enemy.pos.getDistance(this.player.pos) < 120)
       this.blood.splat(1, 0.55 + 0.25 * Math.min(gore, 2));
     if (forceGib || enemy.corpseDamage >= Math.max(9, Math.round(18 * gore)))
-      this.gibEnemy(enemy, dirX, dirY);
+      this.gibEnemy(enemy, dir);
   }
 
   /** Severs an arm (making it fall to the deck) or blows apart a leg (forcing the monster to crawl while still attacking). */
-  severLimb(enemy, limb, dirX = 0, dirY = 0) {
+  severLimb(enemy, limb, dir = ZERO_DIR) {
     if (!enemy?.limbs || !enemy.limbs[limb] || enemy.state === 'dead' || enemy.type === 'wraith' || (this.inShot && enemy.limbs.severedThisShot))
       return false;
     enemy.limbs[limb] = false;
@@ -1991,22 +1998,22 @@ export class Game {
       enemy.crawling = true;
       enemy.leap = 0;
     }
-    this.blood.severBurst(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, isLeg ? 12 : 28), this.bloodDir.setScalar(dirX, dirY), enemy.def.gore, isLeg);
+    this.blood.severBurst(this.bloodPos.setScalar(enemy.pos.x, enemy.pos.y, isLeg ? 12 : 28), this.bloodDir.copy(dir), enemy.def.gore, isLeg);
     return true;
   }
 
-  damageLimb(enemy, limb, amount, dirX = 0, dirY = 0) {
+  damageLimb(enemy, limb, amount, dir = ZERO_DIR) {
     if (!enemy?.limbs || !enemy.limbs[limb] || enemy.state === 'dead' || enemy.type === 'wraith' || (this.inShot && enemy.limbs.severedThisShot))
       return false;
     enemy.limbs.damage[limb] += amount;
     const threshold = Math.max(2, Math.round(enemy.def.hp * 0.25));
     if (enemy.limbs.damage[limb] >= threshold && enemy.hp > amount)
-      return this.severLimb(enemy, limb, dirX, dirY);
+      return this.severLimb(enemy, limb, dir);
     return false;
   }
 
   /** Localizes a close-range impact to the struck left/right side, randomly targeting the arm or leg on that side. */
-  hitEnemyLimb(enemy, hitPoint, _hitZ, dirX, dirY, amount) {
+  hitEnemyLimb(enemy, hitPoint, dir, amount) {
     if (!enemy?.limbs || enemy.state === 'dead' || enemy.type === 'wraith' || enemy.hp <= amount || (this.inShot && enemy.limbs.severedThisShot))
       return false;
     const dist = this.player ? enemy.pos.getDistance(this.player.pos) : 0;
@@ -2016,7 +2023,7 @@ export class Game {
     const limbAmount = amount * falloff * falloff;
     const hx = hitPoint.x - enemy.pos.x;
     const hy = hitPoint.y - enemy.pos.y;
-    const lateral = (hx * -dirY + hy * dirX) / Math.max(1, enemy.def.radius);
+    const lateral = (hx * -dir.y + hy * dir.x) / Math.max(1, enemy.def.radius);
     if (Math.abs(lateral) < 0.12)
       return false;
     const side = lateral < 0 ? 'left' : 'right';
@@ -2034,7 +2041,7 @@ export class Game {
       limb = enemy.limbs.sideTarget[side];
     } else
       limb = hasArm ? arm : leg;
-    return this.damageLimb(enemy, limb, limbAmount, dirX, dirY);
+    return this.damageLimb(enemy, limb, limbAmount, dir);
   }
 
   /**
@@ -2055,7 +2062,7 @@ export class Game {
         this.toPlayer.normalize();
       else
         this.toPlayer.setScalar(1, 0);
-      this.gibEnemy(enemy, this.toPlayer.x, this.toPlayer.y);
+      this.gibEnemy(enemy, this.toPlayer);
     }
   }
 
@@ -2096,16 +2103,16 @@ export class Game {
       this.fireShotgun();
   }
 
-  hitCorpseAlongRay(end, dirX, dirY, radiusPad, forceGib = false) {
+  hitCorpseAlongRay(end, dir, radiusPad, forceGib = false) {
     const { player } = this;
-    this.velocity.setScalar(dirX, dirY);
+    this.velocity.copy(dir);
     for (const corpse of this.enemies) {
       if (corpse.state !== 'dead' || (corpse.gibbed && (corpse.postGibHits ?? 0) >= 2) || corpse.diedAt >= this.time)
         continue;
       if (this.toPlayer.subVectors(corpse.pos, player.pos).dotProduct(this.velocity) <= 0)
         continue;
       if (Raycast.sweepCircleCircle(player.pos, end, radiusPad, corpse.pos, corpse.def.radius, this.corpseHit)) {
-        this.mutilateCorpse(corpse, dirX, dirY, forceGib);
+        this.mutilateCorpse(corpse, dir, forceGib);
         return;
       }
     }
@@ -2131,19 +2138,19 @@ export class Game {
     const sin = Math.sin(player.angle);
     const end = this.scratch.setScalar(player.pos.x + cos * def.reach, player.pos.y + sin * def.reach);
     const hit = this.scene.raycast(player.pos, end, QUERY_MELEE);
-    this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 10, Boolean(player.berserk));
+    this.hitCorpseAlongRay(hit ? hit.point : end, this.shotDir.setScalar(cos, sin), 10, Boolean(player.berserk));
 
     const dmg = def.damage * (player.berserk ? POWERUP_TYPES.berserk.multiplier : 1);
     if (!hit)
       return;
     if (hit.body.ref?.kind === 'barrel') {
-      this.burst(hit.point.x, hit.point.y, 14, 'spark');
+      this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 14), 'spark');
       this.emit('clang', hit.point);
       this.hitBarrel(hit.body.ref, dmg);
       return;
     }
     if (hit.body.ref?.kind === 'furniture') {
-      this.burst(hit.point.x, hit.point.y, 22, 'spark');
+      this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 22), 'spark');
       this.emit('clang', hit.point);
       this.hitFurniture(hit.body.ref, dmg);
       return;
@@ -2151,7 +2158,7 @@ export class Game {
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
     if (!enemy) {
       const height = Utils.clamp(player.eye - 2 + this.rand.float(-5, 5), 4, 62);
-      this.burst(hit.point.x, hit.point.y, height, 'spark');
+      this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, height), 'spark');
       this.emit('clang', hit.point);
       this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
       return;
@@ -2168,7 +2175,7 @@ export class Game {
     this.blood.splat(Math.max(1, Math.round((player.berserk ? 4 : 1) * Math.min(gore, 1.8))), 0.65 + 0.25 * Math.min(gore, 2));
     this.shake = Math.max(this.shake, player.berserk ? 0.42 : 0.2);
     this.emit('flesh', hit.point);
-    this.hitEnemyLimb(enemy, hit.point, hitZ, cos, sin, dmg);
+    this.hitEnemyLimb(enemy, this.hitPoint3.setScalar(hit.point.x, hit.point.y, hitZ), this.shotDir.setScalar(cos, sin), dmg);
     this.damageEnemy(enemy, dmg);
     this.resolveGibs();
   }
@@ -2190,19 +2197,19 @@ export class Game {
     const end = this.scratch.setScalar(player.pos.x + cos * def.reach, player.pos.y + sin * def.reach);
     const hit = this.scene.raycast(player.pos, end, QUERY_MELEE);
     this.emit('chainsaw', null, { hit: Boolean(hit) });
-    this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 10, true);
+    this.hitCorpseAlongRay(hit ? hit.point : end, this.shotDir.setScalar(cos, sin), 10, true);
 
     const dmg = def.damage * (player.berserk ? POWERUP_TYPES.berserk.multiplier : 1);
     if (!hit)
       return;
     if (hit.body.ref?.kind === 'barrel') {
-      this.burst(hit.point.x, hit.point.y, 14, 'spark');
+      this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 14), 'spark');
       this.emit('clang', hit.point);
       this.hitBarrel(hit.body.ref, dmg);
       return;
     }
     if (hit.body.ref?.kind === 'furniture') {
-      this.burst(hit.point.x, hit.point.y, 22, 'spark');
+      this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 22), 'spark');
       this.emit('clang', hit.point);
       this.hitFurniture(hit.body.ref, dmg);
       return;
@@ -2213,7 +2220,7 @@ export class Game {
       const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
       const ny = Math.abs(hit.normal.y) > 0.9 ? Math.round(hit.normal.y) : hit.normal.y;
       const marked = this.blood.impact(this.bloodPos.setScalar(hit.point.x, hit.point.y, height), this.bloodNormal.setScalar(nx, ny), 'slash');
-      this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
+      this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62)), 'spark');
       this.emit('clang', hit.point);
       this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
       return;
@@ -2229,7 +2236,7 @@ export class Game {
     this.blood.splat(Math.max(1, Math.round((player.berserk ? 4 : 2) * Math.min(gore, 1.8))), 0.75 + 0.25 * Math.min(gore, 2));
     this.shake = Math.max(this.shake, player.berserk ? 0.48 : 0.28);
     this.emit('flesh', hit.point);
-    this.hitEnemyLimb(enemy, hit.point, hitZ, cos, sin, dmg);
+    this.hitEnemyLimb(enemy, this.hitPoint3.setScalar(hit.point.x, hit.point.y, hitZ), this.shotDir.setScalar(cos, sin), dmg);
     this.damageEnemy(enemy, dmg);
     this.resolveGibs();
   }
@@ -2324,19 +2331,19 @@ export class Game {
       end.setScalar(player.pos.x + cos * 1600, player.pos.y + sin * 1600);
       const hit = this.scene.raycast(player.pos, end, QUERY_MELEE);
       const maxDist = hit ? hit.point.getDistance(player.pos) : 1600;
-      this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 6);
+      this.hitCorpseAlongRay(hit ? hit.point : end, this.shotDir.setScalar(cos, sin), 6);
       if (!hit)
         continue;
       const falloff = Utils.clamp((maxDist - PELLET_FALLOFF_START) / (PELLET_FALLOFF_END - PELLET_FALLOFF_START), 0, 1);
       const pelletDmg = PELLET_DAMAGE - falloff * (PELLET_DAMAGE - PELLET_MIN_DAMAGE);
       if (hit.body.ref?.kind === 'barrel') {
-        this.burst(hit.point.x, hit.point.y, 14, 'spark');
+        this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 14), 'spark');
         this.emit('clang', hit.point);
         this.hitBarrel(hit.body.ref, pelletDmg);
         continue;
       }
       if (hit.body.ref?.kind === 'furniture') {
-        this.burst(hit.point.x, hit.point.y, 24, 'spark');
+        this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 24), 'spark');
         this.emit('clang', hit.point);
         this.hitFurniture(hit.body.ref, pelletDmg);
         continue;
@@ -2348,7 +2355,7 @@ export class Game {
         const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
         const ny = Math.abs(hit.normal.y) > 0.9 ? Math.round(hit.normal.y) : hit.normal.y;
         const marked = this.blood.impact(this.bloodPos.setScalar(hit.point.x, hit.point.y, height), this.bloodNormal.setScalar(nx, ny));
-        this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
+        this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62)), 'spark');
         this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
         continue;
       }
@@ -2357,7 +2364,7 @@ export class Game {
       this.emit('flesh', hit.point);
       if (maxDist < 110)
         this.blood.splat(1, 0.55 + 0.25 * Math.min(enemy.def.gore, 2));
-      this.hitEnemyLimb(enemy, hit.point, hitZ, cos, sin, pelletDmg);
+      this.hitEnemyLimb(enemy, this.hitPoint3.setScalar(hit.point.x, hit.point.y, hitZ), this.shotDir.setScalar(cos, sin), pelletDmg);
       this.damageEnemy(enemy, pelletDmg);
     }
     this.inShot = false;
@@ -2389,17 +2396,17 @@ export class Game {
     const end = this.scratch.setScalar(player.pos.x + cos * 1600, player.pos.y + sin * 1600);
     const hit = this.scene.raycast(player.pos, end, QUERY_MELEE);
     const maxDist = hit ? hit.point.getDistance(player.pos) : 1600;
-    this.hitCorpseAlongRay(hit ? hit.point : end, cos, sin, 6);
+    this.hitCorpseAlongRay(hit ? hit.point : end, this.shotDir.setScalar(cos, sin), 6);
     if (!hit)
       return;
     if (hit.body.ref?.kind === 'barrel') {
-      this.burst(hit.point.x, hit.point.y, 14, 'spark');
+      this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 14), 'spark');
       this.emit('clang', hit.point);
       this.hitBarrel(hit.body.ref, def.damage);
       return;
     }
     if (hit.body.ref?.kind === 'furniture') {
-      this.burst(hit.point.x, hit.point.y, 24, 'spark');
+      this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 24), 'spark');
       this.emit('clang', hit.point);
       this.hitFurniture(hit.body.ref, def.damage);
       return;
@@ -2410,7 +2417,7 @@ export class Game {
       const nx = Math.abs(hit.normal.x) > 0.9 ? Math.round(hit.normal.x) : hit.normal.x;
       const ny = Math.abs(hit.normal.y) > 0.9 ? Math.round(hit.normal.y) : hit.normal.y;
       const marked = this.blood.impact(this.bloodPos.setScalar(hit.point.x, hit.point.y, height), this.bloodNormal.setScalar(nx, ny));
-      this.burst(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62), 'spark');
+      this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, marked || Utils.clamp(height, 4, 62)), 'spark');
       this.emit('impact', hit.point, { surface: this.surfaceAt(hit) });
       return;
     }
@@ -2421,7 +2428,7 @@ export class Game {
       this.blood.splat(1, 0.5 + 0.25 * Math.min(enemy.def.gore, 2));
     if (this.rand.float(0, 1) < 0.65)
       enemy.pain = Math.max(enemy.pain, 0.24);
-    this.hitEnemyLimb(enemy, hit.point, hitZ, cos, sin, def.damage);
+    this.hitEnemyLimb(enemy, this.hitPoint3.setScalar(hit.point.x, hit.point.y, hitZ), this.shotDir.setScalar(cos, sin), def.damage);
     this.damageEnemy(enemy, def.damage);
     this.resolveGibs();
   }
@@ -2450,7 +2457,7 @@ export class Game {
     const { level } = this;
     const tx = Math.floor((hit.point.x - Math.round(hit.normal.x) * 0.5) / TILE);
     const ty = Math.floor((hit.point.y - Math.round(hit.normal.y) * 0.5) / TILE);
-    return level.inBounds(tx, ty) && level.kind[ty * level.width + tx] === DOOR ? 'door' : 'wall';
+    return level.inBounds(tileAt.setScalar(tx, ty)) && level.kind[ty * level.width + tx] === DOOR ? 'door' : 'wall';
   }
 
   clearUseTarget() {
@@ -2772,7 +2779,7 @@ export class Game {
           continue;
         const nx = x + (d === 0 ? -1 : d === 1 ? 1 : 0);
         const ny = y + (d === 2 ? -1 : d === 3 ? 1 : 0);
-        if (!level.isWalkable(nx, ny))
+        if (!level.isWalkable(tileAt.setScalar(nx, ny)))
           continue;
         const nidx = ny * level.width + nx;
         if (level.diag[nidx] && level.hasCardinalFace(nidx, d ^ 1))
@@ -2804,7 +2811,7 @@ export class Game {
         continue;
       const nx = x + (d === 0 ? -1 : d === 1 ? 1 : 0);
       const ny = y + (d === 2 ? -1 : d === 3 ? 1 : 0);
-      if (!level.inBounds(nx, ny))
+      if (!level.inBounds(tileAt.setScalar(nx, ny)))
         continue;
       const nidx = ny * level.width + nx;
       if (level.diag[nidx] && level.hasCardinalFace(nidx, d ^ 1))
@@ -3171,7 +3178,7 @@ export class Game {
     let inEmptyPit = false;
     for (let ty = y0; ty <= y1; ty++)
       for (let tx = x0; tx <= x1; tx++) {
-        if (level.inBounds(tx, ty)) {
+        if (level.inBounds(tileAt.setScalar(tx, ty))) {
           const idx = ty * level.width + tx;
           if (level.slime[idx])
             continue;
@@ -3523,7 +3530,7 @@ export class Game {
         if (crusher.low < 18)
           for (const enemy of this.enemies)
             if (enemy.state === 'dead' && !enemy.gibbed && enemy.body.overlapsCircle(crusher.center, TILE * 0.45))
-              this.mutilateCorpse(enemy, 1, 0, true);
+              this.mutilateCorpse(enemy, this.shotDir.setScalar(1, 0), true);
         this.resolveGibs();
       }
       if (this.state === 'play' && crusher.low < player.eye + 4 && crusher.hurtCooldown <= 0 && this.scene.queryCircleFirst(crusher.center, TILE * 0.42, QUERY_PLAYER)) {
@@ -3551,12 +3558,12 @@ export class Game {
       pad.targetIdx !== pad.idx &&
       player.pos.getDistance(pad.center) < TILE * 0.42
     ) {
-      this.burst(pad.center.x, pad.center.y, EYE - 4, 'teleport');
-      this.burst(pad.target.x, pad.target.y, EYE - 4, 'teleport');
+      this.burst(this.burstPos.setScalar(pad.center.x, pad.center.y, EYE - 4), 'teleport');
+      this.burst(this.burstPos.setScalar(pad.target.x, pad.target.y, EYE - 4), 'teleport');
       // Also spawn a TFOG plasma burst directly in front of the player's exit view so it is not clipped by the camera near plane
       const fx = pad.target.x + Math.cos(player.angle) * 28;
       const fy = pad.target.y + Math.sin(player.angle) * 28;
-      this.burst(fx, fy, EYE - 4, 'teleport');
+      this.burst(this.burstPos.setScalar(fx, fy, EYE - 4), 'teleport');
       this.emit('teleport', pad.target);
       player.body.setPosition(pad.target.clone());
       player.body.setVelocity(this.zero);
@@ -3593,8 +3600,8 @@ export class Game {
       if (this.scene.queryCircleFirst(pad.target, enemy.def.radius + 12, QUERY_PLAYER) ||
           this.scene.queryCircleFirst(pad.target, enemy.def.radius + 8, { mask: CAT.ENEMY, ignoreBody: enemy.body }))
         continue;
-      this.burst(pad.center.x, pad.center.y, EYE - 4, 'teleport');
-      this.burst(pad.target.x, pad.target.y, EYE - 4, 'teleport');
+      this.burst(this.burstPos.setScalar(pad.center.x, pad.center.y, EYE - 4), 'teleport');
+      this.burst(this.burstPos.setScalar(pad.target.x, pad.target.y, EYE - 4), 'teleport');
       this.emit('teleport', pad.target);
       enemy.body.setPosition(pad.target.clone());
       enemy.teleportCooldown = 1.4;

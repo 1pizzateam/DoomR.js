@@ -179,6 +179,7 @@ class Layer {
   constructor(world, fillCapacity, lineCapacity, spriteCapacity = 0, withWeapon = false) {
     const { gl } = world;
     this.viewportSize = new Vec2(1, 1);
+    this.cssSize = new Vec2(1, 1);
     this.scene = new Scene({ context: gl, clearColor: new Vec3(0, 0, 0), depthTest: false, viewport: this.viewportSize });
     this.fills = new Buffer(gl, fillCapacity, 'TRIANGLES', false);
     this.lines = new Buffer(gl, lineCapacity, 'LINES', true);
@@ -197,10 +198,11 @@ class Layer {
       this.scene.addMesh(this.sprites.mesh);
   }
 
-  resize(cssWidth, cssHeight, width, height) {
-    this.viewportSize.setScalar(width, height);
+  /** `cssSize` is the layer in CSS pixels, `renderSize` its backing pixels (both Vec2). */
+  resize(cssSize, renderSize) {
+    this.viewportSize.copy(renderSize);
     this.scene.setViewport(this.viewportSize);
-    const size = new Vec2(cssWidth, cssHeight);
+    const size = this.cssSize.copy(cssSize);
     this.fills.mesh.setCustomUniform('size', size);
     this.lines.mesh.setCustomUniform('size', size);
     this.sprites?.mesh.setCustomUniform('size', size);
@@ -315,10 +317,10 @@ export class Overlay {
     this.head = headViewCtor ? new headViewCtor(world.gl) : null;
   }
 
-  resize(cssWidth, cssHeight, width, height) {
-    this.glow.resize(cssWidth, cssHeight, width, height);
-    this.crisp.resize(cssWidth, cssHeight, width, height);
-    this.head?.resize(cssWidth, cssHeight, width, height);
+  resize(cssSize, renderSize) {
+    this.glow.resize(cssSize, renderSize);
+    this.crisp.resize(cssSize, renderSize);
+    this.head?.resize(cssSize, renderSize);
   }
 
   clear() {

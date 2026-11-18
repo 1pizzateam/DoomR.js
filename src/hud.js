@@ -62,19 +62,37 @@ const CONTROLS_LEGEND = '↑↓←→ select · ENTER / click rebind · DEL clea
 const CONTROLS_CUE_W = 24;
 const CONTROLS_BUTTON_HALF_W = 70;
 const CONTROLS_LABELS_HALF_W = 150;
-const SEG4 = [0, 0, 0, 0];
-const RECT10 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-
-const controlsRect = (x0, y0, x1, y1) => {
-  RECT10[0] = x0; RECT10[1] = y0; RECT10[2] = x1; RECT10[3] = y0; RECT10[4] = x1;
-  RECT10[5] = y1; RECT10[6] = x0; RECT10[7] = y1; RECT10[8] = x0; RECT10[9] = y0;
-  return RECT10;
+const SEG_START = new Vec2();
+const SEG_END = new Vec2();
+// One reused Vec2 path per vertex count, so canvas polylines never allocate their points.
+const PATHS = [];
+const pathOf = (n) => {
+  if (!PATHS[n]) {
+    PATHS[n] = [];
+    for (let i = 0; i < n; i++)
+      PATHS[n].push(new Vec2());
+  }
+  return PATHS[n];
 };
-const controlsSeg = (x0, y0, x1, y1) => {
-  SEG4[0] = x0; SEG4[1] = y0; SEG4[2] = x1; SEG4[3] = y1;
-  return SEG4;
+const vecPath = (flat) => {
+  const path = pathOf(flat.length / 2);
+  for (let i = 0; i < path.length; i++)
+    path[i].setScalar(flat[i * 2], flat[i * 2 + 1]);
+  return path;
 };
-const POLY6 = [0, 0, 0, 0, 0, 0];
+const rectPath = (x0, y0, x1, y1) => {
+  const path = pathOf(5);
+  path[0].setScalar(x0, y0); path[1].setScalar(x1, y0); path[2].setScalar(x1, y1);
+  path[3].setScalar(x0, y1); path[4].setScalar(x0, y0);
+  return path;
+};
+const controlsRect = (start, end) => rectPath(start.x, start.y, end.x, end.y);
+const controlsSeg = (start, end) => {
+  const path = pathOf(2);
+  path[0].copy(start);
+  path[1].copy(end);
+  return path;
+};
 const KEYCARD_SLOTS = Object.freeze([
   Object.freeze(['blue', BLUE]),
   Object.freeze(['yellow', ORANGE]),
@@ -126,19 +144,20 @@ const setCirc = (cx, cy, radius) => {
   DRAW_CIRC.radius = radius;
   return DRAW_CIRC;
 };
-const segmentPoints = (x0, y0, x1, y1) => {
-  SEG_V[0].setScalar(x0, y0);
-  SEG_V[1].setScalar(x1, y1);
+const segmentPoints = (start, end) => {
+  SEG_V[0].copy(start);
+  SEG_V[1].copy(end);
   return SEG_V;
 };
 
 // Scalar drawing into a Layer through shared scratch Vec2 arrays: no per-call coordinate arrays.
 const layerSegment = (layer, x0, y0, x1, y1, color, alpha = 1) => {
-  layer.line(segmentPoints(x0, y0, x1, y1), color, alpha);
+  layer.line(segmentPoints(SEG_START.setScalar(x0, y0), SEG_END.setScalar(x1, y1)), color, alpha);
 };
 const cornerBracket = (x0, y0, x1, y1, x2, y2) => {
-  POLY6[0] = x0; POLY6[1] = y0; POLY6[2] = x1; POLY6[3] = y1; POLY6[4] = x2; POLY6[5] = y2;
-  return POLY6;
+  const path = pathOf(3);
+  path[0].setScalar(x0, y0); path[1].setScalar(x1, y1); path[2].setScalar(x2, y2);
+  return path;
 };
 const layerPoly3 = (layer, x0, y0, x1, y1, x2, y2, color, alpha = 1) => {
   POLY3_V[0].setScalar(x0, y0); POLY3_V[1].setScalar(x1, y1); POLY3_V[2].setScalar(x2, y2);
@@ -163,7 +182,6 @@ const CONTROLS_LAYOUT = {
 const MENU_BUTTON_H = 34;
 const MENU_BUTTON_GAP = 12;
 const MENU_LAYOUT = { width: -1, height: -1, buttonW: 0, buttonH: MENU_BUTTON_H, gap: MENU_BUTTON_GAP, x: 0, tops: [0, 0] };
-const MENU_FRAME = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 /** Shared by drawing and hit-testing so they never drift. */
 export const layoutMainMenu = (viewportSize) => {
@@ -201,7 +219,6 @@ const layoutOptions = (viewportSize, rows) => {
   return L;
 };
 
-const OPTIONS_FRAME = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 const HINT_TITLE_STYLE = Object.freeze({ size: 11, align: 'left', alpha: 0.55, weight: 800, glow: 3 });
 const HINT_KEY_STYLE = Object.freeze({ size: 10, align: 'center', alpha: 0.85, weight: 600, glow: 2 });
@@ -392,7 +409,7 @@ export class Hud {
         const capBoxX = colX;
         const capBoxY = ry + 2;
 
-        this.canvasLine(controlsRect(capBoxX, capBoxY, capBoxX + keyW, capBoxY + capH), BLUE, 0.35, 1, 3);
+        this.canvasLine(controlsRect(SEG_START.setScalar(capBoxX, capBoxY), SEG_END.setScalar(capBoxX + keyW, capBoxY + capH)), BLUE, 0.35, 1, 3);
 
         const keysText = row.keys ?? '';
         const keyColor = keysText === 'UNBOUND' ? RED : BLUE;
@@ -493,17 +510,17 @@ export class Hud {
     this.overlay?.glow?.line(points, RGB[color], alpha);
   }
 
-  /** One segment in the glowing layer, from scalar coordinates. */
-  segment(x0, y0, x1, y1, color, alpha = 1) {
-    this.overlay?.glow?.line(segmentPoints(x0, y0, x1, y1), RGB[color], alpha);
+  /** One segment in the glowing layer, from `start` to `end`. */
+  segment(start, end, color, alpha = 1) {
+    this.overlay?.glow?.line(segmentPoints(start, end), RGB[color], alpha);
   }
 
-  /** A closed rectangle outline in the glowing layer: top-left corner, size. */
-  rect(x0, y0, w, h, color, alpha = 1) {
-    const x1 = x0 + w;
-    const y1 = y0 + h;
-    RECT_V[0].setScalar(x0, y0); RECT_V[1].setScalar(x1, y0); RECT_V[2].setScalar(x1, y1);
-    RECT_V[3].setScalar(x0, y1); RECT_V[4].setScalar(x0, y0);
+  /** A closed rectangle outline in the glowing layer. */
+  rect(bounds, color, alpha = 1) {
+    const tl = bounds.topLeftCorner;
+    const br = bounds.bottomRightCorner;
+    RECT_V[0].setScalar(tl.x, tl.y); RECT_V[1].setScalar(br.x, tl.y); RECT_V[2].setScalar(br.x, br.y);
+    RECT_V[3].setScalar(tl.x, br.y); RECT_V[4].setScalar(tl.x, tl.y);
     this.overlay?.glow?.line(RECT_V, RGB[color], alpha);
   }
 
@@ -511,11 +528,9 @@ export class Hud {
   canvasLine(points, color, alpha = 1, width = 1.5, glow = 8) {
     const { ctx } = this;
     ctx.beginPath();
-    for (let i = 0; i < points.length; i += 2)
-      if (i === 0)
-        ctx.moveTo(points[i], points[i + 1]);
-      else
-        ctx.lineTo(points[i], points[i + 1]);
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++)
+      ctx.lineTo(points[i].x, points[i].y);
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = COLORS[color];
     ctx.lineWidth = width;
@@ -615,7 +630,7 @@ export class Hud {
     const activeColor = value <= critThreshold ? critColor : value <= lowThreshold ? lowColor : color;
     for (let i = 0; i < ticks; i++) {
       const on = i < lit;
-      this.segment(x + i * gap, y, x + i * gap, y - 16, on ? activeColor : BLUE, on ? 1 : 0.22);
+      this.segment(SEG_START.setScalar(x + i * gap, y), SEG_END.setScalar(x + i * gap, y - 16), on ? activeColor : BLUE, on ? 1 : 0.22);
     }
   }
 
@@ -740,17 +755,17 @@ export class Hud {
     const cx = width / 2;
     const cy = height / 2;
     if (!game.chestLock?.active) {
-      this.segment(cx - 10, cy, cx - 4, cy, GREEN, 0.9);
-      this.segment(cx + 4, cy, cx + 10, cy, GREEN, 0.9);
-      this.segment(cx, cy - 10, cx, cy - 4, GREEN, 0.9);
-      this.segment(cx, cy + 4, cx, cy + 10, GREEN, 0.9);
+      this.segment(SEG_START.setScalar(cx - 10, cy), SEG_END.setScalar(cx - 4, cy), GREEN, 0.9);
+      this.segment(SEG_START.setScalar(cx + 4, cy), SEG_END.setScalar(cx + 10, cy), GREEN, 0.9);
+      this.segment(SEG_START.setScalar(cx, cy - 10), SEG_END.setScalar(cx, cy - 4), GREEN, 0.9);
+      this.segment(SEG_START.setScalar(cx, cy + 4), SEG_END.setScalar(cx, cy + 10), GREEN, 0.9);
     }
     if (player.hitMarker > 0) {
       const m = 12 + (0.15 - player.hitMarker) * 70;
-      this.segment(cx - m, cy - m, cx - m / 2, cy - m / 2, ORANGE);
-      this.segment(cx + m, cy - m, cx + m / 2, cy - m / 2, ORANGE);
-      this.segment(cx - m, cy + m, cx - m / 2, cy + m / 2, ORANGE);
-      this.segment(cx + m, cy + m, cx + m / 2, cy + m / 2, ORANGE);
+      this.segment(SEG_START.setScalar(cx - m, cy - m), SEG_END.setScalar(cx - m / 2, cy - m / 2), ORANGE);
+      this.segment(SEG_START.setScalar(cx + m, cy - m), SEG_END.setScalar(cx + m / 2, cy - m / 2), ORANGE);
+      this.segment(SEG_START.setScalar(cx - m, cy + m), SEG_END.setScalar(cx - m / 2, cy + m / 2), ORANGE);
+      this.segment(SEG_START.setScalar(cx + m, cy + m), SEG_END.setScalar(cx + m / 2, cy + m / 2), ORANGE);
     }
 
     this.drawUsePrompt(game, cx, cy);
@@ -808,7 +823,7 @@ export class Hud {
       const blink = player.radSuit > 5 || Math.floor(player.radSuit * 4) % 2 === 0;
       if (blink) {
         const a = Math.min(0.65, 0.25 + (player.radSuit / 45) * 0.35);
-        this.rect(8, 8, width - 16, height - 16, GREEN, a);
+        this.rect(setRect(8, 8, width - 16, height - 16), GREEN, a);
       }
     }
 
@@ -816,7 +831,7 @@ export class Hud {
       const blink = player.nightVisionBattery > 5 || Math.floor(player.nightVisionBattery * 4) % 2 === 0;
       if (blink) {
         const a = Math.min(0.72, 0.32 + (player.nightVisionBattery / 45) * 0.35);
-        this.rect(12, 12, width - 24, height - 24, GREEN, a);
+        this.rect(setRect(12, 12, width - 24, height - 24), GREEN, a);
       }
     }
 
@@ -824,7 +839,7 @@ export class Hud {
       const a = Math.min(1, player.soulFlash / 0.5);
       for (let i = 0; i < 3; i++) {
         const inset = 5 + i * 7;
-        this.rect(inset, inset, width - 2 * inset, height - 2 * inset, BLUE, a * (0.85 - i * 0.25));
+        this.rect(setRect(inset, inset, width - 2 * inset, height - 2 * inset), BLUE, a * (0.85 - i * 0.25));
       }
     }
 
@@ -834,7 +849,7 @@ export class Hud {
       const a = fade * (0.28 + 0.32 * pulse);
       for (let i = 0; i < 2; i++) {
         const inset = 5 + i * 6;
-        this.rect(inset, inset, width - 2 * inset, height - 2 * inset, RED, a * (1 - i * 0.35));
+        this.rect(setRect(inset, inset, width - 2 * inset, height - 2 * inset), RED, a * (1 - i * 0.35));
       }
     }
 
@@ -842,7 +857,7 @@ export class Hud {
       const a = Math.min(1, player.radFlash / 0.35);
       for (let i = 0; i < 3; i++) {
         const inset = 6 + i * 7;
-        this.rect(inset, inset, width - 2 * inset, height - 2 * inset, GREEN, a * (0.75 - i * 0.22));
+        this.rect(setRect(inset, inset, width - 2 * inset, height - 2 * inset), GREEN, a * (0.75 - i * 0.22));
       }
     }
 
@@ -850,7 +865,7 @@ export class Hud {
       const a = Math.min(1, player.hurt / 0.3);
       for (let i = 0; i < 3; i++) {
         const inset = 4 + i * 7;
-        this.rect(inset, inset, width - 2 * inset, height - 2 * inset, ORANGE, a * (0.8 - i * 0.25));
+        this.rect(setRect(inset, inset, width - 2 * inset, height - 2 * inset), ORANGE, a * (0.8 - i * 0.25));
       }
     }
   }
@@ -915,7 +930,7 @@ export class Hud {
       const col = active ? ORANGE : owned ? GREEN : BLUE;
       const sx = x + (slot - 1) * 22;
       const sy = base - 16;
-      this.rect(sx, sy, 16, 16, col, active ? 1 : owned ? 0.8 : 0.24);
+      this.rect(setRect(sx, sy, 16, 16), col, active ? 1 : owned ? 0.8 : 0.24);
       this.text(String(slot), sx + 8, base - 3, col, {
         size: 12,
         align: 'center',
@@ -938,18 +953,18 @@ export class Hud {
       const kh = 16;
       // notched security badge outline
       const badgeAlpha = held ? 1 : 0.24;
-      this.segment(kx, ky, kx + kw - 4, ky, col, badgeAlpha);
-      this.segment(kx + kw - 4, ky, kx + kw, ky + 4, col, badgeAlpha);
-      this.segment(kx + kw, ky + 4, kx + kw, ky + kh, col, badgeAlpha);
-      this.segment(kx + kw, ky + kh, kx, ky + kh, col, badgeAlpha);
-      this.segment(kx, ky + kh, kx, ky, col, badgeAlpha);
+      this.segment(SEG_START.setScalar(kx, ky), SEG_END.setScalar(kx + kw - 4, ky), col, badgeAlpha);
+      this.segment(SEG_START.setScalar(kx + kw - 4, ky), SEG_END.setScalar(kx + kw, ky + 4), col, badgeAlpha);
+      this.segment(SEG_START.setScalar(kx + kw, ky + 4), SEG_END.setScalar(kx + kw, ky + kh), col, badgeAlpha);
+      this.segment(SEG_START.setScalar(kx + kw, ky + kh), SEG_END.setScalar(kx, ky + kh), col, badgeAlpha);
+      this.segment(SEG_START.setScalar(kx, ky + kh), SEG_END.setScalar(kx, ky), col, badgeAlpha);
       if (held) {
         // inner chip & magnetic stripe when the keycard is held
-        this.segment(kx + 3, ky + 5, kx + kw - 3, ky + 5, col, 0.95);
-        this.segment(kx + 3, ky + 9, kx + 9, ky + 9, col, 0.95);
-        this.segment(kx + 9, ky + 9, kx + 9, ky + 13, col, 0.95);
-        this.segment(kx + 9, ky + 13, kx + 3, ky + 13, col, 0.95);
-        this.segment(kx + 3, ky + 13, kx + 3, ky + 9, col, 0.95);
+        this.segment(SEG_START.setScalar(kx + 3, ky + 5), SEG_END.setScalar(kx + kw - 3, ky + 5), col, 0.95);
+        this.segment(SEG_START.setScalar(kx + 3, ky + 9), SEG_END.setScalar(kx + 9, ky + 9), col, 0.95);
+        this.segment(SEG_START.setScalar(kx + 9, ky + 9), SEG_END.setScalar(kx + 9, ky + 13), col, 0.95);
+        this.segment(SEG_START.setScalar(kx + 9, ky + 13), SEG_END.setScalar(kx + 3, ky + 13), col, 0.95);
+        this.segment(SEG_START.setScalar(kx + 3, ky + 13), SEG_END.setScalar(kx + 3, ky + 9), col, 0.95);
       }
     }
   }
@@ -1029,7 +1044,7 @@ export class Hud {
           alpha: Math.min(1, activeFlashNorm * 1.5),
           glow: 12,
         });
-      this.rect(rightX - 154, base - 21, 64, 26, activeCol, 0.35 + 0.55 * activeFlashNorm);
+      this.rect(setRect(rightX - 154, base - 21, 64, 26), activeCol, 0.35 + 0.55 * activeFlashNorm);
     }
 
     for (let i = 0; i < AMMO_POOL_KEYS.length; i++) {
@@ -1060,7 +1075,7 @@ export class Hud {
         glow: rowGlow,
       });
       if (flash > 0) {
-        this.rect(rightX - 86, rowY - 9, 90, 11, flashCol, 0.35 + 0.55 * flashNorm);
+        this.rect(setRect(rightX - 86, rowY - 9, 90, 11), flashCol, 0.35 + 0.55 * flashNorm);
         const delta = player.ammoDelta?.[key] ?? 0;
         if (!isActive && delta > 0)
           this.text(`+${delta}`, rightX - 90, rowY, ORANGE, {
@@ -1524,17 +1539,17 @@ export class Hud {
     };
 
     // outer frame and tactical corner brackets
-    this.canvasLine([x0, y0, x0 + w, y0, x0 + w, y0 + h, x0, y0 + h, x0, y0], BLUE, 0.5, 1.5, 10);
+    this.canvasLine(vecPath([x0, y0, x0 + w, y0, x0 + w, y0 + h, x0, y0 + h, x0, y0]), BLUE, 0.5, 1.5, 10);
     const arm = 16;
-    this.canvasLine([x0 - 3, y0 + arm, x0 - 3, y0 - 3, x0 + arm, y0 - 3], GREEN, 0.9, 2, 10);
-    this.canvasLine([x0 + w - arm, y0 - 3, x0 + w + 3, y0 - 3, x0 + w + 3, y0 + arm], GREEN, 0.9, 2, 10);
-    this.canvasLine([x0 - 3, y0 + h - arm, x0 - 3, y0 + h + 3, x0 + arm, y0 + h + 3], GREEN, 0.9, 2, 10);
-    this.canvasLine([x0 + w - arm, y0 + h + 3, x0 + w + 3, y0 + h + 3, x0 + w + 3, y0 + h - arm], GREEN, 0.9, 2, 10);
+    this.canvasLine(vecPath([x0 - 3, y0 + arm, x0 - 3, y0 - 3, x0 + arm, y0 - 3]), GREEN, 0.9, 2, 10);
+    this.canvasLine(vecPath([x0 + w - arm, y0 - 3, x0 + w + 3, y0 - 3, x0 + w + 3, y0 + arm]), GREEN, 0.9, 2, 10);
+    this.canvasLine(vecPath([x0 - 3, y0 + h - arm, x0 - 3, y0 + h + 3, x0 + arm, y0 + h + 3]), GREEN, 0.9, 2, 10);
+    this.canvasLine(vecPath([x0 + w - arm, y0 + h + 3, x0 + w + 3, y0 + h + 3, x0 + w + 3, y0 + h - arm]), GREEN, 0.9, 2, 10);
 
     // header
     this.text(game.level.name.toUpperCase(), cx, y0 + 36, BLUE, { size: 22, align: 'center', weight: 800, glow: 14 });
     this.text(last ? 'EPISODE COMPLETE' : 'FINISHED', cx, y0 + 60, GREEN, { size: 14, align: 'center', weight: 700, glow: 10 });
-    this.canvasLine([x0 + 28, y0 + 74, x0 + w - 28, y0 + 74], BLUE, 0.3, 1, 4);
+    this.canvasLine(vecPath([x0 + 28, y0 + 74, x0 + w - 28, y0 + 74]), BLUE, 0.3, 1, 4);
 
     // KILLS / ITEMS / SECRETS rows
     const rows = [
@@ -1557,7 +1572,7 @@ export class Hud {
       const lit = reached ? Math.round((Utils.clamp(row.shown, 0, 100) / 100) * ticks) : 0;
       for (let i = 0; i < ticks; i++) {
         const on = i < lit;
-        this.canvasLine([barX + i * gap, ry, barX + i * gap, ry - 13], on ? (full ? ORANGE : GREEN) : BLUE, on ? 0.95 : 0.2, 2, on ? 6 : 0);
+        this.canvasLine(vecPath([barX + i * gap, ry, barX + i * gap, ry - 13]), on ? (full ? ORANGE : GREEN) : BLUE, on ? 0.95 : 0.2, 2, on ? 6 : 0);
       }
       const valText = reached ? `${row.shown}%` : '--%';
       const valCol = active || full ? ORANGE : (reached ? GREEN : BLUE);
@@ -1565,7 +1580,7 @@ export class Hud {
     }
 
     // TIME and PAR
-    this.canvasLine([x0 + 28, y0 + 202, x0 + w - 28, y0 + 202], BLUE, 0.25, 1, 4);
+    this.canvasLine(vecPath([x0 + 28, y0 + 202, x0 + w - 28, y0 + 202]), BLUE, 0.25, 1, 4);
     const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
     const timeReached = inter.phase >= 3;
     const timeActive = inter.phase === 3;
@@ -1578,7 +1593,7 @@ export class Hud {
       this.text('PAR BEATEN', x0 + w - 32, timeY, GREEN, { size: 12, align: 'right', weight: 800, glow: 10 });
 
     // Episode 1 Phobos facility overworld map
-    this.canvasLine([x0 + 28, y0 + 246, x0 + w - 28, y0 + 246], BLUE, 0.25, 1, 4);
+    this.canvasLine(vecPath([x0 + 28, y0 + 246, x0 + w - 28, y0 + 246]), BLUE, 0.25, 1, 4);
     const nextBanner = last
       ? 'PHOBOS ANOMALY SECURED · ALL FACILITIES CLEARED'
       : (inter.done ? `ENTERING: ${LEVELS[game.levelIndex + 1].name.toUpperCase()}` : 'PHOBOS SECTOR TELEMETRY');
@@ -1595,13 +1610,13 @@ export class Hud {
     ];
 
     // subtle Phobos crater ridge lines behind the facilities
-    this.canvasLine([x0 + 38, mapY + 34, cx - span * 0.6, mapY + 22, cx + span * 0.4, mapY + 30, x0 + w - 38, mapY + 18], BLUE, 0.18, 1, 0);
+    this.canvasLine(vecPath([x0 + 38, mapY + 34, cx - span * 0.6, mapY + 22, cx + span * 0.4, mapY + 30, x0 + w - 38, mapY + 18]), BLUE, 0.18, 1, 0);
     // transit paths between facilities
     for (let i = 0; i < nodes.length - 1; i++) {
       const a = nodes[i];
       const b = nodes[i + 1];
       const passed = i <= game.levelIndex;
-      this.canvasLine([a.x + 22, a.y, (a.x + b.x) / 2, Math.min(a.y, b.y) - 6, b.x - 22, b.y], passed ? GREEN : BLUE, passed ? 0.65 : 0.28, 1.5, passed ? 6 : 2);
+      this.canvasLine(vecPath([a.x + 22, a.y, (a.x + b.x) / 2, Math.min(a.y, b.y) - 6, b.x - 22, b.y]), passed ? GREEN : BLUE, passed ? 0.65 : 0.28, 1.5, passed ? 6 : 2);
     }
 
     // facility architectural icons, blood X on cleared sectors, and blinking YOU ARE HERE pointer
@@ -1614,37 +1629,37 @@ export class Hud {
       const alpha = cleared || next ? 0.9 : 0.45;
       if (i === 0) {
         // E1M1 Hangar bunker
-        this.canvasLine([n.x - 18, n.y + 12, n.x - 18, n.y - 4, n.x - 10, n.y - 12, n.x + 10, n.y - 12, n.x + 18, n.y - 4, n.x + 18, n.y + 12, n.x - 18, n.y + 12], col, alpha, 1.5, 6);
-        this.canvasLine([n.x - 8, n.y + 12, n.x - 8, n.y + 1, n.x + 8, n.y + 1, n.x + 8, n.y + 12], col, alpha * 0.8, 1.2, 4);
+        this.canvasLine(vecPath([n.x - 18, n.y + 12, n.x - 18, n.y - 4, n.x - 10, n.y - 12, n.x + 10, n.y - 12, n.x + 18, n.y - 4, n.x + 18, n.y + 12, n.x - 18, n.y + 12]), col, alpha, 1.5, 6);
+        this.canvasLine(vecPath([n.x - 8, n.y + 12, n.x - 8, n.y + 1, n.x + 8, n.y + 1, n.x + 8, n.y + 12]), col, alpha * 0.8, 1.2, 4);
       } else if (i === 1) {
         // E1M2 Nuclear Plant cooling towers
-        this.canvasLine([n.x - 18, n.y + 12, n.x - 13, n.y - 12, n.x - 3, n.y - 12, n.x + 2, n.y + 12, n.x - 18, n.y + 12], col, alpha, 1.5, 6);
-        this.canvasLine([n.x + 2, n.y + 12, n.x + 6, n.y - 9, n.x + 15, n.y - 9, n.x + 19, n.y + 12, n.x + 2, n.y + 12], col, alpha, 1.5, 6);
+        this.canvasLine(vecPath([n.x - 18, n.y + 12, n.x - 13, n.y - 12, n.x - 3, n.y - 12, n.x + 2, n.y + 12, n.x - 18, n.y + 12]), col, alpha, 1.5, 6);
+        this.canvasLine(vecPath([n.x + 2, n.y + 12, n.x + 6, n.y - 9, n.x + 15, n.y - 9, n.x + 19, n.y + 12, n.x + 2, n.y + 12]), col, alpha, 1.5, 6);
       } else if (i === 2) {
         // E1M3 Toxin Refinery tanks + pipes
-        this.canvasLine([n.x - 18, n.y - 6, n.x - 6, n.y - 13, n.x + 6, n.y - 6, n.x + 6, n.y + 8, n.x - 6, n.y + 14, n.x - 18, n.y + 8, n.x - 18, n.y - 6], col, alpha, 1.5, 6);
-        this.canvasLine([n.x + 6, n.y - 4, n.x + 18, n.y - 4, n.x + 18, n.y + 10, n.x + 6, n.y + 10], col, alpha, 1.5, 6);
+        this.canvasLine(vecPath([n.x - 18, n.y - 6, n.x - 6, n.y - 13, n.x + 6, n.y - 6, n.x + 6, n.y + 8, n.x - 6, n.y + 14, n.x - 18, n.y + 8, n.x - 18, n.y - 6]), col, alpha, 1.5, 6);
+        this.canvasLine(vecPath([n.x + 6, n.y - 4, n.x + 18, n.y - 4, n.x + 18, n.y + 10, n.x + 6, n.y + 10]), col, alpha, 1.5, 6);
       } else if (i === 3) {
         // E1M4 Phobos Anomaly star sanctum + portal ring
-        this.canvasLine([n.x, n.y - 15, n.x + 15, n.y, n.x, n.y + 15, n.x - 15, n.y, n.x, n.y - 15], col, alpha, 1.5, 6);
-        this.canvasLine([n.x - 11, n.y - 11, n.x + 11, n.y - 11, n.x + 11, n.y + 11, n.x - 11, n.y + 11, n.x - 11, n.y - 11], col, alpha * 0.85, 1.2, 4);
+        this.canvasLine(vecPath([n.x, n.y - 15, n.x + 15, n.y, n.x, n.y + 15, n.x - 15, n.y, n.x, n.y - 15]), col, alpha, 1.5, 6);
+        this.canvasLine(vecPath([n.x - 11, n.y - 11, n.x + 11, n.y - 11, n.x + 11, n.y + 11, n.x - 11, n.y + 11, n.x - 11, n.y - 11]), col, alpha * 0.85, 1.2, 4);
       } else {
         // E1M5 Red Planet Martian canyon ridge & howling dust storm
-        this.canvasLine([n.x - 18, n.y + 12, n.x - 11, n.y - 10, n.x - 2, n.y + 2, n.x + 8, n.y - 13, n.x + 18, n.y + 12, n.x - 18, n.y + 12], col, alpha, 1.5, 6);
-        this.canvasLine([n.x - 16, n.y - 6, n.x + 16, n.y - 6], col, alpha * 0.75, 1.2, 4);
+        this.canvasLine(vecPath([n.x - 18, n.y + 12, n.x - 11, n.y - 10, n.x - 2, n.y + 2, n.x + 8, n.y - 13, n.x + 18, n.y + 12, n.x - 18, n.y + 12]), col, alpha, 1.5, 6);
+        this.canvasLine(vecPath([n.x - 16, n.y - 6, n.x + 16, n.y - 6]), col, alpha * 0.75, 1.2, 4);
       }
       this.text(`${n.code} · ${n.label}`, n.x, n.y + 28, col, { size: 9, align: 'center', alpha: alpha + 0.1, glow: 4 });
 
       if (cleared) {
         // Doom-style bloody X splattered across conquered facilities
-        this.canvasLine([n.x - 16, n.y - 14, n.x + 16, n.y + 14], RED, 0.95, 3, 12);
-        this.canvasLine([n.x + 16, n.y - 14, n.x - 16, n.y + 14], RED, 0.95, 3, 12);
+        this.canvasLine(vecPath([n.x - 16, n.y - 14, n.x + 16, n.y + 14]), RED, 0.95, 3, 12);
+        this.canvasLine(vecPath([n.x + 16, n.y - 14, n.x - 16, n.y + 14]), RED, 0.95, 3, 12);
       } else if (next) {
         const py = n.y - 22 - blink * 4;
         const pAlpha = 0.55 + blink * 0.45;
         this.text('YOU ARE HERE', n.x, py - 18, RED, { size: 10, align: 'center', weight: 800, alpha: pAlpha, glow: 10 });
-        this.canvasLine([n.x, py - 13, n.x, py], RED, pAlpha, 2, 10);
-        this.canvasLine([n.x - 5, py - 6, n.x, py, n.x + 5, py - 6], RED, pAlpha, 2, 10);
+        this.canvasLine(vecPath([n.x, py - 13, n.x, py]), RED, pAlpha, 2, 10);
+        this.canvasLine(vecPath([n.x - 5, py - 6, n.x, py, n.x + 5, py - 6]), RED, pAlpha, 2, 10);
       }
     }
 
@@ -1743,19 +1758,14 @@ export class Hud {
     const right = boxX + boxW;
     const bottom = boxY + boxH;
     const cx = this.width / 2;
-    const F = OPTIONS_FRAME;
-    F[0] = boxX; F[1] = boxY; F[2] = right; F[3] = boxY; F[4] = right; F[5] = bottom;
-    F[6] = boxX; F[7] = bottom; F[8] = boxX; F[9] = boxY;
-    this.canvasLine(F, BLUE, 0.45, 1.5, 8);
+    this.canvasLine(rectPath(boxX, boxY, right, bottom), BLUE, 0.45, 1.5, 8);
     this.text(view.title, cx, boxY + 28, BLUE, { size: 14, align: 'center', weight: 800, glow: 8 });
     for (let i = 0; i < rows.length; i++) {
       const item = rows[i];
       const focus = view.cursor === i;
       const y = rowsTop + i * OPTIONS_ROW_H + 22;
       if (focus) {
-        F[0] = boxX + 14; F[1] = y - 20; F[2] = right - 14; F[3] = y - 20; F[4] = right - 14; F[5] = y + 8;
-        F[6] = boxX + 14; F[7] = y + 8; F[8] = boxX + 14; F[9] = y - 20;
-        this.canvasLine(F, ORANGE, 0.65, 1.5, 8);
+        this.canvasLine(rectPath(boxX + 14, y - 20, right - 14, y + 8), ORANGE, 0.65, 1.5, 8);
       }
       const color = focus ? ORANGE : GREEN;
       if (item.adjustable) {
@@ -1775,16 +1785,13 @@ export class Hud {
       return;
     const L = layoutMainMenu(scratchViewport.setScalar(this.width, this.height));
     const cx = this.width / 2;
-    const F = MENU_FRAME;
     for (let i = 0; i < view.items.length; i++) {
       const focus = view.cursor === i;
       const top = L.tops[i];
       const left = L.x;
       const right = L.x + L.buttonW;
       const bottom = top + L.buttonH;
-      F[0] = left; F[1] = top; F[2] = right; F[3] = top; F[4] = right; F[5] = bottom;
-      F[6] = left; F[7] = bottom; F[8] = left; F[9] = top;
-      this.canvasLine(F, focus ? ORANGE : BLUE, focus ? 0.85 : 0.45, 1.5, focus ? 10 : 4);
+      this.canvasLine(rectPath(left, top, right, bottom), focus ? ORANGE : BLUE, focus ? 0.85 : 0.45, 1.5, focus ? 10 : 4);
       const label = i === 1 ? this.optionsText : view.items[i].label;
       this.text(label, cx, top + 22, focus ? ORANGE : GREEN, { size: 14, align: 'center', weight: focus ? 800 : 600, alpha: focus ? 1 : 0.8, glow: focus ? 10 : 3 });
       if (focus) {
@@ -1809,17 +1816,17 @@ export class Hud {
     const { boxX, boxY, boxW, boxH, rowsTop, footerTop } = L;
     const right = boxX + boxW;
     const bottom = boxY + boxH;
-    this.canvasLine(controlsRect(boxX, boxY, right, bottom), BLUE, 0.45, 1.5, 8);
+    this.canvasLine(controlsRect(SEG_START.setScalar(boxX, boxY), SEG_END.setScalar(right, bottom)), BLUE, 0.45, 1.5, 8);
     const arm = 12;
-    this.canvasLine(controlsSeg(boxX - 3, boxY + arm, boxX - 3, boxY - 3), GREEN, 0.85, 2, 8);
-    this.canvasLine(controlsSeg(right + 3, boxY + arm, right + 3, boxY - 3), GREEN, 0.85, 2, 8);
-    this.canvasLine(controlsSeg(boxX - 3, bottom - arm, boxX - 3, bottom + 3), GREEN, 0.85, 2, 8);
-    this.canvasLine(controlsSeg(right + 3, bottom - arm, right + 3, bottom + 3), GREEN, 0.85, 2, 8);
+    this.canvasLine(controlsSeg(SEG_START.setScalar(boxX - 3, boxY + arm), SEG_END.setScalar(boxX - 3, boxY - 3)), GREEN, 0.85, 2, 8);
+    this.canvasLine(controlsSeg(SEG_START.setScalar(right + 3, boxY + arm), SEG_END.setScalar(right + 3, boxY - 3)), GREEN, 0.85, 2, 8);
+    this.canvasLine(controlsSeg(SEG_START.setScalar(boxX - 3, bottom - arm), SEG_END.setScalar(boxX - 3, bottom + 3)), GREEN, 0.85, 2, 8);
+    this.canvasLine(controlsSeg(SEG_START.setScalar(right + 3, bottom - arm), SEG_END.setScalar(right + 3, bottom + 3)), GREEN, 0.85, 2, 8);
     this.text('CONTROLS', boxX + boxW / 2, boxY + 22, BLUE, { size: 14, align: 'center', weight: 800, glow: 8 });
     this.text('ACTION', L.nameX, boxY + 50, BLUE, { size: 10, alpha: 0.6, glow: 0 });
     this.text('KEY 1', L.slot0X, boxY + 50, BLUE, { size: 10, align: 'center', alpha: 0.6, glow: 0 });
     this.text('KEY 2', L.slot1X, boxY + 50, BLUE, { size: 10, align: 'center', alpha: 0.6, glow: 0 });
-    this.canvasLine(controlsSeg(boxX + 18, boxY + 28, right - 18, boxY + 28), BLUE, 0.25, 1, 2);
+    this.canvasLine(controlsSeg(SEG_START.setScalar(boxX + 18, boxY + 28), SEG_END.setScalar(right - 18, boxY + 28)), BLUE, 0.25, 1, 2);
 
     const capturing = view.mode === 'capture';
     const blink = 0.5 + 0.5 * Math.sin(game.time * 8);
@@ -1845,9 +1852,9 @@ export class Hud {
         const selected = selectedRow && view.cursorCol === col;
         const text = col === 0 ? line.slot0 : line.slot1;
         if (selected)
-          this.canvasLine(controlsRect(x - L.slotHalf, base + 2, x + L.slotHalf, base + CONTROLS_ROW_H - 2), ORANGE, 0.8, 1.5, 6);
+          this.canvasLine(controlsRect(SEG_START.setScalar(x - L.slotHalf, base + 2), SEG_END.setScalar(x + L.slotHalf, base + CONTROLS_ROW_H - 2)), ORANGE, 0.8, 1.5, 6);
         if (selected && capturing) {
-          this.canvasLine(controlsSeg(x - L.slotHalf + 3, base + CONTROLS_ROW_H - 4, x - L.slotHalf + 3 + (L.slotHalf * 2 - 6) * Utils.clamp(view.captureTime / view.captureMax, 0, 1), base + CONTROLS_ROW_H - 4), ORANGE, 0.9, 2, 4);
+          this.canvasLine(controlsSeg(SEG_START.setScalar(x - L.slotHalf + 3, base + CONTROLS_ROW_H - 4), SEG_END.setScalar(x - L.slotHalf + 3 + (L.slotHalf * 2 - 6) * Utils.clamp(view.captureTime / view.captureMax, 0, 1), base + CONTROLS_ROW_H - 4)), ORANGE, 0.9, 2, 4);
           continue;
         }
         const tone = text === 'UNBOUND' ? RED : (selected ? ORANGE : BLUE);
@@ -1859,7 +1866,7 @@ export class Hud {
     if (view.scroll + L.visibleRows < lines.length)
       this.text('▼', right - 12, footerTop - 4, ORANGE, { size: 11, align: 'center', glow: 0 });
 
-    this.canvasLine(controlsSeg(boxX + 18, footerTop, right - 18, footerTop), BLUE, 0.25, 1, 2);
+    this.canvasLine(controlsSeg(SEG_START.setScalar(boxX + 18, footerTop), SEG_END.setScalar(right - 18, footerTop)), BLUE, 0.25, 1, 2);
     this.text(CONTROLS_LEGEND, boxX + boxW / 2, footerTop + 16, BLUE, { size: 10, align: 'center', alpha: 0.6, glow: 0 });
     if (view.toastTime > 0)
       this.text(view.toastText, boxX + boxW / 2, footerTop + 34, view.toastTone, { size: 12, align: 'center', alpha: Utils.clamp(view.toastTime * 2, 0, 1), glow: 4 });
@@ -1914,14 +1921,14 @@ export class Hud {
         const boxY = cy - 72;
         const rowsTop = cy - 42;
         const rowH = 26;
-        this.canvasLine([boxX, boxY, boxX + boxW, boxY, boxX + boxW, boxY + boxH, boxX, boxY + boxH, boxX, boxY], BLUE, 0.45, 1.5, 8);
+        this.canvasLine(vecPath([boxX, boxY, boxX + boxW, boxY, boxX + boxW, boxY + boxH, boxX, boxY + boxH, boxX, boxY]), BLUE, 0.45, 1.5, 8);
         const arm = 12;
-        this.canvasLine([boxX - 3, boxY + arm, boxX - 3, boxY - 3, boxX + arm, boxY - 3], GREEN, 0.85, 2, 8);
-        this.canvasLine([boxX + boxW - arm, boxY - 3, boxX + boxW + 3, boxY - 3, boxX + boxW + 3, boxY + arm], GREEN, 0.85, 2, 8);
-        this.canvasLine([boxX - 3, boxY + boxH - arm, boxX - 3, boxY + boxH + 3, boxX + arm, boxY + boxH + 3], GREEN, 0.85, 2, 8);
-        this.canvasLine([boxX + boxW - arm, boxY + boxH + 3, boxX + boxW + 3, boxY + boxH + 3, boxX + boxW + 3, boxY + boxH - arm], GREEN, 0.85, 2, 8);
+        this.canvasLine(vecPath([boxX - 3, boxY + arm, boxX - 3, boxY - 3, boxX + arm, boxY - 3]), GREEN, 0.85, 2, 8);
+        this.canvasLine(vecPath([boxX + boxW - arm, boxY - 3, boxX + boxW + 3, boxY - 3, boxX + boxW + 3, boxY + arm]), GREEN, 0.85, 2, 8);
+        this.canvasLine(vecPath([boxX - 3, boxY + boxH - arm, boxX - 3, boxY + boxH + 3, boxX + arm, boxY + boxH + 3]), GREEN, 0.85, 2, 8);
+        this.canvasLine(vecPath([boxX + boxW - arm, boxY + boxH + 3, boxX + boxW + 3, boxY + boxH + 3, boxX + boxW + 3, boxY + boxH - arm]), GREEN, 0.85, 2, 8);
         this.text('SELECT SKILL LEVEL', cx, boxY + 20, BLUE, { size: 12, align: 'center', weight: 800, alpha: 0.9, glow: 6 });
-        this.canvasLine([boxX + 18, boxY + 26, boxX + boxW - 18, boxY + 26], BLUE, 0.25, 1, 2);
+        this.canvasLine(vecPath([boxX + 18, boxY + 26, boxX + boxW - 18, boxY + 26]), BLUE, 0.25, 1, 2);
 
         const currentDiff = game.difficulty ?? 'normal';
         for (let i = 0; i < DIFFICULTY_ORDER.length; i++) {
@@ -1932,7 +1939,7 @@ export class Hud {
           const textY = ry + 18;
           const col = selected ? (key === 'nightmare' ? RED : ORANGE) : BLUE;
           if (selected)
-            this.canvasLine([boxX + 14, ry + 2, boxX + boxW - 14, ry + 2, boxX + boxW - 14, ry + rowH - 2, boxX + 14, ry + rowH - 2, boxX + 14, ry + 2], col, 0.65, 1.5, 8);
+            this.canvasLine(vecPath([boxX + 14, ry + 2, boxX + boxW - 14, ry + 2, boxX + boxW - 14, ry + rowH - 2, boxX + 14, ry + rowH - 2, boxX + 14, ry + 2]), col, 0.65, 1.5, 8);
           const prefix = selected ? `▸ [${i + 1}] ` : `  [${i + 1}] `;
           this.text(`${prefix}${def.label}`, cx, textY, col, {
             size: 14,
@@ -1944,7 +1951,7 @@ export class Hud {
         }
         const activeDef = DIFFICULTIES[currentDiff] ?? DIFFICULTIES.normal;
         this.text(activeDef.desc, cx, boxY + 150, GREEN, { size: 11, align: 'center', alpha: 0.9, glow: 4 });
-        this.canvasLine([boxX + 18, boxY + 160, boxX + boxW - 18, boxY + 160], BLUE, 0.25, 1, 2);
+        this.canvasLine(vecPath([boxX + 18, boxY + 160, boxX + boxW - 18, boxY + 160]), BLUE, 0.25, 1, 2);
         const levelDef = LEVELS[game.levelIndex] ?? LEVELS[0];
         this.text(`MISSION:  ◂  ${levelDef.name.toUpperCase()}  ▸`, cx, boxY + 181, ORANGE, { size: 13, align: 'center', weight: 800, glow: 8 });
         this.text(this.selectHint, cx, cy + 148, ORANGE, { size: 14, align: 'center', alpha: 0.5 + blink * 0.5 });
