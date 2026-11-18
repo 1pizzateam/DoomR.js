@@ -319,6 +319,40 @@ const scratchShadowCorners = new Array(12).fill(0);
 const scratchShadowOrigin = new Vec3();
 const scratchShadowDir = new Vec2();
 const scratchShadowBounds = new Vec3();
+
+function canCastOnFloor(pos, level, fog, cullDistSq) {
+  if (!pos)
+    return false;
+  if (Number.isFinite(cullDistSq) && pos.getDistance(scratchCam2d, true) > cullDistSq)
+    return false;
+  if (fog && !fog.canSeeNear(pos))
+    return false;
+  if (level?.slimeAt?.(pos) || level?.emptyPitAt?.(pos))
+    return false;
+  return true;
+}
+
+function isSolidNeighbor(level, tx, ty) {
+  if (!level || !level.inBounds(tileAt.setScalar(tx, ty)))
+    return true;
+  const k = level.kind[ty * level.width + tx];
+  return k === WALL || k === EXIT || k === DOOR;
+}
+
+function clampToTileWalls(level, pos) {
+  if (!level)
+    return;
+  const tx = Math.floor(pos.x / TILE);
+  const ty = Math.floor(pos.y / TILE);
+  const minX = isSolidNeighbor(level, tx - 1, ty) ? tx * TILE + 0.5 : -Infinity;
+  const maxX = isSolidNeighbor(level, tx + 1, ty) ? (tx + 1) * TILE - 0.5 : Infinity;
+  const minZ = isSolidNeighbor(level, tx, ty - 1) ? ty * TILE + 0.5 : -Infinity;
+  const maxZ = isSolidNeighbor(level, tx, ty + 1) ? (ty + 1) * TILE - 0.5 : Infinity;
+  for (let c = 0; c < 12; c += 3) {
+    scratchShadowCorners[c] = Utils.clamp(scratchShadowCorners[c], minX, maxX);
+    scratchShadowCorners[c + 2] = Utils.clamp(scratchShadowCorners[c + 2], minZ, maxZ);
+  }
+}
 const SECTOR_TILES = 16;
 
 const scratchTile = new Vec2();
@@ -1963,42 +1997,11 @@ export class World {
     const level = game.level;
     const cullDistSq = this.frameCullDistSq;
     const floorY = -0.08;
-    const canCastOnFloor = (pos) => {
-      if (!pos)
-        return false;
-      if (Number.isFinite(cullDistSq) && pos.getDistance(scratchCam2d, true) > cullDistSq)
-        return false;
-      if (fog && !fog.canSeeNear(pos))
-        return false;
-      if (level?.slimeAt?.(pos) || level?.emptyPitAt?.(pos))
-        return false;
-      return true;
-    };
-    const isSolidNeighbor = (tx, ty) => {
-      if (!level || !level.inBounds(tileAt.setScalar(tx, ty)))
-        return true;
-      const k = level.kind[ty * level.width + tx];
-      return k === WALL || k === EXIT || k === DOOR;
-    };
-    const clampToTileWalls = (pos) => {
-      if (!level)
-        return;
-      const tx = Math.floor(pos.x / TILE);
-      const ty = Math.floor(pos.y / TILE);
-      const minX = isSolidNeighbor(tx - 1, ty) ? tx * TILE + 0.5 : -Infinity;
-      const maxX = isSolidNeighbor(tx + 1, ty) ? (tx + 1) * TILE - 0.5 : Infinity;
-      const minZ = isSolidNeighbor(tx, ty - 1) ? ty * TILE + 0.5 : -Infinity;
-      const maxZ = isSolidNeighbor(tx, ty + 1) ? (ty + 1) * TILE - 0.5 : Infinity;
-      for (let c = 0; c < 12; c += 3) {
-        scratchShadowCorners[c] = Utils.clamp(scratchShadowCorners[c], minX, maxX);
-        scratchShadowCorners[c + 2] = Utils.clamp(scratchShadowCorners[c + 2], minZ, maxZ);
-      }
-    };
 
     const furnitures = game.furnitures ?? level?.furnitures ?? EMPTY;
     for (let i = 0; i < furnitures.length; i++) {
       const f = furnitures[i];
-      if (!canCastOnFloor(f.pos))
+      if (!canCastOnFloor(f.pos, level, fog, cullDistSq))
         continue;
       this.resolveShadowLightDir(f.pos, scratchShadowDir);
       const isDesk = f.type === 'desk';
@@ -2013,14 +2016,14 @@ export class World {
         scratchShadowDir,
         scratchShadowBounds.setScalar(halfX, halfZ, height)
       );
-      clampToTileWalls(f.pos);
+      clampToTileWalls(level, f.pos);
       batch.quad(scratchShadowCorners, SHADOW_UV_BOX);
     }
 
     const caches = game.caches ?? EMPTY;
     for (let i = 0; i < caches.length; i++) {
       const c = caches[i];
-      if (!canCastOnFloor(c.pos))
+      if (!canCastOnFloor(c.pos, level, fog, cullDistSq))
         continue;
       this.resolveShadowLightDir(c.pos, scratchShadowDir);
       const alongX = c.wallSide === 1 || c.wallSide === 3 || Math.abs(Math.sin(c.angle ?? 0)) > 0.7;
@@ -2032,7 +2035,7 @@ export class World {
         scratchShadowDir,
         scratchShadowBounds.setScalar(halfX, halfZ, 24.0)
       );
-      clampToTileWalls(c.pos);
+      clampToTileWalls(level, c.pos);
       batch.quad(scratchShadowCorners, SHADOW_UV_BOX);
     }
 
@@ -2040,7 +2043,7 @@ export class World {
     for (let i = 0; i < barrels.length; i++) {
       const b = barrels[i];
       const bz = b.z ?? 0;
-      if (bz < -2 || !canCastOnFloor(b.pos))
+      if (bz < -2 || !canCastOnFloor(b.pos, level, fog, cullDistSq))
         continue;
       this.resolveShadowLightDir(b.pos, scratchShadowDir);
       const r = b.gone ? 17.5 : (b.horizontal ? 22.0 : 19.5);
@@ -2051,14 +2054,14 @@ export class World {
         scratchShadowDir,
         scratchShadowBounds.setScalar(r, r, h)
       );
-      clampToTileWalls(b.pos);
+      clampToTileWalls(level, b.pos);
       batch.quad(scratchShadowCorners, SHADOW_UV_RADIAL);
     }
 
     const enemies = game.enemies ?? EMPTY;
     for (let i = 0; i < enemies.length; i++) {
       const e = enemies[i];
-      if (e.gibbed || (e.z ?? 0) < -2 || !canCastOnFloor(e.pos))
+      if (e.gibbed || (e.z ?? 0) < -2 || !canCastOnFloor(e.pos, level, fog, cullDistSq))
         continue;
       this.resolveShadowLightDir(e.pos, scratchShadowDir);
       const dead = e.state === 'dead';
@@ -2070,14 +2073,14 @@ export class World {
         scratchShadowDir,
         scratchShadowBounds.setScalar(r, r, h)
       );
-      clampToTileWalls(e.pos);
+      clampToTileWalls(level, e.pos);
       batch.quad(scratchShadowCorners, SHADOW_UV_RADIAL);
     }
 
     const pickups = game.pickups ?? EMPTY;
     for (let i = 0; i < pickups.length; i++) {
       const p = pickups[i];
-      if (p.taken || !canCastOnFloor(p.pos))
+      if (p.taken || !canCastOnFloor(p.pos, level, fog, cullDistSq))
         continue;
       this.resolveShadowLightDir(p.pos, scratchShadowDir);
       writeFloorShadowQuad(
@@ -2086,7 +2089,7 @@ export class World {
         scratchShadowDir,
         scratchShadowBounds.setScalar(13.0, 13.0, 12.0)
       );
-      clampToTileWalls(p.pos);
+      clampToTileWalls(level, p.pos);
       batch.quad(scratchShadowCorners, SHADOW_UV_RADIAL);
     }
 
