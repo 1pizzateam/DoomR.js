@@ -27,8 +27,15 @@ export function makeFeet() {
   return { blood: 0, travel: 0, side: 1, placed: false, pos: new Vec2(), heading: new Vec2() };
 }
 
+// scratch tile for level queries
+const tileAt = new Vec2();
 // read-only default direction: never mutate
 const ZERO_DIR = new Vec2();
+// the one result `boulderPlacement` hands back, valid until the next call
+const BOULDER = { pos: new Vec2(), lo: 0, hi: 0, slope: 0 };
+// scratch for the position and normal of a pipe-facing mark
+const PIPE_POS = new Vec3();
+const PIPE_NORMAL = new Vec2();
 
 /**
  * Blood simulation, with no rendering in it.
@@ -53,7 +60,7 @@ export class Blood {
     this.spanAt = new Vec2();
     this.wallPos = new Vec3();
     this.wallNormal = new Vec2();
-    this.face = { x: 0, y: 0, nx: 0, ny: 0, idx: 0, top: 0, height: 0, door: null, span: null, lo: 0, hi: 0, slope: 0 };
+    this.face = { pos: new Vec3(), normal: new Vec2(), idx: 0, top: 0, door: null, span: null, lo: 0, hi: 0, slope: 0 };
     this.reset(null, null);
   }
 
@@ -234,8 +241,8 @@ export class Blood {
     const gibSize = 2.9 * sizeScale;
     const baseHeight = 0.36 + (this.gibs.length % 5) * 0.01;
     this.gibs.push({
-      x: gx,
-      y: gy,
+      pos: new Vec2(gx, gy),
+      dir: new Vec2(dir.x, dir.y),
       size: gibSize,
       baseSize: gibSize,
       variant: (rng.integer(0, GIB_VARIANTS - 1) + (isLeg ? 2 : 1)) % GIB_VARIANTS,
@@ -267,13 +274,11 @@ export class Blood {
     const topHalfW = TILE * 0.5 - (MARS_BOULDER_BASE_INSET + MARS_BOULDER_SLOPE * zTop);
     const margin = Math.min(2, topHalfW * 0.25);
     const along = Utils.clamp(rawAlong * (halfW / (TILE * 0.5)), -topHalfW + margin, topHalfW - margin);
-    return {
-      x: cx + normal.x * halfW + tanX * along,
-      y: cy + normal.y * halfW + tanY * along,
-      lo: -topHalfW - along,
-      hi: topHalfW - along,
-      slope: MARS_BOULDER_SLOPE,
-    };
+    BOULDER.pos.setScalar(cx + normal.x * halfW + tanX * along, cy + normal.y * halfW + tanY * along);
+    BOULDER.lo = -topHalfW - along;
+    BOULDER.hi = topHalfW - along;
+    BOULDER.slope = MARS_BOULDER_SLOPE;
+    return BOULDER;
   }
 
   /**
@@ -289,11 +294,13 @@ export class Blood {
     const face = this.face;
     if (!this.wallFace(pos, normal, face, true))
       return false;
-    const { nx, ny } = face;
+    const { normal: faceNormal } = face;
+    const { x: nx, y: ny } = faceNormal;
     const idx = face.idx;
-    const { door, top, height, span } = face;
-    const px = face.x;
-    const py = face.y;
+    const { door, top, span } = face;
+    const height = face.pos.z;
+    const px = face.pos.x;
+    const py = face.pos.y;
     // a door slides: its holes are kept in the door's own height, so they travel with it
     const hole = {
       x: px,
@@ -309,9 +316,9 @@ export class Blood {
     };
     this.holes.push(hole);
     // the part of the hole that falls on a pipe in front of the wall is drawn on the pipe too
-    if (!door && level.pipeFaces?.has(idx * 4 + faceDirOf(nx, ny)))
-      for (const piece of pipePlacements(px, py, height, nx, ny, HOLE_HALF))
-        this.holes.push({ ...hole, ...piece });
+    if (!door && level.pipeFaces?.has(idx * 4 + faceDirOf(faceNormal)))
+      for (const piece of pipePlacements(face.pos, faceNormal, HOLE_HALF))
+        this.holes.push({ ...hole, x: piece.pos.x, y: piece.pos.y, nx: piece.normal.x, ny: piece.normal.y, lo: piece.lo, hi: piece.hi });
     if (door) {
       this.evictOldestOf(this.holes, door, BLOOD.doorHoles);
     }
@@ -354,7 +361,7 @@ export class Blood {
     const isDiag = Math.abs(nx) > 0.1 && Math.abs(ny) > 0.1;
     const tx = Math.floor((x - nx * 0.5) / TILE);
     const ty = Math.floor((y - ny * 0.5) / TILE);
-    if (!level.inBounds(tx, ty))
+    if (!level.inBounds(tileAt.setScalar(tx, ty)))
       return false;
     const idx = ty * level.width + tx;
     const top = level.heights[idx];
@@ -370,8 +377,8 @@ export class Blood {
       this.cell.setScalar(tx, ty);
       this.wallPos.setScalar(x, y, height);
       const boulder = this.boulderPlacement(this.cell, this.wallPos, normal, top, 8);
-      px = boulder.x;
-      py = boulder.y;
+      px = boulder.pos.x;
+      py = boulder.pos.y;
       span = { lo: boulder.lo, hi: boulder.hi, slope: boulder.slope };
     } else if (isDiag) {
       const cx = (tx + 0.5) * TILE;
@@ -388,13 +395,10 @@ export class Blood {
       py = ny ? Math.round(y / TILE) * TILE : y;
       span = this.faceSpan(this.spanAt.setScalar(px, py), normal, door);
     }
-    out.x = px;
-    out.y = py;
-    out.nx = nx;
-    out.ny = ny;
+    out.pos.setScalar(px, py, height);
+    out.normal.setScalar(nx, ny);
     out.idx = idx;
     out.top = top;
-    out.height = height;
     out.door = door;
     out.span = span;
     out.lo = span.lo;
@@ -418,7 +422,7 @@ export class Blood {
     const ty = nx;
     const wx = Math.floor((x - nx * 0.5) / TILE);
     const wy = Math.floor((y - ny * 0.5) / TILE);
-    if (!level.inBounds(wx, wy))
+    if (!level.inBounds(tileAt.setScalar(wx, wy)))
       return { lo: -TILE * 0.5, hi: TILE * 0.5 };
     const startIdx = wy * level.width + wx;
     const start = level.heights[startIdx];
@@ -431,7 +435,7 @@ export class Blood {
       const sx = Math.sign(tx);
       const sy = Math.sign(ty);
       const continuesDiag = (ix, iy) => {
-        if (door || !diag || !level.inBounds(ix, iy))
+        if (door || !diag || !level.inBounds(tileAt.setScalar(ix, iy)))
           return false;
         const i = iy * level.width + ix;
         return level.diag[i] === diag && level.kind[i] === kind && level.heights[i] === start;
@@ -446,7 +450,7 @@ export class Blood {
     }
     const faceDir = ny < 0 ? 0 : nx > 0 ? 1 : ny > 0 ? 2 : 3;
     const continues = (ix, iy) => {
-      if (door || !level.inBounds(ix, iy) || !level.inBounds(ix + nx, iy + ny))
+      if (door || !level.inBounds(tileAt.setScalar(ix, iy)) || !level.inBounds(tileAt.setScalar(ix + nx, iy + ny)))
         return false;
       const i = iy * level.width + ix;
       if (level.diag?.[i] && !level.hasCardinalFace?.(i, faceDir))
@@ -499,8 +503,8 @@ export class Blood {
       this.hasDissolving = true;
     const baseHeight = 0.36 + (this.gibs.length % 5) * 0.01;
     this.gibs.push({
-      x,
-      y,
+      pos: new Vec2(x, y),
+      dir: new Vec2(),
       size,
       baseSize: size,
       variant: (variant >>> 0) % GIB_VARIANTS,
@@ -524,14 +528,14 @@ export class Blood {
     const isDiag = Math.abs(nx) > 0.1 && Math.abs(ny) > 0.1;
     const wx = Math.floor((x - nx * 0.5) / TILE);
     const wy = Math.floor((y - ny * 0.5) / TILE);
-    const idx = this.level?.inBounds(wx, wy) ? wy * this.level.width + wx : -1;
+    const idx = this.level?.inBounds(tileAt.setScalar(wx, wy)) ? wy * this.level.width + wx : -1;
     let px = x;
     let py = y;
     let span;
     if (!isDiag && idx >= 0 && this.isBoulderTile(idx)) {
       const boulder = this.boulderPlacement(this.cell.setScalar(wx, wy), pos, normal, top, size * 1.6);
-      px = boulder.x;
-      py = boulder.y;
+      px = boulder.pos.x;
+      py = boulder.pos.y;
       span = { lo: boulder.lo, hi: boulder.hi, slope: boulder.slope };
     } else
       span = this.faceSpan(this.spanAt.setScalar(x, y), normal, door);
@@ -539,9 +543,12 @@ export class Blood {
     const splat = { x: px, y: py, z, nx, ny, size, top, door, ...span, seed, age: 0, dripTime: dripTime(seed, size) };
     this.walls.push(splat);
     // the part of the splat that falls on a pipe in front of the wall is drawn on the pipe too (and never baked into the wall)
-    if (!isDiag && !door && idx >= 0 && this.level.pipeFaces?.has(idx * 4 + faceDirOf(nx, ny)))
-      for (const piece of pipePlacements(px, py, z, nx, ny, size / 2))
-        this.walls.push({ ...splat, ...piece, onPipe: true });
+    if (!isDiag && !door && idx >= 0 && this.level.pipeFaces?.has(idx * 4 + faceDirOf(normal))) {
+      PIPE_POS.setScalar(px, py, z);
+      PIPE_NORMAL.copy(normal);
+      for (const piece of pipePlacements(PIPE_POS, PIPE_NORMAL, size / 2))
+        this.walls.push({ ...splat, x: piece.pos.x, y: piece.pos.y, nx: piece.normal.x, ny: piece.normal.y, lo: piece.lo, hi: piece.hi, onPipe: true });
+    }
     // blood on a door rides with it, like a hole, and each door keeps only so many
     if (door) {
       this.evictOldestOf(this.walls, door, BLOOD.doorSplats);
@@ -666,7 +673,7 @@ export class Blood {
     const { level } = this;
     const tx = Math.floor(pos.x / TILE);
     const ty = Math.floor(pos.y / TILE);
-    if (!level.inBounds(tx, ty))
+    if (!level.inBounds(tileAt.setScalar(tx, ty)))
       return true;
     if (level.heightAtPoint) {
       return level.heightAtPoint(this.pt.setScalar(pos.x, pos.y)) > pos.z;
@@ -676,7 +683,7 @@ export class Blood {
 
   solid(cell, faceDir, z) {
     const { level } = this;
-    if (!level.inBounds(cell.x, cell.y))
+    if (!level.inBounds(cell))
       return false;
     const i = cell.y * level.width + cell.x;
     if (level.diag?.[i] > 0 && !level.hasCardinalFace?.(i, faceDir))
@@ -693,7 +700,7 @@ export class Blood {
     for (let k = 0; k < 2; k++) {
       const dtx = k === 0 ? ox : tx;
       const dty = k === 0 ? oy : ty;
-      if (!level.inBounds(dtx, dty))
+      if (!level.inBounds(tileAt.setScalar(dtx, dty)))
         continue;
       const didx = dty * level.width + dtx;
       if (level.diag?.[didx] > 0 && level.heights[didx] > p.z) {
@@ -748,7 +755,7 @@ export class Blood {
     const { level } = this;
     const tx = Math.floor(pos.x / TILE);
     const ty = Math.floor(pos.y / TILE);
-    if (!level.inBounds(tx, ty))
+    if (!level.inBounds(tileAt.setScalar(tx, ty)))
       return false;
     const idx = ty * level.width + tx;
     return (level.kind[idx] === FLOOR || level.kind[idx] === DOOR || level.kind[idx] === PILLAR || level.diag[idx] > 0) && !level.arena?.has(idx);

@@ -1,4 +1,4 @@
-import { Rand, Utils } from '@1pizzateam/spock';
+import { Rand, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 
 /** Blast damage left on walls, floor and ceiling by explosions. Purely visual: nothing here touches gameplay. */
 export const RUBBLE = { wall: 96, floor: 48, ceiling: 48, tiers: 3 };
@@ -29,8 +29,8 @@ export function tierOf(severity) {
   return severity < TIER_2 - TIER_MARGIN ? 1 : 2;
 }
 
-function makeSlot(kind) {
-  return { kind, x: 0, y: 0, z: 0, nx: 0, ny: 0, size: 0, severity: 0, tier: 0, seed: 0, variant: 0, lo: 0, hi: 0, top: 0, slope: 0, door: null, gen: 0 };
+function makeSlot(pos, normal, kind) {
+  return { kind, pos, normal, size: 0, severity: 0, tier: 0, seed: 0, variant: 0, lo: 0, hi: 0, top: 0, slope: 0, door: null, gen: 0 };
 }
 
 /**
@@ -42,7 +42,7 @@ export class Rubble {
     this.slots = [[], [], []];
     for (let kind = 0; kind < 3; kind++)
       for (let i = 0; i < CAPS[kind]; i++)
-        this.slots[kind].push(makeSlot(kind));
+        this.slots[kind].push(makeSlot(new Vec3(), new Vec2(), kind));
     this.lengths = [0, 0, 0];
     this.cursors = [0, 0, 0];
     this.version = 0;
@@ -86,11 +86,8 @@ export class Rubble {
     if (severity < MIN_SEVERITY)
       return null;
     const slot = this.next(SURFACE.WALL, severity);
-    slot.x = pos.x;
-    slot.y = pos.y;
-    slot.z = pos.z;
-    slot.nx = normal.x;
-    slot.ny = normal.y;
+    slot.pos.copy(pos);
+    slot.normal.copy(normal);
     slot.size = Utils.lerp(WALL_SIZE[0], WALL_SIZE[1], severity);
     slot.lo = span.lo;
     slot.hi = span.hi;
@@ -112,8 +109,8 @@ export class Rubble {
     if (severity < MIN_SEVERITY)
       return null;
     const slot = this.next(kind, severity);
-    slot.x = pos.x;
-    slot.y = pos.y;
+    slot.pos.x = pos.x;
+    slot.pos.y = pos.y;
     slot.size = Utils.lerp(FLAT_SIZE[0], FLAT_SIZE[1], severity);
     return slot;
   }

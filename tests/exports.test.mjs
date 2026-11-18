@@ -588,6 +588,29 @@ const checks = [
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.ok(pkg.scripts.test.includes('tests/exports.test.mjs'), 'package.json test script missing exports.test.mjs');
   }],
+  ['AC-1 faceDirOf and pipePlacements take and return vectors', async () => {
+    const { Vec2, Vec3 } = await import('@1pizzateam/spock');
+    const { faceDirOf, pipePlacements } = await import('../src/pipes.js');
+    const { PIPE_RUNS_PX } = await import('../src/wall.js');
+    assert.equal(faceDirOf(new Vec2(-1, 0)), 0);
+    assert.equal(faceDirOf(new Vec2(1, 0)), 1);
+    assert.equal(faceDirOf(new Vec2(0, -1)), 2);
+    assert.equal(faceDirOf(new Vec2(0, 1)), 3);
+    assert.equal(faceDirOf(new Vec2(0.5, 0.5)), 3, 'the diagonal boundary falls to the +y face');
+    assert.equal(faceDirOf(new Vec2(-0.5, 0)), 3, 'the boundary is exclusive');
+    const across = PIPE_RUNS_PX[1][0] + PIPE_RUNS_PX[1][1] / 2;
+    const placements = pipePlacements(new Vec3(64, 192 + across, 20), new Vec2(1, 0), 4);
+    assert.ok(placements.length > 0, 'a mark aimed at a pipe lands on facets');
+    for (const piece of placements) {
+      assert.ok(piece.pos instanceof Vec2 && piece.normal instanceof Vec2);
+      assert.ok(Number.isFinite(piece.lo) && Number.isFinite(piece.hi));
+      assert.ok(!('x' in piece) && !('nx' in piece));
+    }
+    assert.deepEqual(pipePlacements(new Vec3(64, 192 + across, 17), new Vec2(1, 0), 4), [], 'a clamp height gives no placements');
+    const src = read('pipes');
+    assert.match(src, /export function faceDirOf\(normal\)/);
+    assert.match(src, /export function pipePlacements\(pos, normal, half\)/);
+  }],
 ];
 
 console.log('# file: tests/exports.test.mjs');

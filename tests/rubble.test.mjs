@@ -77,7 +77,7 @@ const checks = [
         const mark = rubble.slots[kind][i];
         assert.equal(mark.kind, kind);
         assert.ok(mark.severity >= 0 && mark.severity <= 1);
-        assert.ok(Number.isFinite(mark.x) && Number.isFinite(mark.y) && Number.isInteger(mark.variant));
+        assert.ok(Number.isFinite(mark.pos.x) && Number.isFinite(mark.pos.y) && Number.isInteger(mark.variant));
         assert.equal(typeof mark.seed, 'number');
       }
   }],
@@ -156,10 +156,10 @@ const checks = [
     const walls = split.rubble.slots[SURFACE.WALL];
     assert.ok(split.rubble.length(SURFACE.WALL) > 0);
     for (let i = 0; i < split.rubble.length(SURFACE.WALL); i++)
-      assert.ok(walls[i].x <= 4 * 64 + 1, `no wall mark behind the dividing wall, found one at ${walls[i].x}`);
+      assert.ok(walls[i].pos.x <= 4 * 64 + 1, `no wall mark behind the dividing wall, found one at ${walls[i].pos.x}`);
     const floors = split.rubble.slots[SURFACE.FLOOR];
     for (let i = 0; i < split.rubble.length(SURFACE.FLOOR); i++)
-      assert.ok(floors[i].x < 4 * 64, 'no floor mark in the room behind the wall');
+      assert.ok(floors[i].pos.x < 4 * 64, 'no floor mark in the room behind the wall');
   }],
   ['AC-6 barrel, grenade and fireball blasts use blastSurfaces and keep gameplay deterministic', () => {
     const rows = ['#############', '#...........#', '#.P....x..i.#', '#...........#', '#############'];
@@ -221,7 +221,7 @@ const checks = [
     assert.ok(faceAt(0).length > 0, 'a closed door takes blast marks that belong to it');
     assert.equal(faceAt(1).length, 0, 'a door sunk into the floor takes none');
     const closed = faceAt(0)[0];
-    const quad = (mark, open) => blastWallQuad({ pos: new Vec3(mark.x, mark.y, mark.z - open * mark.top), normal: new Vec2(mark.nx, mark.ny), top: mark.top * (1 - open), seed: mark.seed, tier: mark.tier, lo: mark.lo, hi: mark.hi, slope: mark.slope, size: mark.size });
+    const quad = (mark, open) => blastWallQuad({ pos: new Vec3(mark.pos.x, mark.pos.y, mark.pos.z - open * mark.top), normal: new Vec2(mark.normal.x, mark.normal.y), top: mark.top * (1 - open), seed: mark.seed, tier: mark.tier, lo: mark.lo, hi: mark.hi, slope: mark.slope, size: mark.size });
     const wide = (q) => Math.hypot(q.corners[3] - q.corners[0], q.corners[5] - q.corners[2]);
     assert.equal(wide(quad(closed, 0)), wide(quad(closed, 0.25)), 'sliding does not rescale the mark');
   }],
@@ -434,7 +434,7 @@ const checks = [
     const start = rubble.oldest(SURFACE.WALL);
     assert.equal(start, rubble.cursors[SURFACE.WALL]);
     for (let j = 1; j < n; j++)
-      assert.ok(rubble.slots[SURFACE.WALL][(start + j) % n].x > rubble.slots[SURFACE.WALL][(start + j - 1) % n].x);
+      assert.ok(rubble.slots[SURFACE.WALL][(start + j) % n].pos.x > rubble.slots[SURFACE.WALL][(start + j - 1) % n].pos.x);
   }],
   ['AC-2 syncBlasts emits all scorch before all damage, oldest first', () => {
     const rubble = new Rubble();
@@ -478,7 +478,7 @@ const checks = [
     assert.deepEqual(world.blastQuads[SURFACE.WALL].map((e) => e.gen), gens);
     assert.equal(quads.length, perMark);
     const before = world.blastQuads[SURFACE.WALL][0].quad.corners.slice();
-    rubble.slots[SURFACE.WALL][0].x = 700;
+    rubble.slots[SURFACE.WALL][0].pos.x = 700;
     rubble.slots[SURFACE.WALL][0].gen++;
     World.prototype.syncBlasts.call(world, rubble);
     const after = world.blastQuads[SURFACE.WALL].map((e) => e.gen);
@@ -536,6 +536,20 @@ const checks = [
     assert.ok(!/\bnew\b|=>|\{\}|\[\]|\bfunction\b/.test(blasts));
     assert.ok(blasts.includes('oldest('));
     assert.ok(!/\bnew\b|=>|\{\}|\[\]/.test(methodBody(src, 'syncDoorMarks')));
+  }],
+  ['AC-3 makeSlot and sector partitioning use vectors', () => {
+    const rubble = new Rubble();
+    for (let kind = 0; kind < 3; kind++) {
+      const slot = rubble.slots[kind][0];
+      assert.ok(slot.pos instanceof Vec3 && slot.normal instanceof Vec2);
+      assert.ok(!('x' in slot) && !('nx' in slot));
+    }
+    const wall = rubble.addWall(new Vec3(10, 20, 30), new Vec2(0, 1), 0.5, { lo: -1, hi: 1, top: 64, slope: 0, door: null });
+    assert.deepEqual([wall.pos.x, wall.pos.y, wall.pos.z, wall.normal.x, wall.normal.y], [10, 20, 30, 0, 1]);
+    const src = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+    assert.match(src, /function partitionQuadsBySector\(quads, sectorGrid, sectorWorldSize = SECTOR_TILES \* TILE, gridSize = UNBOUNDED_GRID\)/);
+    assert.match(src, /function partitionTrianglesBySector\(vertices, sectorGrid, sectorWorldSize = SECTOR_TILES \* TILE, gridSize = UNBOUNDED_GRID\)/);
+    assert.doesNotMatch(src, /BySector\([^)]*sectorWorldSize, width, rowCount\)/);
   }],
 ];
 
