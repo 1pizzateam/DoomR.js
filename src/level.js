@@ -31,6 +31,9 @@ const scratchS = new Vec2();
 const scratchA = new Vec2();
 const scratchB = new Vec2();
 const scratchO = new Vec2();
+// tile coordinates handed to the tile queries and factories; `tileAt` for queries, `tileArg` for the tile a factory is given
+const tileAt = new Vec2();
+const tileArg = new Vec2();
 
 const SOLIDS = {
   '#': { kind: WALL, height: 64 },
@@ -199,7 +202,7 @@ export class Level {
     for (let d = 0; d < 4; d++) {
       const nx = x + DX[d];
       const ny = y + DY[d];
-      if (!this.inBounds(nx, ny))
+      if (!this.inBounds(tileAt.setScalar(nx, ny)))
         return null;
       const nidx = ny * width + nx;
       if (kind[nidx] === WALL && diag[nidx] === 0)
@@ -214,8 +217,8 @@ export class Level {
         const perpX = DY[d];
         const perpY = DX[d];
         const roomWider =
-          (this.inBounds(nx + perpX, ny + perpY) && kind[(ny + perpY) * width + (nx + perpX)] === FLOOR) ||
-          (this.inBounds(nx - perpX, ny - perpY) && kind[(ny - perpY) * width + (nx - perpX)] === FLOOR);
+          (this.inBounds(tileAt.setScalar(nx + perpX, ny + perpY)) && kind[(ny + perpY) * width + (nx + perpX)] === FLOOR) ||
+          (this.inBounds(tileAt.setScalar(nx - perpX, ny - perpY)) && kind[(ny - perpY) * width + (nx - perpX)] === FLOOR);
         if (roomWider) {
           opensToFloor = true;
           doorDir = d;
@@ -227,7 +230,7 @@ export class Level {
     if (opensToFloor) {
       const exitX = x + DX[doorDir];
       const exitY = y + DY[doorDir];
-      if (!this.isWalkable(exitX, exitY))
+      if (!this.isWalkable(tileAt.setScalar(exitX, exitY)))
         return null;
       const offset = TILE * 0.5 - ELEVATOR_DOOR_THICKNESS * 0.5;
       door = {
@@ -269,12 +272,12 @@ export class Level {
         dirY: DY[doorDir],
         angle: Math.atan2(DY[doorDir], DX[doorDir]),
         exitTileIdx: exitY * width + exitX,
-        exitCenter: this.center(exitX, exitY),
+        exitCenter: this.center(tileAt.setScalar(exitX, exitY)),
       };
     }
     const exitX = x + DX[doorDir] * 2;
     const exitY = y + DY[doorDir] * 2;
-    if (!this.isWalkable(exitX, exitY))
+    if (!this.isWalkable(tileAt.setScalar(exitX, exitY)))
       return null;
     door.elevator = true;
     door.floorLevel = this.floorLevel;
@@ -295,7 +298,7 @@ export class Level {
       dirY: DY[doorDir],
       angle: Math.atan2(DY[doorDir], DX[doorDir]),
       exitTileIdx: exitY * width + exitX,
-      exitCenter: this.center(exitX, exitY),
+      exitCenter: this.center(tileAt.setScalar(exitX, exitY)),
     };
   }
 
@@ -311,7 +314,7 @@ export class Level {
       ...this.pickups.map((p) => this.grid.getCell(p.pos)),
       ...this.chestTiles.map((c) => c.idx),
       ...this.chestDefs
-        .filter((c) => Number.isInteger(c?.x) && Number.isInteger(c?.y) && this.inBounds(c.x, c.y))
+        .filter((c) => Number.isInteger(c?.x) && Number.isInteger(c?.y) && this.inBounds(tileAt.setScalar(c.x, c.y)))
         .map((c) => c.y * width + c.x),
     ]);
     const secrets = [];
@@ -335,7 +338,7 @@ export class Level {
         for (let d = 0; d < 4; d++) {
           const nx = x + DX[d];
           const ny = y + DY[d];
-          if (!this.inBounds(nx, ny))
+          if (!this.inBounds(tileAt.setScalar(nx, ny)))
             continue;
           const nidx = ny * width + nx;
           if (kind[nidx] === DOOR)
@@ -393,7 +396,7 @@ export class Level {
           for (let d = 0; d < 4; d++) {
             const nx = x + DX[d];
             const ny = y + DY[d];
-            if (!this.inBounds(nx, ny))
+            if (!this.inBounds(tileAt.setScalar(nx, ny)))
               continue;
             const nidx = ny * width + nx;
             if (kind[nidx] === EXIT)
@@ -438,7 +441,7 @@ export class Level {
         for (let d = 0; d < 4; d++) {
           const nx = x + DX[d];
           const ny = y + DY[d];
-          if (!this.inBounds(nx, ny))
+          if (!this.inBounds(tileAt.setScalar(nx, ny)))
             continue;
           const j = ny * width + nx;
           if (this.roomByTile[j] !== -1)
@@ -455,20 +458,21 @@ export class Level {
     }
   }
 
-  chestWallSide(x, y) {
+  chestWallSide(tile) {
+    const { x, y } = tile;
     const { width, kind, diag } = this;
-    const isWall = (tx, ty) => this.inBounds(tx, ty) && kind[ty * width + tx] === WALL && diag[ty * width + tx] === 0;
+    const isWall = (tx, ty) => this.inBounds(tileAt.setScalar(tx, ty)) && kind[ty * width + tx] === WALL && diag[ty * width + tx] === 0;
     for (const requireWalkableOpposite of [true, false]) {
       let side = -1;
       let sideScore = -1;
       for (let d = 0; d < 4; d++) {
         const ox = x - WALL_DX[d];
         const oy = y - WALL_DY[d];
-        if (!isWall(x + WALL_DX[d], y + WALL_DY[d]) || (requireWalkableOpposite && !this.isWalkable(ox, oy)))
+        if (!isWall(x + WALL_DX[d], y + WALL_DY[d]) || (requireWalkableOpposite && !this.isWalkable(tileAt.setScalar(ox, oy))))
           continue;
         let score = 0;
         for (let e = 0; e < 4; e++) {
-          if (this.isWalkable(ox + WALL_DX[e], oy + WALL_DY[e]))
+          if (this.isWalkable(tileAt.setScalar(ox + WALL_DX[e], oy + WALL_DY[e])))
             score++;
         }
         if (score > sideScore) {
@@ -482,12 +486,13 @@ export class Level {
     return -1;
   }
 
-  createChest(x, y, contents = ['ammo'], wallSide = null, angle = null, locked = false) {
+  createChest(tile, contents = ['ammo'], wallSide = null, angle = null, locked = false) {
+    const { x, y } = tile;
     const idx = y * this.width + x;
     const resolvedWallSide = Number.isInteger(wallSide) && wallSide >= 0 && wallSide < 4
       ? wallSide
-      : this.chestWallSide(x, y);
-    const pos = this.center(x, y);
+      : this.chestWallSide(tileAt.setScalar(x, y));
+    const pos = this.center(tileAt.setScalar(x, y));
     let resolvedAngle = 0;
     if (resolvedWallSide >= 0) {
       pos.x += WALL_DX[resolvedWallSide] * CACHE_WALL_OFFSET;
@@ -498,11 +503,11 @@ export class Level {
       for (let d = 0; d < 4; d++) {
         const nx = x + WALL_DX[d];
         const ny = y + WALL_DY[d];
-        if (!this.isWalkable(nx, ny))
+        if (!this.isWalkable(tileAt.setScalar(nx, ny)))
           continue;
         let score = 0;
         for (let e = 0; e < 4; e++) {
-          if (this.isWalkable(nx + WALL_DX[e], ny + WALL_DY[e]))
+          if (this.isWalkable(tileAt.setScalar(nx + WALL_DX[e], ny + WALL_DY[e])))
             score++;
         }
         if (score > bestScore) {
@@ -532,7 +537,7 @@ export class Level {
   buildChests() {
     const defsByIdx = new Map();
     for (const entry of this.chestDefs) {
-      if (!entry || !Number.isInteger(entry.x) || !Number.isInteger(entry.y) || !this.inBounds(entry.x, entry.y))
+      if (!entry || !Number.isInteger(entry.x) || !Number.isInteger(entry.y) || !this.inBounds(tileAt.setScalar(entry.x, entry.y)))
         continue;
       defsByIdx.set(entry.y * this.width + entry.x, entry);
     }
@@ -540,13 +545,13 @@ export class Level {
     for (const tile of this.chestTiles) {
       seen.add(tile.idx);
       const entry = defsByIdx.get(tile.idx);
-      this.chests.push(this.createChest(tile.x, tile.y, entry?.contents, entry?.wallSide, entry?.angle, entry?.locked));
+      this.chests.push(this.createChest(tileArg.setScalar(tile.x, tile.y), entry?.contents, entry?.wallSide, entry?.angle, entry?.locked));
     }
     for (const [idx, entry] of defsByIdx) {
       if (seen.has(idx) || this.kind[idx] !== FLOOR)
         continue;
       seen.add(idx);
-      this.chests.push(this.createChest(entry.x, entry.y, entry.contents, entry.wallSide, entry.angle, entry?.locked));
+      this.chests.push(this.createChest(tileArg.setScalar(entry.x, entry.y), entry.contents, entry.wallSide, entry.angle, entry?.locked));
     }
   }
 
@@ -561,7 +566,7 @@ export class Level {
       for (let d = 0; d < 4; d++) {
         const nx = door.x + DX[d];
         const ny = door.y + DY[d];
-        if (this.inBounds(nx, ny) && this.roomByTile[ny * this.width + nx] === room) {
+        if (this.inBounds(tileAt.setScalar(nx, ny)) && this.roomByTile[ny * this.width + nx] === room) {
           touchesRoom = true;
           break;
         }
@@ -572,15 +577,16 @@ export class Level {
     return found;
   }
 
-  createSwitch(x, y, wallSide = null, doorDefs = null) {
-    if (!this.inBounds(x, y))
+  createSwitch(tile, wallSide = null, doorDefs = null) {
+    const { x, y } = tile;
+    if (!this.inBounds(tile))
       return null;
     const idx = y * this.width + x;
     if (this.kind[idx] !== FLOOR)
       return null;
     const resolvedWallSide = Number.isInteger(wallSide) && wallSide >= 0 && wallSide < 4
       ? wallSide
-      : this.chestWallSide(x, y);
+      : this.chestWallSide(tileAt.setScalar(x, y));
     if (resolvedWallSide < 0 || resolvedWallSide >= 4)
       return null;
     const dx = WALL_DX[resolvedWallSide];
@@ -596,7 +602,7 @@ export class Level {
     if (Array.isArray(doorDefs)) {
       for (let j = 0; j < doorDefs.length; j++) {
         const d = doorDefs[j];
-        if (!d || !this.inBounds(d.x, d.y))
+        if (!d || !this.inBounds(tileAt.setScalar(d.x, d.y)))
           continue;
         const door = this.doors.get(d.y * this.width + d.x);
         if (!door)
@@ -630,7 +636,7 @@ export class Level {
     const defsByIdx = new Map();
     for (let i = 0; i < this.switchDefs.length; i++) {
       const entry = this.switchDefs[i];
-      if (!entry || !Number.isInteger(entry.x) || !Number.isInteger(entry.y) || !this.inBounds(entry.x, entry.y))
+      if (!entry || !Number.isInteger(entry.x) || !Number.isInteger(entry.y) || !this.inBounds(tileAt.setScalar(entry.x, entry.y)))
         continue;
       defsByIdx.set(entry.y * this.width + entry.x, entry);
     }
@@ -639,7 +645,7 @@ export class Level {
       const tile = this.switchTiles[i];
       seen.add(tile.idx);
       const entry = defsByIdx.get(tile.idx);
-      const sw = this.createSwitch(tile.x, tile.y, entry?.wallSide, entry?.doors);
+      const sw = this.createSwitch(tileArg.setScalar(tile.x, tile.y), entry?.wallSide, entry?.doors);
       if (sw)
         this.switches.push(sw);
     }
@@ -647,18 +653,19 @@ export class Level {
       if (seen.has(idx) || this.kind[idx] !== FLOOR)
         continue;
       seen.add(idx);
-      const sw = this.createSwitch(entry.x, entry.y, entry.wallSide, entry.doors ?? []);
+      const sw = this.createSwitch(tileArg.setScalar(entry.x, entry.y), entry.wallSide, entry.doors ?? []);
       if (sw)
         this.switches.push(sw);
     }
   }
 
-  createFurniture(x, y, type = 'dispenser', wallSide = null, angle = null) {
+  createFurniture(tile, type = 'dispenser', wallSide = null, angle = null) {
+    const { x, y } = tile;
     const idx = y * this.width + x;
     const resolvedWallSide = Number.isInteger(wallSide) && wallSide >= 0 && wallSide < 4
       ? wallSide
-      : this.chestWallSide(x, y);
-    const pos = this.center(x, y);
+      : this.chestWallSide(tileAt.setScalar(x, y));
+    const pos = this.center(tileAt.setScalar(x, y));
     const wallOffset = FURNITURE_WALL_OFFSETS[type] ?? DISPENSER_WALL_OFFSET;
     let resolvedAngle = 0;
     if (resolvedWallSide >= 0) {
@@ -670,11 +677,11 @@ export class Level {
       for (let d = 0; d < 4; d++) {
         const nx = x + WALL_DX[d];
         const ny = y + WALL_DY[d];
-        if (!this.isWalkable(nx, ny))
+        if (!this.isWalkable(tileAt.setScalar(nx, ny)))
           continue;
         let score = 0;
         for (let e = 0; e < 4; e++)
-          if (this.isWalkable(nx + WALL_DX[e], ny + WALL_DY[e]))
+          if (this.isWalkable(tileAt.setScalar(nx + WALL_DX[e], ny + WALL_DY[e])))
             score++;
         if (score > bestScore) {
           bestScore = score;
@@ -705,7 +712,7 @@ export class Level {
     for (let i = 0; i < this.furnitureTiles.length; i++) {
       const tile = this.furnitureTiles[i];
       const entry = defsByIdx.get(tile.idx);
-      this.furnitures.push(this.createFurniture(tile.x, tile.y, tile.type, entry?.wallSide, entry?.angle));
+      this.furnitures.push(this.createFurniture(tileArg.setScalar(tile.x, tile.y), tile.type, entry?.wallSide, entry?.angle));
     }
   }
 
@@ -715,8 +722,8 @@ export class Level {
     return idx >= 0 ? this.secretByTile[idx] : -1;
   }
 
-  isSlime(x, y) {
-    return this.inBounds(x, y) && this.slime[y * this.width + x] === 1;
+  isSlime(tile) {
+    return this.inBounds(tile) && this.slime[tile.y * this.width + tile.x] === 1;
   }
 
   /** Whether a 2D world point (`Vec2`) lies on a slime tile. */
@@ -725,8 +732,8 @@ export class Level {
     return idx >= 0 && this.slime[idx] === 1;
   }
 
-  isAcidSplash(x, y) {
-    return this.inBounds(x, y) && this.acidSplash[y * this.width + x] === 1;
+  isAcidSplash(tile) {
+    return this.inBounds(tile) && this.acidSplash[tile.y * this.width + tile.x] === 1;
   }
 
   /** Whether a 2D world point (`Vec2`) lies on a floor-level acid splash tile (','). */
@@ -735,8 +742,8 @@ export class Level {
     return idx >= 0 && this.acidSplash[idx] === 1;
   }
 
-  isEmptyPit(x, y) {
-    return this.inBounds(x, y) && this.emptyPit[y * this.width + x] === 1;
+  isEmptyPit(tile) {
+    return this.inBounds(tile) && this.emptyPit[tile.y * this.width + tile.x] === 1;
   }
 
   /** Whether a 2D world point (`Vec2`) lies on a bottomless/empty pit tile ('_'). */
@@ -745,8 +752,8 @@ export class Level {
     return idx >= 0 && this.emptyPit[idx] === 1;
   }
 
-  isTeleporter(x, y) {
-    return this.inBounds(x, y) && this.teleporter[y * this.width + x] === 1;
+  isTeleporter(tile) {
+    return this.inBounds(tile) && this.teleporter[tile.y * this.width + tile.x] === 1;
   }
 
   /** Teleporter pad at a 2D world point (`Vec2`), or null. */
@@ -776,7 +783,7 @@ export class Level {
       for (let d = 0; d < 4; d++) {
         const nx = x + DX[d];
         const ny = y + DY[d];
-        if (!this.inBounds(nx, ny))
+        if (!this.inBounds(tileAt.setScalar(nx, ny)))
           continue;
         const nidx = ny * width + nx;
         if (this.diag[nidx] > 0 && !this.hasCardinalFace(nidx, d ^ 1))
@@ -796,7 +803,7 @@ export class Level {
     for (let d = 0; d < 4; d++) {
       const nx = x + DX[d];
       const ny = y + DY[d];
-      if (this.inBounds(nx, ny) && this.indoor.has(ny * this.width + nx))
+      if (this.inBounds(tileAt.setScalar(nx, ny)) && this.indoor.has(ny * this.width + nx))
         return true;
     }
     return false;
@@ -851,7 +858,7 @@ export class Level {
       for (let d = 0; d < 4; d++) {
         const nx = x + DX[d];
         const ny = y + DY[d];
-        if (!this.inBounds(nx, ny))
+        if (!this.inBounds(tileAt.setScalar(nx, ny)))
           continue;
         const nidx = ny * width + nx;
         if (this.diag[nidx] > 0 && !this.hasCardinalFace(nidx, d ^ 1))
@@ -900,20 +907,20 @@ export class Level {
           if (typeof solid.diag === 'number')
             this.diag[idx] = solid.diag;
           if (solid.kind === DOOR) {
-            const door = { idx, x, y, center: this.center(x, y), open: 0, target: 0, timer: 0, secret: !!solid.secret, lock: solid.lock ?? null, switchLocked: false, revealed: false, alongY: false, body: null };
+            const door = { idx, x, y, center: this.center(tileAt.setScalar(x, y)), open: 0, target: 0, timer: 0, secret: !!solid.secret, lock: solid.lock ?? null, switchLocked: false, revealed: false, alongY: false, body: null };
             this.doors.set(idx, door);
             this.doorsList.push(door);
           }
           if (solid.kind === EXIT)
-            this.exits.push(this.center(x, y));
+            this.exits.push(this.center(tileAt.setScalar(x, y)));
         } else if (char === 'P')
-          this.playerStart = this.center(x, y);
+          this.playerStart = this.center(tileAt.setScalar(x, y));
         else if (ENEMIES[char])
-          this.enemies.push({ type: ENEMIES[char], pos: this.center(x, y) });
+          this.enemies.push({ type: ENEMIES[char], pos: this.center(tileAt.setScalar(x, y)) });
         else if (char === 'x' || char === 'z')
-          this.barrels.push({ x, y, pos: this.center(x, y), horizontal: char === 'z', angle: 0 });
+          this.barrels.push({ x, y, pos: this.center(tileAt.setScalar(x, y)), horizontal: char === 'z', angle: 0 });
         else if (PICKUPS[char])
-          this.pickups.push({ type: PICKUPS[char], pos: this.center(x, y) });
+          this.pickups.push({ type: PICKUPS[char], pos: this.center(tileAt.setScalar(x, y)) });
         else if (char === '=')
           this.chestTiles.push({ idx, x, y });
         else if (char === '!')
@@ -928,16 +935,16 @@ export class Level {
           this.emptyPit[idx] = 1;
         else if (char === 'T') {
           this.teleporter[idx] = 1;
-          const pad = { idx, x, y, center: this.center(x, y), pair: 0, targetIdx: idx, target: this.center(x, y) };
+          const pad = { idx, x, y, center: this.center(tileAt.setScalar(x, y)), pair: 0, targetIdx: idx, target: this.center(tileAt.setScalar(x, y)) };
           this.teleporters.push(pad);
           this.teleporterByTile.set(idx, pad);
         } else if (char === '^')
-          this.crushers.push({ idx, x, y, center: this.center(x, y), phase: ((x * 7 + y * 13) % 8) * 0.35, low: CEILING, slamming: false });
+          this.crushers.push({ idx, x, y, center: this.center(tileAt.setScalar(x, y)), phase: ((x * 7 + y * 13) % 8) * 0.35, low: CEILING, slamming: false });
         else if (char !== '.')
           throw new Error(`${this.name}: unknown tile "${char}" at ${x},${y}`);
       }
     }
-    const solidWall = (x, y) => this.inBounds(x, y) && (this.kind[y * this.width + x] === WALL || this.kind[y * this.width + x] === EXIT);
+    const solidWall = (x, y) => this.inBounds(tileAt.setScalar(x, y)) && (this.kind[y * this.width + x] === WALL || this.kind[y * this.width + x] === EXIT);
     for (let y = 0; y < this.rowCount; y++) {
       const row = this.rows[y];
       for (let x = 0; x < this.width; x++) {
@@ -980,7 +987,7 @@ export class Level {
       for (let d = 0; d < 4; d++) {
         const nx = barrel.x + WALL_DX[d];
         const ny = barrel.y + WALL_DY[d];
-        if (!this.inBounds(nx, ny))
+        if (!this.inBounds(tileAt.setScalar(nx, ny)))
           continue;
         const nidx = ny * this.width + nx;
         if (this.kind[nidx] !== FLOOR || this.diag[nidx] > 0)
@@ -989,7 +996,7 @@ export class Level {
         for (let e = 0; e < 4; e++) {
           const ex = nx + WALL_DX[e];
           const ey = ny + WALL_DY[e];
-          if (this.inBounds(ex, ey) && this.kind[ey * this.width + ex] === FLOOR)
+          if (this.inBounds(tileAt.setScalar(ex, ey)) && this.kind[ey * this.width + ex] === FLOOR)
             score++;
         }
         if (score > bestScore) {
@@ -1005,7 +1012,7 @@ export class Level {
         const idx = y * this.width + x;
         const diag = this.diag[idx];
         if (diag)
-          this.diagTriangles.set(idx, new RightTriangle(tileSize, this.center(x, y), DIAG_CORNER[diag]));
+          this.diagTriangles.set(idx, new RightTriangle(tileSize, this.center(tileAt.setScalar(x, y)), DIAG_CORNER[diag]));
       }
     if (!this.playerStart)
       throw new Error(`${this.name}: no player start`);
@@ -1108,19 +1115,19 @@ export class Level {
     }
   }
 
-  center(x, y) {
-    return new Vec2((x + 0.5) * TILE, (y + 0.5) * TILE);
+  center(tile, target = new Vec2()) {
+    return target.setScalar((tile.x + 0.5) * TILE, (tile.y + 0.5) * TILE);
   }
 
-  inBounds(x, y) {
-    return x >= 0 && y >= 0 && x < this.width && y < this.rowCount;
+  inBounds(tile) {
+    return tile.x >= 0 && tile.y >= 0 && tile.x < this.width && tile.y < this.rowCount;
   }
 
   /** Tiles an actor can walk through (doors included, they open on demand). */
-  isWalkable(x, y) {
-    if (!this.inBounds(x, y))
+  isWalkable(tile) {
+    if (!this.inBounds(tile))
       return false;
-    const idx = y * this.width + x;
+    const idx = tile.y * this.width + tile.x;
     const kind = this.kind[idx];
     return kind === FLOOR || kind === DOOR || this.diag[idx] > 0;
   }

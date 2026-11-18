@@ -123,6 +123,26 @@ const checks = [
   ['AC-3 assert scratchSurfaceP is absent and mesh builder tests pass', () => {
     assert.doesNotMatch(explosionSrc, /\bscratchSurfaceP\b/);
   }],
+  ['AC-2 furniture and barrel builders take Vec3 and Rect', () => {
+    const furnitureSrc = read('furniture');
+    const params = (src, name) => {
+      const start = src.indexOf(`function ${name}(`);
+      assert.ok(start >= 0, `${name} not found`);
+      const open = src.indexOf('(', start);
+      return src.slice(open + 1, matchClose(src, open, '(', ')'));
+    };
+    for (const [src, name] of [[furnitureSrc, 'pushQuad'], [barrelSrc, 'pushQuad'], [furnitureSrc, 'writeBallisticArc'], [barrelSrc, 'writeBallisticArc'], [furnitureSrc, 'pushCylinderAt'], [furnitureSrc, 'pushCane'], [furnitureSrc, 'pushLeaf'], [furnitureSrc, 'pushOvalFrustum'], [furnitureSrc, 'pushOvalRingCap'], [furnitureSrc, 'pushOvalDisc'], [barrelSrc, 'pushHorizontalSheet'], [barrelSrc, 'pushPlumeQuad']]) {
+      const list = params(src, name);
+      assert.doesNotMatch(list, /\b(u0|v0|u1|v1|startX|endX|cx|cz|ox|oz|x|y|z)\b/, `${name} takes no loose scalar coordinates`);
+    }
+    assert.match(params(furnitureSrc, 'pushQuad'), /\buv\b/);
+    assert.match(params(barrelSrc, 'pushQuad'), /\buv\b/);
+    assert.match(params(furnitureSrc, 'writeBallisticArc'), /start, end, spin, rest/);
+    assert.match(params(barrelSrc, 'writeBallisticArc'), /start, end, spin, rest/);
+    assert.match(params(barrelSrc, 'pushHorizontalSheet'), /\bpos, span, angle, uv\b/);
+    assert.match(furnitureSrc, /const argUv = new Rect\(\);/);
+    assert.match(barrelSrc, /const argUv = new Rect\(\);/);
+  }],
 ];
 
 console.log('# file: tests/mesh-builders-vector.test.mjs');

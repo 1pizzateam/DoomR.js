@@ -100,8 +100,8 @@ function pitGame() {
   let slime = null;
   for (let y = 0; y < 6 && !slime; y++)
     for (let x = 0; x < game.level.width; x++)
-      if (game.level.isSlime(x, y)) {
-        slime = game.level.center(x, y);
+      if (game.level.isSlime(new Vec2(x, y))) {
+        slime = game.level.center(new Vec2(x, y));
         break;
       }
   game.player.body.setPosition(new Vec2(slime.x, slime.y));
@@ -371,6 +371,14 @@ function withAudio(fn) {
 // Output of the scalar-option generators before the Vec2/Vec3 migration, captured from the same inputs as the AC tests below
 const BLOOD_BASELINE = JSON.parse('{"p1":{"c":[9.35,29.35,20,10.65,29.35,20,10.65,30.65,20,9.35,30.65,20],"uv":[0.42857142857142855,0,0.4642857142857143,1]},"p2":{"c":[12.679320953045938,5.305547613326364,-3.866669562088525,13.690900497858111,7.551390160681181,-4.383648752447415,12.320679046954062,8.694452386673635,-2.133330437911475,11.309099502141889,6.448609839318819,-1.6163512475525859],"uv":[0.5357142857142857,0,0.5714285714285714,1]},"f":[{"corners":[187.72210542649594,0.3,305.7942475647766,194.20575243522342,0.3,287.7221054264959,212.27789457350406,0.3,294.2057524352234,205.79424756477658,0.3,312.2778945735041],"uv":[0.03571428571428571,0,0.07142857142857142,1]},{"corners":[-7.336319960364153,0.5,4.124227942357285,-1.1242279423572858,0.5,5.663680039635846,-2.663680039635846,0.5,11.875772057642713,-8.875772057642713,0.5,10.336319960364154],"uv":[0.14285714285714285,0,0.17857142857142858,1]}],"g":[{"corners":[119.51750199981281,0.36,174.3637605019113,125.63623949808873,0.36,179.51750199981282,120.48249800018719,0.36,185.6362394980887,114.36376050191127,0.36,180.48249800018718],"uv":[0.4642857142857143,0,0.5,1]},{"corners":[119.51750199981281,0.36,174.3637605019113,125.63623949808873,0.36,179.51750199981282,120.48249800018719,0.36,185.6362394980887,114.36376050191127,0.36,180.48249800018718],"uv":[0.5,0,0.5357142857142857,1]},{"corners":[119.51750199981281,0.36,174.3637605019113,125.63623949808873,0.36,179.51750199981282,120.48249800018719,0.36,185.6362394980887,114.36376050191127,0.36,180.48249800018718],"uv":[0.6071428571428571,0,0.6428571428571429,1]},{"corners":[119.51750199981281,0.36,174.3637605019113,125.63623949808873,0.36,179.51750199981282,120.48249800018719,0.36,185.6362394980887,114.36376050191127,0.36,180.48249800018718],"uv":[0.4642857142857143,0,0.5,1]},{"corners":[119.51750199981281,0.36,174.3637605019113,125.63623949808873,0.36,179.51750199981282,120.48249800018719,0.36,185.6362394980887,114.36376050191127,0.36,180.48249800018718],"uv":[0.6071428571428571,0,0.6428571428571429,1]}],"pr":[{"corners":[93.60070095683844,0.32,79.81725759165694,120.4407481594325,0.32,94.48004220595892,105.7779635451305,0.32,121.32008940855299,78.93791634253644,0.32,106.657304794251],"uv":[0.35714285714285715,0,0.39285714285714285,1]},{"corners":[93.60070095683844,0.32,79.81725759165694,120.4407481594325,0.32,94.48004220595892,105.7779635451305,0.32,121.32008940855299,78.93791634253644,0.32,106.657304794251],"uv":[0.35714285714285715,1,0.39285714285714285,0]},{"corners":[94.88056076547076,0.32,83.85380607332554,116.35259852754601,0.32,95.58403376476714,104.62237083610441,0.32,117.05607152684239,83.15033307402916,0.32,105.32584383540079],"uv":[0.39285714285714285,0,0.42857142857142855,1]},{"corners":[93.76068343291747,0.32,80.32182615186552,119.92972945544669,0.32,94.61804115080996,105.63351445650225,0.32,120.78708717333916,79.46446843397304,0.32,106.49087217439472],"uv":[0.35714285714285715,1,0.39285714285714285,0]}],"ws":[{"corners":[100.56,24,184,100.56,24,216,100.24,56,216,100.24,56,184],"uv":[0.25,0,0.2857142857142857,1]},{"corners":[56.56,20.4,23.92,71.92,20.4,35.44,71.92,39.6,35.44,56.56,39.6,23.92],"uv":[0.2857142857142857,0,0.32142857142857145,1]}],"wsb":[{"corners":[64.08,20.4,29.56,64.32,20.4,29.74,64.32,39.6,29.74,64.08,39.6,29.56],"uv":[0.30319940476190477,0,0.30375744047619047,1]},null],"wd":[[[],[{"corners":[100.63240584223405,21.759415776595475,196.18631500285622,100.63240584223405,21.759415776595475,200.61900612199176,100.46,39,201.63527010431233,100.46,39,195.17005102053565],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[100.73420078856404,11.579921143596067,196.78635579147982,100.73420078856404,11.579921143596067,200.01896533336816,100.63240584223405,21.759415776595475,200.61900612199176,100.63240584223405,21.759415776595475,196.18631500285622],"uv":[0.6897321428571429,0.4095620832163861,0.703125,1]},{"corners":[100.77191456655274,7.808543344726324,196.78635579147982,100.77191456655274,7.808543344726324,200.01896533336816,100.73420078856404,11.579921143596067,200.01896533336816,100.73420078856404,11.579921143596067,196.78635579147982],"uv":[0.9754464285714286,0.78125,0.9888392857142857,1]},{"corners":[100.48056938903841,36.94306109615897,199.69529582734964,100.48056938903841,36.94306109615897,202.8950505811926,100.455,39.5,204.49492795811406,100.455,39.5,198.09541845042818],"uv":[0.7254464285714286,0.8501678780555306,0.7388392857142857,1]},{"corners":[100.52856571034606,32.14342896539455,199.69529582734964,100.52856571034606,32.14342896539455,202.8950505811926,100.48056938903841,36.94306109615897,202.8950505811926,100.48056938903841,36.94306109615897,199.69529582734964],"uv":[0.9397321428571429,0.71875,0.953125,1]},{"corners":[100.44295369016386,40.70463098361415,195.12997442015214,100.44295369016386,40.70463098361415,197.19939893487143,100.43,42,198.23411119223107,100.43,42,194.0952621627925],"uv":[0.6897321428571429,0.8826332205669781,0.703125,1]},{"corners":[100.46364793531104,38.635206468894864,195.12997442015214,100.46364793531104,38.635206468894864,197.19939893487143,100.44295369016386,40.70463098361415,197.19939893487143,100.44295369016386,40.70463098361415,195.12997442015214],"uv":[0.9040178571428572,0.8125,0.9174107142857143,1]}],[{"corners":[100.63240584223405,21.759415776595475,195.9747621745718,100.63240584223405,21.759415776595475,200.83055895027618,100.46,39,201.63527010431233,100.46,39,195.17005102053565],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[100.80481168446809,4.5188315531909495,196.77947332860796,100.80481168446809,4.5188315531909495,200.02584779624001,100.63240584223405,21.759415776595475,200.83055895027618,100.63240584223405,21.759415776595475,195.9747621745718],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[100.80628622201131,4.371377798869744,196.78635579147982,100.80628622201131,4.371377798869744,200.01896533336816,100.80481168446809,4.5188315531909495,200.02584779624001,100.80481168446809,4.5188315531909495,196.77947332860796],"uv":[0.6897321428571429,0.991447287840685,0.703125,1]},{"corners":[100.844,0.6000000000000014,196.78635579147982,100.844,0.6000000000000014,200.01896533336816,100.80628622201131,4.371377798869744,200.01896533336816,100.80628622201131,4.371377798869744,196.78635579147982],"uv":[0.9754464285714286,0.78125,0.9888392857142857,1]},{"corners":[100.48701580661466,36.298419338533655,199.69529582734964,100.48701580661466,36.298419338533655,202.8950505811926,100.455,39.5,204.49492795811406,100.455,39.5,198.09541845042818],"uv":[0.7254464285714286,0.8123930050251584,0.7388392857142857,1]},{"corners":[100.53501212792231,31.498787207769233,199.69529582734964,100.53501212792231,31.498787207769233,202.8950505811926,100.48701580661466,36.298419338533655,202.8950505811926,100.48701580661466,36.298419338533655,199.69529582734964],"uv":[0.9397321428571429,0.71875,0.953125,1]},{"corners":[100.51168986965008,33.831013034991045,195.12997442015214,100.51168986965008,33.831013034991045,197.19939893487143,100.43,42,198.23411119223107,100.43,42,194.0952621627925],"uv":[0.6897321428571429,0.25984975772506,0.703125,1]},{"corners":[100.53238411479728,31.761588520271758,195.12997442015214,100.53238411479728,31.761588520271758,197.19939893487143,100.51168986965008,33.831013034991045,197.19939893487143,100.51168986965008,33.831013034991045,195.12997442015214],"uv":[0.9040178571428572,0.8125,0.9174107142857143,1]}],[{"corners":[100.63240584223405,21.759415776595475,195.9747621745718,100.63240584223405,21.759415776595475,200.83055895027618,100.46,39,201.63527010431233,100.46,39,195.17005102053565],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[100.80481168446809,4.5188315531909495,196.77947332860796,100.80481168446809,4.5188315531909495,200.02584779624001,100.63240584223405,21.759415776595475,200.83055895027618,100.63240584223405,21.759415776595475,195.9747621745718],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[100.80628622201131,4.371377798869744,196.78635579147982,100.80628622201131,4.371377798869744,200.01896533336816,100.80481168446809,4.5188315531909495,200.02584779624001,100.80481168446809,4.5188315531909495,196.77947332860796],"uv":[0.6897321428571429,0.991447287840685,0.703125,1]},{"corners":[100.844,0.6000000000000014,196.78635579147982,100.844,0.6000000000000014,200.01896533336816,100.80628622201131,4.371377798869744,200.01896533336816,100.80628622201131,4.371377798869744,196.78635579147982],"uv":[0.9754464285714286,0.78125,0.9888392857142857,1]},{"corners":[100.52436453781907,32.563546218093485,199.69529582734964,100.52436453781907,32.563546218093485,202.8950505811926,100.455,39.5,204.49492795811406,100.455,39.5,198.09541845042818],"uv":[0.7254464285714286,0.5935360100503169,0.7388392857142857,1]},{"corners":[100.5723608591267,27.76391408732906,199.69529582734964,100.5723608591267,27.76391408732906,202.8950505811926,100.52436453781907,32.563546218093485,202.8950505811926,100.52436453781907,32.563546218093485,199.69529582734964],"uv":[0.9397321428571429,0.71875,0.953125,1]},{"corners":[100.5403693074517,30.96306925483048,194.69721075667118,100.5403693074517,30.96306925483048,197.63216259835238,100.43,42,198.23411119223107,100.43,42,194.0952621627925],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[100.61971798658206,23.02820134179434,195.12997442015214,100.61971798658206,23.02820134179434,197.19939893487143,100.5403693074517,30.96306925483048,197.63216259835238,100.5403693074517,30.96306925483048,194.69721075667118],"uv":[0.6897321428571429,0.281062090879844,0.703125,1]},{"corners":[100.64041223172924,20.958776827075056,195.12997442015214,100.64041223172924,20.958776827075056,197.19939893487143,100.61971798658206,23.02820134179434,197.19939893487143,100.61971798658206,23.02820134179434,195.12997442015214],"uv":[0.9040178571428572,0.8125,0.9174107142857143,1]}]],[[],[{"corners":[63.60606266646393,30.085881832342146,29.142046999847945,65.81012325278736,30.085881832342146,30.795092439590526,66.91215354594908,30.45,31.621615159461815,62.50403237330221,30.45,28.315524279976657],"uv":[0.6540178571428572,0.9752194991881848,0.6674107142857143,1]},{"corners":[63.60606266646393,25.9532682329857,29.142046999847945,65.81012325278736,25.9532682329857,30.795092439590526,65.81012325278736,30.085881832342146,30.795092439590526,63.60606266646393,30.085881832342146,29.142046999847945],"uv":[0.9397321428571429,0.71875,0.953125,1]},{"corners":[63.553747864819016,18.63964396646619,29.10281089861426,65.45950624360994,18.63964396646619,30.53212968270746,66.27818045924455,30.45,31.14613534443341,62.73507364918441,30.45,28.488805236888304],"uv":[0.6540178571428572,0,0.6674107142857143,1]},{"corners":[63.620850351699445,17.671610228920038,29.15313776377458,65.39240375672951,17.671610228920038,30.481802817547134,65.45950624360994,18.63964396646619,30.53212968270746,63.553747864819016,18.63964396646619,29.10281089861426],"uv":[0.6540178571428572,0.9180351773648858,0.6674107142857143,1]},{"corners":[63.620850351699445,14.719021220536586,29.15313776377458,65.39240375672951,14.719021220536586,30.481802817547134,65.39240375672951,17.671610228920038,30.481802817547134,63.620850351699445,17.671610228920038,29.15313776377458],"uv":[0.8683035714285714,0.75,0.8816964285714286,1]},{"corners":[62.9617640170984,24.905525580868172,28.6588230128238,65.09886878820434,24.905525580868172,30.261651591153257,66.1674211737573,31.2,31.063065880317986,61.89321163154543,31.2,27.85740872365907],"uv":[0.7254464285714286,0.5582008071690523,0.7388392857142857,1]},{"corners":[62.9617640170984,20.898454135044528,28.6588230128238,65.09886878820434,20.898454135044528,30.261651591153257,65.09886878820434,24.905525580868172,30.261651591153257,62.9617640170984,24.905525580868172,28.6588230128238],"uv":[0.9397321428571429,0.71875,0.953125,1]},{"corners":[63.631913822329246,18.46378066768646,29.161435366746932,66.17302212739492,18.46378066768646,31.067266595546194,66.7004008747091,30.45,31.46280065603184,63.10453507501506,30.45,28.76590130626129],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[64.00350152493857,10.018366954394718,29.440126143703928,65.8014344247856,10.018366954394718,30.7885758185892,66.17302212739492,18.46378066768646,31.067266595546194,63.631913822329246,18.46378066768646,29.161435366746932],"uv":[0.6897321428571429,0.2954063763438878,0.703125,1]},{"corners":[64.00350152493857,6.647242767181535,29.440126143703928,65.8014344247856,6.647242767181535,30.7885758185892,65.8014344247856,10.018366954394718,30.7885758185892,64.00350152493857,10.018366954394718,29.440126143703928],"uv":[0.9397321428571429,0.71875,0.953125,1]}],[{"corners":[63.60606266646393,25.68097824801515,29.142046999847945,65.81012325278736,25.68097824801515,30.795092439590526,66.91215354594908,30.45,31.621615159461815,62.50403237330221,30.45,28.315524279976657],"uv":[0.6540178571428572,0.6754384760398093,0.6674107142857143,1]},{"corners":[63.60606266646393,21.548364648658705,29.142046999847945,65.81012325278736,21.548364648658705,30.795092439590526,65.81012325278736,25.68097824801515,30.795092439590526,63.60606266646393,25.68097824801515,29.142046999847945],"uv":[0.9397321428571429,0.71875,0.953125,1]},{"corners":[63.2027864161634,18.63964396646619,28.839589812122547,65.81046769226556,18.63964396646619,30.79535076919917,66.27818045924455,30.45,31.14613534443341,62.73507364918441,30.45,28.488805236888304],"uv":[0.6540178571428572,0,0.6674107142857143,1]},{"corners":[63.620850351699445,8.082985538361214,29.15313776377458,65.39240375672951,8.082985538361214,30.481802817547134,65.81046769226556,18.63964396646619,30.79535076919917,63.2027864161634,18.63964396646619,28.839589812122547],"uv":[0.6540178571428572,0.10615239725789316,0.6674107142857143,1]},{"corners":[63.620850351699445,5.130396529977762,29.15313776377458,65.39240375672951,5.130396529977762,30.481802817547134,65.39240375672951,8.082985538361214,30.481802817547134,63.620850351699445,8.082985538361214,29.15313776377458],"uv":[0.8683035714285714,0.75,0.8816964285714286,1]},{"corners":[62.9617640170984,19.000007623427546,28.6588230128238,65.09886878820434,19.000007623427546,30.261651591153257,66.1674211737573,31.2,31.063065880317986,61.89321163154543,31.2,27.85740872365907],"uv":[0.7254464285714286,0.1437018525119621,0.7388392857142857,1]},{"corners":[62.9617640170984,14.992936177603898,28.6588230128238,65.09886878820434,14.992936177603898,30.261651591153257,65.09886878820434,19.000007623427546,30.261651591153257,62.9617640170984,19.000007623427546,28.6588230128238],"uv":[0.9397321428571429,0.71875,0.953125,1]},{"corners":[63.51147112159642,18.46378066768646,29.07110334119732,66.29346482812774,18.46378066768646,31.157598621095808,66.7004008747091,30.45,31.46280065603184,63.10453507501506,30.45,28.76590130626129],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[63.918407168177794,6.477561335372922,29.376305376133345,65.88652878154637,6.477561335372922,30.85239658615978,66.29346482812774,18.46378066768646,31.157598621095808,63.51147112159642,18.46378066768646,29.07110334119732],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[64.00350152493857,3.971124187213185,29.440126143703928,65.8014344247856,3.971124187213185,30.7885758185892,65.88652878154637,6.477561335372922,30.85239658615978,63.918407168177794,6.477561335372922,29.376305376133345],"uv":[0.6897321428571429,0.7908900981477407,0.703125,1]},{"corners":[64.00350152493857,0.6000000000000014,29.440126143703928,65.8014344247856,0.6000000000000014,30.7885758185892,65.8014344247856,3.971124187213185,30.7885758185892,64.00350152493857,3.971124187213185,29.440126143703928],"uv":[0.9397321428571429,0.71875,0.953125,1]}],[{"corners":[63.60606266646393,16.30366692311857,29.142046999847945,65.81012325278736,16.30366692311857,30.795092439590526,66.91215354594908,30.45,31.621615159461815,62.50403237330221,30.45,28.315524279976657],"uv":[0.6540178571428572,0.03725425031450369,0.6674107142857143,1]},{"corners":[63.60606266646393,12.171053323762116,29.142046999847945,65.81012325278736,12.171053323762116,30.795092439590526,65.81012325278736,16.30366692311857,30.795092439590526,63.60606266646393,16.30366692311857,29.142046999847945],"uv":[0.9397321428571429,0.71875,0.953125,1]},{"corners":[63.19693018954041,18.63964396646619,28.835197642155308,65.81632391888854,18.63964396646619,30.79974293916641,66.27818045924455,30.45,31.14613534443341,62.73507364918441,30.45,28.488805236888304],"uv":[0.6540178571428572,0,0.6674107142857143,1]},{"corners":[63.620850351699445,7.799377330786548,29.15313776377458,65.39240375672951,7.799377330786548,30.481802817547134,65.81632391888854,18.63964396646619,30.79974293916641,63.19693018954041,18.63964396646619,28.835197642155308],"uv":[0.6540178571428572,0.08213887837925804,0.6674107142857143,1]},{"corners":[63.620850351699445,4.846788322403096,29.15313776377458,65.39240375672951,4.846788322403096,30.481802817547134,65.39240375672951,7.799377330786548,30.481802817547134,63.620850351699445,7.799377330786548,29.15313776377458],"uv":[0.8683035714285714,0.75,0.8816964285714286,1]},{"corners":[62.9617640170984,19.000007623427546,28.6588230128238,65.09886878820434,19.000007623427546,30.261651591153257,66.1674211737573,31.2,31.063065880317986,61.89321163154543,31.2,27.85740872365907],"uv":[0.7254464285714286,0.1437018525119621,0.7388392857142857,1]},{"corners":[62.9617640170984,14.992936177603898,28.6588230128238,65.09886878820434,14.992936177603898,30.261651591153257,65.09886878820434,19.000007623427546,30.261651591153257,62.9617640170984,19.000007623427546,28.6588230128238],"uv":[0.9397321428571429,0.71875,0.953125,1]},{"corners":[63.51147112159642,18.46378066768646,29.07110334119732,66.29346482812774,18.46378066768646,31.157598621095808,66.7004008747091,30.45,31.46280065603184,63.10453507501506,30.45,28.76590130626129],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[63.918407168177794,6.477561335372922,29.376305376133345,65.88652878154637,6.477561335372922,30.85239658615978,66.29346482812774,18.46378066768646,31.157598621095808,63.51147112159642,18.46378066768646,29.07110334119732],"uv":[0.6897321428571429,0,0.703125,1]},{"corners":[64.00350152493857,3.971124187213185,29.440126143703928,65.8014344247856,3.971124187213185,30.7885758185892,65.88652878154637,6.477561335372922,30.85239658615978,63.918407168177794,6.477561335372922,29.376305376133345],"uv":[0.6897321428571429,0.7908900981477407,0.703125,1]},{"corners":[64.00350152493857,0.6000000000000014,29.440126143703928,65.8014344247856,0.6000000000000014,30.7885758185892,65.8014344247856,3.971124187213185,30.7885758185892,64.00350152493857,3.971124187213185,29.440126143703928],"uv":[0.9397321428571429,0.71875,0.953125,1]}]]],"wdb":[],"s0":[{"x0":375.5,"y0":215.5,"x1":424.5,"y1":264.5,"uv":[0.10714285714285714,0,0.14285714285714285,1],"fade":0.7}],"s1":[{"x0":330,"y0":170,"x1":470,"y1":310,"uv":[0.10714285714285714,0,0.14285714285714285,1],"fade":0.7},{"x0":392.3658111799508,"y0":250,"x1":405.56581117995086,"y1":285.2,"uv":[0.6897321428571429,0,0.703125,1],"fade":0.7},{"x0":392.3658111799508,"y0":285.2,"x1":405.56581117995086,"y1":320.4,"uv":[0.6897321428571429,0,0.703125,1],"fade":0.7},{"x0":392.3658111799508,"y0":320.4,"x1":405.56581117995086,"y1":355.6,"uv":[0.6897321428571429,0,0.703125,1],"fade":0.7},{"x0":392.3658111799508,"y0":355.6,"x1":405.56581117995086,"y1":370,"uv":[0.6897321428571429,0.5909090909090912,0.703125,1],"fade":0.7},{"x0":392.3658111799508,"y0":368.9,"x1":405.56581117995086,"y1":375.5,"uv":[0.9040178571428572,0.8125,0.9174107142857143,1],"fade":0.7}]}');
 
+// a Rect from its corner coordinates, as the blood tiles and meshes read them
+const rectOf = (x0, y0, x1, y1) => {
+  const r = new Rect();
+  r.topLeftCorner.setScalar(x0, y0);
+  r.bottomRightCorner.setScalar(x1, y1);
+  return r;
+};
+
 const tests = {
   'AC-1 particleQuad takes Vec3 pos, right and up and matches baseline corners and uv'() {
     const base = BLOOD_BASELINE;
@@ -437,7 +445,7 @@ const tests = {
     const mock = { splatters: { begin: () => batch }, drips: { begin: () => batch }, splatCache: new Map(), dripCache: new Map(), dripTarget: createQuadTarget(), cachedQuad: World.prototype.cachedQuad };
     const wall = { x: 100, y: 200, z: 40, nx: 1, ny: 0, size: 10, top: 110, seed: 77, slope: 0.01, age: 3, dripTime: 100 };
     const splat = { x: 200, y: 300, size: 6, seed: 99 };
-    const gib = { x: 120, y: 180, size: 4, variant: 4, angle: 0.7 };
+    const gib = { pos: new Vec2(120, 180), size: 4, variant: 4, angle: 0.7 };
     const print = { x: 100, y: 100, angle: 0.5, side: -1, strength: 0.9, scale: 1.2 };
     const ceil = { x: 11, y: 22, size: 3, seed: 8, dissolving: true };
     const blood = { floor: [splat], gibs: [gib], walls: [wall], ceiling: [ceil], prints: [print] };
@@ -479,6 +487,47 @@ const tests = {
       assert.deepEqual([d.x0, d.y0, d.x1, d.y1], [base[i].x0, base[i].y0, base[i].x1, base[i].y1]);
       assert.ok(d.a > 0 && d.a <= SCREEN_BLOOD_ALPHA + 1e-6);
     });
+  },
+
+  'AC-4 burst and combat impulses take Vec3 and Vec2'() {
+    const game = fresh();
+    clearEnemies(game);
+    game.effects.length = 0;
+    const pos = new Vec3(12, 34, 56);
+    game.burst(pos, 'spark');
+    assert.deepEqual([game.effects[0].x, game.effects[0].y, game.effects[0].z, game.effects[0].type], [12, 34, 56, 'spark']);
+    pos.setScalar(1, 1, 1);
+    assert.equal(game.effects[0].x, 12, 'the effect copies the position');
+    const enemy = game.addEnemy('imp', new Vec2(300, 200));
+    enemy.hp = 0;
+    enemy.state = 'dead';
+    enemy.diedAt = game.time;
+    game.gibEnemy(enemy, new Vec2(1, 0));
+    assert.equal(enemy.gibbed, true, 'gibEnemy takes a Vec2 direction');
+    const other = game.addEnemy('imp', new Vec2(340, 200));
+    game.hitEnemyLimb(other, new Vec3(340, 200, 30), new Vec2(1, 0), 1);
+    assert.ok(Number.isFinite(other.hp));
+    const src = readFileSync(new URL('../src/game.js', import.meta.url), 'utf8');
+    for (const sig of ['burst(pos, type)', 'gibEnemy(enemy, dir', 'mutilateCorpse(enemy, dir', 'severLimb(enemy, limb, dir', 'damageLimb(enemy, limb, amount, dir', 'hitEnemyLimb(enemy, hitPoint, dir, amount)', 'hitCorpseAlongRay(end, dir'])
+      assert.ok(src.includes(`  ${sig}`), `${sig} is declared`);
+  },
+
+  'AC-8 blood stamp, wall and boulder placement use vectors'() {
+    const atlas = bloodAtlas();
+    const blood = new MergedBlood(atlas);
+    blood.stamp(new Vec2(40, 40), 6, 11);
+    blood.wall(new Vec2(0, 1), 0);
+    blood.flush();
+    const b = fresh().blood;
+    const placement = b.boulderPlacement(new Vec2(2, 2), new Vec3(2.5 * 64, 2 * 64, 10), new Vec2(0, -1), 64, 8);
+    assert.ok(placement.pos instanceof Vec2);
+    assert.ok(!('x' in placement) && !('y' in placement));
+    b.severBurst(new Vec3(100, 100, 20), new Vec2(1, 0), 1);
+    assert.ok(b.gibs.length > 0);
+    for (const gib of b.gibs) {
+      assert.ok(gib.pos instanceof Vec2 && gib.dir instanceof Vec2, 'gib records carry pos and dir');
+      assert.ok(!('gx' in gib));
+    }
   },
 
   'AC-1 effects are pruned in place preserving order and array identity'() {
@@ -1265,7 +1314,7 @@ const tests = {
         const i = ty * level.width + tx;
         if (!level.kind[i] || level.heights[i] <= 20 || level.kind[i] === DOOR) continue;
         for (const [nx, ny] of faces) {
-          if (!level.inBounds(tx + nx, ty + ny) || level.heights[(ty + ny) * level.width + tx + nx] > 0) continue;
+          if (!level.inBounds(new Vec2(tx + nx, ty + ny)) || level.heights[(ty + ny) * level.width + tx + nx] > 0) continue;
           // the face lies on the tile boundary on the side the normal points to
           const fx = (tx + (nx > 0 ? 1 : 0)) * 64;
           const fy = (ty + (ny > 0 ? 1 : 0)) * 64;
@@ -1284,7 +1333,7 @@ const tests = {
       // a point just behind the face must be inside a wall tile of this very wall
       const wx = Math.floor((px - nx * 1) / 64);
       const wy = Math.floor((py - ny * 1) / 64);
-      return level.inBounds(wx, wy) && level.heights[wy * level.width + wx] > 0;
+      return level.inBounds(new Vec2(wx, wy)) && level.heights[wy * level.width + wx] > 0;
     };
     for (const mark of blood.holes) {
       const quad = holeQuad(vecMark(mark));
@@ -1605,7 +1654,7 @@ const tests = {
         const u = i / 40;
         const x = shot.from[0] + (shot.to[0] - shot.from[0]) * u;
         const y = shot.from[1] + (shot.to[1] - shot.from[1]) * u;
-        assert.ok(level.isWalkable(Math.floor(x / 64), Math.floor(y / 64)) && level.kind[Math.floor(y / 64) * level.width + Math.floor(x / 64)] === 0, `shot ${n} leaves the floor at ${x.toFixed(0)}, ${y.toFixed(0)}`);
+        assert.ok(level.isWalkable(new Vec2(Math.floor(x / 64), Math.floor(y / 64))) && level.kind[Math.floor(y / 64) * level.width + Math.floor(x / 64)] === 0, `shot ${n} leaves the floor at ${x.toFixed(0)}, ${y.toFixed(0)}`);
       }
       assert.ok(shot.from[2] > 5 && shot.from[2] < 60 && shot.to[2] > 5 && shot.to[2] < 60, `shot ${n} camera height is odd`);
       assert.ok(shot.duration >= 5, `shot ${n} is too short to read`);
@@ -2255,7 +2304,7 @@ const tests = {
     blood.floorSplat(pos, 22);
     assert.ok(blood.floor[0].x === pos.x && blood.floor[0].y === pos.y);
     blood.floorGib(pos, 3, 1);
-    assert.ok(blood.gibs[0].x === pos.x && blood.gibs[0].y === pos.y);
+    assert.ok(blood.gibs[0].pos.x === pos.x && blood.gibs[0].pos.y === pos.y);
     blood.ceilingSplat(pos, 5);
     assert.ok(blood.ceiling[0].x === pos.x && blood.ceiling[0].y === pos.y);
     assert.equal(blood.inPool(new Vec2(pos.x + 22 * 0.75 * 0.5, pos.y)), true);
@@ -3319,8 +3368,8 @@ const tests = {
     for (const index of [0, 1]) {
       const game = fresh(index);
       const { level, blood } = game;
-      const open = (x, y) => level.inBounds(Math.floor(x / 64), Math.floor(y / 64)) && level.heightAtPoint(new Vec2(x, y)) <= 0;
-      const solid = (x, y) => level.inBounds(Math.floor(x / 64), Math.floor(y / 64)) && level.heightAtPoint(new Vec2(x, y)) > 0;
+      const open = (x, y) => level.inBounds(new Vec2(Math.floor(x / 64), Math.floor(y / 64))) && level.heightAtPoint(new Vec2(x, y)) <= 0;
+      const solid = (x, y) => level.inBounds(new Vec2(Math.floor(x / 64), Math.floor(y / 64))) && level.heightAtPoint(new Vec2(x, y)) > 0;
       let checked = 0;
       const verify = () => {
         for (const w of blood.walls) {
@@ -3944,11 +3993,11 @@ const tests = {
     for (const cell of [0, 5, CELLS.wall, CELLS.wall + 3, CELLS.stems, CELLS.stems + 5, CELLS.tips, CELLS.tips + 3])
       assert.ok(atlas.layers[cell], `the unlit layers of cell ${cell} are kept`);
     const one = new MergedBlood(atlas);
-    one.stamp(40, 40, 6, 11);
+    one.stamp(new Vec2(40, 40), 6, 11);
     one.flush();
     const both = new MergedBlood(atlas);
-    both.stamp(40, 40, 6, 11);
-    both.stamp(46, 41, 6, 29);
+    both.stamp(new Vec2(40, 40), 6, 11);
+    both.stamp(new Vec2(46, 41), 6, 29);
     both.flush();
     const solo = one.chunk(BLOOD_FLOOR, 1, 1, false);
     const pair = both.chunk(BLOOD_FLOOR, 1, 1, false);
@@ -3971,8 +4020,8 @@ const tests = {
     assert.ok(covered > soloCovered, 'the second splat adds to the pool');
     // merging is order independent for coverage: the union is the same either way round
     const swapped = new MergedBlood(atlas);
-    swapped.stamp(46, 41, 6, 29);
-    swapped.stamp(40, 40, 6, 11);
+    swapped.stamp(new Vec2(46, 41), 6, 29);
+    swapped.stamp(new Vec2(40, 40), 6, 11);
     swapped.flush();
     const swappedCov = swapped.chunk(BLOOD_FLOOR, 1, 1, false).cov;
     let worst = 0;
@@ -3981,7 +4030,7 @@ const tests = {
     assert.ok(worst <= 2, 'the coverage is the union, whatever the order (to a rounding of 8 bits)');
     // a splat on a tile border is poured into both tiles, and the padding makes them agree where they overlap
     const edge = new MergedBlood(atlas);
-    edge.stamp(CHUNK, 16, 5, 7);
+    edge.stamp(new Vec2(CHUNK, 16), 5, 7);
     edge.flush();
     const left = edge.chunk(BLOOD_FLOOR, 0, 0, false);
     const right = edge.chunk(BLOOD_FLOOR, 1, 0, false);
@@ -3998,7 +4047,7 @@ const tests = {
     const many = new MergedBlood(atlas);
     let refused = 0;
     for (let i = 0; i < 400; i++)
-      if (!many.stamp(i * CHUNK + 5, 5, 3, i + 1))
+      if (!many.stamp(new Vec2(i * CHUNK + 5, 5), 3, i + 1))
         refused++;
     assert.ok(many.chunks.size <= MAX_CHUNKS, 'the number of tiles is capped');
     assert.ok(refused > 200, 'a splat that finds no tile is refused, so it can be drawn as a quad instead');
@@ -4015,17 +4064,17 @@ const tests = {
   'wall blood merges: drips poured side by side on a face join into one sheet, on the face and in its tiles'() {
     const atlas = bloodAtlas();
     const mb = new MergedBlood(atlas);
-    const face = mb.wall(-1, 0, 128);
-    assert.equal(mb.wall(-1, 0, 128), face, 'a face is the same surface every time');
-    assert.notEqual(mb.wall(1, 0, 128), face, 'the other side of the wall is another surface');
+    const face = mb.wall(new Vec2(-1, 0), 128);
+    assert.equal(mb.wall(new Vec2(-1, 0), 128), face, 'a face is the same surface every time');
+    assert.notEqual(mb.wall(new Vec2(1, 0), 128), face, 'the other side of the wall is another surface');
     const stem = cellUv(CELLS.stems + 1);
     const cols = [stem[0] + (stem[2] - stem[0]) * (10 / 32), stem[0] + (stem[2] - stem[0]) * (22 / 32)];
     // two ribbon drips 1.5 units apart: they overlap, since each is 6 units wide
-    assert.equal(mb.stampRect(face, 40, 46, 4, 36, [cols[0], 0, cols[1], 1]), true);
+    assert.equal(mb.stampRect(face, rectOf(40, 4, 46, 36), rectOf(cols[0], 0, cols[1], 1)), true);
     const alone = mb.chunk(face, 1, 0, false) ?? mb.chunk(face, 1, 0, false);
     assert.ok(alone, 'the drip landed in the tile that holds it');
     const first = Array.from(alone.H);
-    assert.equal(mb.stampRect(face, 41.5, 47.5, 4, 36, [cols[0], 0, cols[1], 1]), true);
+    assert.equal(mb.stampRect(face, rectOf(41.5, 4, 47.5, 36), rectOf(cols[0], 0, cols[1], 1)), true);
     let deeper = 0;
     let wider = 0;
     for (let i = 0; i < TEX * TEX; i++) {
@@ -4046,8 +4095,8 @@ const tests = {
       assert.ok(Math.abs(quad[k] - (128 - 0.42)) < 1e-9, 'a wall tile lies just off its face');
     assert.ok(Math.abs(quad[1] - quad[4]) < 1e-9 && quad[7] > quad[1], 'and rises with v');
     // the other axis
-    const north = mb.wall(0, 1, 64);
-    assert.equal(mb.stampRect(north, 10, 16, 4, 20, [cols[0], 0, cols[1], 1]), true);
+    const north = mb.wall(new Vec2(0, 1), 64);
+    assert.equal(mb.stampRect(north, rectOf(10, 4, 16, 20), rectOf(cols[0], 0, cols[1], 1)), true);
     const nq = mb.chunkCorners(mb.chunk(north, 0, 0, false), 0.3, 0.42);
     for (let k = 2; k < 12; k += 3)
       assert.ok(Math.abs(nq[k] - (64 + 0.42)) < 1e-9, 'a face with a normal along y lies just off its plane');
@@ -4105,7 +4154,7 @@ const tests = {
         if (!level.kind[i] || level.kind[i] === DOOR || level.heights[i] <= 20)
           continue;
         for (const [nx, ny] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          if (!level.inBounds(tx + nx, ty + ny) || level.heights[(ty + ny) * level.width + tx + nx] > 0)
+          if (!level.inBounds(new Vec2(tx + nx, ty + ny)) || level.heights[(ty + ny) * level.width + tx + nx] > 0)
             continue;
           const fx = (tx + (nx > 0 ? 1 : 0)) * 64;
           const fy = (ty + (ny > 0 ? 1 : 0)) * 64;
@@ -4711,7 +4760,7 @@ const tests = {
   'issue-181 AC-4 acid mist batch is empty without acid'() {
     const game = acidPitGame();
     withMistWorld(game, (world) => {
-      const level = { width: game.level.width, rowCount: game.level.rowCount, slime: new Uint8Array(game.level.slime.length), inBounds: (x, y) => game.level.inBounds(x, y) };
+      const level = { width: game.level.width, rowCount: game.level.rowCount, slime: new Uint8Array(game.level.slime.length), inBounds: (tile) => game.level.inBounds(tile) };
       let batch;
       assert.doesNotThrow(() => { batch = World.prototype.acidMistBatch.call(world, level); });
       assert.equal(batch.used, 0);
@@ -5353,7 +5402,7 @@ const tests = {
           for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
             const nx = x + dx;
             const ny = y + dy;
-            if (!level.isWalkable(nx, ny) || reached.has(`${nx},${ny}`))
+            if (!level.isWalkable(new Vec2(nx, ny)) || reached.has(`${nx},${ny}`))
               continue;
             const door = level.doors.get(ny * level.width + nx);
             if (door?.lock && !held.has(door.lock))
@@ -5378,7 +5427,7 @@ const tests = {
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const nx = x + dx;
           const ny = y + dy;
-          if (!level.isWalkable(nx, ny) || withoutRed.has(`${nx},${ny}`))
+          if (!level.isWalkable(new Vec2(nx, ny)) || withoutRed.has(`${nx},${ny}`))
             continue;
           const door = level.doors.get(ny * level.width + nx);
           if (door?.lock === 'red')
@@ -7271,11 +7320,11 @@ const tests = {
 
     // Mid-close hits (140..240 units) apply reduced limb trauma, while hits >= 240 units apply 0
     const midBrute = game.addEnemy('brute', new Vec2(382, 192)); // dist = 190 -> falloff = 0.5, scale = 0.25
-    assert.equal(game.hitEnemyLimb(midBrute, new Vec2(382, 186), 30, 1, 0, 6), false, 'fresh limb is not severed in one hit at mid-close range');
+    assert.equal(game.hitEnemyLimb(midBrute, new Vec3(382, 186, 30), new Vec2(1, 0), 6), false, 'fresh limb is not severed in one hit at mid-close range');
     const midTarget = midBrute.limbs.sideTarget?.left;
     assert.ok((midTarget === 'leftArm' || midTarget === 'leftLeg') && midBrute.limbs.damage[midTarget] > 0 && midBrute.limbs.damage[midTarget] < 6, 'mid-close left-side hit accumulates reduced trauma on leftArm or leftLeg');
     const farBrute = game.addEnemy('brute', new Vec2(450, 192)); // dist = 258 >= 240
-    assert.equal(game.hitEnemyLimb(farBrute, new Vec2(450, 186), 30, 1, 0, 10), false, 'shots beyond 240 units do not dismember');
+    assert.equal(game.hitEnemyLimb(farBrute, new Vec3(450, 186, 30), new Vec2(1, 0), 10), false, 'shots beyond 240 units do not dismember');
     assert.equal(Object.values(farBrute.limbs.damage).reduce((a, b) => a + b, 0), 0, 'shots beyond 240 units deal 0 limb trauma');
 
     // Verify left/right aim strictly respects the struck side while randomly picking arm vs leg on that side
@@ -7283,13 +7332,13 @@ const tests = {
     const rightSevered = new Set();
     for (let i = 0; i < 20; i++) {
       const dummyL = game.addEnemy('brute', new Vec2(260, 192));
-      game.hitEnemyLimb(dummyL, new Vec2(260, 184), 30, 1, 0, 10); // monster's left side (y < 192)
+      game.hitEnemyLimb(dummyL, new Vec3(260, 184, 30), new Vec2(1, 0), 10); // monster's left side (y < 192)
       for (const l of ['leftArm', 'rightArm', 'leftLeg', 'rightLeg']) {
         if (!dummyL.limbs[l])
           leftSevered.add(l);
       }
       const dummyR = game.addEnemy('brute', new Vec2(260, 192));
-      game.hitEnemyLimb(dummyR, new Vec2(260, 200), 30, 1, 0, 10); // monster's right side (y > 192)
+      game.hitEnemyLimb(dummyR, new Vec3(260, 200, 30), new Vec2(1, 0), 10); // monster's right side (y > 192)
       for (const l of ['leftArm', 'rightArm', 'leftLeg', 'rightLeg']) {
         if (!dummyR.limbs[l])
           rightSevered.add(l);
@@ -7307,8 +7356,8 @@ const tests = {
 
     // Hit the brute's left side (severs leftArm) and right side (severs rightLeg) to verify gore and crawling
     brute.limbs.sideTarget = { left: 'leftArm', right: 'rightLeg' };
-    const leftHit = new Vec2(280, 186);
-    game.hitEnemyLimb(brute, leftHit, 30, 1, 0, 6);
+    const leftHit = new Vec3(280, 186, 30);
+    game.hitEnemyLimb(brute, leftHit, new Vec2(1, 0), 6);
     assert.equal(brute.limbs.leftArm, false, 'left-side hit severs leftArm');
     assert.equal(brute.crawling, false, 'losing an arm does not make the foe crawl');
     assert.ok(game.blood.gibs.length >= 1, 'severing an arm spawns a fallen limb gib on the floor');
@@ -7317,8 +7366,8 @@ const tests = {
     assert.ok(armDrops >= 24 && armGibs >= 4, 'severing an arm erupts in a full burst of blood and flying meat chunks');
 
     const prevParticles = game.blood.particles.length;
-    const rightHit = new Vec2(280, 198);
-    game.hitEnemyLimb(brute, rightHit, 18, 1, 0, 6);
+    const rightHit = new Vec3(280, 198, 18);
+    game.hitEnemyLimb(brute, rightHit, new Vec2(1, 0), 6);
     assert.equal(brute.limbs.rightLeg, false, 'right-side hit explodes rightLeg');
     assert.equal(brute.crawling, true, 'losing a leg forces a non-flying foe to crawl');
     const legParticles = game.blood.particles.slice(prevParticles);
@@ -7337,10 +7386,10 @@ const tests = {
     game.inShot = true;
     targetA.limbs.severedThisShot = false;
     targetB.limbs.severedThisShot = false;
-    assert.equal(game.hitEnemyLimb(targetA, new Vec2(240, 162), 30, 1, 0, 3), true, 'first foe loses 1 limb in the shot');
-    assert.equal(game.hitEnemyLimb(targetA, new Vec2(240, 182), 30, 1, 0, 3), false, 'same foe cannot lose a second limb in the same shot');
-    assert.equal(game.hitEnemyLimb(targetB, new Vec2(240, 202), 30, 1, 0, 3), true, 'second foe can still lose 1 limb in the same shot');
-    assert.equal(game.hitEnemyLimb(targetB, new Vec2(240, 222), 30, 1, 0, 3), false, 'second foe also cannot lose a second limb in the same shot');
+    assert.equal(game.hitEnemyLimb(targetA, new Vec3(240, 162, 30), new Vec2(1, 0), 3), true, 'first foe loses 1 limb in the shot');
+    assert.equal(game.hitEnemyLimb(targetA, new Vec3(240, 182, 30), new Vec2(1, 0), 3), false, 'same foe cannot lose a second limb in the same shot');
+    assert.equal(game.hitEnemyLimb(targetB, new Vec3(240, 202, 30), new Vec2(1, 0), 3), true, 'second foe can still lose 1 limb in the same shot');
+    assert.equal(game.hitEnemyLimb(targetB, new Vec3(240, 222, 30), new Vec2(1, 0), 3), false, 'second foe also cannot lose a second limb in the same shot');
     game.inShot = false;
     for (const temp of [targetA, targetB, midBrute, farBrute]) {
       game.scene.removeBody(temp.body);
@@ -7725,7 +7774,7 @@ const tests = {
     const lines = [];
     const fakeHud = Object.create(Hud.prototype);
     fakeHud.text = (str, _x, _y, color, opts) => texts.push({ str, color, opts });
-    fakeHud.rect = (x, y, w, h, color, alpha) => lines.push({ pts: [x, y, w, h], color, alpha });
+    fakeHud.rect = (bounds, color, alpha) => lines.push({ pts: [bounds.topLeftCorner.x, bounds.topLeftCorner.y, bounds.size.x, bounds.size.y], color, alpha });
 
     // Right at pickup start (flash = 0.65), shownAmmo starts at 0 and rolls upward as time advances
     assert.equal(fakeHud.shownAmmo(game.player, 'shells'), 0, 'counter starts rolling from pre-pickup value 0');
@@ -10250,12 +10299,12 @@ const tests = {
         const wi = (y + dy[wallSide]) * width + x + dx[wallSide];
         assert.equal(level.kind[wi], WALL);
         assert.equal(level.diag[wi], 0);
-        assert.ok(level.isWalkable(x - dx[wallSide], y - dy[wallSide]), 'the tile opposite the wall is walkable');
+        assert.ok(level.isWalkable(new Vec2(x - dx[wallSide], y - dy[wallSide])), 'the tile opposite the wall is walkable');
         for (let d = 0; d < 4; d++) {
           const k = level.kind[(y + dy[d]) * width + x + dx[d]];
           assert.ok(k !== DOOR && k !== EXIT, 'no door or exit beside a chest');
         }
-        const centre = level.center(x, y);
+        const centre = level.center(new Vec2(x, y));
         assert.ok(Math.abs(cache.pos.x - (centre.x + CACHE_WALL_OFFSET * dx[wallSide])) < 1e-9);
         assert.ok(Math.abs(cache.pos.y - (centre.y + CACHE_WALL_OFFSET * dy[wallSide])) < 1e-9);
         assert.equal(cache.angle, Math.atan2(-dy[wallSide], -dx[wallSide]));
@@ -10278,7 +10327,7 @@ const tests = {
     const tryAt = (offset, away) => {
       const g = make();
       const cache = g.caches[0];
-      const centre = g.level.center(cache.idx % g.level.width, Math.floor(cache.idx / g.level.width));
+      const centre = g.level.center(new Vec2(cache.idx % g.level.width, Math.floor(cache.idx / g.level.width)));
       const dir = new Vec2(cache.pos.x - centre.x, cache.pos.y - centre.y);
       const len = dir.getMagnitude();
       let at = centre;
@@ -12519,7 +12568,7 @@ const tests = {
       return setCustomUniform.call(this, name, value);
     };
     try {
-      overlay.resize(800, 600, 1600, 1200);
+      overlay.resize(new Vec2(800, 600), new Vec2(1600, 1200));
     } finally {
       Mesh.prototype.setCustomUniform = setCustomUniform;
     }
@@ -12563,10 +12612,10 @@ const tests = {
       { width: 0, height: 0, getContext: () => ({}) },
       { glow: { line: (pts, col, alpha) => calls.push({ ref: pts, pts: flatPoints(pts), col, alpha }) } },
     );
-    hud.segment(1, 2, 3, 4, 0, 0.5);
-    hud.segment(5, 6, 7, 8, 1);
-    hud.rect(10, 20, 30, 40, 2, 0.25);
-    hud.rect(-1, -2, 3, 4, 3);
+    hud.segment(new Vec2(1, 2), new Vec2(3, 4), 0, 0.5);
+    hud.segment(new Vec2(5, 6), new Vec2(7, 8), 1);
+    hud.rect(rectOf(10, 20, 40, 60), 2, 0.25);
+    hud.rect(rectOf(-1, -2, 2, 2), 3);
     assert.deepEqual(calls[0].pts, [1, 2, 3, 4]);
     assert.equal(calls[0].alpha, 0.5);
     assert.deepEqual(calls[1].pts, [5, 6, 7, 8]);
@@ -16846,20 +16895,20 @@ const tests = {
     });
 
     // In-bounds tile indices: (3, 1) and (3, 2) are slime '~'
-    assert.equal(custom.isSlime(3, 1), true, 'slime tile at (3, 1)');
-    assert.equal(custom.isSlime(3, 2), true, 'slime tile at (3, 2)');
+    assert.equal(custom.isSlime(new Vec2(3, 1)), true, 'slime tile at (3, 1)');
+    assert.equal(custom.isSlime(new Vec2(3, 2)), true, 'slime tile at (3, 2)');
 
     // In-bounds non-slime tiles: player start, floor, wall
-    assert.equal(custom.isSlime(1, 1), false, 'floor tile at (1, 1) is not slime');
-    assert.equal(custom.isSlime(2, 1), false, 'floor tile at (2, 1) is not slime');
-    assert.equal(custom.isSlime(0, 0), false, 'wall tile at (0, 0) is not slime');
+    assert.equal(custom.isSlime(new Vec2(1, 1)), false, 'floor tile at (1, 1) is not slime');
+    assert.equal(custom.isSlime(new Vec2(2, 1)), false, 'floor tile at (2, 1) is not slime');
+    assert.equal(custom.isSlime(new Vec2(0, 0)), false, 'wall tile at (0, 0) is not slime');
 
     // Negative and out-of-bounds coordinates
-    assert.equal(custom.isSlime(-1, 0), false, 'negative x is not slime');
-    assert.equal(custom.isSlime(0, -1), false, 'negative y is not slime');
-    assert.equal(custom.isSlime(7, 1), false, 'out-of-bounds x is not slime');
-    assert.equal(custom.isSlime(3, 4), false, 'out-of-bounds y is not slime');
-    assert.equal(custom.isSlime(100, 100), false, 'far out-of-bounds is not slime');
+    assert.equal(custom.isSlime(new Vec2(-1, 0)), false, 'negative x is not slime');
+    assert.equal(custom.isSlime(new Vec2(0, -1)), false, 'negative y is not slime');
+    assert.equal(custom.isSlime(new Vec2(7, 1)), false, 'out-of-bounds x is not slime');
+    assert.equal(custom.isSlime(new Vec2(3, 4)), false, 'out-of-bounds y is not slime');
+    assert.equal(custom.isSlime(new Vec2(100, 100)), false, 'far out-of-bounds is not slime');
 
     // Continuous world positions for slimeAt(pos): center of (3, 1) is (3.5 * 64, 1.5 * 64) = (224, 96)
     assert.equal(custom.slimeAt(new Vec2(224, 96)), true, 'world center of (3, 1) is slime');
@@ -16900,15 +16949,15 @@ const tests = {
     // pad 3 (odd) mates with pad 2 (targetIdx = 30)
 
     // isTeleporter checks
-    assert.equal(custom.isTeleporter(3, 1), true, 'pad 0 tile is teleporter');
-    assert.equal(custom.isTeleporter(7, 1), true, 'pad 1 tile is teleporter');
-    assert.equal(custom.isTeleporter(3, 3), true, 'pad 2 tile is teleporter');
-    assert.equal(custom.isTeleporter(7, 3), true, 'pad 3 tile is teleporter');
+    assert.equal(custom.isTeleporter(new Vec2(3, 1)), true, 'pad 0 tile is teleporter');
+    assert.equal(custom.isTeleporter(new Vec2(7, 1)), true, 'pad 1 tile is teleporter');
+    assert.equal(custom.isTeleporter(new Vec2(3, 3)), true, 'pad 2 tile is teleporter');
+    assert.equal(custom.isTeleporter(new Vec2(7, 3)), true, 'pad 3 tile is teleporter');
 
-    assert.equal(custom.isTeleporter(1, 1), false, 'floor tile is not teleporter');
-    assert.equal(custom.isTeleporter(0, 0), false, 'wall tile is not teleporter');
-    assert.equal(custom.isTeleporter(-1, 2), false, 'negative tile is not teleporter');
-    assert.equal(custom.isTeleporter(9, 1), false, 'out-of-bounds tile is not teleporter');
+    assert.equal(custom.isTeleporter(new Vec2(1, 1)), false, 'floor tile is not teleporter');
+    assert.equal(custom.isTeleporter(new Vec2(0, 0)), false, 'wall tile is not teleporter');
+    assert.equal(custom.isTeleporter(new Vec2(-1, 2)), false, 'negative tile is not teleporter');
+    assert.equal(custom.isTeleporter(new Vec2(9, 1)), false, 'out-of-bounds tile is not teleporter');
 
     // teleporterAt continuous world checks
     const pad0Center = new Vec2(3.5 * 64, 1.5 * 64);
@@ -17032,7 +17081,7 @@ const tests = {
     );
     hud.resize(1024, 768, 1);
     hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
-    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+    hud.segment = (start, end, col, a) => segments.push({ x0: start.x, y0: start.y, x1: end.x, y1: end.y, col, a });
 
     const GREEN = 1;
     for (const hp of [100, 75, 51]) {
@@ -17068,7 +17117,7 @@ const tests = {
     );
     hud.resize(1024, 768, 1);
     hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
-    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+    hud.segment = (start, end, col, a) => segments.push({ x0: start.x, y0: start.y, x1: end.x, y1: end.y, col, a });
 
     const ORANGE = 2;
     for (const hp of [50, 40, 31]) {
@@ -17103,7 +17152,7 @@ const tests = {
     );
     hud.resize(1024, 768, 1);
     hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
-    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+    hud.segment = (start, end, col, a) => segments.push({ x0: start.x, y0: start.y, x1: end.x, y1: end.y, col, a });
 
     const RED = 3;
     for (const hp of [30, 29, 15, 1]) {
@@ -17138,7 +17187,7 @@ const tests = {
     );
     hud.resize(1024, 768, 1);
     hud.text = (str, x, y, col, opts) => texts.push({ str, x, y, col, opts });
-    hud.segment = (x0, y0, x1, y1, col, a) => segments.push({ x0, y0, x1, y1, col, a });
+    hud.segment = (start, end, col, a) => segments.push({ x0: start.x, y0: start.y, x1: end.x, y1: end.y, col, a });
 
     const BLUE = 0;
     const GREEN = 1;
@@ -17392,9 +17441,9 @@ const tests = {
     game.load(customLevel);
     game.state = 'play';
 
-    assert.equal(game.level.isAcidSplash(5, 1), true, '(5,1) is parsed as an acid splash tile');
-    assert.equal(game.level.isAcidSplash(2, 2), true, '(2,2) is parsed as an acid splash tile');
-    assert.equal(game.level.isSlime(5, 1), false, 'acid splash tile is not a recessed slime pit');
+    assert.equal(game.level.isAcidSplash(new Vec2(5, 1)), true, '(5,1) is parsed as an acid splash tile');
+    assert.equal(game.level.isAcidSplash(new Vec2(2, 2)), true, '(2,2) is parsed as an acid splash tile');
+    assert.equal(game.level.isSlime(new Vec2(5, 1)), false, 'acid splash tile is not a recessed slime pit');
     assert.equal(game.level.kind[1 * game.level.width + 5], 0, 'acid splash tile remains walkable FLOOR kind');
 
     // Horizontal barrel at (4,1) points its leaking end east (+X, angle ~ 0) toward the ',' tile at (5,1)
@@ -17403,7 +17452,7 @@ const tests = {
     assert.ok(Math.cos(barrel.angle) > 0.9, 'horizontal barrel points its leaking end toward adjacent acid splash tile');
 
     // Move player onto the standalone ',' tile at (2,2) (far from barrel puddle)
-    const splashCenter = game.level.center(2, 2);
+    const splashCenter = game.level.center(new Vec2(2, 2));
     game.player.body.setPosition(splashCenter);
     assert.equal(game.level.acidSplashAt(game.player.pos), true, 'acidSplashAt detects player on splash tile');
     assert.equal(game.playerFloorHeight(), 0, 'acid splash tile keeps normal floor height (z = 0, no pit drop)');
@@ -17538,7 +17587,7 @@ const tests = {
     game.state = 'play';
 
     // 1. Standing at (2, 1) facing east (angle = 0) right in front of slime pit '~' at (3, 1)
-    game.player.body.setPosition(game.level.center(2, 1));
+    game.player.body.setPosition(game.level.center(new Vec2(2, 1)));
     game.player.angle = 0;
     game.usePrompt.fade = 0;
     game.updateUsePrompt(0.05);
@@ -17553,7 +17602,7 @@ const tests = {
     assert.equal(game.useTarget.kind, null, 'turning away from pit clears target');
 
     // 2. Standing at (4, 1) facing east (angle = 0) right in front of acid splash ',' at (5, 1)
-    game.player.body.setPosition(game.level.center(4, 1));
+    game.player.body.setPosition(game.level.center(new Vec2(4, 1)));
     game.player.angle = 0;
     game.usePrompt.fade = 0;
     game.updateUsePrompt(0.05);
@@ -17563,7 +17612,7 @@ const tests = {
     assert.ok(game.usePrompt.fade > 0, 'jump prompt fades in when facing acid splash tile');
 
     // 3. Standing on an acid splash tile ',' at (5, 1) facing south (away from other hazards) also prompts JUMP
-    game.player.body.setPosition(game.level.center(5, 1));
+    game.player.body.setPosition(game.level.center(new Vec2(5, 1)));
     game.player.angle = 0;
     game.usePrompt.fade = 0;
     game.updateUsePrompt(0.05);
@@ -17587,9 +17636,9 @@ const tests = {
     game.load({ name: 'Empty Pit Test', par: 30, rows });
     game.state = 'play';
 
-    assert.equal(game.level.isEmptyPit(4, 2), true, 'tile (4,2) should be an empty pit');
+    assert.equal(game.level.isEmptyPit(new Vec2(4, 2)), true, 'tile (4,2) should be an empty pit');
     assert.equal(game.level.emptyPitAt(new Vec2(4 * TILE + TILE / 2, 2 * TILE + TILE / 2)), true);
-    assert.equal(game.level.isSlime(4, 2), false, 'empty pit is not acid slime');
+    assert.equal(game.level.isSlime(new Vec2(4, 2)), false, 'empty pit is not acid slime');
 
     // Standing at (3,2) facing east (+X) toward empty pit at (4,2) displays JUMP prompt
     game.player.body.setPosition(new Vec2(3 * TILE + TILE / 2, 2 * TILE + TILE / 2));
@@ -18717,7 +18766,7 @@ const tests = {
   'AC-4 HeadView render sets scissor viewport and delegates to scene'() {
     const gl = makeMockGL();
     const hv = new HeadView(gl);
-    hv.resize(320, 200, 640, 400);
+    hv.resize(new Vec2(320, 200), new Vec2(640, 400));
 
     const rect = new Rect();
     rect.topLeftCorner.setScalar(100, 150);
@@ -18965,7 +19014,7 @@ const tests = {
     assert.equal(hv.visible, false);
 
     // Place and resize
-    hv.resize(640, 480, 1280, 960);
+    hv.resize(new Vec2(640, 480), new Vec2(1280, 960));
     const rect = new Rect(new Vec2(60, 60), new Vec2(200, 200));
     hv.place(rect);
     assert.equal(hv.visible, true);

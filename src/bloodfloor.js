@@ -1,3 +1,4 @@
+import { Vec2 } from '@1pizzateam/spock';
 import { floorSplatPlacement } from './bloodsprites.js';
 import { litColor } from './bloodpaint.js';
 
@@ -35,23 +36,21 @@ const CELL = 128;
 export const FLOOR = { id: 'floor', kind: 'floor', up: false };
 
 /** A wall face: u runs along its tangent (-ny, nx) and v is the height. `plane` is the face's coordinate on its axis. */
-function makeWall(nx, ny, plane) {
-  return { id: `wall ${nx} ${ny} ${plane}`, kind: 'wall', up: true, nx, ny, plane, tx: -ny, ty: nx };
+function makeWall(normal, plane) {
+  const { x: nx, y: ny } = normal;
+  return { id: `wall ${nx} ${ny} ${plane}`, kind: 'wall', up: true, normal: new Vec2(nx, ny), tangent: new Vec2(-ny, nx), plane };
 }
 
-/** The world position of the point at (u, along the normal `lift`) on a wall face, written into `out` as [x, y]. */
+/** The world position of the point at (u, along the normal `lift`) on a wall face, written into the Vec2 `out`. */
 function wallPoint(s, u, lift, out) {
   // on the face u = x * tx + y * ty with the other coordinate fixed at the plane
-  if (s.nx !== 0) {
-    out[0] = s.plane + s.nx * lift;
-    out[1] = u / s.ty;
-  } else {
-    out[0] = u / s.tx;
-    out[1] = s.plane + s.ny * lift;
-  }
+  if (s.normal.x !== 0)
+    out.setScalar(s.plane + s.normal.x * lift, u / s.tangent.y);
+  else
+    out.setScalar(u / s.tangent.x, s.plane + s.normal.y * lift);
 }
 
-const POINT = [0, 0];
+const POINT = new Vec2();
 
 export class MergedBlood {
   /** `atlas` is the blood atlas, whose `layers` are the unlit splats and drips. */
@@ -70,12 +69,12 @@ export class MergedBlood {
     this.changed.clear();
   }
 
-  /** The surface of the wall face with normal (nx, ny) at `plane`: the same object every time, so it can be compared. */
-  wall(nx, ny, plane) {
-    const key = `wall ${nx} ${ny} ${plane}`;
+  /** The surface of the wall face with `normal` (Vec2) at `plane`: the same object every time, so it can be compared. */
+  wall(normal, plane) {
+    const key = `wall ${normal.x} ${normal.y} ${plane}`;
     let s = this.surfaces.get(key);
     if (!s) {
-      s = makeWall(nx, ny, plane);
+      s = makeWall(normal, plane);
       this.surfaces.set(key, s);
     }
     return s;
@@ -122,7 +121,8 @@ export class MergedBlood {
    * Pours one floor splat (`size` and `seed` as for floorSplatQuad) into the tiles under it. Returns false, pouring
    * nothing, when the tiles it needs cannot be made (the cap), so the caller can draw that splat itself.
    */
-  stamp(x, y, size, seed) {
+  stamp(pos, size, seed) {
+    const { x, y } = pos;
     const { variant, angle } = floorSplatPlacement(seed);
     const layer = this.layers[variant];
     if (!layer)
@@ -159,17 +159,21 @@ export class MergedBlood {
   }
 
   /**
-   * Pours a flat picture on a wall face: the rectangle [uMin, uMax] x [vMin, vMax] of `surface` shows the texture
-   * rectangle `uv` of the atlas ([u0, v0, u1, v1], v0 at the bottom), as one of the wall splat, stem or tip cells.
+   * Pours a flat picture on a wall face: the rectangle `bounds` (Rect: u and v extents of `surface`) shows the texture
+   * rectangle `uv` of the atlas (Rect: corners (u0, v0) and (u1, v1), v0 at the bottom), as one of the wall splat, stem or tip cells.
    * Returns false, pouring nothing, when the tiles it needs cannot be made.
    */
-  stampRect(surface, uMin, uMax, vMin, vMax, uv, widthBottom = 1, widthTop = 1) {
-    const cell = Math.floor(((uv[0] + uv[2]) / 2) * this.frames);
+  stampRect(surface, bounds, uv, widthBottom = 1, widthTop = 1) {
+    const { x: uMin, y: vMin } = bounds.topLeftCorner;
+    const { x: uMax, y: vMax } = bounds.bottomRightCorner;
+    const { x: uv0, y: uv1 } = uv.topLeftCorner;
+    const { x: uv2, y: uv3 } = uv.bottomRightCorner;
+    const cell = Math.floor(((uv0 + uv2) / 2) * this.frames);
     const layer = this.layers[cell];
     if (!layer || uMax <= uMin || vMax <= vMin)
       return true;
-    const cx0 = uv[0] * this.frames - cell;
-    const cx1 = uv[2] * this.frames - cell;
+    const cx0 = uv0 * this.frames - cell;
+    const cx1 = uv2 * this.frames - cell;
     const heightScale = (TPU * (uMax - uMin)) / (Math.abs(cx1 - cx0) * CELL || 1);
     const cu0 = Math.floor((uMin - PAD / TPU) / CHUNK);
     const cu1 = Math.floor((uMax + PAD / TPU) / CHUNK);
@@ -189,7 +193,7 @@ export class MergedBlood {
       if (fu < 0 || fu > 1)
         return false;
       out[0] = (cx0 + (cx1 - cx0) * fu) * CELL - 0.5;
-      out[1] = (1 - (uv[1] + (uv[3] - uv[1]) * fv)) * CELL - 0.5;
+      out[1] = (1 - (uv1 + (uv3 - uv1) * fv)) * CELL - 0.5;
       return true;
     };
     for (let cv = cv0; cv <= cv1; cv++)
@@ -207,9 +211,9 @@ export class MergedBlood {
       out[o + 2] = v;
     } else {
       wallPoint(s, u, lift, POINT);
-      out[o] = POINT[0];
+      out[o] = POINT.x;
       out[o + 1] = v;
-      out[o + 2] = POINT[1];
+      out[o + 2] = POINT.y;
     }
   }
 

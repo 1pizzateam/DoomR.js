@@ -1,6 +1,9 @@
 import { Grid, Trigo, Utils, Vec2 } from '@1pizzateam/spock';
 import { DOOR, EYE, TILE } from './level.js';
 
+// scratch tile for level queries
+const tileAt = new Vec2();
+
 export const FOG_NEAR = 260;
 export const FOG_FAR = 1500;
 export const MARS_INDOOR_FOG = new Vec2(170, 960);
@@ -110,7 +113,7 @@ export class Fog {
     for (let travelled = 0; travelled <= range; travelled += STEP) {
       const tx = Math.floor(tilePos.x);
       const ty = Math.floor(tilePos.y);
-      if (!level.inBounds(tx, ty))
+      if (!level.inBounds(tileAt.setScalar(tx, ty)))
         return;
       const idx = ty * width + tx;
       if (idx === prevIdx && !(diag?.[idx] > 0)) {
