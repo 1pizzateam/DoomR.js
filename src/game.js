@@ -14,7 +14,7 @@ import { KNIFE_ATTACKS } from './arsenal.js';
 import { POWERUP_TYPES } from './powerups.js';
 import { defaultActionLabel } from './keymap.js';
 import { GRENADE_SCALE, GRENADE_START } from './grenade.js';
-import { DESK_HP, DESK_RADIUS, DISPENSER_HP, DISPENSER_RADIUS, OVEN_HP, OVEN_RADIUS, PLANT_HP, PLANT_RADIUS, SINK_HP, SINK_RADIUS, SPACESHIP_HP, SPACESHIP_RADIUS, TABLE_HP, TABLE_RADIUS, TOILET_HP, TOILET_RADIUS } from './furniture.js';
+import { DESK_HP, DESK_RADIUS, DISPENSER_HP, DISPENSER_RADIUS, HOIST_HP, HOIST_RADIUS, OVEN_HP, OVEN_RADIUS, PLANT_HP, PLANT_RADIUS, SINK_HP, SINK_RADIUS, SPACESHIP_HP, SPACESHIP_RADIUS, TABLE_HP, TABLE_RADIUS, TOILET_HP, TOILET_RADIUS, TOOLCHEST_HP, TOOLCHEST_RADIUS, VANITY_HP, VANITY_RADIUS, WELDER_HP, WELDER_RADIUS, WORKBENCH_HP, WORKBENCH_RADIUS } from './furniture.js';
 
 const FURNITURE_STATS = {
   dispenser: { radius: DISPENSER_RADIUS, hp: DISPENSER_HP },
@@ -25,6 +25,11 @@ const FURNITURE_STATS = {
   plant: { radius: PLANT_RADIUS, hp: PLANT_HP },
   toilet: { radius: TOILET_RADIUS, hp: TOILET_HP },
   spaceship: { radius: SPACESHIP_RADIUS, hp: SPACESHIP_HP },
+  workbench: { radius: WORKBENCH_RADIUS, hp: WORKBENCH_HP },
+  toolchest: { radius: TOOLCHEST_RADIUS, hp: TOOLCHEST_HP },
+  welder: { radius: WELDER_RADIUS, hp: WELDER_HP },
+  hoist: { radius: HOIST_RADIUS, hp: HOIST_HP },
+  vanity: { radius: VANITY_RADIUS, hp: VANITY_HP },
 };
 
 /** Collision categories: every body filters on what it should react to. */
@@ -41,7 +46,7 @@ const QUERY_WALL = Object.freeze({ mask: CAT.WALL });
 const QUERY_PLAYER = Object.freeze({ mask: CAT.PLAYER });
 const QUERY_ENEMY = Object.freeze({ mask: CAT.ENEMY });
 const QUERY_BARREL = Object.freeze({ mask: CAT.BARREL });
-const QUERY_MELEE = Object.freeze({ mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
+const QUERY_MELEE = Object.freeze({ category: CAT.SHOT, mask: CAT.WALL | CAT.ENEMY | CAT.BARREL });
 const EMPTY_EXTRA = Object.freeze({});
 const EVENT_CAPACITY = 256;
 const DUST_COUNT = 240;
@@ -908,7 +913,7 @@ export class Game {
     const resolvedAngle = entry.angle ?? 0;
     const alongX = Math.abs(Math.cos(resolvedAngle)) > 0.7;
     const body = type === 'spaceship'
-      ? new Physics(entry.pos.clone(), new Vec2(), alongX ? new Vec2(304, 180) : new Vec2(180, 304), 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY | CAT.SHOT, 0, 'static')
+      ? new Physics(entry.pos.clone(), new Vec2(), alongX ? new Vec2(128, 52) : new Vec2(52, 128), 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY | CAT.SHOT, 0, 'static')
       : makeBody(entry.pos, radius, {
           type: 'static',
           category: CAT.BARREL,
@@ -934,6 +939,48 @@ export class Game {
     };
     body.ref = furniture;
     this.scene.addBody(body);
+    if (type === 'spaceship') {
+      const fwdX = Math.cos(resolvedAngle);
+      const fwdY = Math.sin(resolvedAngle);
+      const hullBodies = [];
+      // Tapered shot-blocking fuselage core sections (aft tail/ramp, forward cockpit, and nose radome);
+      // high-mounted delta wings (y = 39..56.5), canards (y = 34.5..41.8), and outboard nacelles (y = 33.5..60.5)
+      // sit above eye height (EYE = 32) so sightlines and shots pass cleanly underneath them.
+      const coreSections = [
+        [-97, 66, 34],
+        [86, 44, 34],
+        [122, 28, 16],
+      ];
+      for (let i = 0; i < coreSections.length; i++) {
+        const [zOff, len, wid] = coreSections[i];
+        const secPos = new Vec2(entry.pos.x + fwdX * zOff, entry.pos.y + fwdY * zOff);
+        const secSize = alongX ? new Vec2(len, wid) : new Vec2(wid, len);
+        const secBody = new Physics(secPos, new Vec2(), secSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY | CAT.SHOT, 0, 'static');
+        secBody.ref = furniture;
+        this.scene.addBody(secBody);
+        hullBodies.push(secBody);
+      }
+      // Actor movement skirt & low landing-gear bogie bumpers (CAT.PLAYER | CAT.ENEMY only, ignored by shots)
+      // keep actors outside the low gear/chines so enemies standing beside the hull stay proud of the shot core.
+      const skirtRef = { kind: 'stall', furniture, pos: furniture.pos, gone: true };
+      const skirtSections = [
+        [-16, 96, 84],
+        [-106, 84, 52],
+        [72, 80, 52],
+        [130, 36, 28],
+      ];
+      for (let i = 0; i < skirtSections.length; i++) {
+        const [zOff, len, wid] = skirtSections[i];
+        const secPos = new Vec2(entry.pos.x + fwdX * zOff, entry.pos.y + fwdY * zOff);
+        const secSize = alongX ? new Vec2(len, wid) : new Vec2(wid, len);
+        const secBody = new Physics(secPos, new Vec2(), secSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY, 0, 'static');
+        secBody.ref = skirtRef;
+        this.scene.addBody(secBody);
+        hullBodies.push(secBody);
+      }
+      furniture.hullBodies = hullBodies;
+      furniture.stallBodies = hullBodies;
+    }
     if (type === 'toilet') {
       const fwdX = Math.cos(resolvedAngle);
       const fwdY = Math.sin(resolvedAngle);
@@ -944,10 +991,10 @@ export class Game {
       const leftPos = new Vec2(entry.pos.x + rightX * -23.8 + fwdX * 6.5, entry.pos.y + rightY * -23.8 + fwdY * 6.5);
       const rightPos = new Vec2(entry.pos.x + rightX * 23.8 + fwdX * 6.5, entry.pos.y + rightY * 23.8 + fwdY * 6.5);
       const doorPos = new Vec2(entry.pos.x + fwdX * 25.8, entry.pos.y + fwdY * 25.8);
-      const leftBody = new Physics(leftPos, new Vec2(), stallSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY, 0, 'static');
-      const rightBody = new Physics(rightPos, new Vec2(), stallSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY, 0, 'static');
-      const doorBody = new Physics(doorPos.clone(), new Vec2(), doorSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY, 0, 'static');
-      const stallRef = { kind: 'stall', furniture };
+      const leftBody = new Physics(leftPos, new Vec2(), stallSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY | CAT.SHOT, 0, 'static');
+      const rightBody = new Physics(rightPos, new Vec2(), stallSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY | CAT.SHOT, 0, 'static');
+      const doorBody = new Physics(doorPos.clone(), new Vec2(), doorSize, 0, 1, 0, 'aabb', 0, false, CAT.BARREL, CAT.PLAYER | CAT.ENEMY | CAT.SHOT, 0, 'static');
+      const stallRef = { kind: 'stall', furniture, pos: furniture.pos, gone: true };
       leftBody.ref = stallRef;
       rightBody.ref = stallRef;
       doorBody.ref = stallRef;
@@ -977,15 +1024,17 @@ export class Game {
   }
 
   /** Damage a piece of facility furniture; when its HP reaches zero, it shatters and its collision body is removed. */
-  hitFurniture(furniture, amount) {
+  hitFurniture(furniture, amount, hitPoint = null) {
     if (!furniture || furniture.gone)
       return;
     if (!Number.isFinite(furniture.hp)) {
       furniture.hurt = 0.08;
       if (this.player)
         this.player.hitMarker = 0.15;
-      this.burst(this.burstPos.setScalar(furniture.pos.x, furniture.pos.y, 24), 'spark');
-      this.emit('clang', furniture.pos);
+      if (!hitPoint) {
+        this.burst(this.burstPos.setScalar(furniture.pos.x, furniture.pos.y, 24), 'spark');
+        this.emit('clang', furniture.pos);
+      }
       return;
     }
     furniture.hp -= amount;
@@ -998,6 +1047,11 @@ export class Game {
     furniture.gone = true;
     furniture.deadTime = 0;
     this.scene.removeBody(furniture.body);
+    if (furniture.doorBody)
+      this.scene.removeBody(furniture.doorBody);
+    if (furniture.stallBodies)
+      for (let i = 0; i < furniture.stallBodies.length; i++)
+        this.scene.removeBody(furniture.stallBodies[i]);
     this.burst(this.burstPos.setScalar(furniture.pos.x, furniture.pos.y, 18), 'spark');
     this.burst(this.burstPos.setScalar(furniture.pos.x, furniture.pos.y, 34), 'spark');
     this.emit('clang', furniture.pos);
@@ -2244,7 +2298,7 @@ export class Game {
     if (hit.body.ref?.kind === 'furniture') {
       this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 22), 'spark');
       this.emit('clang', hit.point);
-      this.hitFurniture(hit.body.ref, dmg);
+      this.hitFurniture(hit.body.ref, dmg, hit.point);
       return;
     }
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
@@ -2303,7 +2357,7 @@ export class Game {
     if (hit.body.ref?.kind === 'furniture') {
       this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 22), 'spark');
       this.emit('clang', hit.point);
-      this.hitFurniture(hit.body.ref, dmg);
+      this.hitFurniture(hit.body.ref, dmg, hit.point);
       return;
     }
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
@@ -2437,7 +2491,7 @@ export class Game {
       if (hit.body.ref?.kind === 'furniture') {
         this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 24), 'spark');
         this.emit('clang', hit.point);
-        this.hitFurniture(hit.body.ref, pelletDmg);
+        this.hitFurniture(hit.body.ref, pelletDmg, hit.point);
         continue;
       }
       const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;
@@ -2500,7 +2554,7 @@ export class Game {
     if (hit.body.ref?.kind === 'furniture') {
       this.burst(this.burstPos.setScalar(hit.point.x, hit.point.y, 24), 'spark');
       this.emit('clang', hit.point);
-      this.hitFurniture(hit.body.ref, def.damage);
+      this.hitFurniture(hit.body.ref, def.damage, hit.point);
       return;
     }
     const enemy = hit.body.ref?.kind === 'enemy' ? hit.body.ref : null;

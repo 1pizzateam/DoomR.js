@@ -317,6 +317,11 @@ const checks = [
       'PLANT_CELL', 'PLANT_FRAMES', 'PLANT_ATLAS',
       'TOILET_CELL', 'TOILET_FRAMES', 'TOILET_ATLAS',
       'SPACESHIP_CELL', 'SPACESHIP_FRAMES', 'SPACESHIP_ATLAS',
+      'WORKBENCH_CELL', 'WORKBENCH_FRAMES', 'WORKBENCH_ATLAS',
+      'TOOLCHEST_CELL', 'TOOLCHEST_FRAMES', 'TOOLCHEST_ATLAS',
+      'WELDER_CELL', 'WELDER_FRAMES', 'WELDER_ATLAS',
+      'HOIST_CELL', 'HOIST_FRAMES', 'HOIST_ATLAS',
+      'VANITY_CELL', 'VANITY_FRAMES', 'VANITY_ATLAS',
     ];
     for (const name of unexported) {
       assert.ok(!exported(src, name), `src/furniture.js still exports ${name}`);
@@ -338,7 +343,12 @@ const checks = [
       'PLANT_RADIUS', 'PLANT_WALL_OFFSET', 'PLANT_HP', 'PLANT_SHARD_COUNT',
       'TOILET_RADIUS', 'TOILET_WALL_OFFSET', 'TOILET_HP', 'TOILET_SHARD_COUNT', 'TOILET_DOOR_PIVOT',
       'SPACESHIP_RADIUS', 'SPACESHIP_WALL_OFFSET', 'SPACESHIP_HP', 'SPACESHIP_SHARD_COUNT',
-      'FURNITURE_VERTEX', 'FURNITURE_FRAGMENT',
+      'WORKBENCH_RADIUS', 'WORKBENCH_WALL_OFFSET', 'WORKBENCH_HP', 'WORKBENCH_SHARD_COUNT',
+      'TOOLCHEST_RADIUS', 'TOOLCHEST_WALL_OFFSET', 'TOOLCHEST_HP', 'TOOLCHEST_SHARD_COUNT',
+      'WELDER_RADIUS', 'WELDER_WALL_OFFSET', 'WELDER_HP', 'WELDER_SHARD_COUNT',
+      'HOIST_RADIUS', 'HOIST_WALL_OFFSET', 'HOIST_HP', 'HOIST_SHARD_COUNT',
+      'VANITY_RADIUS', 'VANITY_WALL_OFFSET', 'VANITY_HP', 'VANITY_SHARD_COUNT', 'VANITY_MIRROR_CENTER',
+      'FURNITURE_VERTEX', 'FURNITURE_FRAGMENT', 'VANITY_MIRROR_VERTEX', 'VANITY_MIRROR_FRAGMENT',
       'dispenserAtlas', 'dispenserMesh', 'dispenserWreckMesh', 'dispenserPuddleMesh', 'dispenserShrapnelParts',
       'deskAtlas', 'deskMesh', 'deskWreckMesh', 'deskDebrisMesh', 'deskShrapnelParts',
       'tableAtlas', 'tableMesh', 'tableWreckMesh', 'tableDebrisMesh', 'tableShrapnelParts',
@@ -347,6 +357,11 @@ const checks = [
       'plantAtlas', 'buildOfficePlant', 'plantWreckMesh', 'plantDebrisMesh', 'plantShrapnelParts',
       'toiletAtlas', 'toiletMesh', 'buildToilet', 'toiletDoorMesh', 'toiletWreckMesh', 'toiletPuddleMesh', 'toiletDebrisMesh', 'toiletShrapnelParts',
       'spaceshipAtlas', 'spaceshipMesh', 'buildSpaceship', 'spaceshipWreckMesh', 'spaceshipDebrisMesh', 'spaceshipShrapnelParts',
+      'workbenchAtlas', 'workbenchMesh', 'buildWorkbench', 'workbenchWreckMesh', 'workbenchDebrisMesh', 'workbenchShrapnelParts',
+      'toolchestAtlas', 'toolchestMesh', 'buildToolchest', 'toolchestWreckMesh', 'toolchestDebrisMesh', 'toolchestShrapnelParts',
+      'welderAtlas', 'welderMesh', 'buildWelder', 'welderWreckMesh', 'welderDebrisMesh', 'welderShrapnelParts',
+      'hoistAtlas', 'hoistMesh', 'buildHoist', 'hoistWreckMesh', 'hoistDebrisMesh', 'hoistShrapnelParts',
+      'vanityAtlas', 'vanityMesh', 'buildVanity', 'vanityMirrorMesh', 'vanityWreckMesh', 'vanityPuddleMesh', 'vanityDebrisMesh', 'vanityShrapnelParts',
     ];
     for (const name of publicExports) {
       assert.ok(name in mod, `${name} missing from src/furniture.js exports`);
@@ -553,6 +568,7 @@ const checks = [
     const publicLevelExports = [
       'CACHE_WALL_OFFSET', 'DISPENSER_WALL_OFFSET', 'DESK_WALL_OFFSET', 'TABLE_WALL_OFFSET',
       'OVEN_WALL_OFFSET', 'SINK_WALL_OFFSET', 'PLANT_WALL_OFFSET', 'TOILET_WALL_OFFSET', 'SPACESHIP_WALL_OFFSET',
+      'WORKBENCH_WALL_OFFSET', 'TOOLCHEST_WALL_OFFSET', 'WELDER_WALL_OFFSET', 'HOIST_WALL_OFFSET', 'VANITY_WALL_OFFSET',
       'Level', 'TILE', 'WALL', 'DOOR', 'FLOOR', 'EXIT',
     ];
     for (const exp of publicLevelExports) {

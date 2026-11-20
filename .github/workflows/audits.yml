@@ -19,6 +19,7 @@ on:
           - perf-audit
           - dead-code-audit
           - test-gap-audit
+          - a11y-audit
       scope:
         description: 'Path to audit (e.g. src/)'
         type: string
@@ -67,4 +68,11 @@ jobs:
     uses: 1pizzateam/coding-pal/.github/workflows/audit-test-gap.yml@main
     with:
       scope: ${{ inputs.scope || 'src/' }}
+    secrets: inherit
+
+  a11y-audit:
+    if: (github.event_name == 'workflow_dispatch' && (inputs.audit == 'all' || inputs.audit == 'a11y-audit')) || (github.event_name == 'schedule' && !github.event.repository.private && github.event.schedule == '0 6 * * 5')
+    uses: 1pizzateam/coding-pal/.github/workflows/audit-a11y.yml@main
+    with:
+      scope: ${{ inputs.scope || 'src/ index.html' }}
     secrets: inherit

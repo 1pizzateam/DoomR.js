@@ -35,7 +35,7 @@ import { WEAPON_CELL_H, WEAPON_CELL_W, WEAPON_FRAME_COUNT, WEAPON_FRAMES, WEAPON
 import { ARSENAL_CELL, ARSENAL_FRAMES, CHAINSAW_TOOTH_PITCH, chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, KNIFE_ATTACKS, knifeAtlas, knifeMesh, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from '../src/arsenal.js';
 import { AMMO_FLASH_DURATION, FIRE_COOLDOWN } from '../src/game.js';
 import { BOOM_LIGHT_COLOR, CEILING_CELL_COUNT, CEILING_CELLS, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, CEILING_LIGHT_ATTENUATION, collectDynamicLights, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, DEIMOS_ANGULAR_RADIUS, DEIMOS_CENTER, DOOR_CEILING_CELL_COUNT, DOOR_CEILING_CELLS, doorCeilingAtlas, doorCeilingCellFor, doorCeilingCellUv, DYNAMIC_LIGHT_ATTENUATION, elevatorLightFactor, FIREBALL_LIGHT_COLOR, MARS_SKY_FRAGMENT, MARS_SKY_HEIGHT, MARS_SKY_VERTEX, MARS_SKY_WIDTH, MUZZLE_LIGHT_ATTENUATION, MUZZLE_LIGHT_COLOR, marsSkyAtlas, marsSkyMesh, PHOBOS_ANGULAR_RADIUS, PHOBOS_CENTER, ROCKET_LIGHT_COLOR, skyPixelDir, TELEPORT_LIGHT_COLOR, updateCeilingLights } from '../src/ceiling.js';
-import { diagWallFaceQuads, DOOR_WALL_CELL_COUNT, DOOR_WALL_CELLS, doorWallAtlas, doorWallCellFor, doorWallCellUv, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallCellUv, wallFaceQuads } from '../src/wall.js';
+import { diagWallFaceQuads, DOOR_WALL_CELL_COUNT, DOOR_WALL_CELLS, doorWallAtlas, doorWallCellFor, doorWallCellUv, HANGAR_DOOR_CELL_COUNT, HANGAR_DOOR_CELLS, hangarDoorAtlas, hangarDoorCellFor, hangarDoorCellUv, marsRockAtlas, WALL_CELL_COUNT, WALL_CELLS, wallAtlas, wallCellFor, wallCellUv, wallFaceQuads } from '../src/wall.js';
 import { DOOR_CELLS, DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorAtlas, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from '../src/door.js';
 import { BARREL_ATLAS, BARREL_FIRE_FRAGMENT, BARREL_FIRE_VERTEX, BARREL_STAVE_COUNT, barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelFireMesh, barrelShrapnelFireMesh, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from '../src/barrel.js';
 import { createExplosion3dPose, EXPLOSION_3D_CELL, EXPLOSION_3D_CELLS, EXPLOSION_3D_FRAMES, EXPLOSION_CELL, EXPLOSION_FLOOR_Y, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from '../src/explosion.js';
@@ -19082,6 +19082,137 @@ const tests = {
     const pose = explosion3dPose(0.5, target);
     assert.equal(pose, target, 'explosion3dPose writes into target');
     assert.ok(pose.pos instanceof Vec3, 'explosion3dPose outputs Vec3 pos');
+  },
+
+  'pipe walls are suppressed when there is a furniture in the tile just in front'() {
+    // Find a north-wall coordinate (x, 0) with d = 3 (+y, facing into tile (x, 1)) that hashes to WALL_CELLS.pipes
+    let pipeX = -1;
+    for (let x = 1; x < 30; x++) {
+      if (wallCellFor(new Vec2(x, 0), 3) === WALL_CELLS.pipes) {
+        pipeX = x;
+        break;
+      }
+    }
+    assert.ok(pipeX > 0, 'found a wall coordinate that hashes to WALL_CELLS.pipes');
+    const w = pipeX + 3;
+    const makeLevel = (frontChar) => {
+      const topRow = '#'.repeat(w);
+      const midRow = `#P${'.'.repeat(pipeX - 2)}${frontChar}X#`;
+      return new Level({ name: 'PipeFurn', rows: [topRow, midRow, topRow] });
+    };
+
+    const emptyLevel = makeLevel('.');
+    const furnLevel = makeLevel('d');
+    let emptyVerts = 0;
+    let furnVerts = 0;
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, emptyLevel);
+      assert.equal(emptyLevel.pipeFaces.has(pipeX * 4 + 3), true, 'wall face has pipes when tile in front is empty floor');
+      emptyVerts = programs
+        .filter(({ fragment, mesh }) => fragment === WALL_FRAGMENT && mesh.sharedAtlas?.name === 'wall')
+        .reduce((sum, { mesh }) => sum + mesh.used, 0);
+    });
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, furnLevel);
+      assert.equal(furnLevel.pipeFaces.has(pipeX * 4 + 3), false, 'wall face has no pipes when tile in front has a furniture');
+      furnVerts = programs
+        .filter(({ fragment, mesh }) => fragment === WALL_FRAGMENT && mesh.sharedAtlas?.name === 'wall')
+        .reduce((sum, { mesh }) => sum + mesh.used, 0);
+    });
+    assert.ok(furnVerts < emptyVerts, '3D pipe quads are omitted when furniture stands in the tile in front');
+
+    const e1m1 = new Level(LEVELS[0]);
+    const furnIdxs = new Set(e1m1.furnitures.map((f) => f.idx));
+    withWallWorld((world) => {
+      World.prototype.buildStatic.call(world, e1m1);
+      for (const faceKey of e1m1.pipeFaces) {
+        const d = faceKey % 4;
+        const wallIdx = (faceKey - d) / 4;
+        const wx = wallIdx % e1m1.width;
+        const wy = (wallIdx - wx) / e1m1.width;
+        const adjX = wx + (d === 0 ? -1 : d === 1 ? 1 : 0);
+        const adjY = wy + (d === 2 ? -1 : d === 3 ? 1 : 0);
+        assert.equal(furnIdxs.has(adjY * e1m1.width + adjX), false, `E1M1 pipe face at (${wx},${wy}) d=${d} does not face furniture tile (${adjX},${adjY})`);
+      }
+    });
+  },
+
+  'walls behind spaceships in E1M1 use giant hangar door textures (hangarDoorAtlas) across all 3 bays and both height tiers'() {
+    const hangarAtlasData = hangarDoorAtlas();
+    const roomAtlasData = wallAtlas();
+    const pow2 = (n) => (n & (n - 1)) === 0;
+    assert.equal(hangarAtlasData.name, 'hangarDoor');
+    assert.equal(hangarAtlasData.width, TILE_PIXELS * HANGAR_DOOR_CELL_COUNT);
+    assert.equal(hangarAtlasData.height, TILE_PIXELS);
+    assert.ok(pow2(hangarAtlasData.width) && pow2(hangarAtlasData.height), 'hangarDoorAtlas dimensions are power-of-two');
+    assert.equal(hangarAtlasData.relief.length, hangarAtlasData.width * hangarAtlasData.height);
+
+    for (let cell = 0; cell < HANGAR_DOOR_CELL_COUNT; cell++) {
+      let r = 0;
+      let b = 0;
+      let diffPixels = 0;
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const o = (y * hangarAtlasData.width + cell * TILE_PIXELS + x) * 4;
+          assert.equal(hangarAtlasData.data[o + 3], 255, 'hangarDoorAtlas texels are opaque');
+          r += hangarAtlasData.data[o];
+          b += hangarAtlasData.data[o + 2];
+          if (
+            hangarAtlasData.data[o] !== roomAtlasData.data[o] ||
+            hangarAtlasData.data[o + 1] !== roomAtlasData.data[o + 1] ||
+            hangarAtlasData.data[o + 2] !== roomAtlasData.data[o + 2]
+          )
+            diffPixels++;
+        }
+      }
+      assert.ok(b > r, `hangarDoorAtlas cell ${cell} is cold blue-grey steel with rust left to the shader`);
+      assert.ok(diffPixels > 4000, `hangarDoorAtlas cell ${cell} is distinct from room wallAtlas cell ${cell}`);
+    }
+
+    assert.equal(hangarDoorCellFor(-1, 0), HANGAR_DOOR_CELLS.bottomLeft);
+    assert.equal(hangarDoorCellFor(0, 0), HANGAR_DOOR_CELLS.bottomCenter);
+    assert.equal(hangarDoorCellFor(1, 0), HANGAR_DOOR_CELLS.bottomRight);
+    assert.equal(hangarDoorCellFor(-1, 1), HANGAR_DOOR_CELLS.topLeft);
+    assert.equal(hangarDoorCellFor(0, 1), HANGAR_DOOR_CELLS.topCenter);
+    assert.equal(hangarDoorCellFor(1, 1), HANGAR_DOOR_CELLS.topRight);
+    assert.equal(hangarDoorCellFor(-2, 0), HANGAR_DOOR_CELLS.bottomPier);
+    assert.equal(hangarDoorCellFor(2, 1), HANGAR_DOOR_CELLS.topPier);
+
+    const e1m1 = new Level(LEVELS[0]);
+    const ships = e1m1.furnitures.filter((f) => f.type === 'spaceship');
+    assert.equal(ships.length, 3, 'E1M1 has 3 spaceships in the hangar');
+    for (const ship of ships) {
+      assert.equal(e1m1.hangarDoorAt(new Vec2(0, ship.y - 1), 1), -1);
+      assert.equal(e1m1.hangarDoorAt(new Vec2(0, ship.y), 1), 0);
+      assert.equal(e1m1.hangarDoorAt(new Vec2(0, ship.y + 1), 1), 1);
+      assert.equal(e1m1.hangarDoorAt(new Vec2(0, ship.y - 2), 1), -2);
+      assert.equal(e1m1.hangarDoorAt(new Vec2(0, ship.y + 2), 1), 2);
+    }
+
+    const centerQuads = wallFaceQuads({
+      axis: 'x',
+      plane: 64,
+      from: 16,
+      to: 16,
+      base: 0,
+      top: 128,
+      tile: new Vec2(0, 16),
+      d: 1,
+      exit: false,
+      hangarDoor: 0,
+    });
+    assert.equal(centerQuads.length, 2, 'double-height hangar door column builds bottom and top tier quads');
+    assert.deepEqual(centerQuads[0].uv, hangarDoorCellUv(HANGAR_DOOR_CELLS.bottomCenter, 0, 1));
+    assert.deepEqual(centerQuads[1].uv, hangarDoorCellUv(HANGAR_DOOR_CELLS.topCenter, 0, 1));
+
+    withWallWorld((world, programs) => {
+      World.prototype.buildStatic.call(world, e1m1);
+      const indoorBatches = programs.filter(({ fragment }) => fragment === WALL_FRAGMENT).map(({ mesh }) => mesh);
+      const hangarDoorMeshes = indoorBatches.filter((mesh) => mesh.sharedAtlas?.name === 'hangarDoor');
+      assert.ok(hangarDoorMeshes.length > 0, 'buildStatic creates dedicated hangarDoorAtlas batches behind spaceships');
+      for (let y = 14; y <= 28; y++)
+        assert.equal(e1m1.pipeFaces.has((y * e1m1.width + 0) * 4 + 1), false, `no 3D wall pipes cover the giant hangar door at (0, ${y})`);
+    });
   },
 };
 

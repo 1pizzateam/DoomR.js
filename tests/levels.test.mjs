@@ -1025,9 +1025,29 @@ try {
   const ship = hangarGame.furnitures[0];
   assert.equal(ship.type, 'spaceship');
   assert.equal(ship.body.shape, 'aabb', 'spaceship uses a multi-tile AABB collision hull');
+  assert.equal(ship.hullBodies.length, 7, 'spaceship uses tapered fuselage core AABBs plus actor-only movement skirts');
   hangarGame.hitFurniture(ship, 999);
   assert.equal(ship.gone, false, 'spaceship hull is indestructible');
   assert.equal(ship.hp, Infinity);
+
+  // Shots aimed under the high wings/nacelles or past the tapered nose/tail hit enemies in sight instead of stopping in mid-air
+  const wingImp = hangarGame.addEnemy('imp', new Vec2(ship.pos.x - 100, ship.pos.y - 60));
+  hangarGame.player.pos.setScalar(ship.pos.x + 120, ship.pos.y - 60);
+  hangarGame.player.angle = Math.PI;
+  hangarGame.player.weapons.chaingun = true;
+  hangarGame.player.weapon = 'chaingun';
+  hangarGame.player.bullets = 20;
+  const hpBeforeWingShot = wingImp.hp;
+  hangarGame.fireChaingun();
+  assert.ok(wingImp.hp < hpBeforeWingShot, 'chaingun shot under the high wings and past the nose hits the visible enemy');
+
+  // Enemy pressed against the side of the nose/cockpit bumper remains proud of the shot-blocking core
+  const noseImp = hangarGame.addEnemy('imp', new Vec2(ship.pos.x + 80, ship.pos.y - 42));
+  hangarGame.player.pos.setScalar(ship.pos.x + 150, ship.pos.y - 22);
+  hangarGame.player.angle = Math.atan2(noseImp.pos.y - hangarGame.player.pos.y, noseImp.pos.x - hangarGame.player.pos.x);
+  const hpBeforeNoseShot = noseImp.hp;
+  hangarGame.fireChaingun();
+  assert.ok(noseImp.hp < hpBeforeNoseShot, 'shot past the tapered cockpit/nose hits enemy standing beside the hull');
   console.log(`ok   ${spaceshipFurnitureTestName}`);
 } catch (error) {
   failed = true;
@@ -1052,7 +1072,7 @@ try {
   level.inBounds(scratch);
   assert.deepEqual([scratch.x, scratch.y], [1, 1], 'queries leave the tile untouched');
   const source = readFileSync(new URL('../src/level.js', import.meta.url), 'utf8');
-  for (const name of ['inBounds', 'isWalkable', 'isSlime', 'isAcidSplash', 'isEmptyPit', 'isTeleporter', 'chestWallSide', 'center'])
+  for (const name of ['inBounds', 'isWalkable', 'isSlime', 'isAcidSplash', 'isEmptyPit', 'isTeleporter', 'chestWallSide', 'center', 'hangarDoorAt'])
     assert.match(source, new RegExp(`\\n  ${name}\\(tile\\b`), `${name} takes a tile`);
   for (const name of ['createChest', 'createSwitch', 'createFurniture'])
     assert.match(source, new RegExp(`\\n  ${name}\\(tile\\b`), `${name} takes a tile`);
@@ -1060,6 +1080,126 @@ try {
 } catch (error) {
   failed = true;
   console.log(`FAIL ${tileVectorTestName}\n     ${error.message}`);
+}
+
+const mechanicFurnitureTestName = 'Hangar mechanic & restroom vanity furniture (n: workbench, K: toolchest, Q: welder, H: hoist, J: vanity): builds 256x64 atlases, 3D meshes, wrecks, debris, shrapnel, and breaks when shot';
+try {
+  const {
+    WORKBENCH_HP, WORKBENCH_SHARD_COUNT, WORKBENCH_WALL_OFFSET,
+    workbenchAtlas, workbenchMesh, workbenchWreckMesh, workbenchDebrisMesh, workbenchShrapnelParts, createWorkbenchBreakPose, workbenchBreakPose,
+    TOOLCHEST_HP, TOOLCHEST_SHARD_COUNT, TOOLCHEST_WALL_OFFSET,
+    toolchestAtlas, toolchestMesh, toolchestWreckMesh, toolchestDebrisMesh, toolchestShrapnelParts, createToolchestBreakPose, toolchestBreakPose,
+    WELDER_HP, WELDER_SHARD_COUNT, WELDER_WALL_OFFSET,
+    welderAtlas, welderMesh, welderWreckMesh, welderDebrisMesh, welderShrapnelParts, createWelderBreakPose, welderBreakPose,
+    HOIST_HP, HOIST_SHARD_COUNT, HOIST_WALL_OFFSET,
+    hoistAtlas, hoistMesh, hoistWreckMesh, hoistDebrisMesh, hoistShrapnelParts, createHoistBreakPose, hoistBreakPose,
+    VANITY_HP, VANITY_SHARD_COUNT, VANITY_WALL_OFFSET, VANITY_MIRROR_CENTER, VANITY_MIRROR_FRAGMENT,
+    vanityAtlas, vanityMesh, vanityMirrorMesh, vanityWreckMesh, vanityPuddleMesh, vanityShrapnelParts, createVanityBreakPose, vanityBreakPose,
+  } = await import('../src/furniture.js');
+  const mirrorQuad = vanityMirrorMesh();
+  assert.equal(mirrorQuad.vertices.length, 18, 'vanityMirrorMesh has 2 triangles (6 vertices) for the reflective mirror pane');
+  assert.ok(VANITY_MIRROR_FRAGMENT.includes('uMirrorMatrix') && VANITY_MIRROR_FRAGMENT.includes('uHasMirror'));
+  assert.equal(VANITY_MIRROR_CENTER.y, 37.4);
+
+  const specs = [
+    {
+      name: 'workbench', char: 'n', maxY: 44, wallOffset: WORKBENCH_WALL_OFFSET, hp: WORKBENCH_HP, shards: WORKBENCH_SHARD_COUNT,
+      atlas: workbenchAtlas, mesh: workbenchMesh, wreck: workbenchWreckMesh, debris: workbenchDebrisMesh,
+      shrapnel: workbenchShrapnelParts, createPose: createWorkbenchBreakPose, breakPose: workbenchBreakPose,
+    },
+    {
+      name: 'toolchest', char: 'K', maxY: 42, wallOffset: TOOLCHEST_WALL_OFFSET, hp: TOOLCHEST_HP, shards: TOOLCHEST_SHARD_COUNT,
+      atlas: toolchestAtlas, mesh: toolchestMesh, wreck: toolchestWreckMesh, debris: toolchestDebrisMesh,
+      shrapnel: toolchestShrapnelParts, createPose: createToolchestBreakPose, breakPose: toolchestBreakPose,
+    },
+    {
+      name: 'welder', char: 'Q', maxY: 42, wallOffset: WELDER_WALL_OFFSET, hp: WELDER_HP, shards: WELDER_SHARD_COUNT,
+      atlas: welderAtlas, mesh: welderMesh, wreck: welderWreckMesh, debris: welderDebrisMesh,
+      shrapnel: welderShrapnelParts, createPose: createWelderBreakPose, breakPose: welderBreakPose,
+    },
+    {
+      name: 'hoist', char: 'H', maxY: 52, wallOffset: HOIST_WALL_OFFSET, hp: HOIST_HP, shards: HOIST_SHARD_COUNT,
+      atlas: hoistAtlas, mesh: hoistMesh, wreck: hoistWreckMesh, debris: hoistDebrisMesh,
+      shrapnel: hoistShrapnelParts, createPose: createHoistBreakPose, breakPose: hoistBreakPose,
+    },
+    {
+      name: 'vanity', char: 'J', maxY: 48, wallOffset: VANITY_WALL_OFFSET, hp: VANITY_HP, shards: VANITY_SHARD_COUNT,
+      atlas: vanityAtlas, mesh: vanityMesh, wreck: vanityWreckMesh, debris: vanityPuddleMesh,
+      shrapnel: vanityShrapnelParts, createPose: createVanityBreakPose, breakPose: vanityBreakPose,
+    },
+  ];
+
+  for (const s of specs) {
+    const atlas = s.atlas();
+    assert.equal(atlas.name, s.name);
+    assert.equal(atlas.width, 256);
+    assert.equal(atlas.height, 64);
+    assert.equal(atlas.data.length, 256 * 64 * 4);
+    assert.equal(atlas.relief.length, 256 * 64);
+
+    const mesh = s.mesh();
+    assert.ok(mesh.vertices instanceof Float32Array && mesh.vertices.length > 300);
+    assert.equal(mesh.normals.length, mesh.vertices.length);
+    assert.equal(mesh.uvs.length, (mesh.vertices.length / 3) * 2);
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = 1; i < mesh.vertices.length; i += 3) {
+      minY = Math.min(minY, mesh.vertices[i]);
+      maxY = Math.max(maxY, mesh.vertices[i]);
+    }
+    assert.ok(minY >= 0 && minY < 0.25, `${s.name} rests on y ≈ 0 (got ${minY})`);
+    assert.ok(Math.abs(maxY - s.maxY) < 0.5, `${s.name} top reaches y ≈ ${s.maxY} (got ${maxY})`);
+
+    const wreck = s.wreck();
+    assert.ok(wreck.vertices instanceof Float32Array && wreck.vertices.length >= 108);
+    const debris = s.debris();
+    assert.ok(debris.vertices instanceof Float32Array && debris.vertices.length >= 108);
+    const shrapnel = s.shrapnel();
+    assert.ok(shrapnel.carboyTop.vertices.length > 30);
+    assert.equal(shrapnel.shards.length, s.shards);
+
+    const pose = s.createPose();
+    s.breakPose(0.05, 1.2, pose);
+    assert.ok(pose.puddleScale.x < 0.45);
+    assert.ok(pose.carboyTop.pos.y > 18);
+    s.breakPose(1.2, 1.2, pose);
+    assert.equal(pose.puddleScale.x, 1);
+  }
+
+  const mechLevel = new Level({
+    name: 'MECH_BAY_TEST',
+    rows: [
+      '########',
+      '#PnKQHJ#',
+      '#.....X#',
+      '########',
+    ],
+  });
+  assert.deepEqual(
+    mechLevel.furnitures.map((f) => f.type),
+    ['workbench', 'toolchest', 'welder', 'hoist', 'vanity'],
+  );
+  const game = new Game(0, 42);
+  game.load({
+    name: 'MECH_BAY_TEST',
+    rows: [
+      '########',
+      '#PnKQHJ#',
+      '#.....X#',
+      '########',
+    ],
+  });
+  assert.equal(game.furnitures.length, 5);
+  for (const furn of game.furnitures) {
+    assert.equal(furn.hp, 1);
+    assert.equal(furn.gone, false);
+    game.hitFurniture(furn, 1);
+    assert.equal(furn.gone, true);
+  }
+  console.log(`ok   ${mechanicFurnitureTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${mechanicFurnitureTestName}\n     ${error.message}`);
 }
 
 process.exit(failed ? 1 : 0);

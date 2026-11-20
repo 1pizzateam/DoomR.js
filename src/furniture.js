@@ -29,6 +29,26 @@
  *   - Drawn procedurally as a crisp power-of-two RGBA atlas (64 x 64 per cell, 4 cells = 256 x 64) with glazed vitreous-china
  *     porcelain pedestal & sculpted oval bowl, rear flush cistern tank with chrome handle, contoured seat ring & hinged open lid,
  *     and recessed standing bowl water (`y = 0..31`).
+ * - Mechanic Workbench (`workbenchAtlas()`, `workbenchMesh()`):
+ *   - Drawn procedurally as a crisp power-of-two RGBA atlas (64 x 64 per cell, 4 cells = 256 x 64) with oil-stained hardwood/steel
+ *     benchtop, blue-steel tool drawer cabinet & legs, perforated tool pegboard backsplash with hanging spanners & overhead shop light,
+ *     cast-iron machinist bench vice, and dual-wheel bench grinder (`y = 0..44`).
+ * - Rolling Tool Cabinet (`toolchestAtlas()`, `toolchestMesh()`):
+ *   - Drawn procedurally as a crisp power-of-two RGBA atlas (64 x 64 per cell, 4 cells = 256 x 64) with mechanic-red multi-drawer
+ *     rolling cabinet, anodized aluminum pull strips, ribbed rubber mat, hinged open top-chest till with socket wrenches, side push
+ *     handle, and swivel caster wheels (`y = 0..42`).
+ * - Plasma Welder & Gas Cart (`welderAtlas()`, `welderMesh()`):
+ *   - Drawn procedurally as a crisp power-of-two RGBA atlas (64 x 64 per cell, 4 cells = 256 x 64) with industrial yellow/slate
+ *     inverter plasma welder unit, dual high-pressure argon/plasma gas cylinders with brass regulators, wheeled diamond-plate hand
+ *     cart with safety chain, and coiled welding hose & torch (`y = 0..42`).
+ * - Engine Hoist & Thruster Rig (`hoistAtlas()`, `hoistMesh()`):
+ *   - Drawn procedurally as a crisp power-of-two RGBA atlas (64 x 64 per cell, 4 cells = 256 x 64) with hazard-yellow hydraulic
+ *     A-frame gantry crane, cantilevered jib boom & hoist chain, diagnostic telemetry console & drip pan, and a suspended spaceship
+ *     VTOL turbo-plasma thruster core undergoing overhaul (`y = 0..52`).
+ * - Toilet Sink & Mirror (`vanityAtlas()`, `vanityMesh()`):
+ *   - Drawn procedurally as a crisp power-of-two RGBA atlas (64 x 64 per cell, 4 cells = 256 x 64) with glazed vitreous-china
+ *     porcelain washbasin & countertop, stainless under-sink pedestal shroud & exposed P-trap plumbing, chrome single-lever faucet &
+ *     liquid soap dispenser, and a wall-mounted beveled restroom mirror with an overhead LED vanity light bar (`y = 0..48`).
  */
 import { Rect, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/spock';
 import { blitTile, field, mix, plate, rivet, rust, SHADOW, Tile } from './floor.js';
@@ -145,6 +165,72 @@ export const SPACESHIP_RADIUS = 95;
 export const SPACESHIP_WALL_OFFSET = 0;
 export const SPACESHIP_HP = Infinity;
 export const SPACESHIP_SHARD_COUNT = 5;
+
+const WORKBENCH_TOP = { x: 0, width: 64, height: 64 };
+const WORKBENCH_CABINET = { x: 64, width: 64, height: 64 };
+const WORKBENCH_PEGBOARD = { x: 128, width: 64, height: 64 };
+const WORKBENCH_TOOLS = { x: 192, width: 64, height: 64 };
+
+const WORKBENCH_CELL = 64;
+const WORKBENCH_FRAMES = 4;
+const WORKBENCH_ATLAS = { width: 256, height: 64 };
+export const WORKBENCH_RADIUS = 16;
+export const WORKBENCH_WALL_OFFSET = 16;
+export const WORKBENCH_HP = 1;
+export const WORKBENCH_SHARD_COUNT = 5;
+
+const TOOLCHEST_FRONT = { x: 0, width: 64, height: 64 };
+const TOOLCHEST_SIDE = { x: 64, width: 64, height: 64 };
+const TOOLCHEST_TOP = { x: 128, width: 64, height: 64 };
+const TOOLCHEST_TRIM = { x: 192, width: 64, height: 64 };
+
+const TOOLCHEST_CELL = 64;
+const TOOLCHEST_FRAMES = 4;
+const TOOLCHEST_ATLAS = { width: 256, height: 64 };
+export const TOOLCHEST_RADIUS = 13;
+export const TOOLCHEST_WALL_OFFSET = 18;
+export const TOOLCHEST_HP = 1;
+export const TOOLCHEST_SHARD_COUNT = 5;
+
+const WELDER_UNIT = { x: 0, width: 64, height: 64 };
+const WELDER_TANK = { x: 64, width: 64, height: 64 };
+const WELDER_CART = { x: 128, width: 64, height: 64 };
+const WELDER_TRIM = { x: 192, width: 64, height: 64 };
+
+const WELDER_CELL = 64;
+const WELDER_FRAMES = 4;
+const WELDER_ATLAS = { width: 256, height: 64 };
+export const WELDER_RADIUS = 13;
+export const WELDER_WALL_OFFSET = 16;
+export const WELDER_HP = 1;
+export const WELDER_SHARD_COUNT = 5;
+
+const HOIST_FRAME = { x: 0, width: 64, height: 64 };
+const HOIST_ENGINE = { x: 64, width: 64, height: 64 };
+const HOIST_CONSOLE = { x: 128, width: 64, height: 64 };
+const HOIST_CHAIN = { x: 192, width: 64, height: 64 };
+
+const HOIST_CELL = 64;
+const HOIST_FRAMES = 4;
+const HOIST_ATLAS = { width: 256, height: 64 };
+export const HOIST_RADIUS = 18;
+export const HOIST_WALL_OFFSET = 0;
+export const HOIST_HP = 1;
+export const HOIST_SHARD_COUNT = 5;
+
+const VANITY_BASIN = { x: 0, width: 64, height: 64 };
+const VANITY_CABINET = { x: 64, width: 64, height: 64 };
+const VANITY_MIRROR = { x: 128, width: 64, height: 64 };
+const VANITY_WATER = { x: 192, width: 64, height: 64 };
+
+const VANITY_CELL = 64;
+const VANITY_FRAMES = 4;
+const VANITY_ATLAS = { width: 256, height: 64 };
+export const VANITY_RADIUS = 14;
+export const VANITY_WALL_OFFSET = 18;
+export const VANITY_HP = 1;
+export const VANITY_SHARD_COUNT = 5;
+export const VANITY_MIRROR_CENTER = new Vec3(0, 37.4, -9.12);
 
 export const FURNITURE_VERTEX = `
 attribute vec3 aVertexPosition;
@@ -389,6 +475,123 @@ void main(void) {
     color = mix(color, uFogColor, fade);
   }
   gl_FragColor = vec4(color, 0.5);
+}
+`;
+
+export const VANITY_MIRROR_VERTEX = FURNITURE_VERTEX;
+
+export const VANITY_MIRROR_FRAGMENT = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform sampler2D uSampler;
+uniform int uHasMirror;
+uniform mat4 uMirrorMatrix;
+uniform vec3 uCameraPosition;
+uniform vec3 uMaterialDiffuse;
+uniform int uHasFog;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
+uniform int uNbLights;
+uniform vec3 uAmbientLight;
+uniform vec3 uLightPosition[8];
+uniform vec3 uLightDiffuse[8];
+uniform vec3 uLightAttenuation[8];
+varying float vDepth;
+varying vec2 vTextureCoord;
+varying vec3 vWorldPos;
+varying vec3 vNormal;
+
+vec3 traceFallbackRoomReflection(vec3 P, vec3 R, vec3 N) {
+  vec3 T = normalize(vec3(N.z, 0.0, -N.x));
+  float rForward = max(dot(R, N), 0.04);
+  float rSide = dot(R, T);
+  float rUp = R.y;
+
+  // Intersect reflected ray with a virtual 192x64x192 restroom volume in front of the mirror plane
+  float tPlane = 160.0 / rForward;
+  float tSide = rSide > 0.001 ? (96.0 - mod(dot(P, T), 64.0)) / rSide : (rSide < -0.001 ? (-96.0 - mod(dot(P, T), 64.0)) / rSide : 9999.0);
+  float tCeil = rUp > 0.001 ? (64.0 - P.y) / rUp : 9999.0;
+  float tFloor = rUp < -0.001 ? (0.0 - P.y) / rUp : 9999.0;
+  float tHit = min(min(tPlane, tSide), min(tCeil, tFloor));
+  vec3 hitPos = P + R * tHit;
+
+  vec3 col;
+  if (tHit == tCeil) {
+    // Reflected ceiling ribs & glowing fluorescent light fixtures
+    vec2 cell = fract(hitPos.xz / 64.0);
+    float rib = step(0.88, fract(cell.x * 4.0)) * 0.25;
+    float panel = step(0.28, cell.x) * step(cell.x, 0.72) * step(0.28, cell.y) * step(cell.y, 0.72);
+    col = mix(vec3(0.11, 0.14, 0.2) * (1.0 - rib), vec3(0.82, 0.94, 1.0), panel);
+  } else if (tHit == tFloor) {
+    // Reflected steel deck floor tiles & drainage grating
+    vec2 tileUv = fract(hitPos.xz / 32.0);
+    float seam = step(tileUv.x, 0.05) + step(tileUv.y, 0.05);
+    float grate = step(0.5, fract(hitPos.x * 0.25)) * step(0.5, fract(hitPos.z * 0.25)) * 0.15;
+    col = vec3(0.08, 0.11, 0.16) * (1.0 - min(1.0, seam) * 0.45 + grate);
+  } else {
+    // Reflected opposite restroom wall with toilet stall partitions & steel bulkhead panels
+    float u = fract(dot(hitPos, T) / 64.0);
+    float v = clamp(hitPos.y / 64.0, 0.0, 1.0);
+    float stallDoor = step(0.12, u) * step(u, 0.88) * step(0.12, v) * step(v, 0.78);
+    float pilaster = (step(u, 0.12) + step(0.88, u)) * step(v, 0.82);
+    vec3 wallCol = vec3(0.16, 0.21, 0.28) * (0.75 + 0.25 * sin(v * 18.85));
+    vec3 stallCol = vec3(0.22, 0.3, 0.4) * (0.85 + 0.15 * step(0.5, fract(v * 12.0)));
+    col = mix(wallCol, stallCol, max(stallDoor, pilaster * 0.8));
+  }
+
+  // Add specular glints from real scene PointLights reflected in the mirror
+  vec3 lightGlint = vec3(0.0);
+  for (int i = 0; i < 8; i++) {
+    if (i >= uNbLights)
+      break;
+    vec3 toLight = uLightPosition[i] - P;
+    float dist = max(length(toLight), 1.0);
+    vec3 L = toLight / dist;
+    float align = max(dot(R, L), 0.0);
+    lightGlint += uLightDiffuse[i] * pow(align, 24.0) * clamp(180.0 / dist, 0.0, 1.5);
+  }
+  return col * max(uAmbientLight, vec3(0.45)) + lightGlint;
+}
+
+void main(void) {
+  if (uHasFog == 1 && vDepth >= uFogFar) {
+    gl_FragColor = vec4(uFogColor, 0.5);
+    return;
+  }
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(uCameraPosition - vWorldPos);
+  vec3 R = reflect(-V, N);
+
+  vec3 reflected;
+  if (uHasMirror == 1) {
+    vec4 mirrorClip = uMirrorMatrix * vec4(vWorldPos, 1.0);
+    vec2 mirrorUv = mirrorClip.xy / max(mirrorClip.w, 0.0001) * 0.5 + 0.5;
+    reflected = texture2D(uSampler, clamp(mirrorUv, 0.004, 0.996)).rgb;
+  } else
+    reflected = traceFallbackRoomReflection(vWorldPos, R, N);
+
+  // Silvered mirror glass tint, Fresnel boost, beveled edge vignette, and top LED vanity light sheen
+  vec2 uv = vTextureCoord;
+  float edgeX = min(uv.x, 1.0 - uv.x);
+  float edgeY = min(uv.y, 1.0 - uv.y);
+  float bevel = smoothstep(0.0, 0.055, min(edgeX, edgeY));
+  float bevelHighlight = smoothstep(0.03, 0.055, min(edgeX, edgeY)) * (1.0 - smoothstep(0.055, 0.085, min(edgeX, edgeY)));
+  float topLedGlow = exp(-uv.y * 9.5) * 0.22;
+  float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.14;
+
+  vec3 glassColor = reflected * vec3(0.93, 0.98, 1.02) * (0.78 + 0.22 * bevel);
+  glassColor += vec3(0.75, 0.92, 1.0) * (bevelHighlight * 0.18 + topLedGlow + fresnel);
+  glassColor *= uMaterialDiffuse;
+
+  if (uHasFog == 1) {
+    float fade = clamp((vDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+    glassColor = mix(glassColor, uFogColor, fade);
+  }
+  gl_FragColor = vec4(glassColor, 0.5);
 }
 `;
 
@@ -6630,6 +6833,1751 @@ export function createSpaceshipBreakPose() {
  */
 export function spaceshipBreakPose(elapsed, seed = 0, target = createSpaceshipBreakPose()) {
   return dispenserBreakPose(elapsed, seed + 5.7, target);
+}
+
+const BENCH_WOOD_BASE = [108, 74, 44];
+const BENCH_WOOD_LIGHT = [138, 98, 58];
+const BENCH_WOOD_DARK = [64, 42, 24];
+const BENCH_MAT_DARK = [18, 22, 28];
+const BENCH_BLUE_BASE = [26, 48, 78];
+const BENCH_BLUE_LIGHT = [46, 76, 114];
+const BENCH_BLUE_DARK = [14, 26, 44];
+const BENCH_VICE_IRON = [38, 44, 54];
+const BENCH_HAZARD_YELLOW = [196, 148, 28];
+const BENCH_SHOP_LIGHT = [176, 224, 246];
+
+function drawWorkbenchTop(rnd) {
+  const t = new Tile(WORKBENCH_TOP.width, WORKBENCH_TOP.height);
+  plate(t, 0, 0, WORKBENCH_TOP.width, WORKBENCH_TOP.height, rnd, BENCH_WOOD_BASE);
+  // Butcher-block hardwood strips with oil stains and dark rubber work mat
+  for (let y = 2; y < 38; y++) {
+    const stripCol = ((y >> 2) & 1) ? BENCH_WOOD_LIGHT : BENCH_WOOD_DARK;
+    for (let x = 2; x < 62; x++)
+      t.set(x, y, stripCol, 0.28);
+  }
+  t.rect(14, 6, 36, 24, BENCH_MAT_DARK, 0.88);
+  for (let x = 16; x < 48; x += 4)
+    for (let y = 8; y < 28; y += 4)
+      t.set(x, y, ENAMEL_LIGHT, 0.45);
+  // Lower galvanized steel shelf grate (y = 40..62)
+  t.rect(2, 40, 60, 22, ENAMEL_BASE, 0.9);
+  for (let y = 44; y <= 58; y += 4)
+    for (let x = 6; x < 58; x++) {
+      t.set(x, y, ALCOVE_DARK, 0.85);
+      t.set(x, y + 1, ENAMEL_LIGHT, 0.55);
+    }
+  t.relief(14, 6, 36, 24, 0.6, 0.8);
+  for (let y = 44; y <= 58; y += 4)
+    t.groove(6, y, 57, y, 1.4, 0.8);
+  rust(t, rnd, 0.18);
+  return t;
+}
+
+function drawWorkbenchCabinet(rnd) {
+  const t = new Tile(WORKBENCH_CABINET.width, WORKBENCH_CABINET.height);
+  plate(t, 0, 0, WORKBENCH_CABINET.width, WORKBENCH_CABINET.height, rnd, BENCH_BLUE_BASE);
+  // Top hazard-striped steel apron rail (y = 2..10)
+  for (let y = 2; y < 10; y++)
+    for (let x = 2; x < 62; x++) {
+      const stripe = ((x + y) >> 2) & 1;
+      t.set(x, y, stripe ? BENCH_HAZARD_YELLOW : KICKPLATE, 0.88);
+    }
+  // Three heavy mechanic drawer fronts with recessed chrome pulls (y = 14..52)
+  for (const [dy, dh] of [[14, 10], [26, 11], [39, 13]]) {
+    t.rect(6, dy, 52, dh, BENCH_BLUE_DARK, 0.78);
+    t.rect(8, dy + 1, 48, dh - 2, BENCH_BLUE_LIGHT, 0.35);
+    t.rect(18, dy + 3, 28, 3, ENAMEL_LIGHT, 0.88);
+    t.relief(6, dy, 52, dh, 0.8, 0.7);
+  }
+  t.rect(1, 56, 62, 7, KICKPLATE, 0.92);
+  for (const [rx, ry] of [[4, 12], [59, 12], [4, 53], [59, 53]])
+    rivet(t, rx, ry);
+  rust(t, rnd, 0.15);
+  return t;
+}
+
+function drawWorkbenchPegboard(rnd) {
+  const t = new Tile(WORKBENCH_PEGBOARD.width, WORKBENCH_PEGBOARD.height);
+  plate(t, 0, 0, WORKBENCH_PEGBOARD.width, WORKBENCH_PEGBOARD.height, rnd, ENAMEL_DARK);
+  // Top glowing shop light strip (y = 2..8)
+  t.rect(4, 2, 56, 6, BENCH_SHOP_LIGHT, 0.95);
+  // Perforated pegboard hole matrix (y = 11..58)
+  for (let y = 12; y < 58; y += 3)
+    for (let x = 5; x < 60; x += 3)
+      t.set(x, y, KICKPLATE, 0.92);
+  // Hanging spanner/wrench silhouettes & schematic note
+  for (const [wx, wy, wh] of [[10, 16, 18], [16, 16, 22], [22, 16, 26], [30, 16, 20]]) {
+    t.rect(wx, wy, 3, wh, COLD_LIGHT, 0.9);
+    t.rect(wx - 1, wy, 5, 4, ENAMEL_LIGHT, 0.92);
+    t.relief(wx, wy, 3, wh, 0.9, 0.6);
+  }
+  // Technical blueprint card pinned on right of pegboard
+  t.rect(40, 18, 18, 22, COLD_BLUE, 0.88);
+  for (let y = 21; y < 38; y += 3)
+    t.rect(42, y, 14, 1, BENCH_SHOP_LIGHT, 0.75);
+  t.relief(40, 18, 18, 22, 0.5, 0.6);
+  rust(t, rnd, 0.12);
+  return t;
+}
+
+function drawWorkbenchTools(rnd) {
+  const t = new Tile(WORKBENCH_TOOLS.width, WORKBENCH_TOOLS.height);
+  plate(t, 0, 0, WORKBENCH_TOOLS.width, WORKBENCH_TOOLS.height, rnd, BENCH_VICE_IRON);
+  // Left half (x = 2..30): Cast-iron machinist vice jaws & knurled anvil face
+  t.rect(3, 4, 27, 26, BENCH_BLUE_BASE, 0.85);
+  t.rect(5, 6, 23, 8, COLD_LIGHT, 0.85);
+  // Right half (x = 33..61): Bench grinder motor housing, abrasive wheel & orange safety shield
+  t.rect(34, 4, 27, 26, HOT_RED, 0.88);
+  t.rect(38, 8, 19, 18, ENAMEL_LIGHT, 0.82);
+  // Lower band (y = 34..60): Chrome tools, lead screw & thruster diagnostics
+  t.rect(4, 34, 56, 26, ENAMEL_LIGHT, 0.78);
+  for (let x = 8; x < 56; x += 4)
+    t.rect(x, 38, 2, 18, ALCOVE_DARK, 0.85);
+  t.relief(3, 4, 27, 26, 1.1, 0.8);
+  t.relief(34, 4, 27, 26, 1.1, 0.8);
+  rust(t, rnd, 0.14);
+  return t;
+}
+
+/**
+ * Returns the power-of-two RGBA texture atlas (256 x 64) for the 3D Mechanic Workbench prop.
+ */
+export function workbenchAtlas() {
+  const { width, height } = WORKBENCH_ATLAS;
+  const data = new Uint8Array(width * height * 4);
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
+  blit(drawWorkbenchTop(mulberry32(8801)), WORKBENCH_TOP.x);
+  blit(drawWorkbenchCabinet(mulberry32(8802)), WORKBENCH_CABINET.x);
+  blit(drawWorkbenchPegboard(mulberry32(8803)), WORKBENCH_PEGBOARD.x);
+  blit(drawWorkbenchTools(mulberry32(8804)), WORKBENCH_TOOLS.x);
+  return {
+    name: 'workbench',
+    data,
+    relief,
+    width,
+    height,
+    cell: WORKBENCH_CELL,
+    frames: WORKBENCH_FRAMES,
+    top: WORKBENCH_TOP,
+    cabinet: WORKBENCH_CABINET,
+    pegboard: WORKBENCH_PEGBOARD,
+    tools: WORKBENCH_TOOLS,
+  };
+}
+
+/**
+ * Builds the 3D Mechanic Workbench mesh standing on `y = 0`, centered on `x/z`, with the work surface facing `+Z`:
+ * - Heavy blue-steel legs, lower storage shelf, and 3-drawer right-hand tool pedestal (`y = 0..20.5`).
+ * - Thick butcher-block / steel-trimmed workbench slab (`y = 20.5..22.6`, `x = -18..18`, `z = -11..10.5`).
+ * - Cast-iron machinist bench vice on the front-left corner (`y = 22.6..28.8`) and dual-wheel bench grinder on the right (`y = 22.6..29.6`).
+ * - Rear perforated steel pegboard tool wall (`y = 22.6..44.0`, `z = -11.0..-9.2`) with hanging spanners and overhead LED shop light hood.
+ */
+export function workbenchMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = WORKBENCH_ATLAS.width;
+  const inset = 0.35 / W;
+  const topU0 = WORKBENCH_TOP.x / W + inset;
+  const topU1 = (WORKBENCH_TOP.x + WORKBENCH_TOP.width) / W - inset;
+  const cabU0 = WORKBENCH_CABINET.x / W + inset;
+  const cabU1 = (WORKBENCH_CABINET.x + WORKBENCH_CABINET.width) / W - inset;
+  const pegU0 = WORKBENCH_PEGBOARD.x / W + inset;
+  const pegU1 = (WORKBENCH_PEGBOARD.x + WORKBENCH_PEGBOARD.width) / W - inset;
+  const toolU0 = WORKBENCH_TOOLS.x / W + inset;
+  const toolU1 = (WORKBENCH_TOOLS.x + WORKBENCH_TOOLS.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const legFaces = {
+    front: uvRect(cabU0, 0.18, cabU1, 0.96),
+    back: uvRect(cabU0, 0.18, cabU1, 0.96),
+    left: uvRect(cabU0, 0.18, cabU1, 0.96),
+    right: uvRect(cabU0, 0.18, cabU1, 0.96),
+    bottom: uvRect(cabU0, 0.88, cabU1, 0.99),
+  };
+  // 1. Left front & back heavy angle-iron legs (y = 0 .. 20.5)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-17.4, 0, 7.6), new Vec3(-15.0, 20.5, 10.0), legFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-17.4, 0, -10.8), new Vec3(-15.0, 20.5, -8.4), legFaces);
+  // Lower galvanized steel parts shelf between left legs & right drawer bank (y = 4.0 .. 5.4)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-16.8, 4.0, -10.2), new Vec3(3.0, 5.4, 9.4), {
+    front: uvRect(topU0, 0.65, topU1, 0.95),
+    back: uvRect(topU0, 0.65, topU1, 0.95),
+    left: uvRect(topU0, 0.65, topU1, 0.95),
+    top: uvRect(topU0, 0.64, topU1, 0.96),
+    bottom: uvRect(cabU0, 0.88, cabU1, 0.99),
+  });
+  // Under-bench hazard apron beam (y = 17.6 .. 20.5)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-17.2, 17.6, -10.6), new Vec3(3.0, 20.5, 9.8), {
+    front: uvRect(cabU0, 0.03, cabU1, 0.16),
+    back: uvRect(cabU0, 0.18, cabU1, 0.35),
+    left: uvRect(cabU0, 0.03, cabU1, 0.16),
+  });
+
+  // 2. Right-side 3-Drawer Mechanic Tool Pedestal Cabinet (x = 3.0 .. 17.4, y = 0 .. 20.5, z = -10.8 .. 10.0)
+  pushBoxPart(vertices, normals, uvs, new Vec3(3.0, 0, -10.8), new Vec3(17.4, 20.5, 10.0), {
+    front: uvRect(cabU0, 0.18, cabU1, 0.98),
+    back: uvRect(cabU0, 0.18, cabU1, 0.98),
+    left: uvRect(cabU0, 0.18, cabU1, 0.98),
+    right: uvRect(cabU0, 0.18, cabU1, 0.98),
+    bottom: uvRect(cabU0, 0.88, cabU1, 0.99),
+  });
+
+  // 3. Thick Hardwood & Steel-Trimmed Workbench Top Slab (x = -18.0 .. 18.0, y = 20.5 .. 22.6, z = -11.0 .. 10.6)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-18.0, 20.5, -11.0), new Vec3(18.0, 22.6, 10.6), {
+    front: uvRect(cabU0, 0.03, cabU1, 0.16),
+    back: uvRect(cabU0, 0.03, cabU1, 0.16),
+    left: uvRect(cabU0, 0.03, cabU1, 0.16),
+    right: uvRect(cabU0, 0.03, cabU1, 0.16),
+    top: uvRect(topU0, 0.03, topU1, 0.58),
+    bottom: uvRect(topU0, 0.03, topU1, 0.58),
+  });
+
+  // 4. Front-Left Cast-Iron Machinist Bench Vice (x = -15.6 .. -8.8, y = 22.6 .. 28.6, z = 2.8 .. 11.4)
+  const viceFaces = {
+    front: uvRect(toolU0, 0.06, (toolU0 + toolU1) * 0.48, 0.46),
+    back: uvRect(toolU0, 0.06, (toolU0 + toolU1) * 0.48, 0.46),
+    left: uvRect(toolU0, 0.06, (toolU0 + toolU1) * 0.48, 0.46),
+    right: uvRect(toolU0, 0.06, (toolU0 + toolU1) * 0.48, 0.46),
+    top: uvRect(toolU0, 0.06, (toolU0 + toolU1) * 0.48, 0.25),
+    bottom: uvRect(toolU0, 0.55, toolU1, 0.92),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(-15.2, 22.6, 2.6), new Vec3(-9.2, 25.4, 8.8), viceFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-15.6, 25.4, 3.0), new Vec3(-8.8, 28.6, 5.2), viceFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-15.6, 25.4, 6.8), new Vec3(-8.8, 28.6, 9.0), viceFaces);
+  // Vice lead screw & tommy bar projecting off the front edge
+  pushBoxPart(vertices, normals, uvs, new Vec3(-13.0, 26.0, 9.0), new Vec3(-11.4, 27.6, 11.6), viceFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-15.0, 26.4, 10.6), new Vec3(-9.4, 27.2, 11.4), viceFaces);
+
+  // 5. Right-Side Dual-Wheel Bench Grinder (x = 7.4 .. 15.8, y = 22.6 .. 29.4, z = -3.4 .. 3.4)
+  const grinderFaces = {
+    front: uvRect((toolU0 + toolU1) * 0.52, 0.06, toolU1, 0.46),
+    back: uvRect((toolU0 + toolU1) * 0.52, 0.06, toolU1, 0.46),
+    left: uvRect(toolU0, 0.54, toolU1, 0.94),
+    right: uvRect(toolU0, 0.54, toolU1, 0.94),
+    top: uvRect((toolU0 + toolU1) * 0.52, 0.06, toolU1, 0.46),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(9.2, 22.6, -2.4), new Vec3(14.0, 28.0, 2.4), grinderFaces);
+  pushLandingWheel(vertices, normals, uvs, new Vec3(8.2, 26.2, 0), new Vec2(3.2, 0.9), uvRect(toolU0, 0.54, toolU1, 0.94), uvRect((toolU0 + toolU1) * 0.52, 0.06, toolU1, 0.46), 12);
+  pushLandingWheel(vertices, normals, uvs, new Vec3(15.0, 26.2, 0), new Vec2(3.2, 0.9), uvRect(toolU0, 0.54, toolU1, 0.94), uvRect((toolU0 + toolU1) * 0.52, 0.06, toolU1, 0.46), 12);
+
+  // 6. Disassembled Spaceship Thruster Valve & Spanners on Center Work Mat (x = -4.8 .. 4.6, y = 22.6 .. 26.4)
+  pushCylinderAt(vertices, normals, uvs, argV3a.setScalar(-1.2, 22.6, -1.0), argV3b.setScalar(-1.2, 26.4, -1.0), argV2a.setScalar(2.8, 2.2), uvBox(toolU0, 0.54, toolU1, 0.94), 10);
+  pushBoxPart(vertices, normals, uvs, new Vec3(2.2, 22.6, 1.2), new Vec3(6.2, 23.3, 2.6), viceFaces);
+
+  // 7. Rear Perforated Tool Pegboard Backsplash & Overhead Shop Light Hood (x = -18.0 .. 18.0, y = 22.6 .. 44.0, z = -11.0 .. -8.8)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-18.0, 22.6, -11.0), new Vec3(18.0, 42.2, -9.4), {
+    front: uvRect(pegU0, 0.16, pegU1, 0.94),
+    back: uvRect(cabU0, 0.18, cabU1, 0.96),
+    left: uvRect(cabU0, 0.18, cabU1, 0.96),
+    right: uvRect(cabU0, 0.18, cabU1, 0.96),
+    top: uvRect(cabU0, 0.03, cabU1, 0.16),
+  });
+  // Projecting overhead LED shop-light canopy at top of pegboard (y = 42.2 .. 44.0, z = -11.0 .. -5.8)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-18.0, 42.2, -11.0), new Vec3(18.0, 44.0, -5.8), {
+    front: uvRect(cabU0, 0.03, cabU1, 0.16),
+    back: uvRect(cabU0, 0.18, cabU1, 0.35),
+    left: uvRect(cabU0, 0.18, cabU1, 0.35),
+    right: uvRect(cabU0, 0.18, cabU1, 0.35),
+    top: uvRect(cabU0, 0.18, cabU1, 0.35),
+    bottom: uvRect(pegU0, 0.03, pegU1, 0.14),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export const buildWorkbench = workbenchMesh;
+
+/**
+ * Builds the 3D wrecked Mechanic Workbench left standing after destruction.
+ */
+export function workbenchWreckMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = WORKBENCH_ATLAS.width;
+  const inset = 0.35 / W;
+  const topU0 = WORKBENCH_TOP.x / W + inset;
+  const topU1 = (WORKBENCH_TOP.x + WORKBENCH_TOP.width) / W - inset;
+  const cabU0 = WORKBENCH_CABINET.x / W + inset;
+  const cabU1 = (WORKBENCH_CABINET.x + WORKBENCH_CABINET.width) / W - inset;
+  const pegU0 = WORKBENCH_PEGBOARD.x / W + inset;
+  const pegU1 = (WORKBENCH_PEGBOARD.x + WORKBENCH_PEGBOARD.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const legFaces = {
+    front: uvRect(cabU0, 0.18, cabU1, 0.96),
+    back: uvRect(cabU0, 0.18, cabU1, 0.96),
+    left: uvRect(cabU0, 0.18, cabU1, 0.96),
+    right: uvRect(cabU0, 0.18, cabU1, 0.96),
+    bottom: uvRect(cabU0, 0.88, cabU1, 0.99),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(-17.4, 0, 7.6), new Vec3(-15.0, 20.5, 10.0), legFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-17.4, 0, -10.8), new Vec3(-15.0, 20.5, -8.4), legFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(3.0, 0, -10.8), new Vec3(17.4, 20.5, 10.0), legFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-18.0, 20.5, -11.0), new Vec3(18.0, 22.4, 10.2), {
+    front: uvRect(cabU0, 0.03, cabU1, 0.16),
+    back: uvRect(cabU0, 0.03, cabU1, 0.16),
+    left: uvRect(cabU0, 0.03, cabU1, 0.16),
+    right: uvRect(cabU0, 0.03, cabU1, 0.16),
+    top: uvRect(topU0, 0.03, topU1, 0.58),
+  });
+  pushBoxPart(vertices, normals, uvs, new Vec3(-18.0, 22.4, -11.0), new Vec3(12.0, 29.0, -9.4), {
+    front: uvRect(pegU0, 0.45, pegU1, 0.94),
+    back: uvRect(cabU0, 0.18, cabU1, 0.96),
+    left: uvRect(cabU0, 0.18, cabU1, 0.96),
+    right: uvRect(cabU0, 0.18, cabU1, 0.96),
+    top: uvRect(cabU0, 0.88, cabU1, 0.98),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+/**
+ * Builds the 3D floor debris mesh (`y = 0.12`) around a destroyed Mechanic Workbench.
+ */
+export function workbenchDebrisMesh() {
+  return ovenDebrisMesh();
+}
+
+/**
+ * Builds the 3D shrapnel pieces blasted off a destroyed Mechanic Workbench.
+ */
+export function workbenchShrapnelParts() {
+  const W = WORKBENCH_ATLAS.width;
+  const inset = 0.35 / W;
+  const pegU0 = WORKBENCH_PEGBOARD.x / W + inset;
+  const pegU1 = (WORKBENCH_PEGBOARD.x + WORKBENCH_PEGBOARD.width) / W - inset;
+  const toolU0 = WORKBENCH_TOOLS.x / W + inset;
+  const toolU1 = (WORKBENCH_TOOLS.x + WORKBENCH_TOOLS.width) / W - inset;
+  const cabU0 = WORKBENCH_CABINET.x / W + inset;
+  const cabU1 = (WORKBENCH_CABINET.x + WORKBENCH_CABINET.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const topVerts = [];
+  const topNorms = [];
+  const topUvs = [];
+  pushBoxPart(topVerts, topNorms, topUvs, new Vec3(-14.0, -5.5, -1.2), new Vec3(14.0, 5.5, 1.2), {
+    front: uvRect(pegU0, 0.03, pegU1, 0.65),
+    back: uvRect(cabU0, 0.18, cabU1, 0.85),
+    left: uvRect(cabU0, 0.18, cabU1, 0.85),
+    right: uvRect(cabU0, 0.18, cabU1, 0.85),
+    top: uvRect(pegU0, 0.03, pegU1, 0.14),
+    bottom: uvRect(cabU0, 0.88, cabU1, 0.98),
+  });
+
+  const specs = [
+    new Vec3(3.4, 2.4, 3.2),
+    new Vec3(3.0, 2.2, 2.8),
+    new Vec3(4.2, 0.7, 1.4),
+    new Vec3(3.8, 0.7, 1.2),
+    new Vec3(5.2, 1.6, 0.9),
+  ];
+  const shards = specs.map((half, i) => {
+    const v = [];
+    const n = [];
+    const t = [];
+    const u0 = i & 1 ? toolU0 : cabU0;
+    const u1 = i & 1 ? toolU1 : cabU1;
+    pushBoxPart(v, n, t, new Vec3(-half.x, -half.y, -half.z), new Vec3(half.x, half.y, half.z), {
+      front: uvRect(u0, 0.08, u1, 0.55),
+      back: uvRect(u0, 0.08, u1, 0.55),
+      left: uvRect(u0, 0.08, u1, 0.55),
+      right: uvRect(u0, 0.08, u1, 0.55),
+      top: uvRect(u0, 0.08, u1, 0.55),
+      bottom: uvRect(u0, 0.08, u1, 0.55),
+    });
+    return flipV({ vertices: new Float32Array(v), normals: new Float32Array(n), uvs: new Float32Array(t) });
+  });
+
+  return {
+    carboyTop: flipV({
+      vertices: new Float32Array(topVerts),
+      normals: new Float32Array(topNorms),
+      uvs: new Float32Array(topUvs),
+    }),
+    shards,
+  };
+}
+
+export function createWorkbenchBreakPose() {
+  return createDispenserBreakPose();
+}
+
+export function workbenchBreakPose(elapsed, seed = 0, target = createWorkbenchBreakPose()) {
+  return dispenserBreakPose(elapsed, seed + 6.3, target);
+}
+
+const CHEST_RED_BASE = [132, 26, 24];
+const CHEST_RED_LIGHT = [174, 42, 38];
+const CHEST_RED_DARK = [78, 14, 14];
+
+function drawToolchestFront(rnd) {
+  const t = new Tile(TOOLCHEST_FRONT.width, TOOLCHEST_FRONT.height);
+  plate(t, 0, 0, TOOLCHEST_FRONT.width, TOOLCHEST_FRONT.height, rnd, CHEST_RED_BASE);
+  // 5-tier ball-bearing mechanic drawers with anodized aluminum finger-pull trims
+  for (const [dy, dh] of [[5, 8], [15, 8], [25, 9], [36, 10], [48, 11]]) {
+    t.rect(5, dy, 54, dh, CHEST_RED_DARK, 0.85);
+    t.rect(6, dy + 1, 52, dh - 2, CHEST_RED_LIGHT, 0.45);
+    t.rect(7, dy + 1, 50, 2, COLD_LIGHT, 0.9);
+    t.relief(5, dy, 54, dh, 0.85, 0.7);
+  }
+  // Tubular key lock & UAC Mechanics nameplate on top right
+  t.rect(48, 6, 8, 3, BENCH_HAZARD_YELLOW, 0.92);
+  t.rect(30, 6, 4, 4, COLD_LIGHT, 0.92);
+  for (const [rx, ry] of [[3, 4], [60, 4], [3, 59], [60, 59]])
+    rivet(t, rx, ry);
+  rust(t, rnd, 0.12);
+  return t;
+}
+
+function drawToolchestSide(rnd) {
+  const t = new Tile(TOOLCHEST_SIDE.width, TOOLCHEST_SIDE.height);
+  plate(t, 0, 0, TOOLCHEST_SIDE.width, TOOLCHEST_SIDE.height, rnd, CHEST_RED_BASE);
+  for (let ly = 14; ly <= 46; ly += 8) {
+    t.rect(8, ly, 48, 3, CHEST_RED_DARK, 0.75);
+    t.rect(8, ly + 1, 48, 1, CHEST_RED_LIGHT, 0.6);
+    t.groove(8, ly + 1, 55, ly + 1, 1.5, 0.9);
+  }
+  t.rect(1, 56, 62, 7, KICKPLATE, 0.92);
+  for (const [rx, ry] of [[4, 5], [59, 5], [4, 52], [59, 52]])
+    rivet(t, rx, ry);
+  rust(t, rnd, 0.14);
+  return t;
+}
+
+function drawToolchestTop(rnd) {
+  const t = new Tile(TOOLCHEST_TOP.width, TOOLCHEST_TOP.height);
+  plate(t, 0, 0, TOOLCHEST_TOP.width, TOOLCHEST_TOP.height, rnd, BENCH_MAT_DARK);
+  // Ribbed non-slip black rubber mat & socket organizer tray
+  for (let y = 4; y < 60; y += 3)
+    t.rect(4, y, 56, 1, ENAMEL_DARK, 0.85);
+  // Chrome socket wrench set arrayed in the upper till
+  for (let sx = 8; sx <= 52; sx += 5) {
+    t.rect(sx, 10, 3, 16, COLD_LIGHT, 0.9);
+    t.relief(sx, 10, 3, 16, 0.9, 0.5);
+  }
+  t.rect(10, 34, 44, 5, COLD_LIGHT, 0.92);
+  t.rect(10, 44, 32, 4, BENCH_HAZARD_YELLOW, 0.9);
+  return t;
+}
+
+function drawToolchestTrim(rnd) {
+  const t = new Tile(TOOLCHEST_TRIM.width, TOOLCHEST_TRIM.height);
+  plate(t, 0, 0, TOOLCHEST_TRIM.width, TOOLCHEST_TRIM.height, rnd, ENAMEL_LIGHT);
+  // Upper half: Brushed chrome handle & ball-bearing slide rail
+  for (let y = 2; y < 30; y++)
+    for (let x = 2; x < 62; x++)
+      t.set(x, y, COLD_LIGHT, Math.sin((y / 30) * Trigo.pi) * 0.45);
+  // Lower half: Heavy-duty polyurethane caster wheels & steel swivel yokes
+  t.rect(2, 32, 60, 30, KICKPLATE, 0.92);
+  t.rect(12, 36, 40, 22, CHEST_RED_DARK, 0.85);
+  rust(t, rnd, 0.12);
+  return t;
+}
+
+/**
+ * Returns the power-of-two RGBA texture atlas (256 x 64) for the 3D Rolling Tool Cabinet prop.
+ */
+export function toolchestAtlas() {
+  const { width, height } = TOOLCHEST_ATLAS;
+  const data = new Uint8Array(width * height * 4);
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
+  blit(drawToolchestFront(mulberry32(8901)), TOOLCHEST_FRONT.x);
+  blit(drawToolchestSide(mulberry32(8902)), TOOLCHEST_SIDE.x);
+  blit(drawToolchestTop(mulberry32(8903)), TOOLCHEST_TOP.x);
+  blit(drawToolchestTrim(mulberry32(8904)), TOOLCHEST_TRIM.x);
+  return {
+    name: 'toolchest',
+    data,
+    relief,
+    width,
+    height,
+    cell: TOOLCHEST_CELL,
+    frames: TOOLCHEST_FRAMES,
+    front: TOOLCHEST_FRONT,
+    side: TOOLCHEST_SIDE,
+    top: TOOLCHEST_TOP,
+    trim: TOOLCHEST_TRIM,
+  };
+}
+
+/**
+ * Builds the 3D Rolling Tool Cabinet mesh standing on `y = 0`, centered on `x/z`, with the drawers facing `+Z`:
+ * - 4 heavy-duty swivel caster wheels (`y = 0..3.6`).
+ * - Lower 5-drawer red rolling cabinet (`y = 3.6..24.2`, `x = -13.2..13.2`, `z = -9.4..9.4`) with tubular side push handle.
+ * - Upper machinist top-chest (`y = 24.2..34.4`) with open hinged lid (`y = 34.4..42.0`) and socket wrench tray inside.
+ */
+export function toolchestMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = TOOLCHEST_ATLAS.width;
+  const inset = 0.35 / W;
+  const frontU0 = TOOLCHEST_FRONT.x / W + inset;
+  const frontU1 = (TOOLCHEST_FRONT.x + TOOLCHEST_FRONT.width) / W - inset;
+  const sideU0 = TOOLCHEST_SIDE.x / W + inset;
+  const sideU1 = (TOOLCHEST_SIDE.x + TOOLCHEST_SIDE.width) / W - inset;
+  const topU0 = TOOLCHEST_TOP.x / W + inset;
+  const topU1 = (TOOLCHEST_TOP.x + TOOLCHEST_TOP.width) / W - inset;
+  const trimU0 = TOOLCHEST_TRIM.x / W + inset;
+  const trimU1 = (TOOLCHEST_TRIM.x + TOOLCHEST_TRIM.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  // 1. 4 Swivel Caster Wheels at corners (y = 0 .. 3.6)
+  for (const cx of [-10.4, 10.4])
+    for (const cz of [-6.8, 6.8])
+      pushLandingWheel(
+        vertices,
+        normals,
+        uvs,
+        new Vec3(cx, 1.8, cz),
+        new Vec2(1.8, 0.9),
+        uvRect(trimU0, 0.52, trimU1, 0.96),
+        uvRect(trimU0, 0.05, trimU1, 0.45),
+        10,
+      );
+
+  // 2. Main Lower Rolling Drawer Cabinet (x = -13.2 .. 13.2, y = 3.6 .. 24.2, z = -9.4 .. 9.4)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-13.2, 3.6, -9.4), new Vec3(13.2, 24.2, 9.4), {
+    front: uvRect(frontU0, 0.04, frontU1, 0.96),
+    back: uvRect(sideU0, 0.04, sideU1, 0.96),
+    left: uvRect(sideU0, 0.04, sideU1, 0.96),
+    right: uvRect(sideU0, 0.04, sideU1, 0.96),
+    top: uvRect(topU0, 0.04, topU1, 0.96),
+    bottom: uvRect(sideU0, 0.88, sideU1, 0.99),
+  });
+  // Slightly pulled-out middle tool drawer for 3D depth (y = 13.8 .. 17.6, z = 9.4 .. 12.2)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-11.8, 13.8, 9.4), new Vec3(11.8, 17.6, 12.2), {
+    front: uvRect(frontU0, 0.38, frontU1, 0.56),
+    left: uvRect(sideU0, 0.38, sideU1, 0.56),
+    right: uvRect(sideU0, 0.38, sideU1, 0.56),
+    top: uvRect(topU0, 0.12, topU1, 0.52),
+    bottom: uvRect(sideU0, 0.88, sideU1, 0.98),
+  });
+
+  // 3. Chrome Tubular Side Push Handle on Right Side (x = 13.2 .. 15.6, y = 20.4 .. 22.8, z = -6.8 .. 6.8)
+  const chromeFaces = {
+    front: uvRect(trimU0, 0.05, trimU1, 0.45),
+    back: uvRect(trimU0, 0.05, trimU1, 0.45),
+    left: uvRect(trimU0, 0.05, trimU1, 0.45),
+    right: uvRect(trimU0, 0.05, trimU1, 0.45),
+    top: uvRect(trimU0, 0.05, trimU1, 0.45),
+    bottom: uvRect(trimU0, 0.05, trimU1, 0.45),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(13.2, 21.0, -6.6), new Vec3(15.2, 22.2, -5.2), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(13.2, 21.0, 5.2), new Vec3(15.2, 22.2, 6.6), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(14.4, 21.0, -6.8), new Vec3(15.6, 22.2, 6.8), chromeFaces);
+
+  // 4. Upper Machinist Top-Chest (x = -12.0 .. 12.0, y = 24.2 .. 34.2, z = -8.8 .. 8.0)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-12.0, 24.2, -8.8), new Vec3(12.0, 34.2, 8.0), {
+    front: uvRect(frontU0, 0.04, frontU1, 0.62),
+    back: uvRect(sideU0, 0.04, sideU1, 0.62),
+    left: uvRect(sideU0, 0.04, sideU1, 0.62),
+    right: uvRect(sideU0, 0.04, sideU1, 0.62),
+    top: uvRect(topU0, 0.06, topU1, 0.94),
+  });
+  // Hinged Open Top-Chest Lid at Rear (x = -12.0 .. 12.0, y = 34.2 .. 42.0, z = -9.0 .. -7.4)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-12.0, 34.2, -9.0), new Vec3(12.0, 42.0, -7.4), {
+    front: uvRect(topU0, 0.06, topU1, 0.48),
+    back: uvRect(sideU0, 0.04, sideU1, 0.48),
+    left: uvRect(sideU0, 0.04, sideU1, 0.48),
+    right: uvRect(sideU0, 0.04, sideU1, 0.48),
+    top: uvRect(trimU0, 0.05, trimU1, 0.45),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export const buildToolchest = toolchestMesh;
+
+export function toolchestWreckMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = TOOLCHEST_ATLAS.width;
+  const inset = 0.35 / W;
+  const frontU0 = TOOLCHEST_FRONT.x / W + inset;
+  const frontU1 = (TOOLCHEST_FRONT.x + TOOLCHEST_FRONT.width) / W - inset;
+  const sideU0 = TOOLCHEST_SIDE.x / W + inset;
+  const sideU1 = (TOOLCHEST_SIDE.x + TOOLCHEST_SIDE.width) / W - inset;
+  const topU0 = TOOLCHEST_TOP.x / W + inset;
+  const topU1 = (TOOLCHEST_TOP.x + TOOLCHEST_TOP.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  pushBoxPart(vertices, normals, uvs, new Vec3(-12.8, 0, -9.0), new Vec3(12.8, 22.0, 9.0), {
+    front: uvRect(frontU0, 0.25, frontU1, 0.96),
+    back: uvRect(sideU0, 0.25, sideU1, 0.96),
+    left: uvRect(sideU0, 0.25, sideU1, 0.96),
+    right: uvRect(sideU0, 0.25, sideU1, 0.96),
+    top: uvRect(topU0, 0.06, topU1, 0.94),
+    bottom: uvRect(sideU0, 0.88, sideU1, 0.99),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export function toolchestDebrisMesh() {
+  return ovenDebrisMesh();
+}
+
+export function toolchestShrapnelParts() {
+  const W = TOOLCHEST_ATLAS.width;
+  const inset = 0.35 / W;
+  const frontU0 = TOOLCHEST_FRONT.x / W + inset;
+  const frontU1 = (TOOLCHEST_FRONT.x + TOOLCHEST_FRONT.width) / W - inset;
+  const sideU0 = TOOLCHEST_SIDE.x / W + inset;
+  const sideU1 = (TOOLCHEST_SIDE.x + TOOLCHEST_SIDE.width) / W - inset;
+  const topU0 = TOOLCHEST_TOP.x / W + inset;
+  const topU1 = (TOOLCHEST_TOP.x + TOOLCHEST_TOP.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const topVerts = [];
+  const topNorms = [];
+  const topUvs = [];
+  pushBoxPart(topVerts, topNorms, topUvs, new Vec3(-11.0, -4.5, -6.5), new Vec3(11.0, 4.5, 6.5), {
+    front: uvRect(frontU0, 0.04, frontU1, 0.42),
+    back: uvRect(sideU0, 0.04, sideU1, 0.42),
+    left: uvRect(sideU0, 0.04, sideU1, 0.42),
+    right: uvRect(sideU0, 0.04, sideU1, 0.42),
+    top: uvRect(topU0, 0.06, topU1, 0.94),
+    bottom: uvRect(sideU0, 0.88, sideU1, 0.98),
+  });
+
+  const specs = [
+    new Vec3(8.5, 1.8, 5.5),
+    new Vec3(8.5, 1.8, 5.5),
+    new Vec3(8.0, 1.6, 5.0),
+    new Vec3(4.5, 1.2, 2.0),
+    new Vec3(3.5, 1.5, 3.5),
+  ];
+  const shards = specs.map((half) => {
+    const v = [];
+    const n = [];
+    const t = [];
+    pushBoxPart(v, n, t, new Vec3(-half.x, -half.y, -half.z), new Vec3(half.x, half.y, half.z), {
+      front: uvRect(frontU0, 0.2, frontU1, 0.55),
+      back: uvRect(sideU0, 0.2, sideU1, 0.55),
+      left: uvRect(sideU0, 0.2, sideU1, 0.55),
+      right: uvRect(sideU0, 0.2, sideU1, 0.55),
+      top: uvRect(topU0, 0.1, topU1, 0.8),
+      bottom: uvRect(sideU0, 0.8, sideU1, 0.98),
+    });
+    return flipV({ vertices: new Float32Array(v), normals: new Float32Array(n), uvs: new Float32Array(t) });
+  });
+
+  return {
+    carboyTop: flipV({
+      vertices: new Float32Array(topVerts),
+      normals: new Float32Array(topNorms),
+      uvs: new Float32Array(topUvs),
+    }),
+    shards,
+  };
+}
+
+export function createToolchestBreakPose() {
+  return createDispenserBreakPose();
+}
+
+export function toolchestBreakPose(elapsed, seed = 0, target = createToolchestBreakPose()) {
+  return dispenserBreakPose(elapsed, seed + 7.1, target);
+}
+
+const WELDER_YELLOW = [194, 146, 26];
+const WELDER_YELLOW_LIGHT = [228, 182, 54];
+const WELDER_YELLOW_DARK = [128, 92, 16];
+const WELDER_TANK_TEAL = [24, 78, 86];
+const WELDER_TANK_LIGHT = [48, 118, 128];
+const WELDER_BRASS = [184, 142, 48];
+const WELDER_PLASMA_CYAN = [64, 212, 248];
+
+function drawWelderUnit(rnd) {
+  const t = new Tile(WELDER_UNIT.width, WELDER_UNIT.height);
+  plate(t, 0, 0, WELDER_UNIT.width, WELDER_UNIT.height, rnd, WELDER_YELLOW);
+  // Dark recessed control bezel at top (y = 5..26) with digital amperage display & plasma arc LED
+  t.rect(5, 5, 54, 22, KICKPLATE, 0.92);
+  t.rect(8, 8, 22, 10, ALCOVE_DARK, 0.95);
+  t.rect(10, 10, 18, 6, WELDER_PLASMA_CYAN, 0.92);
+  t.rect(34, 9, 4, 4, LED_GREEN, 0.95);
+  t.rect(42, 9, 4, 4, HOT_LIGHT, 0.95);
+  // Twin current/voltage rotary dials
+  for (const kx of [36, 48]) {
+    t.rect(kx, 16, 7, 7, ENAMEL_BASE, 0.9);
+    t.rect(kx + 2, 17, 3, 5, WELDER_YELLOW_LIGHT, 0.88);
+  }
+  // Lower inverter cooling louver grille (y = 32..56)
+  for (let ly = 32; ly <= 54; ly += 3)
+    for (let lx = 8; lx < 56; lx++) {
+      t.set(lx, ly, KICKPLATE, 0.9);
+      t.set(lx, ly + 1, WELDER_YELLOW_LIGHT, 0.55);
+    }
+  t.relief(5, 5, 54, 22, -1.2, 0.8);
+  for (let ly = 32; ly <= 54; ly += 3)
+    t.groove(8, ly, 55, ly, 1.4, 0.8);
+  for (const [rx, ry] of [[4, 4], [59, 4], [4, 58], [59, 58]])
+    rivet(t, rx, ry);
+  rust(t, rnd, 0.14);
+  return t;
+}
+
+function drawWelderTank(rnd) {
+  const t = new Tile(WELDER_TANK.width, WELDER_TANK.height);
+  plate(t, 0, 0, WELDER_TANK.width, WELDER_TANK.height, rnd, WELDER_TANK_TEAL);
+  // Cylindrical specular highlight & hazard shoulder band (y = 6..14)
+  for (let y = 0; y < 64; y++)
+    for (let x = 0; x < 64; x++) {
+      const sheen = Math.pow(Math.max(0, Math.sin((x / 64) * Trigo.pi)), 3) * 0.35;
+      t.set(x, y, WELDER_TANK_LIGHT, sheen);
+    }
+  for (let y = 6; y < 14; y++)
+    for (let x = 2; x < 62; x++) {
+      const stripe = ((x + y) >> 2) & 1;
+      t.set(x, y, stripe ? WELDER_YELLOW_LIGHT : KICKPLATE, 0.85);
+    }
+  t.rect(18, 22, 28, 12, ENAMEL_LIGHT, 0.78);
+  t.rect(20, 25, 24, 2, KICKPLATE, 0.85);
+  t.rect(20, 29, 18, 2, HOT_RED, 0.85);
+  t.pipe(0, 6, 64, 8, 0.9, true);
+  rust(t, rnd, 0.15);
+  return t;
+}
+
+function drawWelderCart(rnd) {
+  const t = new Tile(WELDER_CART.width, WELDER_CART.height);
+  plate(t, 0, 0, WELDER_CART.width, WELDER_CART.height, rnd, ENAMEL_DARK);
+  // Diamond-plate steel deck pattern (y = 2..36)
+  for (let y = 4; y < 34; y += 4)
+    for (let x = 4; x < 60; x += 4) {
+      t.set(x, y, ENAMEL_LIGHT, 0.75);
+      t.set(x + 1, y + 1, ENAMEL_LIGHT, 0.75);
+    }
+  // Lower tire tread & retaining chain band (y = 38..62)
+  t.rect(2, 38, 60, 24, KICKPLATE, 0.94);
+  for (let x = 6; x < 58; x += 4)
+    t.rect(x, 42, 2, 16, ENAMEL_BASE, 0.82);
+  rust(t, rnd, 0.18);
+  return t;
+}
+
+function drawWelderTrim(rnd) {
+  const t = new Tile(WELDER_TRIM.width, WELDER_TRIM.height);
+  plate(t, 0, 0, WELDER_TRIM.width, WELDER_TRIM.height, rnd, WELDER_BRASS);
+  // Upper half: Brass dual-gauge pressure regulators & white dial faces
+  t.rect(6, 4, 22, 22, ENAMEL_LIGHT, 0.9);
+  t.rect(36, 4, 22, 22, ENAMEL_LIGHT, 0.9);
+  t.rect(15, 10, 4, 9, HOT_RED, 0.9);
+  t.rect(45, 10, 4, 9, KICKPLATE, 0.9);
+  // Lower half: Coiled twin red/blue plasma welding hoses & torch lead
+  for (let y = 32; y < 60; y += 4) {
+    t.rect(4, y, 56, 2, (y & 4) ? HOT_RED : COLD_BLUE, 0.9);
+    t.rect(4, y + 2, 56, 2, KICKPLATE, 0.85);
+  }
+  return t;
+}
+
+/**
+ * Returns the power-of-two RGBA texture atlas (256 x 64) for the 3D Plasma Welder & Gas Cart prop.
+ */
+export function welderAtlas() {
+  const { width, height } = WELDER_ATLAS;
+  const data = new Uint8Array(width * height * 4);
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
+  blit(drawWelderUnit(mulberry32(9001)), WELDER_UNIT.x);
+  blit(drawWelderTank(mulberry32(9002)), WELDER_TANK.x);
+  blit(drawWelderCart(mulberry32(9003)), WELDER_CART.x);
+  blit(drawWelderTrim(mulberry32(9004)), WELDER_TRIM.x);
+  return {
+    name: 'welder',
+    data,
+    relief,
+    width,
+    height,
+    cell: WELDER_CELL,
+    frames: WELDER_FRAMES,
+    unit: WELDER_UNIT,
+    tank: WELDER_TANK,
+    cart: WELDER_CART,
+    trim: WELDER_TRIM,
+  };
+}
+
+/**
+ * Builds the 3D Plasma Welder & Gas Cylinder Cart mesh standing on `y = 0`, centered on `x/z`, facing `+Z`:
+ * - Wheeled diamond-plate hand-truck base (`y = 0..6.8`) with rear heavy rubber wheels and front caster feet.
+ * - Twin rear high-pressure cylindrical argon/plasma gas bottles (`y = 3.8..39.0`) with brass regulator gauges (`y = 39.0..42.0`).
+ * - Forward yellow inverter plasma welder unit (`y = 3.8..24.5`, `z = -1.2..10.6`) with digital readout & side coiled hose reel.
+ */
+export function welderMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = WELDER_ATLAS.width;
+  const inset = 0.35 / W;
+  const unitU0 = WELDER_UNIT.x / W + inset;
+  const unitU1 = (WELDER_UNIT.x + WELDER_UNIT.width) / W - inset;
+  const tankU0 = WELDER_TANK.x / W + inset;
+  const tankU1 = (WELDER_TANK.x + WELDER_TANK.width) / W - inset;
+  const cartU0 = WELDER_CART.x / W + inset;
+  const cartU1 = (WELDER_CART.x + WELDER_CART.width) / W - inset;
+  const trimU0 = WELDER_TRIM.x / W + inset;
+  const trimU1 = (WELDER_TRIM.x + WELDER_TRIM.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  // 1. Rear Heavy Rubber Wheels (y = 0 .. 6.8) & Front Support Legs (y = 0 .. 2.6)
+  for (const side of [-1, 1]) {
+    pushLandingWheel(
+      vertices,
+      normals,
+      uvs,
+      new Vec3(side * 10.4, 3.4, -6.8),
+      new Vec2(3.4, 1.2),
+      uvRect(cartU0, 0.6, cartU1, 0.96),
+      uvRect(trimU0, 0.05, trimU1, 0.45),
+      12,
+    );
+    pushBoxPart(vertices, normals, uvs, new Vec3(side * 7.8 - 1.0, 0, 7.2), new Vec3(side * 7.8 + 1.0, 2.6, 9.4), {
+      front: uvRect(cartU0, 0.6, cartU1, 0.96),
+      back: uvRect(cartU0, 0.6, cartU1, 0.96),
+      left: uvRect(cartU0, 0.6, cartU1, 0.96),
+      right: uvRect(cartU0, 0.6, cartU1, 0.96),
+      bottom: uvRect(cartU0, 0.6, cartU1, 0.96),
+    });
+  }
+
+  // 2. Diamond-Plate Steel Cart Deck (x = -9.4 .. 9.4, y = 2.6 .. 4.0, z = -10.6 .. 10.6)
+  const cartFaces = {
+    front: uvRect(cartU0, 0.06, cartU1, 0.55),
+    back: uvRect(cartU0, 0.06, cartU1, 0.55),
+    left: uvRect(cartU0, 0.06, cartU1, 0.55),
+    right: uvRect(cartU0, 0.06, cartU1, 0.55),
+    top: uvRect(cartU0, 0.06, cartU1, 0.55),
+    bottom: uvRect(cartU0, 0.6, cartU1, 0.96),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(-9.4, 2.6, -10.6), new Vec3(9.4, 4.0, 10.6), cartFaces);
+  // Upright cart frame & cylinder retaining strap bar (z = -1.8 .. -0.4, y = 4.0 .. 31.0)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-9.0, 4.0, -1.8), new Vec3(-7.6, 31.0, -0.4), cartFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(7.6, 4.0, -1.8), new Vec3(9.0, 31.0, -0.4), cartFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-9.2, 22.0, -9.8), new Vec3(9.2, 23.6, -0.4), cartFaces);
+
+  // 3. Twin High-Pressure Argon & Plasma Gas Cylinders on Rear Deck (z = -5.8)
+  for (const [tx, topY] of [[-4.2, 37.5], [4.2, 34.0]]) {
+    pushCylinderAt(vertices, normals, uvs, argV3a.setScalar(tx, 4.0, -5.8), argV3b.setScalar(tx, topY - 3.5, -5.8), argV2a.setScalar(3.5, 3.5), uvBox(tankU0, 0.14, tankU1, 0.96), 12);
+    pushCylinderAt(vertices, normals, uvs, argV3a.setScalar(tx, topY - 3.5, -5.8), argV3b.setScalar(tx, topY, -5.8), argV2a.setScalar(3.5, 1.2), uvBox(tankU0, 0.03, tankU1, 0.22), 12);
+    pushCylinderAt(vertices, normals, uvs, argV3a.setScalar(tx, topY, -5.8), argV3b.setScalar(tx, topY + 2.8, -5.8), argV2a.setScalar(0.9, 0.9), uvBox(trimU0, 0.04, trimU1, 0.44), 8);
+  }
+  // Brass dual-gauge pressure regulator assembly topping the left argon tank (y = 39.2 .. 42.0)
+  const brassFaces = {
+    front: uvRect(trimU0, 0.04, trimU1, 0.44),
+    back: uvRect(trimU0, 0.04, trimU1, 0.44),
+    left: uvRect(trimU0, 0.04, trimU1, 0.44),
+    right: uvRect(trimU0, 0.04, trimU1, 0.44),
+    top: uvRect(trimU0, 0.04, trimU1, 0.44),
+    bottom: uvRect(trimU0, 0.04, trimU1, 0.44),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(-6.8, 39.2, -7.2), new Vec3(-1.6, 42.0, -4.4), brassFaces);
+
+  // 4. Forward Inverter Plasma Welder Power Box (x = -8.2 .. 8.2, y = 4.0 .. 24.4, z = -0.4 .. 10.2)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-8.2, 4.0, -0.4), new Vec3(8.2, 24.4, 10.2), {
+    front: uvRect(unitU0, 0.04, unitU1, 0.96),
+    back: uvRect(unitU0, 0.48, unitU1, 0.96),
+    left: uvRect(unitU0, 0.48, unitU1, 0.96),
+    right: uvRect(unitU0, 0.48, unitU1, 0.96),
+    top: uvRect(unitU0, 0.5, unitU1, 0.92),
+  });
+  // Top carry handle & angled push bar (y = 24.4 .. 28.0)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-8.6, 26.8, 1.0), new Vec3(8.6, 28.2, 2.6), cartFaces);
+
+  // 5. Side Coiled Plasma Torch Hose Reel (x = -10.8 .. -8.2, y = 11.0 .. 20.6, z = 1.2 .. 8.4)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-10.8, 11.0, 1.2), new Vec3(-8.2, 20.6, 8.4), {
+    front: uvRect(trimU0, 0.52, trimU1, 0.96),
+    back: uvRect(trimU0, 0.52, trimU1, 0.96),
+    left: uvRect(trimU0, 0.52, trimU1, 0.96),
+    top: uvRect(trimU0, 0.52, trimU1, 0.96),
+    bottom: uvRect(trimU0, 0.52, trimU1, 0.96),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export const buildWelder = welderMesh;
+
+export function welderWreckMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = WELDER_ATLAS.width;
+  const inset = 0.35 / W;
+  const unitU0 = WELDER_UNIT.x / W + inset;
+  const unitU1 = (WELDER_UNIT.x + WELDER_UNIT.width) / W - inset;
+  const cartU0 = WELDER_CART.x / W + inset;
+  const cartU1 = (WELDER_CART.x + WELDER_CART.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  pushBoxPart(vertices, normals, uvs, new Vec3(-9.4, 0, -10.2), new Vec3(9.4, 4.0, 10.2), {
+    front: uvRect(cartU0, 0.06, cartU1, 0.55),
+    back: uvRect(cartU0, 0.06, cartU1, 0.55),
+    left: uvRect(cartU0, 0.06, cartU1, 0.55),
+    right: uvRect(cartU0, 0.06, cartU1, 0.55),
+    top: uvRect(cartU0, 0.06, cartU1, 0.55),
+    bottom: uvRect(cartU0, 0.6, cartU1, 0.96),
+  });
+  pushBoxPart(vertices, normals, uvs, new Vec3(-8.0, 4.0, -0.4), new Vec3(8.0, 17.5, 9.8), {
+    front: uvRect(unitU0, 0.32, unitU1, 0.96),
+    back: uvRect(unitU0, 0.48, unitU1, 0.96),
+    left: uvRect(unitU0, 0.48, unitU1, 0.96),
+    right: uvRect(unitU0, 0.48, unitU1, 0.96),
+    top: uvRect(cartU0, 0.6, cartU1, 0.96),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export function welderDebrisMesh() {
+  return ovenDebrisMesh();
+}
+
+export function welderShrapnelParts() {
+  const W = WELDER_ATLAS.width;
+  const inset = 0.35 / W;
+  const unitU0 = WELDER_UNIT.x / W + inset;
+  const unitU1 = (WELDER_UNIT.x + WELDER_UNIT.width) / W - inset;
+  const tankU0 = WELDER_TANK.x / W + inset;
+  const tankU1 = (WELDER_TANK.x + WELDER_TANK.width) / W - inset;
+  const trimU0 = WELDER_TRIM.x / W + inset;
+  const trimU1 = (WELDER_TRIM.x + WELDER_TRIM.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const topVerts = [];
+  const topNorms = [];
+  const topUvs = [];
+  pushCylinderAt(topVerts, topNorms, topUvs, argV3a.setScalar(0, -6.0, 0), argV3b.setScalar(0, 6.0, 0), argV2a.setScalar(3.4, 2.2), uvBox(tankU0, 0.04, tankU1, 0.65), 10);
+
+  const specs = [
+    new Vec3(3.2, 5.5, 3.2),
+    new Vec3(6.5, 3.2, 1.2),
+    new Vec3(2.8, 3.8, 2.8),
+    new Vec3(3.5, 2.4, 2.2),
+    new Vec3(2.4, 1.8, 3.6),
+  ];
+  const shards = specs.map((half, i) => {
+    const v = [];
+    const n = [];
+    const t = [];
+    const u0 = i & 1 ? unitU0 : trimU0;
+    const u1 = i & 1 ? unitU1 : trimU1;
+    pushBoxPart(v, n, t, new Vec3(-half.x, -half.y, -half.z), new Vec3(half.x, half.y, half.z), {
+      front: uvRect(u0, 0.08, u1, 0.85),
+      back: uvRect(u0, 0.08, u1, 0.85),
+      left: uvRect(u0, 0.08, u1, 0.85),
+      right: uvRect(u0, 0.08, u1, 0.85),
+      top: uvRect(u0, 0.08, u1, 0.85),
+      bottom: uvRect(u0, 0.08, u1, 0.85),
+    });
+    return flipV({ vertices: new Float32Array(v), normals: new Float32Array(n), uvs: new Float32Array(t) });
+  });
+
+  return {
+    carboyTop: flipV({
+      vertices: new Float32Array(topVerts),
+      normals: new Float32Array(topNorms),
+      uvs: new Float32Array(topUvs),
+    }),
+    shards,
+  };
+}
+
+export function createWelderBreakPose() {
+  return createDispenserBreakPose();
+}
+
+export function welderBreakPose(elapsed, seed = 0, target = createWelderBreakPose()) {
+  return dispenserBreakPose(elapsed, seed + 8.4, target);
+}
+
+function drawHoistFrame(rnd) {
+  const t = new Tile(HOIST_FRAME.width, HOIST_FRAME.height);
+  plate(t, 0, 0, HOIST_FRAME.width, HOIST_FRAME.height, rnd, WELDER_YELLOW);
+  // Diagonal black/yellow hazard warning stripes along upper crane boom (y = 2..18)
+  for (let y = 2; y < 18; y++)
+    for (let x = 2; x < 62; x++) {
+      const stripe = ((x + y) >> 2) & 1;
+      t.set(x, y, stripe ? WELDER_YELLOW_LIGHT : KICKPLATE, 0.88);
+    }
+  // Structural I-beam web recesses & hydraulic cylinder chrome band (y = 22..56)
+  t.rect(6, 22, 52, 18, WELDER_YELLOW_DARK, 0.72);
+  t.rect(6, 42, 52, 16, COLD_LIGHT, 0.82);
+  t.relief(6, 22, 52, 18, -0.9, 0.8);
+  for (const [rx, ry] of [[5, 20], [58, 20], [5, 58], [58, 58]])
+    rivet(t, rx, ry);
+  rust(t, rnd, 0.16);
+  return t;
+}
+
+function drawHoistEngine(rnd) {
+  const t = new Tile(HOIST_ENGINE.width, HOIST_ENGINE.height);
+  plate(t, 0, 0, HOIST_ENGINE.width, HOIST_ENGINE.height, rnd, ENAMEL_BASE);
+  // Spaceship VTOL turbo-plasma thruster casing with titanium cooling ribs & glowing cyan diagnostic core
+  for (let y = 4; y < 36; y += 4) {
+    t.rect(3, y, 58, 2, ENAMEL_LIGHT, 0.82);
+    t.rect(3, y + 2, 58, 2, KICKPLATE, 0.88);
+  }
+  // Glowing cyan plasma diagnostic rings & turbine blades (y = 38..60)
+  t.rect(4, 38, 56, 22, ALCOVE_DARK, 0.94);
+  t.rect(8, 42, 48, 14, WELDER_PLASMA_CYAN, 0.92);
+  for (let x = 10; x < 54; x += 6)
+    t.rect(x, 40, 2, 18, ENAMEL_LIGHT, 0.85);
+  rust(t, rnd, 0.12);
+  return t;
+}
+
+function drawHoistConsole(rnd) {
+  const t = new Tile(HOIST_CONSOLE.width, HOIST_CONSOLE.height);
+  plate(t, 0, 0, HOIST_CONSOLE.width, HOIST_CONSOLE.height, rnd, ENAMEL_DARK);
+  // Upper diagnostic CRT waveform screen (y = 4..28)
+  t.rect(6, 4, 52, 24, KICKPLATE, 0.95);
+  for (let x = 10; x < 54; x++) {
+    const wy = 16 + Math.round(Math.sin((x / 8) * Trigo.pi) * 5);
+    t.rect(x, wy - 1, 1, 2, LED_GREEN, 0.95);
+  }
+  // Lower ribbed oil drip-pan grate (y = 32..60)
+  for (let y = 34; y < 58; y += 4)
+    t.rect(6, y, 52, 2, KICKPLATE, 0.9);
+  rust(t, rnd, 0.16);
+  return t;
+}
+
+function drawHoistChain(rnd) {
+  const t = new Tile(HOIST_CHAIN.width, HOIST_CHAIN.height);
+  plate(t, 0, 0, HOIST_CHAIN.width, HOIST_CHAIN.height, rnd, ENAMEL_LIGHT);
+  for (let y = 4; y < 60; y += 6) {
+    t.rect(8, y, 48, 3, KICKPLATE, 0.88);
+    t.rect(12, y + 1, 40, 2, COLD_LIGHT, 0.85);
+  }
+  rust(t, rnd, 0.14);
+  return t;
+}
+
+/**
+ * Returns the power-of-two RGBA texture atlas (256 x 64) for the 3D Engine Hoist & Thruster Rig prop.
+ */
+export function hoistAtlas() {
+  const { width, height } = HOIST_ATLAS;
+  const data = new Uint8Array(width * height * 4);
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
+  blit(drawHoistFrame(mulberry32(9101)), HOIST_FRAME.x);
+  blit(drawHoistEngine(mulberry32(9102)), HOIST_ENGINE.x);
+  blit(drawHoistConsole(mulberry32(9103)), HOIST_CONSOLE.x);
+  blit(drawHoistChain(mulberry32(9104)), HOIST_CHAIN.x);
+  return {
+    name: 'hoist',
+    data,
+    relief,
+    width,
+    height,
+    cell: HOIST_CELL,
+    frames: HOIST_FRAMES,
+    frame: HOIST_FRAME,
+    engine: HOIST_ENGINE,
+    console: HOIST_CONSOLE,
+    chain: HOIST_CHAIN,
+  };
+}
+
+/**
+ * Builds the 3D Engine Hoist & Spaceship Thruster Diagnostic Rig standing on `y = 0`, centered on `x/z`:
+ * - Wheeled V-outrigger base legs (`y = 0..4.4`, `x = -16.5..16.5`, `z = -15.5..15.5`) with central oil drip pan.
+ * - Rear heavy yellow mast post (`y = 4.0..48.5`), hydraulic lifting ram (`y = 16.0..43.0`), and cantilevered overhead jib boom (`y = 46.5..52.0`).
+ * - Suspended spaceship VTOL turbo-plasma thruster core (`y = 14.0..30.0`) hanging from the hoist chain over the drip pan, plus a side telemetry console (`y = 4.0..24.5`).
+ */
+export function hoistMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = HOIST_ATLAS.width;
+  const inset = 0.35 / W;
+  const frameU0 = HOIST_FRAME.x / W + inset;
+  const frameU1 = (HOIST_FRAME.x + HOIST_FRAME.width) / W - inset;
+  const engU0 = HOIST_ENGINE.x / W + inset;
+  const engU1 = (HOIST_ENGINE.x + HOIST_ENGINE.width) / W - inset;
+  const conU0 = HOIST_CONSOLE.x / W + inset;
+  const conU1 = (HOIST_CONSOLE.x + HOIST_CONSOLE.width) / W - inset;
+  const chainU0 = HOIST_CHAIN.x / W + inset;
+  const chainU1 = (HOIST_CHAIN.x + HOIST_CHAIN.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const beamFaces = {
+    front: uvRect(frameU0, 0.04, frameU1, 0.62),
+    back: uvRect(frameU0, 0.04, frameU1, 0.62),
+    left: uvRect(frameU0, 0.04, frameU1, 0.62),
+    right: uvRect(frameU0, 0.04, frameU1, 0.62),
+    top: uvRect(frameU0, 0.04, frameU1, 0.28),
+    bottom: uvRect(frameU0, 0.32, frameU1, 0.62),
+  };
+
+  // 1. 4 Swivel Caster Wheels (y = 0 .. 2.4) & Twin Outrigger Base Legs + Rear Crossbeam (y = 1.6 .. 4.4)
+  for (const cx of [-14.2, 14.2])
+    for (const cz of [-13.4, 13.4])
+      pushLandingWheel(
+        vertices,
+        normals,
+        uvs,
+        new Vec3(cx, 1.2, cz),
+        new Vec2(1.2, 0.8),
+        uvRect(conU0, 0.52, conU1, 0.94),
+        uvRect(frameU0, 0.65, frameU1, 0.94),
+        8,
+      );
+  pushBoxPart(vertices, normals, uvs, new Vec3(-16.0, 1.6, -15.2), new Vec3(-12.4, 4.4, 15.2), beamFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(12.4, 1.6, -15.2), new Vec3(16.0, 4.4, 15.2), beamFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-16.0, 1.6, -15.2), new Vec3(16.0, 4.8, -10.8), beamFaces);
+
+  // Central oil drip-pan & engine test cradle on the floor between outriggers (x = -9.6 .. 9.6, y = 1.6 .. 3.8, z = -6.0 .. 11.0)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-9.6, 1.6, -6.0), new Vec3(9.6, 3.8, 11.0), {
+    front: uvRect(conU0, 0.52, conU1, 0.94),
+    back: uvRect(conU0, 0.52, conU1, 0.94),
+    left: uvRect(conU0, 0.52, conU1, 0.94),
+    right: uvRect(conU0, 0.52, conU1, 0.94),
+    top: uvRect(conU0, 0.52, conU1, 0.94),
+    bottom: uvRect(conU0, 0.52, conU1, 0.94),
+  });
+
+  // 2. Rear Vertical Crane Mast Post & Gussets (x = -2.4 .. 2.4, y = 4.8 .. 48.0, z = -14.6 .. -10.4)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-2.4, 4.8, -14.6), new Vec3(2.4, 48.0, -10.4), beamFaces);
+  // Hydraulic lifting ram cylinder & chrome piston rod (y = 16.0 .. 45.0, z = -10.4 .. -4.8)
+  pushCylinderAt(vertices, normals, uvs, argV3a.setScalar(0, 16.0, -7.8), argV3b.setScalar(0, 34.0, -5.6), argV2a.setScalar(1.8, 1.8), uvBox(frameU0, 0.04, frameU1, 0.32), 8);
+  pushCylinderAt(vertices, normals, uvs, argV3a.setScalar(0, 34.0, -5.6), argV3b.setScalar(0, 46.5, -3.6), argV2a.setScalar(1.1, 1.1), uvBox(frameU0, 0.65, frameU1, 0.94), 8);
+
+  // 3. Overhead Cantilevered Jib Boom (x = -2.2 .. 2.2, y = 46.5 .. 52.0, z = -15.0 .. 11.2)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-2.2, 46.5, -15.0), new Vec3(2.2, 52.0, 11.2), beamFaces);
+  // Hoist chain drop, swivel hook block & spreader bar (y = 30.0 .. 46.5, z = 2.5)
+  const chainFaces = {
+    front: uvRect(chainU0, 0.06, chainU1, 0.94),
+    back: uvRect(chainU0, 0.06, chainU1, 0.94),
+    left: uvRect(chainU0, 0.06, chainU1, 0.94),
+    right: uvRect(chainU0, 0.06, chainU1, 0.94),
+    top: uvRect(chainU0, 0.06, chainU1, 0.94),
+    bottom: uvRect(chainU0, 0.06, chainU1, 0.94),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(-0.9, 31.8, 1.6), new Vec3(0.9, 46.5, 3.4), chainFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-6.2, 29.8, 1.2), new Vec3(6.2, 31.8, 3.8), beamFaces);
+
+  // 4. Suspended Spaceship VTOL Turbo-Plasma Thruster Module (centered at x = 0, y = 21.5, z = 2.5)
+  pushAxialOctagonalTube(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(0, 21.5),
+    new Vec2(-7.5, 8.5),
+    new Vec2(6.6, 6.2),
+    uvRect(engU0, 0.06, engU1, 0.56),
+    uvRect(engU0, 0.6, engU1, 0.94),
+    uvRect(engU0, 0.6, engU1, 0.94),
+    12,
+  );
+  pushAxialOctagonalTube(
+    vertices,
+    normals,
+    uvs,
+    new Vec2(0, 21.5),
+    new Vec2(8.5, 13.5),
+    new Vec2(6.2, 4.6),
+    uvRect(engU0, 0.6, engU1, 0.94),
+    null,
+    uvRect(engU0, 0.6, engU1, 0.94),
+    12,
+  );
+
+  // 5. Side Diagnostic Telemetry Stand on Left Outrigger (x = -16.2 .. -10.4, y = 4.4 .. 25.0, z = -5.2 .. 1.6)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-14.6, 4.4, -2.8), new Vec3(-12.2, 18.2, -0.4), beamFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-16.2, 18.2, -5.2), new Vec3(-10.4, 25.0, 1.6), {
+    front: uvRect(conU0, 0.06, conU1, 0.44),
+    back: uvRect(conU0, 0.52, conU1, 0.94),
+    left: uvRect(conU0, 0.52, conU1, 0.94),
+    right: uvRect(conU0, 0.06, conU1, 0.44),
+    top: uvRect(conU0, 0.06, conU1, 0.44),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export const buildHoist = hoistMesh;
+
+export function hoistWreckMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = HOIST_ATLAS.width;
+  const inset = 0.35 / W;
+  const frameU0 = HOIST_FRAME.x / W + inset;
+  const frameU1 = (HOIST_FRAME.x + HOIST_FRAME.width) / W - inset;
+  const conU0 = HOIST_CONSOLE.x / W + inset;
+  const conU1 = (HOIST_CONSOLE.x + HOIST_CONSOLE.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const beamFaces = {
+    front: uvRect(frameU0, 0.04, frameU1, 0.62),
+    back: uvRect(frameU0, 0.04, frameU1, 0.62),
+    left: uvRect(frameU0, 0.04, frameU1, 0.62),
+    right: uvRect(frameU0, 0.04, frameU1, 0.62),
+    top: uvRect(frameU0, 0.04, frameU1, 0.28),
+    bottom: uvRect(frameU0, 0.32, frameU1, 0.62),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(-16.0, 0, -15.2), new Vec3(-12.4, 4.4, 15.2), beamFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(12.4, 0, -15.2), new Vec3(16.0, 4.4, 15.2), beamFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-16.0, 0, -15.2), new Vec3(16.0, 4.8, -10.8), beamFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-2.4, 4.8, -14.6), new Vec3(2.4, 21.0, -10.4), beamFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-9.6, 0.4, -6.0), new Vec3(9.6, 3.6, 11.0), {
+    top: uvRect(conU0, 0.52, conU1, 0.94),
+    front: uvRect(conU0, 0.52, conU1, 0.94),
+    back: uvRect(conU0, 0.52, conU1, 0.94),
+    left: uvRect(conU0, 0.52, conU1, 0.94),
+    right: uvRect(conU0, 0.52, conU1, 0.94),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export function hoistDebrisMesh() {
+  return ovenDebrisMesh();
+}
+
+export function hoistShrapnelParts() {
+  const W = HOIST_ATLAS.width;
+  const inset = 0.35 / W;
+  const frameU0 = HOIST_FRAME.x / W + inset;
+  const frameU1 = (HOIST_FRAME.x + HOIST_FRAME.width) / W - inset;
+  const engU0 = HOIST_ENGINE.x / W + inset;
+  const engU1 = (HOIST_ENGINE.x + HOIST_ENGINE.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const topVerts = [];
+  const topNorms = [];
+  const topUvs = [];
+  pushBoxPart(topVerts, topNorms, topUvs, new Vec3(-2.2, -2.6, -12.0), new Vec3(2.2, 2.6, 12.0), {
+    front: uvRect(frameU0, 0.04, frameU1, 0.52),
+    back: uvRect(frameU0, 0.04, frameU1, 0.52),
+    left: uvRect(frameU0, 0.04, frameU1, 0.52),
+    right: uvRect(frameU0, 0.04, frameU1, 0.52),
+    top: uvRect(frameU0, 0.04, frameU1, 0.28),
+    bottom: uvRect(frameU0, 0.32, frameU1, 0.62),
+  });
+
+  const specs = [
+    new Vec3(5.2, 4.8, 5.2),
+    new Vec3(4.6, 4.2, 4.6),
+    new Vec3(1.8, 6.2, 1.8),
+    new Vec3(3.2, 3.0, 2.8),
+    new Vec3(2.2, 2.0, 6.5),
+  ];
+  const shards = specs.map((half, i) => {
+    const v = [];
+    const n = [];
+    const t = [];
+    const u0 = i < 2 ? engU0 : frameU0;
+    const u1 = i < 2 ? engU1 : frameU1;
+    pushBoxPart(v, n, t, new Vec3(-half.x, -half.y, -half.z), new Vec3(half.x, half.y, half.z), {
+      front: uvRect(u0, 0.06, u1, 0.88),
+      back: uvRect(u0, 0.06, u1, 0.88),
+      left: uvRect(u0, 0.06, u1, 0.88),
+      right: uvRect(u0, 0.06, u1, 0.88),
+      top: uvRect(u0, 0.06, u1, 0.88),
+      bottom: uvRect(u0, 0.06, u1, 0.88),
+    });
+    return flipV({ vertices: new Float32Array(v), normals: new Float32Array(n), uvs: new Float32Array(t) });
+  });
+
+  return {
+    carboyTop: flipV({
+      vertices: new Float32Array(topVerts),
+      normals: new Float32Array(topNorms),
+      uvs: new Float32Array(topUvs),
+    }),
+    shards,
+  };
+}
+
+export function createHoistBreakPose() {
+  return createDispenserBreakPose();
+}
+
+export function hoistBreakPose(elapsed, seed = 0, target = createHoistBreakPose()) {
+  return dispenserBreakPose(elapsed, seed + 9.6, target);
+}
+
+const MIRROR_GLASS_DEEP = [20, 44, 68];
+const MIRROR_GLASS_MID = [56, 108, 148];
+const MIRROR_GLASS_BRIGHT = [164, 224, 248];
+const MIRROR_GLINT = [232, 250, 255];
+const SOAP_TEAL = [42, 184, 172];
+
+function drawVanityBasin(rnd) {
+  const t = new Tile(VANITY_BASIN.width, VANITY_BASIN.height);
+  plate(t, 0, 0, VANITY_BASIN.width, VANITY_BASIN.height, rnd, PORCELAIN_BASE);
+  // Sculpted vitreous-china porcelain washbasin apron & curved rim highlights (y = 2..42)
+  for (let y = 2; y < 42; y++) {
+    const v = (y - 2) / 40;
+    const verticalCurve = Math.sin(v * Trigo.pi) * 0.25;
+    for (let x = 2; x < 62; x++) {
+      const u = (x - 2) / 60;
+      const spec = Math.pow(Math.max(0, Math.sin(u * Trigo.pi)), 1.6);
+      const lift = (spec * 0.65 + verticalCurve) * 0.52;
+      t.set(x, y, lift >= 0.22 ? PORCELAIN_LIGHT : PORCELAIN_DARK, Math.abs(lift - 0.22) * 1.4);
+    }
+  }
+  // Overflow slot & subtle porcelain contour bevels
+  t.rect(26, 8, 12, 3, ALCOVE_DARK, 0.88);
+  t.groove(4, 14, 59, 14, 1.4, 0.9);
+  t.relief(4, 3, 56, 10, 1.1, 1.0);
+  // Lower region (y = 44..62): Liquid soap dispenser bottle & brushed-chrome faucet escutcheon
+  t.rect(4, 44, 26, 18, SOAP_TEAL, 0.88);
+  t.rect(8, 47, 18, 12, MIRROR_GLASS_BRIGHT, 0.45);
+  t.rect(34, 44, 26, 18, STAINLESS_LIGHT, 0.88);
+  t.rect(38, 48, 8, 4, HOT_RED, 0.9);
+  t.rect(50, 48, 8, 4, COLD_BLUE, 0.9);
+  t.relief(4, 44, 26, 18, 0.9, 0.7);
+  t.relief(34, 44, 26, 18, 1.0, 0.7);
+  rust(t, rnd, 0.08);
+  return t;
+}
+
+function drawVanityCabinet(rnd) {
+  const t = new Tile(VANITY_CABINET.width, VANITY_CABINET.height);
+  plate(t, 0, 0, VANITY_CABINET.width, VANITY_CABINET.height, rnd, STALL_PANEL);
+  // Upper stainless-enameled under-sink vanity shroud & twin service access doors (y = 4..48)
+  for (const [dx, dw] of [[5, 25], [34, 25]]) {
+    t.rect(dx, 6, dw, 40, STALL_DARK, 0.72);
+    t.rect(dx + 2, 8, dw - 4, 36, STALL_LIGHT, 0.32);
+    t.relief(dx, 6, dw, 40, -0.5, 0.9);
+  }
+  // Vertical brushed-chrome door pulls & central plumbing pipe chase
+  t.rect(26, 18, 2, 12, STAINLESS_LIGHT, 0.9);
+  t.rect(36, 18, 2, 12, STAINLESS_LIGHT, 0.9);
+  t.rect(1, 54, 62, 9, KICKPLATE, 0.92);
+  for (const [rx, ry] of [[4, 5], [59, 5], [4, 50], [59, 50]])
+    rivet(t, rx, ry);
+  rust(t, rnd, 0.12);
+  return t;
+}
+
+function drawVanityMirror(rnd) {
+  const t = new Tile(VANITY_MIRROR.width, VANITY_MIRROR.height);
+  plate(t, 0, 0, VANITY_MIRROR.width, VANITY_MIRROR.height, rnd, STAINLESS_BASE);
+  // Top glowing LED vanity light bar diffuser strip (y = 2..9)
+  t.rect(4, 2, 56, 7, MIRROR_GLINT, 0.95);
+  t.rect(6, 4, 52, 3, MIRROR_GLASS_BRIGHT, 0.85);
+  // Beveled stainless mirror frame & reflective silvered glass pane (x = 5..58, y = 12..58)
+  t.rect(4, 11, 56, 49, STAINLESS_LIGHT, 0.85);
+  for (let y = 14; y < 57; y++)
+    for (let x = 7; x < 57; x++) {
+      const gx = (x - 7) / 50;
+      const gy = (y - 14) / 43;
+      const grad = Utils.clamp(0.25 + (1 - gy) * 0.45 + gx * 0.25, 0, 1);
+      let col = mix(MIRROR_GLASS_DEEP, MIRROR_GLASS_MID, grad);
+      // Diagonal specular reflection streaks across the mirror glass
+      const diagA = Math.abs((gx * 1.15 - gy) - 0.18);
+      const diagB = Math.abs((gx * 1.15 - gy) + 0.22);
+      if (diagA < 0.07)
+        col = mix(col, MIRROR_GLINT, (1 - diagA / 0.07) * 0.82);
+      else if (diagB < 0.035)
+        col = mix(col, MIRROR_GLASS_BRIGHT, (1 - diagB / 0.035) * 0.68);
+      t.set(x, y, col, 1);
+    }
+  t.relief(4, 2, 56, 7, 1.1, 0.7);
+  t.relief(7, 14, 50, 43, -0.6, 1.0);
+  return t;
+}
+
+function drawVanityWater(rnd) {
+  return drawToiletWater(rnd);
+}
+
+/**
+ * Returns the power-of-two RGBA texture atlas (256 x 64) for the 3D Toilet Sink & Mirror (`vanity`) prop.
+ */
+export function vanityAtlas() {
+  const { width, height } = VANITY_ATLAS;
+  const data = new Uint8Array(width * height * 4);
+  const relief = new Float32Array(width * height);
+  const blit = (tile, x0) => blitTile(data, relief, width, tile, x0);
+  blit(drawVanityBasin(mulberry32(9201)), VANITY_BASIN.x);
+  blit(drawVanityCabinet(mulberry32(9202)), VANITY_CABINET.x);
+  blit(drawVanityMirror(mulberry32(9203)), VANITY_MIRROR.x);
+  blit(drawVanityWater(mulberry32(9204)), VANITY_WATER.x);
+  return {
+    name: 'vanity',
+    data,
+    relief,
+    width,
+    height,
+    cell: VANITY_CELL,
+    frames: VANITY_FRAMES,
+    basin: VANITY_BASIN,
+    cabinet: VANITY_CABINET,
+    mirror: VANITY_MIRROR,
+    water: VANITY_WATER,
+    front: VANITY_BASIN,
+    side: VANITY_CABINET,
+    top: VANITY_MIRROR,
+  };
+}
+
+/**
+ * Builds the 3D Toilet Sink & Mirror (`vanity`) mesh standing on `y = 0`, centered on `x/z`, against the rear wall (`-Z`) facing `+Z`:
+ * - Enameled restroom vanity pedestal & under-sink plumbing cabinet (`y = 0..18.0`, `x = -12.8..12.8`, `z = -10.6..6.8`) with chrome P-trap,
+ *   dual angle-stop supply valves, and side hand-towel rail (`x = 12.8..15.2`).
+ * - Sculpted white vitreous-china porcelain washbasin & countertop slab (`y = 18.0..24.6`, `x = -14.6..14.6`, `z = -10.8..10.2`) with hollowed
+ *   oval basin cavity, standing water pool at `y = 20.8`, chrome single-lever mixer faucet (`y = 24.6..30.2`), and liquid soap dispenser (`y = 24.6..28.8`).
+ * - Stainless glass toiletry shelf (`y = 27.6..28.6`) and tall wall-mounted beveled restroom mirror (`y = 28.8..46.0`, `x = -12.4..12.4`, `z = -10.8..-9.2`)
+ *   crowned by a glowing overhead LED vanity light bar (`y = 46.0..48.0`, `z = -10.8..-7.2`).
+ */
+export function vanityMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = VANITY_ATLAS.width;
+  const inset = 0.35 / W;
+  const basinU0 = VANITY_BASIN.x / W + inset;
+  const basinU1 = (VANITY_BASIN.x + VANITY_BASIN.width) / W - inset;
+  const cabU0 = VANITY_CABINET.x / W + inset;
+  const cabU1 = (VANITY_CABINET.x + VANITY_CABINET.width) / W - inset;
+  const mirU0 = VANITY_MIRROR.x / W + inset;
+  const mirU1 = (VANITY_MIRROR.x + VANITY_MIRROR.width) / W - inset;
+  const waterU0 = VANITY_WATER.x / W + inset;
+  const waterU1 = (VANITY_WATER.x + VANITY_WATER.width) / W - inset;
+  const waterUC = (waterU0 + waterU1) * 0.5;
+  const waterUSpan = (waterU1 - waterU0) * 0.44;
+  const porcUC = (basinU0 + basinU1) * 0.5;
+  const porcUSpan = (basinU1 - basinU0) * 0.4;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const chromeFaces = {
+    front: uvRect((basinU0 + basinU1) * 0.52, 0.7, basinU1, 0.96),
+    back: uvRect((basinU0 + basinU1) * 0.52, 0.7, basinU1, 0.96),
+    left: uvRect((basinU0 + basinU1) * 0.52, 0.7, basinU1, 0.96),
+    right: uvRect((basinU0 + basinU1) * 0.52, 0.7, basinU1, 0.96),
+    top: uvRect((basinU0 + basinU1) * 0.52, 0.7, basinU1, 0.96),
+    bottom: uvRect((basinU0 + basinU1) * 0.52, 0.7, basinU1, 0.96),
+  };
+
+  // 1. Lower Restroom Vanity Cabinet & Porcelain Pedestal Column (y = 0 .. 18.0)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-12.4, 0, -10.4), new Vec3(12.4, 2.2, 6.2), {
+    front: uvRect(cabU0, 0.85, cabU1, 0.99),
+    back: uvRect(cabU0, 0.85, cabU1, 0.99),
+    left: uvRect(cabU0, 0.85, cabU1, 0.99),
+    right: uvRect(cabU0, 0.85, cabU1, 0.99),
+    bottom: uvRect(cabU0, 0.85, cabU1, 0.99),
+  });
+  pushBoxPart(vertices, normals, uvs, new Vec3(-12.8, 2.2, -10.6), new Vec3(12.8, 18.0, 6.6), {
+    front: uvRect(cabU0, 0.08, cabU1, 0.84),
+    back: uvRect(cabU0, 0.08, cabU1, 0.84),
+    left: uvRect(cabU0, 0.08, cabU1, 0.84),
+    right: uvRect(cabU0, 0.08, cabU1, 0.84),
+  });
+  // Sculpted front porcelain pedestal column supporting the front basin belly (y = 0 .. 18.0, z = 4.2 .. 8.2)
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 0, 5.4), argV3b.setScalar(0, 18.0, 5.8), argV2a.setScalar(4.4, 3.6), argV2b.setScalar(5.8, 4.4), uvBox(basinU0, 0.12, basinU1, 0.64), 12);
+
+  // Side chrome hand-towel bar on right side of cabinet (x = 12.8 .. 15.0, y = 13.6 .. 15.0, z = -6.2 .. 4.6)
+  pushBoxPart(vertices, normals, uvs, new Vec3(12.8, 13.8, -5.8), new Vec3(14.8, 14.8, -4.6), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(12.8, 13.8, 3.4), new Vec3(14.8, 14.8, 4.6), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(14.0, 13.8, -6.0), new Vec3(15.0, 14.8, 4.8), chromeFaces);
+
+  // 2. Porcelain Countertop Wings & Sculpted Oval Washbasin Rim (y = 18.0 .. 24.6, x = -14.6 .. 14.6, z = -10.8 .. 10.2)
+  // Left & right porcelain vanity deck wings
+  pushBoxPart(vertices, normals, uvs, new Vec3(-14.6, 18.0, -10.8), new Vec3(-7.6, 24.6, 7.8), {
+    front: uvRect(basinU0, 0.04, (basinU0 + basinU1) * 0.45, 0.62),
+    back: uvRect(basinU0, 0.04, (basinU0 + basinU1) * 0.45, 0.62),
+    left: uvRect(basinU0, 0.04, basinU1, 0.62),
+    right: uvRect(basinU0, 0.04, basinU1, 0.62),
+    top: uvRect(basinU0, 0.04, (basinU0 + basinU1) * 0.48, 0.42),
+    bottom: uvRect(basinU0, 0.32, basinU1, 0.64),
+  });
+  pushBoxPart(vertices, normals, uvs, new Vec3(7.6, 18.0, -10.8), new Vec3(14.6, 24.6, 7.8), {
+    front: uvRect((basinU0 + basinU1) * 0.55, 0.04, basinU1, 0.62),
+    back: uvRect((basinU0 + basinU1) * 0.55, 0.04, basinU1, 0.62),
+    left: uvRect(basinU0, 0.04, basinU1, 0.62),
+    right: uvRect(basinU0, 0.04, basinU1, 0.62),
+    top: uvRect((basinU0 + basinU1) * 0.52, 0.04, basinU1, 0.42),
+    bottom: uvRect(basinU0, 0.32, basinU1, 0.64),
+  });
+  // Rear faucet mounting deck & porcelain backsplash lip (z = -10.8 .. -4.8, y = 18.0 .. 26.8)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-7.6, 18.0, -10.8), new Vec3(7.6, 24.6, -4.8), {
+    front: uvRect(basinU0, 0.04, basinU1, 0.52),
+    back: uvRect(basinU0, 0.04, basinU1, 0.52),
+    top: uvRect(basinU0, 0.04, basinU1, 0.36),
+  });
+  pushBoxPart(vertices, normals, uvs, new Vec3(-14.6, 24.6, -10.8), new Vec3(14.6, 26.8, -8.8), {
+    front: uvRect(basinU0, 0.04, basinU1, 0.28),
+    back: uvRect(basinU0, 0.04, basinU1, 0.28),
+    left: uvRect(basinU0, 0.04, basinU1, 0.28),
+    right: uvRect(basinU0, 0.04, basinU1, 0.28),
+    top: uvRect(basinU0, 0.04, basinU1, 0.22),
+  });
+
+  // Sculpted Oval Washbasin Outer Belly, Top Rim, Inner Cavity & Standing Water (centered at x = 0, z = 1.6, y = 18.0 .. 24.6)
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 18.0, 1.6), argV3b.setScalar(0, 24.6, 1.8), argV2a.setScalar(7.6, 6.8), argV2b.setScalar(9.6, 8.4), uvBox(basinU0, 0.04, basinU1, 0.62), 14);
+  pushOvalRingCap(vertices, normals, uvs, argV3a.setScalar(0, 24.6, 1.8), argV2a.setScalar(9.6, 8.4), argV2b.setScalar(7.2, 6.2), argV2c.setScalar(porcUC, 0.16), argV2d.setScalar(porcUSpan, 0.12), 14);
+  pushOvalFrustum(vertices, normals, uvs, argV3a.setScalar(0, 19.6, 1.6), argV3b.setScalar(0, 24.6, 1.8), argV2a.setScalar(5.4, 4.6), argV2b.setScalar(7.2, 6.2), uvBox(basinU0, 0.08, basinU1, 0.48), 14, true);
+  pushOvalDisc(vertices, normals, uvs, argV3a.setScalar(0, 21.0, 1.7), argV2a.setScalar(6.2, 5.3), argV2b.setScalar(waterUC, 0.5), argV2c.setScalar(waterUSpan, 0.42), 14);
+
+  // 3. Chrome Single-Lever Mixer Faucet & Liquid Soap Dispenser on Rear Deck (y = 24.6 .. 30.2)
+  // Faucet base escutcheon, vertical body, forward-angled spout, and single mixer lever
+  pushBoxPart(vertices, normals, uvs, new Vec3(-2.2, 24.6, -8.2), new Vec3(2.2, 25.8, -5.8), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-0.9, 25.8, -7.8), new Vec3(0.9, 29.6, -6.2), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-0.8, 28.4, -7.6), new Vec3(0.8, 29.8, -2.4), chromeFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(-0.6, 29.6, -8.0), new Vec3(2.4, 30.2, -5.6), chromeFaces);
+
+  // Teal liquid soap dispenser bottle & pump nozzle on right vanity wing (x = 9.4 .. 12.6, y = 24.6 .. 29.0, z = -7.8 .. -4.6)
+  const soapFaces = {
+    front: uvRect(basinU0, 0.7, (basinU0 + basinU1) * 0.46, 0.96),
+    back: uvRect(basinU0, 0.7, (basinU0 + basinU1) * 0.46, 0.96),
+    left: uvRect(basinU0, 0.7, (basinU0 + basinU1) * 0.46, 0.96),
+    right: uvRect(basinU0, 0.7, (basinU0 + basinU1) * 0.46, 0.96),
+    top: uvRect(basinU0, 0.7, (basinU0 + basinU1) * 0.46, 0.96),
+  };
+  pushBoxPart(vertices, normals, uvs, new Vec3(9.4, 24.6, -7.8), new Vec3(12.6, 28.0, -4.6), soapFaces);
+  pushBoxPart(vertices, normals, uvs, new Vec3(10.5, 28.0, -6.8), new Vec3(11.5, 29.2, -4.2), chromeFaces);
+
+  // 4. Wall-Mounted Glass/Chrome Toiletry Shelf, Beveled Restroom Mirror & Overhead LED Vanity Light Bar (y = 27.6 .. 48.0)
+  // Toiletry shelf above faucet (y = 27.4 .. 28.2, z = -10.8 .. -7.6)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-11.6, 27.4, -10.8), new Vec3(11.6, 28.2, -7.6), chromeFaces);
+  // Framed wall mirror above the washbasin (x = -12.4 .. 12.4, y = 28.8 .. 46.0, z = -10.8 .. -9.2)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-12.4, 28.8, -10.8), new Vec3(12.4, 46.0, -9.2), {
+    front: uvRect(mirU0, 0.18, mirU1, 0.94),
+    back: uvRect(cabU0, 0.08, cabU1, 0.84),
+    left: uvRect(mirU0, 0.18, mirU0 + (mirU1 - mirU0) * 0.08, 0.94),
+    right: uvRect(mirU0, 0.18, mirU0 + (mirU1 - mirU0) * 0.08, 0.94),
+    top: uvRect(mirU0, 0.18, mirU1, 0.24),
+    bottom: uvRect(mirU0, 0.18, mirU1, 0.24),
+  });
+  // Overhead LED vanity light bar projecting above the mirror frame (x = -12.8 .. 12.8, y = 46.0 .. 48.0, z = -10.8 .. -7.2)
+  pushBoxPart(vertices, normals, uvs, new Vec3(-12.8, 46.0, -10.8), new Vec3(12.8, 48.0, -7.2), {
+    front: uvRect(mirU0, 0.03, mirU1, 0.14),
+    back: uvRect(cabU0, 0.08, cabU1, 0.24),
+    left: uvRect(cabU0, 0.08, cabU1, 0.24),
+    right: uvRect(cabU0, 0.08, cabU1, 0.24),
+    top: uvRect(cabU0, 0.08, cabU1, 0.24),
+    bottom: uvRect(mirU0, 0.03, mirU1, 0.14),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+export const buildVanity = vanityMesh;
+
+/**
+ * Builds the 3D planar reflective mirror glass quad (`x = -11.2..11.2, y = 30.0..44.8, z = -9.12`)
+ * mounted on the front of the Toilet Sink & Mirror (`vanity`), facing `+Z` (`normal = (0, 0, 1)`).
+ */
+export function vanityMirrorMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+  pushQuad(
+    vertices,
+    normals,
+    uvs,
+    new Vec3(-11.2, 30.0, -9.12),
+    new Vec3(11.2, 30.0, -9.12),
+    new Vec3(11.2, 44.8, -9.12),
+    new Vec3(-11.2, 44.8, -9.12),
+    uvBox(0, 0, 1, 1),
+  );
+  return {
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  };
+}
+
+/**
+ * Builds the 3D wrecked Toilet Sink & Mirror (`vanity`) left standing after destruction:
+ * ruptured under-sink cabinet, fractured left porcelain basin stump with exposed plumbing, and shattered lower mirror frame on the wall.
+ */
+export function vanityWreckMesh() {
+  const vertices = [];
+  const normals = [];
+  const uvs = [];
+
+  const W = VANITY_ATLAS.width;
+  const inset = 0.35 / W;
+  const basinU0 = VANITY_BASIN.x / W + inset;
+  const basinU1 = (VANITY_BASIN.x + VANITY_BASIN.width) / W - inset;
+  const cabU0 = VANITY_CABINET.x / W + inset;
+  const cabU1 = (VANITY_CABINET.x + VANITY_CABINET.width) / W - inset;
+  const mirU0 = VANITY_MIRROR.x / W + inset;
+  const mirU1 = (VANITY_MIRROR.x + VANITY_MIRROR.width) / W - inset;
+  const waterU0 = VANITY_WATER.x / W + inset;
+  const waterU1 = (VANITY_WATER.x + VANITY_WATER.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  pushBoxPart(vertices, normals, uvs, new Vec3(-12.4, 0, -10.4), new Vec3(12.4, 2.2, 6.2), {
+    front: uvRect(cabU0, 0.85, cabU1, 0.99),
+    back: uvRect(cabU0, 0.85, cabU1, 0.99),
+    left: uvRect(cabU0, 0.85, cabU1, 0.99),
+    right: uvRect(cabU0, 0.85, cabU1, 0.99),
+    bottom: uvRect(cabU0, 0.85, cabU1, 0.99),
+  });
+  pushBoxPart(vertices, normals, uvs, new Vec3(-12.8, 2.2, -10.6), new Vec3(12.8, 17.6, 6.4), {
+    front: uvRect(cabU0, 0.12, cabU1, 0.84),
+    back: uvRect(cabU0, 0.12, cabU1, 0.84),
+    left: uvRect(cabU0, 0.12, cabU1, 0.84),
+    right: uvRect(cabU0, 0.12, cabU1, 0.84),
+    top: uvRect(waterU0, 0.25, waterU1, 0.85),
+  });
+  // Fractured left porcelain basin wing & lower mirror frame remnant on rear wall
+  pushBoxPart(vertices, normals, uvs, new Vec3(-14.6, 17.6, -10.8), new Vec3(-3.4, 21.8, 6.8), {
+    front: uvRect(basinU0, 0.08, (basinU0 + basinU1) * 0.48, 0.58),
+    back: uvRect(basinU0, 0.08, basinU1, 0.58),
+    left: uvRect(basinU0, 0.08, basinU1, 0.58),
+    right: uvRect(basinU0, 0.08, basinU1, 0.58),
+    top: uvRect(basinU0, 0.08, (basinU0 + basinU1) * 0.48, 0.42),
+  });
+  pushBoxPart(vertices, normals, uvs, new Vec3(-12.4, 28.8, -10.8), new Vec3(8.2, 35.6, -9.2), {
+    front: uvRect(mirU0, 0.48, mirU1, 0.94),
+    back: uvRect(cabU0, 0.12, cabU1, 0.84),
+    left: uvRect(cabU0, 0.12, cabU1, 0.84),
+    right: uvRect(cabU0, 0.12, cabU1, 0.84),
+    top: uvRect(mirU0, 0.48, mirU1, 0.62),
+  });
+
+  return flipV({
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    uvs: new Float32Array(uvs),
+  });
+}
+
+/**
+ * Builds the 3D spilled water puddle mesh (`y = 0.12`) around a destroyed Toilet Sink & Mirror.
+ */
+export function vanityPuddleMesh() {
+  return toiletPuddleMesh();
+}
+
+export const vanityDebrisMesh = vanityPuddleMesh;
+
+/**
+ * Builds the 3D shrapnel pieces blasted off a destroyed Toilet Sink & Mirror:
+ * - `carboyTop`: blown-off upper mirror frame & LED vanity light bar assembly.
+ * - `shards`: `VANITY_SHARD_COUNT` (`5`) flying fragments (2 reflective mirror glass shards, 2 white porcelain basin shards, and 1 chrome faucet/soap assembly).
+ */
+export function vanityShrapnelParts() {
+  const W = VANITY_ATLAS.width;
+  const inset = 0.35 / W;
+  const basinU0 = VANITY_BASIN.x / W + inset;
+  const basinU1 = (VANITY_BASIN.x + VANITY_BASIN.width) / W - inset;
+  const mirU0 = VANITY_MIRROR.x / W + inset;
+  const mirU1 = (VANITY_MIRROR.x + VANITY_MIRROR.width) / W - inset;
+  const cabU0 = VANITY_CABINET.x / W + inset;
+  const cabU1 = (VANITY_CABINET.x + VANITY_CABINET.width) / W - inset;
+  const uvRect = (u0, v0, u1, v1) => ({ u0, v0, u1, v1 });
+
+  const topVerts = [];
+  const topNorms = [];
+  const topUvs = [];
+  pushBoxPart(topVerts, topNorms, topUvs, new Vec3(-11.0, -4.2, -1.2), new Vec3(11.0, 4.2, 1.2), {
+    front: uvRect(mirU0, 0.03, mirU1, 0.58),
+    back: uvRect(cabU0, 0.12, cabU1, 0.78),
+    left: uvRect(cabU0, 0.12, cabU1, 0.78),
+    right: uvRect(cabU0, 0.12, cabU1, 0.78),
+    top: uvRect(mirU0, 0.03, mirU1, 0.14),
+    bottom: uvRect(mirU0, 0.18, mirU1, 0.32),
+  });
+
+  const specs = [
+    new Vec3(3.8, 3.4, 0.45),
+    new Vec3(3.2, 2.8, 0.45),
+    new Vec3(4.2, 2.0, 3.0),
+    new Vec3(3.6, 1.8, 2.6),
+    new Vec3(1.6, 2.6, 2.2),
+  ];
+  const shards = specs.map((half, i) => {
+    const v = [];
+    const n = [];
+    const t = [];
+    const u0 = i < 2 ? mirU0 : basinU0;
+    const u1 = i < 2 ? mirU1 : basinU1;
+    pushBoxPart(v, n, t, new Vec3(-half.x, -half.y, -half.z), new Vec3(half.x, half.y, half.z), {
+      front: uvRect(u0, 0.12, u1, 0.82),
+      back: uvRect(u0, 0.12, u1, 0.82),
+      left: uvRect(u0, 0.12, u1, 0.82),
+      right: uvRect(u0, 0.12, u1, 0.82),
+      top: uvRect(u0, 0.12, u1, 0.82),
+      bottom: uvRect(u0, 0.12, u1, 0.82),
+    });
+    return flipV({ vertices: new Float32Array(v), normals: new Float32Array(n), uvs: new Float32Array(t) });
+  });
+
+  return {
+    carboyTop: flipV({
+      vertices: new Float32Array(topVerts),
+      normals: new Float32Array(topNorms),
+      uvs: new Float32Array(topUvs),
+    }),
+    shards,
+  };
+}
+
+/** Pre-allocates a reusable pose structure for `vanityBreakPose`. */
+export function createVanityBreakPose() {
+  return createDispenserBreakPose();
+}
+
+/**
+ * Computes the 3D transforms for a destroyed Toilet Sink & Mirror's wreck, spreading water puddle,
+ * tumbling mirror/light crown, and 5 flying shards at `elapsed` seconds after destruction, writing into `target`.
+ */
+export function vanityBreakPose(elapsed, seed = 0, target = createVanityBreakPose()) {
+  return dispenserBreakPose(elapsed, seed + 10.8, target);
 }
 
 export const SHADOW_ATLAS = { width: 128, height: 64 };

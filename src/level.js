@@ -81,7 +81,7 @@ const PICKUPS = {
   V: 'radsuit',
   N: 'nightvision',
 };
-const FURNITURES = { d: 'dispenser', t: 'desk', f: 'table', e: 'oven', l: 'sink', p: 'plant', j: 'toilet', v: 'spaceship' };
+const FURNITURES = { d: 'dispenser', t: 'desk', f: 'table', e: 'oven', l: 'sink', p: 'plant', j: 'toilet', v: 'spaceship', n: 'workbench', K: 'toolchest', Q: 'welder', H: 'hoist', J: 'vanity' };
 
 // Face directions: the side of a tile a ray enters through (0: -x, 1: +x, 2: -y, 3: +y).
 const DX = [-1, 1, 0, 0];
@@ -97,6 +97,11 @@ export const SINK_WALL_OFFSET = 18;
 export const PLANT_WALL_OFFSET = 16;
 export const TOILET_WALL_OFFSET = 18;
 export const SPACESHIP_WALL_OFFSET = 0;
+export const WORKBENCH_WALL_OFFSET = 16;
+export const TOOLCHEST_WALL_OFFSET = 18;
+export const WELDER_WALL_OFFSET = 16;
+export const HOIST_WALL_OFFSET = 0;
+export const VANITY_WALL_OFFSET = 18;
 const SWITCH_WALL_OFFSET = 2;
 const FURNITURE_WALL_OFFSETS = {
   dispenser: DISPENSER_WALL_OFFSET,
@@ -107,6 +112,11 @@ const FURNITURE_WALL_OFFSETS = {
   plant: PLANT_WALL_OFFSET,
   toilet: TOILET_WALL_OFFSET,
   spaceship: SPACESHIP_WALL_OFFSET,
+  workbench: WORKBENCH_WALL_OFFSET,
+  toolchest: TOOLCHEST_WALL_OFFSET,
+  welder: WELDER_WALL_OFFSET,
+  hoist: HOIST_WALL_OFFSET,
+  vanity: VANITY_WALL_OFFSET,
 };
 
 /**
@@ -185,6 +195,7 @@ export class Level {
     this.buildChests();
     this.buildSwitches();
     this.buildFurnitures();
+    this.hangarDoors = this.findHangarDoors();
   }
 
   /**
@@ -475,10 +486,11 @@ export class Level {
         const oy = y - WALL_DY[d];
         if (!isWall(x + WALL_DX[d], y + WALL_DY[d]) || (requireWalkableOpposite && !this.isWalkable(tileAt.setScalar(ox, oy))))
           continue;
-        let score = 0;
+        const oppHasFurniture = Boolean(FURNITURES[this.rows[oy]?.[ox]]);
+        let score = oppHasFurniture ? 0 : 8;
         for (let e = 0; e < 4; e++) {
           if (this.isWalkable(tileAt.setScalar(ox + WALL_DX[e], oy + WALL_DY[e])))
-            score++;
+            score += FURNITURES[this.rows[oy + WALL_DY[e]]?.[ox + WALL_DX[e]]] ? 1 : 2;
         }
         if (score > sideScore) {
           sideScore = score;
@@ -913,6 +925,83 @@ export class Level {
   /** Ceiling height at tile index `idx`: `HANGAR_CEILING` (128) inside hangar bays, `CEILING` (64) elsewhere. */
   ceilingAt(idx) {
     return this.hangar?.has(idx) ? HANGAR_CEILING : CEILING;
+  }
+
+  /**
+   * Giant hangar doors behind spaceships: for each spaceship in a hangar bay, traces backward along its aft
+   * axis (-cos(angle), -sin(angle)) to the enclosing hangar wall and marks the 3-tile-wide blast door span
+   * (columns -1, 0, +1 matching the ~3-tile wingspan) plus its flanking gantry piers (columns -2, +2).
+   */
+  findHangarDoors() {
+    if (!this.hangar || !this.furnitures.length)
+      return null;
+    const { width, kind, diag, hangar } = this;
+    const map = new Map();
+    for (let i = 0; i < this.furnitures.length; i++) {
+      const ship = this.furnitures[i];
+      if (ship.type !== 'spaceship' || !hangar.has(ship.idx))
+        continue;
+      const cos = Math.cos(ship.angle ?? 0);
+      const sin = Math.sin(ship.angle ?? 0);
+      const alongX = Math.abs(cos) >= Math.abs(sin);
+      const backX = alongX ? (cos >= 0 ? -1 : 1) : 0;
+      const backY = alongX ? 0 : (sin >= 0 ? -1 : 1);
+      const d = alongX ? (backX < 0 ? 1 : 0) : (backY < 0 ? 3 : 2);
+      let tx = ship.x;
+      let ty = ship.y;
+      let wallX = -1;
+      let wallY = -1;
+      while (this.inBounds(tileAt.setScalar(tx + backX, ty + backY))) {
+        const nx = tx + backX;
+        const ny = ty + backY;
+        const nidx = ny * width + nx;
+        if (kind[nidx] === WALL && diag[nidx] === 0) {
+          wallX = nx;
+          wallY = ny;
+          break;
+        }
+        if (!hangar.has(nidx))
+          break;
+        tx = nx;
+        ty = ny;
+      }
+      if (wallX < 0)
+        continue;
+      for (let col = -1; col <= 1; col++) {
+        const wx = alongX ? wallX : wallX + col;
+        const wy = alongX ? wallY + col : wallY;
+        const ax = wx - backX;
+        const ay = wy - backY;
+        if (!this.inBounds(tileAt.setScalar(wx, wy)) || !this.inBounds(tileAt.setScalar(ax, ay)))
+          continue;
+        const widx = wy * width + wx;
+        const aidx = ay * width + ax;
+        if (kind[widx] === WALL && diag[widx] === 0 && hangar.has(aidx))
+          map.set(widx * 4 + d, col);
+      }
+      for (const col of [-2, 2]) {
+        const wx = alongX ? wallX : wallX + col;
+        const wy = alongX ? wallY + col : wallY;
+        const ax = wx - backX;
+        const ay = wy - backY;
+        if (!this.inBounds(tileAt.setScalar(wx, wy)) || !this.inBounds(tileAt.setScalar(ax, ay)))
+          continue;
+        const widx = wy * width + wx;
+        const aidx = ay * width + ax;
+        const key = widx * 4 + d;
+        if (!map.has(key) && kind[widx] === WALL && diag[widx] === 0 && hangar.has(aidx))
+          map.set(key, col);
+      }
+    }
+    return map.size ? map : null;
+  }
+
+  /** Hangar door column offset (-2..2) for wall `tile` (`Vec2`) on cardinal face `d` (0..3), or null. */
+  hangarDoorAt(tile, d) {
+    if (!this.hangarDoors || !this.inBounds(tile))
+      return null;
+    const col = this.hangarDoors.get((tile.y * this.width + tile.x) * 4 + d);
+    return col !== undefined ? col : null;
   }
 
   findArena() {

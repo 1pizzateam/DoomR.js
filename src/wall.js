@@ -17,6 +17,17 @@ export const WALL_CELLS = { plain: 0, vent: 1, pipes: 2, lights: 3, console: 4, 
 export const WALL_CELL_COUNT = 8;
 export const DOOR_WALL_CELLS = { jamb: 0, pistons: 1, seal: 2, sensor: 3, red: 4, yellow: 5, blue: 6, seam: 7 };
 export const DOOR_WALL_CELL_COUNT = 8;
+export const HANGAR_DOOR_CELLS = {
+  bottomLeft: 0,
+  bottomCenter: 1,
+  bottomRight: 2,
+  topLeft: 3,
+  topCenter: 4,
+  topRight: 5,
+  bottomPier: 6,
+  topPier: 7,
+};
+export const HANGAR_DOOR_CELL_COUNT = 8;
 const SIZE = TILE_PIXELS;
 
 const SIGNAL = [70, 230, 150];
@@ -1228,6 +1239,372 @@ export function doorWallCellFor(tile, d, lock = null) {
   return DOOR_WALL_CELLS.sensor;
 }
 
+// ---- Giant Hangar Blast Door wall atlas (behind spaceships in E1M1 Hangar) -----------------------------------------
+
+const HANGAR_HAZARD = [150, 86, 30];
+const HANGAR_HAZARD_DARK = [14, 18, 28];
+
+function hangarHazardStrip(t, x0, y0, w, h) {
+  const s = t.scale;
+  const px0 = Math.round(x0 * s);
+  const py0 = Math.round(y0 * s);
+  const px1 = Math.round((x0 + w) * s);
+  const py1 = Math.round((y0 + h) * s);
+  const band = 4 * s;
+  const H = t.ensureRelief();
+  for (let py = py0; py < py1; py++)
+    for (let px = px0; px < px1; px++) {
+      const diag = (px + py) / band;
+      const frac = diag - Math.floor(diag);
+      const stripe = Math.floor(diag) & 1;
+      const edge = Math.min(frac, 1 - frac) * band;
+      const blend = Utils.clamp(0.5 + (stripe ? 1 : -1) * (edge - 0.5), 0, 1);
+      H[py * t.width + px] += stripe ? 0.25 : -0.15;
+      t.setRaw(px, py, mix(HANGAR_HAZARD_DARK, HANGAR_HAZARD, blend), 0.96);
+    }
+  bevel(t, x0, y0, w, h, false);
+}
+
+function drawHangarViewingSlit(t, x0, y0, w, h) {
+  const s = t.scale;
+  const px0 = Math.round((x0 + 1) * s);
+  const px1 = Math.round((x0 + w - 1) * s);
+  const py0 = Math.round((y0 + 1) * s);
+  const py1 = Math.round((y0 + h - 1) * s);
+  const H = t.ensureRelief();
+  for (let py = py0; py < py1; py++) {
+    const ly = py / s - y0;
+    const grad = 0.22 + (ly / h) * 0.28;
+    const tube = Math.max(0, 1 - Math.abs(ly - h * 0.42) / (h * 0.28));
+    const col = mix(mix(SHADOW, GLOW, grad), [180, 225, 255], tube * 0.65);
+    for (let px = px0; px < px1; px++) {
+      const lx = px / s - x0;
+      const mullion = Math.abs(((lx - 4) % 8) - 4) < 0.45 && lx > 3 && lx < w - 3;
+      H[py * t.width + px] += mullion ? 0.6 : -0.9;
+      t.setRaw(px, py, mullion ? mix(SHADOW, METAL, 0.45) : col, 0.98);
+    }
+  }
+  bevel(t, x0, y0, w, h, false);
+}
+
+function drawHangarRibbedCoffer(t, x0, y0, w, h) {
+  const s = t.scale;
+  bevel(t, x0, y0, w, h, false);
+  t.relief(x0 + 1, y0 + 1, w - 2, h - 2, -0.7, 0.6);
+  const H = t.ensureRelief();
+  for (let py = Math.round((y0 + 1) * s); py < Math.round((y0 + h - 1) * s); py++)
+    for (let px = Math.round((x0 + 1) * s); px < Math.round((x0 + w - 1) * s); px++)
+      t.setRaw(px, py, mix(METAL, SHADOW, 0.34), 0.88);
+  for (let y = y0 + 3.5; y < y0 + h - 2.5; y += 4) {
+    const py = Math.round(y * s);
+    t.groove(x0 + 2, y, x0 + w - 2, y, 1.4, 0.75);
+    for (let px = Math.round((x0 + 2) * s); px < Math.round((x0 + w - 2) * s); px++) {
+      H[py * t.width + px] -= 0.4;
+      t.setRaw(px, py - 1, SHADOW, 0.42);
+      t.setRaw(px, py, SHADOW, 0.88);
+      t.setRaw(px, py + 1, SHADOW, 0.74);
+      t.setRaw(px, py + 2, LIGHT, 0.58);
+      t.setRaw(px, py + 3, LIGHT, 0.25);
+    }
+  }
+  // Central vertical blast stiffener rib across the coffer
+  const midX = x0 + w * 0.5 - 1.25;
+  bevel(t, midX, y0 + 1, 2.5, h - 2, true);
+}
+
+/**
+ * Outer left (`isRight = false`) or right (`isRight = true`) column of a 3-tile-wide x 2-tile-high giant hangar door.
+ * Combines the outer armored jamb & guide track, top/bottom hazard bands, viewing slit, and heavy ribbed door leaf.
+ */
+function drawHangarDoorSide(t, rnd, isRight, isTop) {
+  const s = t.scale;
+  plate(t, 0, 0, 64, 64, rnd, mix(METAL, FRAME, 0.36));
+
+  const jambX0 = isRight ? 54 : 0;
+  const trackX0 = isRight ? 54 : 6;
+  const pilasterX0 = isRight ? 58 : 0;
+  const leafX0 = isRight ? 0 : 10;
+  const leafW = 54;
+
+  // Outer armored architrave pilaster & recessed vertical blast-door slide track
+  plate(t, pilasterX0, 0, 6, 64, rnd, mix(METAL, SHADOW, 0.25));
+  bevel(t, pilasterX0 + 0.5, 1, 5, 62, true);
+  const H = t.ensureRelief();
+  for (let py = 0; py < t.height; py++)
+    for (let dx = 0; dx < 4 * s; dx++) {
+      const px = trackX0 * s + dx;
+      const tooth = ((py >> 2) % 4) === 0;
+      H[py * t.width + px] += tooth ? 0.35 : -0.65;
+      t.setRaw(px, py, tooth ? mix(METAL, LIGHT, 0.25) : mix(SHADOW, FRAME, 0.48), 0.94);
+    }
+  bevel(t, trackX0, 0, 4, 64, false);
+
+  // Vertical clearance beacon strip along the outer jamb pilaster
+  const ledX = (isRight ? 60.5 : 2.5) * s;
+  for (let py = 6 * s; py < 58 * s; py++) {
+    const seg = ((py - 6 * s) % (8 * s)) < 5.5 * s;
+    for (let px = Math.floor(ledX - s); px <= Math.ceil(ledX + s); px++) {
+      const d = Math.abs(px - ledX) / s;
+      if (d <= 1) {
+        H[py * t.width + px] += seg ? 0.4 : -0.2;
+        t.setRaw(px, py, seg ? mix(GLOW, [190, 235, 255], (1 - d) * 0.5) : SHADOW, 0.92);
+      }
+    }
+  }
+
+  if (isTop) {
+    // Overhead hangar lintel girder (y = 0..7) & diagonal hazard stripe header (y = 7..14)
+    plate(t, leafX0, 0, leafW, 7, rnd, mix(METAL, SHADOW, 0.32));
+    bevel(t, leafX0, 0.5, leafW, 6, true);
+    hangarHazardStrip(t, leafX0, 7, leafW, 7);
+
+    // Massive sliding blast-door leaf upper section (y = 14..64)
+    plate(t, leafX0, 14, leafW, 50, rnd, mix(METAL, LIGHT, 0.18));
+    const innerX = isRight ? 4 : 14;
+    drawHangarViewingSlit(t, innerX, 18, 46, 11);
+    drawHangarRibbedCoffer(t, innerX, 32, 46, 24);
+
+    // Mid-span horizontal structural box-girder (y = 58..64)
+    bevel(t, leafX0, 58, leafW, 6, true);
+    horizontalSeam(t, 63.2, 0.9);
+    for (const rx of [innerX + 2, innerX + 22, innerX + 42]) {
+      rivet(t, rx, 15);
+      rivet(t, rx, 60);
+    }
+  } else {
+    // Massive sliding blast-door leaf lower section (y = 0..50)
+    plate(t, leafX0, 0, leafW, 50, rnd, mix(METAL, LIGHT, 0.18));
+    const innerX = isRight ? 4 : 14;
+    // Lower half of mid-span horizontal structural box-girder (y = 0..6)
+    bevel(t, leafX0, 0, leafW, 6, true);
+    drawHangarRibbedCoffer(t, innerX, 8, 46, 39);
+    for (const rx of [innerX + 2, innerX + 22, innerX + 42]) {
+      rivet(t, rx, 2);
+      rivet(t, rx, 47);
+    }
+
+    // Lower diagonal hazard stripe (y = 50..57) & armored floor threshold track (y = 57..64)
+    hangarHazardStrip(t, leafX0, 50, leafW, 7);
+    plate(t, jambX0 === 0 ? 0 : leafX0, 57, 64, 7, rnd, mix(METAL, SHADOW, 0.42));
+    for (let x = leafX0 + 3; x < leafX0 + leafW - 3; x += 4)
+      t.groove(x, 58, x, 63, 1.2, 0.7);
+    const lampX = isRight ? 42 : 18;
+    t.rect(lampX, 51, 5, 3, SIGNAL, 0.92);
+    bevel(t, lampX, 51, 5, 3, true);
+  }
+}
+
+/**
+ * Center column of a 3-tile-wide x 2-tile-high giant hangar door (`topCenter` and `bottomCenter`):
+ * features the deep central vertical parting seam where the twin giant blast-door leaves meet, flanked by
+ * heavy hydraulic locking dogs, green/cyan interlock status LED bars, inboard viewing slits, and hazard headers.
+ */
+function drawHangarDoorCenter(t, rnd, isTop) {
+  const s = t.scale;
+  plate(t, 0, 0, 64, 64, rnd, mix(METAL, FRAME, 0.36));
+  const H = t.ensureRelief();
+
+  if (isTop) {
+    // Overhead hangar lintel girder (y = 0..7) with central illuminated launch-bay status beacon
+    plate(t, 0, 0, 64, 7, rnd, mix(METAL, SHADOW, 0.32));
+    bevel(t, 0, 0.5, 64, 6, true);
+    bevel(t, 12, 1.5, 40, 4, false);
+    for (let py = Math.round(2 * s); py < Math.round(5 * s); py++)
+      for (let px = Math.round(13 * s); px < Math.round(51 * s); px++) {
+        const core = 1 - Math.abs(py - 3.5 * s) / (1.5 * s);
+        H[py * t.width + px] -= 0.4;
+        t.setRaw(px, py, mix(GLOW, [200, 245, 255], core * 0.6), 0.95);
+      }
+    hangarHazardStrip(t, 0, 7, 64, 7);
+
+    // Left (x = 0..31) and Right (x = 33..64) giant door leaf inner halves
+    for (const [lx0, lw, cofferX] of [[0, 31, 2], [33, 31, 40]]) {
+      plate(t, lx0, 14, lw, 50, rnd, mix(METAL, LIGHT, 0.18));
+      drawHangarViewingSlit(t, cofferX, 18, 22, 11);
+      drawHangarRibbedCoffer(t, cofferX, 32, 22, 24);
+      bevel(t, lx0, 58, lw, 6, true);
+      rivet(t, cofferX + 2, 15);
+      rivet(t, cofferX + 18, 15);
+      rivet(t, cofferX + 2, 60);
+      rivet(t, cofferX + 18, 60);
+    }
+    horizontalSeam(t, 63.2, 0.9);
+  } else {
+    // Left (x = 0..31) and Right (x = 33..64) giant door leaf lower inner halves
+    for (const [lx0, lw, cofferX] of [[0, 31, 2], [33, 31, 40]]) {
+      plate(t, lx0, 0, lw, 50, rnd, mix(METAL, LIGHT, 0.18));
+      bevel(t, lx0, 0, lw, 6, true);
+      drawHangarRibbedCoffer(t, cofferX, 8, 22, 39);
+      rivet(t, cofferX + 2, 2);
+      rivet(t, cofferX + 18, 2);
+      rivet(t, cofferX + 2, 47);
+      rivet(t, cofferX + 18, 47);
+    }
+    hangarHazardStrip(t, 0, 50, 64, 7);
+    plate(t, 0, 57, 64, 7, rnd, mix(METAL, SHADOW, 0.42));
+    for (let x = 4; x < 60; x += 4)
+      t.groove(x, 58, x, 63, 1.2, 0.7);
+    for (const lx of [16, 43]) {
+      t.rect(lx, 51, 5, 3, SIGNAL, 0.92);
+      bevel(t, lx, 51, 5, 3, true);
+    }
+  }
+
+  // Deep central vertical parting chasm (x = 31..33) between the two giant door leaves
+  const seamY0 = isTop ? 14 : 0;
+  const seamY1 = isTop ? 64 : 50;
+  const seamPx = Math.round(32 * s);
+  t.groove(32, seamY0, 32, seamY1, 2.6, 1.8);
+  for (let py = Math.round(seamY0 * s); py < Math.round(seamY1 * s); py++) {
+    t.setRaw(seamPx - 5, py, SHADOW, 0.35);
+    t.setRaw(seamPx - 4, py, SHADOW, 0.65);
+    t.setRaw(seamPx - 3, py, SHADOW, 0.92);
+    t.setRaw(seamPx - 2, py, SHADOW, 0.98);
+    t.setRaw(seamPx - 1, py, SHADOW, 0.98);
+    t.setRaw(seamPx, py, SHADOW, 0.98);
+    t.setRaw(seamPx + 1, py, SHADOW, 0.98);
+    t.setRaw(seamPx + 2, py, SHADOW, 0.9);
+    t.setRaw(seamPx + 3, py, LIGHT, 0.58);
+    t.setRaw(seamPx + 4, py, LIGHT, 0.28);
+  }
+
+  // Twin vertical cylindrical status light bars either side of the central parting seam
+  const ledY0 = isTop ? 18 : 8;
+  const ledY1 = isTop ? 55 : 45;
+  for (const x of [26.5, 35.5]) {
+    const cx = (x + 1.0) * s;
+    const rad = 1.6 * s;
+    for (let py = Math.round(ledY0 * s); py < Math.round(ledY1 * s); py++)
+      for (let px = Math.floor(cx - rad - 2); px <= Math.ceil(cx + rad + 2); px++) {
+        const d = Math.abs(px - cx) / rad;
+        if (d <= 1.0) {
+          const core = Math.pow(1 - d, 1.25);
+          H[py * t.width + px] += 0.5 * core;
+          t.setRaw(px, py, mix(SIGNAL, [215, 255, 235], core * 0.42), 0.85 + 0.14 * core);
+        } else if (d <= 1.6) {
+          t.setRaw(px, py, SHADOW, (1 - (d - 1.0) / 0.6) * 0.55);
+        }
+      }
+  }
+
+  // Heavy horizontal hydraulic deadbolt locking clamps bridging the central parting seam
+  const clampYs = isTop ? [34, 49] : [14, 34];
+  for (const cy of clampYs) {
+    plate(t, 28, cy, 8, 6, rnd, mix(METAL, LIGHT, 0.3));
+    bevel(t, 28, cy, 8, 6, true);
+    t.groove(32, cy + 0.5, 32, cy + 5.5, 1.0, 0.8);
+  }
+}
+
+/**
+ * Flanking structural hangar gantry pier (`bottomPier` and `topPier`): heavy H-beam pilaster column
+ * with twin vertical hydraulic door-drive rams and illuminated launch-bay guide strips.
+ */
+function drawHangarDoorPier(t, rnd, isTop) {
+  const s = t.scale;
+  bulkhead(t, rnd);
+  const H = t.ensureRelief();
+
+  // Outer vertical H-beam pilaster columns (x = 0..11 and x = 53..64)
+  for (const px0 of [1, 53]) {
+    plate(t, px0, 4, 10, 52, rnd, mix(METAL, LIGHT, 0.16));
+    bevel(t, px0, 4.5, 10, 51, true);
+    for (const ry of [9, 21, 39, 51])
+      rivet(t, px0 + 3, ry);
+  }
+
+  // Central recessed hydraulic gantry bay (x = 13..51, y = 6..54)
+  bevel(t, 13, 6, 38, 48, false);
+  t.relief(14, 7, 36, 46, -0.6, 0.6);
+  for (let py = 7 * s; py < 53 * s; py++)
+    for (let px = 14 * s; px < 50 * s; px++)
+      t.setRaw(px, py, mix(SHADOW, FRAME, 0.38), 0.9);
+
+  // Twin vertical hydraulic counterweight cylinders at x = 17..24 and x = 40..47
+  for (const x0 of [17, 40]) {
+    const w = 7;
+    const cx = (x0 + w * 0.5) * s;
+    const rad = w * 0.5 * s;
+    t.pipe(x0, 7, w, 46, 1.5, false);
+    for (let px = x0 * s; px < (x0 + w) * s; px++) {
+      const nx = (px + 0.5 - cx) / rad;
+      const nz = Math.sqrt(Math.max(0, 1 - nx * nx));
+      const spec = Math.pow(Math.max(0, -nx * 0.4 + nz * 0.9), 3.2);
+      const col = mix(mix(SHADOW, METAL, 0.32 + nz * 0.65), LIGHT, Utils.clamp(spec * 0.8, 0, 0.9));
+      for (let py = 7 * s; py < 53 * s; py++)
+        t.setRaw(px, py, col, 0.95);
+    }
+    for (const cy of [12, 28, 46])
+      bevel(t, x0 - 0.5, cy, w + 1, 3, true);
+  }
+
+  // Central vertical status light conduit (x = 28..36)
+  bevel(t, 27, 9, 10, 42, true);
+  for (let py = 12 * s; py < 48 * s; py++) {
+    const seg = ((py - 12 * s) % (6 * s)) < 4 * s;
+    const col = seg ? mix(GLOW, SIGNAL, isTop ? 0.3 : 0.6) : SHADOW;
+    for (let px = 30 * s; px < 34 * s; px++) {
+      H[py * t.width + px] += seg ? 0.3 : -0.3;
+      t.setRaw(px, py, col, 0.92);
+    }
+  }
+}
+
+const HANGAR_DOOR_DRAW = [
+  (t, rnd) => drawHangarDoorSide(t, rnd, false, false),
+  (t, rnd) => drawHangarDoorCenter(t, rnd, false),
+  (t, rnd) => drawHangarDoorSide(t, rnd, true, false),
+  (t, rnd) => drawHangarDoorSide(t, rnd, false, true),
+  (t, rnd) => drawHangarDoorCenter(t, rnd, true),
+  (t, rnd) => drawHangarDoorSide(t, rnd, true, true),
+  (t, rnd) => drawHangarDoorPier(t, rnd, false),
+  (t, rnd) => drawHangarDoorPier(t, rnd, true),
+];
+
+/**
+ * 8-cell 2048x256 procedural giant hangar door atlas used on the double-height hangar walls behind spaceships.
+ * Cells 0..2 (`bottomLeft`, `bottomCenter`, `bottomRight`) and 3..5 (`topLeft`, `topCenter`, `topRight`) assemble
+ * a 3-tile-wide x 2-tile-high (192 x 128 unit) twin-leaf blast door; cells 6..7 (`bottomPier`, `topPier`) frame it.
+ */
+export function hangarDoorAtlas() {
+  const width = SIZE * HANGAR_DOOR_CELL_COUNT;
+  const data = new Uint8Array(width * SIZE * 4);
+  const relief = new Float32Array(width * SIZE);
+  HANGAR_DOOR_DRAW.forEach((draw, cell) => {
+    const t = new Tile(SIZE, SIZE, SIZE / 64);
+    draw(t, mulberry32(41000 + cell * 4999));
+    for (let y = 0; y < SIZE; y++)
+      for (let x = 0; x < SIZE; x++) {
+        if (t.heights)
+          relief[y * width + cell * SIZE + x] = t.heights[y * SIZE + x];
+        const i = (y * SIZE + x) * 3;
+        const o = (y * width + cell * SIZE + x) * 4;
+        for (let k = 0; k < 3; k++)
+          data[o + k] = Utils.clamp(Math.round(t.pixels[i + k]), 0, 255);
+        data[o + 3] = 255;
+      }
+  });
+  return { name: 'hangarDoor', data, width, height: SIZE, relief, cell: SIZE, frames: HANGAR_DOOR_CELL_COUNT };
+}
+
+/** Texture coordinates of a giant hangar door cell (`0..HANGAR_DOOR_CELL_COUNT-1`). */
+export function hangarDoorCellUv(cell, v0 = 0, v1 = 1) {
+  const inset = 0.25 / (SIZE * HANGAR_DOOR_CELL_COUNT);
+  return [cell / HANGAR_DOOR_CELL_COUNT + inset, v0, (cell + 1) / HANGAR_DOOR_CELL_COUNT - inset, v1];
+}
+
+/** Maps a horizontal column offset (`-1, 0, +1` for door leaves/seam, `+-2` for piers) and vertical tier `step` (`0` bottom, `1+` top) to a `HANGAR_DOOR_CELLS` index. */
+export function hangarDoorCellFor(column = 0, step = 0) {
+  const isTop = step > 0;
+  if (column === -1)
+    return isTop ? HANGAR_DOOR_CELLS.topLeft : HANGAR_DOOR_CELLS.bottomLeft;
+  if (column === 0)
+    return isTop ? HANGAR_DOOR_CELLS.topCenter : HANGAR_DOOR_CELLS.bottomCenter;
+  if (column === 1)
+    return isTop ? HANGAR_DOOR_CELLS.topRight : HANGAR_DOOR_CELLS.bottomRight;
+  return isTop ? HANGAR_DOOR_CELLS.topPier : HANGAR_DOOR_CELLS.bottomPier;
+}
+
 /** Which cell goes on a tile's face (`tile` is a Vec2 grid position): the exit hatch on exits, door-corridor panels inside doorways, otherwise a mix scattered by where the tile is. */
 export function wallCellFor(tile, d, exit = false, door = false, lock = null) {
   if (exit)
@@ -1258,24 +1635,30 @@ function shownCell(cell) {
 
 /**
  * The quads of one flat wall face, one per tile along it and per 64 units up it, each with its cell and the part of the
- * picture that fits. `face` is { axis, plane, from, to (tiles), base, top, tile (Vec2), d, exit, door, lock }. Corners come back as in
+ * picture that fits. `face` is { axis, plane, from, to (tiles), base, top, tile (Vec2), d, exit, door, lock, hangarDoor }. Corners come back as in
  * `faceCorners`: bottom-left, bottom-right, top-right, top-left.
  */
-export function wallFaceQuads({ axis, plane, from, to, base, top, tile, d, exit, door = false, lock = null }) {
+export function wallFaceQuads({ axis, plane, from, to, base, top, tile, d, exit, door = false, lock = null, hangarDoor = null }) {
   const out = [];
-  const uvFn = door ? doorWallCellUv : wallCellUv;
+  const isHangarDoor = typeof hangarDoor === 'number' && Number.isFinite(hangarDoor);
+  const uvFn = isHangarDoor ? hangarDoorCellUv : door ? doorWallCellUv : wallCellUv;
   const seamCell = door ? DOOR_WALL_CELLS.seam : WALL_CELLS.seam;
   for (let a = from; a <= to; a++) {
     if (axis === 'x')
       scratchTile.setScalar(tile.x, a);
     else
       scratchTile.setScalar(a, tile.y);
-    const cell = door ? wallCellFor(scratchTile, d, exit, door, lock) : shownCell(wallCellFor(scratchTile, d, exit, door, lock));
+    const cell = isHangarDoor
+      ? hangarDoorCellFor(hangarDoor, 0)
+      : door
+        ? wallCellFor(scratchTile, d, exit, door, lock)
+        : shownCell(wallCellFor(scratchTile, d, exit, door, lock));
     for (let y0 = base, step = 0; y0 < top - 1e-6; y0 += TILE, step++) {
       const y1 = Math.min(top, y0 + TILE);
       const part = (y1 - y0) / TILE;
       // the first piece is the picture from the bottom; a shorter one above shows its top, so the trim stays at the top
-      const uv = step === 0 ? uvFn(cell, 0, part) : uvFn(seamCell, 1 - part, 1);
+      const upperCell = isHangarDoor ? hangarDoorCellFor(hangarDoor, step) : seamCell;
+      const uv = step === 0 ? uvFn(cell, 0, part) : uvFn(upperCell, 1 - part, 1);
       const a0 = a * TILE;
       const a1 = a0 + TILE;
       const corners = axis === 'x'

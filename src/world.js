@@ -1,4 +1,4 @@
-import { Rect } from '@1pizzateam/spock';
+import { Mat4, Rect } from '@1pizzateam/spock';
 import { CustomMesh, Cylinder, FullscreenQuad, Grid, Material, Mesh, PerspectiveCamera, Quat, Rand, Renderer, RenderTarget, Scene, Sprite, Texture, Trigo, Utils, Vec2, Vec3 } from '@1pizzateam/roostr';
 import { BLOOD } from './blood.js';
 import { RUBBLE, SURFACE } from './rubble.js';
@@ -9,7 +9,7 @@ import { bloodAtlas, createQuadTarget, floorGibQuad, floorSplatQuad, particleQua
 import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorAtlas, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
 import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, doorCeilingAtlas, doorCeilingCellFor, doorCeilingCellUv, elevatorLightFactor, MARS_SKY_FRAGMENT, MARS_SKY_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, marsSkyAtlas, marsSkyMesh, updateCeilingLights } from './ceiling.js';
 import { wallPipeQuads } from './pipes.js';
-import { WALL_CELLS, diagWallFaceQuads, doorWallAtlas, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
+import { WALL_CELLS, diagWallFaceQuads, doorWallAtlas, hangarDoorAtlas, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
 import { createExplosion3dPose, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from './explosion.js';
 import { FIREBALL_FRAMES, fireballAtlas } from './fireball.js';
 import { GRENADE_SCALE, grenadeAtlas, grenadeParts } from './grenade.js';
@@ -26,7 +26,7 @@ import { medikitAtlas, medikitMesh } from './medikit.js';
 import { ammoAtlas, ammoMesh, bulletAtlas, bulletMesh, rocketAmmoAtlas, rocketAmmoMesh } from './ammo.js';
 import { keycardAtlas, keycardMesh } from './keycard.js';
 import { CHEST_LID_HINGE, CHEST_LID_OPEN_ANGLE, CHEST_TINTS, SWITCH_LEVER_ANGLE, SWITCH_LEVER_HINGE, SWITCH_TINTS, chestAtlas, chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from './cache.js';
-import { buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createOvenBreakPose, createPlantBreakPose, createSinkBreakPose, createSpaceshipBreakPose, createTableBreakPose, createToiletBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, ovenAtlas, ovenBreakPose, ovenDebrisMesh, ovenMesh, ovenShrapnelParts, ovenWreckMesh, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, sinkAtlas, sinkBreakPose, sinkMesh, sinkPuddleMesh, sinkShrapnelParts, sinkWreckMesh, spaceshipActiveMesh, spaceshipAtlas, spaceshipBreakPose, spaceshipDebrisMesh, spaceshipMesh, spaceshipShrapnelParts, spaceshipWreckMesh, tableAtlas, tableBreakPose, tableDebrisMesh, tableMesh, tableShrapnelParts, tableWreckMesh, TOILET_DOOR_PIVOT, toiletAtlas, toiletBreakPose, toiletDoorMesh, toiletMesh, toiletPuddleMesh, toiletShrapnelParts, toiletWreckMesh, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
+import { buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createHoistBreakPose, createOvenBreakPose, createPlantBreakPose, createSinkBreakPose, createSpaceshipBreakPose, createTableBreakPose, createToiletBreakPose, createToolchestBreakPose, createVanityBreakPose, createWelderBreakPose, createWorkbenchBreakPose, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, hoistAtlas, hoistBreakPose, hoistDebrisMesh, hoistMesh, hoistShrapnelParts, hoistWreckMesh, ovenAtlas, ovenBreakPose, ovenDebrisMesh, ovenMesh, ovenShrapnelParts, ovenWreckMesh, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, sinkAtlas, sinkBreakPose, sinkMesh, sinkPuddleMesh, sinkShrapnelParts, sinkWreckMesh, spaceshipActiveMesh, spaceshipAtlas, spaceshipBreakPose, spaceshipDebrisMesh, spaceshipMesh, spaceshipShrapnelParts, spaceshipWreckMesh, tableAtlas, tableBreakPose, tableDebrisMesh, tableMesh, tableShrapnelParts, tableWreckMesh, TOILET_DOOR_PIVOT, toiletAtlas, toiletBreakPose, toiletDoorMesh, toiletMesh, toiletPuddleMesh, toiletShrapnelParts, toiletWreckMesh, toolchestAtlas, toolchestBreakPose, toolchestDebrisMesh, toolchestMesh, toolchestShrapnelParts, toolchestWreckMesh, VANITY_MIRROR_CENTER, VANITY_MIRROR_FRAGMENT, VANITY_MIRROR_VERTEX, vanityAtlas, vanityBreakPose, vanityMesh, vanityMirrorMesh, vanityPuddleMesh, vanityShrapnelParts, vanityWreckMesh, welderAtlas, welderBreakPose, welderDebrisMesh, welderMesh, welderShrapnelParts, welderWreckMesh, workbenchAtlas, workbenchBreakPose, workbenchDebrisMesh, workbenchMesh, workbenchShrapnelParts, workbenchWreckMesh, FURNITURE_VERTEX, SHADOW_FRAGMENT, SHADOW_UV_BOX, SHADOW_UV_RADIAL, SHADOW_VERTEX, shadowAtlas, writeFloorShadowQuad } from './furniture.js';
 import { chaingunAtlas, chaingunMesh, chaingunParts, chaingunPose, chainsawAtlas, chainsawMesh, chainsawParts, chainsawPose, knifeAtlas, knifeParts, knifePose, rocketLauncherAtlas, rocketLauncherMesh, rocketLauncherParts, rocketLauncherPose, shotgunAtlas, shotgunMesh, shotgunParts, shotgunPose } from './arsenal.js';
 import { WEAPONS } from './weapon.js';
 import { armorAtlas, armorMesh } from './armor.js';
@@ -432,7 +432,18 @@ const FURNITURE_KINDS = {
   plant: { atlas: plantAtlas, intact: buildOfficePlant, wreck: plantWreckMesh, debris: plantDebrisMesh, shrapnel: plantShrapnelParts, createPose: createPlantBreakPose, pose: plantBreakPose },
   toilet: { atlas: toiletAtlas, intact: toiletMesh, wreck: toiletWreckMesh, debris: toiletPuddleMesh, shrapnel: toiletShrapnelParts, createPose: createToiletBreakPose, pose: toiletBreakPose, door: toiletDoorMesh, doorPivot: TOILET_DOOR_PIVOT },
   spaceship: { atlas: spaceshipAtlas, intact: spaceshipMesh, active: spaceshipActiveMesh, wreck: spaceshipWreckMesh, debris: spaceshipDebrisMesh, shrapnel: spaceshipShrapnelParts, createPose: createSpaceshipBreakPose, pose: spaceshipBreakPose },
+  workbench: { atlas: workbenchAtlas, intact: workbenchMesh, wreck: workbenchWreckMesh, debris: workbenchDebrisMesh, shrapnel: workbenchShrapnelParts, createPose: createWorkbenchBreakPose, pose: workbenchBreakPose },
+  toolchest: { atlas: toolchestAtlas, intact: toolchestMesh, wreck: toolchestWreckMesh, debris: toolchestDebrisMesh, shrapnel: toolchestShrapnelParts, createPose: createToolchestBreakPose, pose: toolchestBreakPose },
+  welder: { atlas: welderAtlas, intact: welderMesh, wreck: welderWreckMesh, debris: welderDebrisMesh, shrapnel: welderShrapnelParts, createPose: createWelderBreakPose, pose: welderBreakPose },
+  hoist: { atlas: hoistAtlas, intact: hoistMesh, wreck: hoistWreckMesh, debris: hoistDebrisMesh, shrapnel: hoistShrapnelParts, createPose: createHoistBreakPose, pose: hoistBreakPose },
+  vanity: { atlas: vanityAtlas, intact: vanityMesh, wreck: vanityWreckMesh, debris: vanityPuddleMesh, shrapnel: vanityShrapnelParts, createPose: createVanityBreakPose, pose: vanityBreakPose, mirror: vanityMirrorMesh },
 };
+
+const syncCameraProjection = Object.getPrototypeOf(PerspectiveCamera.prototype).setProjectionMatrix;
+const scratchMirrorEye = new Vec3();
+const scratchMirrorTarget = new Vec3();
+const scratchMirrorNormal = new Vec3();
+const activeMirrorViews = [];
 
 function sinkToFloor(quads) {
   for (const quad of quads)
@@ -652,6 +663,10 @@ export class World {
     this.postCamera = new PerspectiveCamera(45, new Vec2(0.1, 10), gl);
     this.target = new RenderTarget(this.viewportSize, gl);
     this.glowTarget = new RenderTarget(this.glowViewportSize, gl);
+    this.mirrorViewportSize = new Vec2(256, 256);
+    this.mirrorTarget = new RenderTarget(this.mirrorViewportSize, gl);
+    this.mirrorCamera = new PerspectiveCamera(60, new Vec2(NEAR, FAR), gl);
+    this.mirrorCamera.up.setScalar(0, 1, 0);
     this.glowDivisor = 4;
     // 2 = full bloom, 1 = bloom blurred at half the size, 0 = no bloom passes at all
     this.glowLevel = 2;
@@ -900,9 +915,15 @@ export class World {
     this.textureCache.clear();
     for (const target of [this.target, this.glowTarget])
       target.restore();
+    this.mirrorTarget?.restore();
     this.downQuad.WebGLTexture = this.target.texture;
     this.quad.WebGLTexture = this.target.texture;
     this.glowQuad.WebGLTexture = this.glowTarget.texture;
+    if (this.furnitureViews && this.mirrorTarget?.texture)
+      this.furnitureViews.forEach((view) => {
+        if (view?.mirror)
+          view.mirror.WebGLTexture = this.mirrorTarget.texture;
+      });
     for (const scene of [this.scene, this.down, this.post])
       scene.restore();
     for (let i = 0; i < this.sharedTexturedMeshes.length; i++) {
@@ -2007,7 +2028,7 @@ export class World {
         continue;
       this.resolveShadowLightDir(f.pos, scratchShadowDir);
       const isDesk = f.type === 'desk';
-      const isWide = isDesk || f.type === 'table' || f.type === 'toilet';
+      const isWide = isDesk || f.type === 'table' || f.type === 'toilet' || f.type === 'workbench' || f.type === 'hoist';
       const alongX = f.wallSide === 1 || f.wallSide === 3 || Math.abs(Math.sin(f.angle ?? 0)) > 0.7;
       const halfX = isSpaceship ? (alongX ? 96.0 : 156.0) : isWide ? (alongX ? 22.0 : 19.0) : (f.gone ? 16.5 : 17.5);
       const halfZ = isSpaceship ? (alongX ? 156.0 : 96.0) : isWide ? (alongX ? 19.0 : 22.0) : (f.gone ? 16.5 : 17.5);
@@ -2133,9 +2154,27 @@ export class World {
     level.pipeFaces = new Set();
     const faces = [];
     const doorFaces = [];
+    const hangarDoorFaces = [];
     const outdoorFaces = [];
     const hide = [];
     const isMars = level.planet === 'mars';
+    const furnitureTiles = new Set();
+    if (level.furnitureTiles)
+      for (let i = 0; i < level.furnitureTiles.length; i++) {
+        const f = level.furnitureTiles[i];
+        if (Number.isInteger(f?.idx))
+          furnitureTiles.add(f.idx);
+        else if (Number.isInteger(f?.x) && Number.isInteger(f?.y))
+          furnitureTiles.add(f.y * width + f.x);
+      }
+    if (level.furnitures)
+      for (let i = 0; i < level.furnitures.length; i++) {
+        const f = level.furnitures[i];
+        if (Number.isInteger(f?.idx))
+          furnitureTiles.add(f.idx);
+        else if (Number.isInteger(f?.x) && Number.isInteger(f?.y))
+          furnitureTiles.add(f.y * width + f.x);
+      }
     const solid = (x, y) => level.inBounds(tileAt.setScalar(x, y)) && (kind[y * width + x] === WALL || kind[y * width + x] === EXIT);
     const isCorridorDoor = (tx, ty) => {
       if (!level.inBounds(tileAt.setScalar(tx, ty)))
@@ -2206,7 +2245,12 @@ export class World {
               : faceCorners(axis, new Vec3(ta0, Math.max(top, ROOF), plane), new Vec3(ta1, tileRoof, plane));
             hide.push(...quadTriangles(tileLap, offset));
           }
+          const wallTileX = d < 2 ? group.x : a;
+          const wallTileY = d < 2 ? a : group.y;
           const corridor = group.kind !== EXIT ? doorCorridorInfo(adjX, adjY, d) : null;
+          const hangarDoor = group.kind === WALL && !corridor && level.hangarDoorAt
+            ? level.hangarDoorAt(tileAt.setScalar(wallTileX, wallTileY), d)
+            : null;
           const quads = wallFaceQuads({
             axis,
             plane,
@@ -2219,9 +2263,10 @@ export class World {
             exit: group.kind === EXIT,
             door: Boolean(corridor),
             lock: corridor?.lock ?? null,
+            hangarDoor,
           });
-          // the pipes tile carries real 3D pipes, standing out of the wall
-          if (group.kind !== EXIT && !corridor && !(isMars && !level.isIndoorTile(adjIdx))) {
+          // the pipes tile carries real 3D pipes, standing out of the wall (unless a furniture stands in the tile just in front)
+          if (group.kind !== EXIT && !corridor && hangarDoor === null && !furnitureTiles.has(adjIdx) && !(isMars && !level.isIndoorTile(adjIdx))) {
             const pipes = wallPipeQuads({ axis, plane, a, base, top: tileToRoof ? tileRoof : top, tile: new Vec2(group.x, group.y), d });
             if (pipes.length) {
               // blood and bullet holes look this up to land on the pipes instead of behind them
@@ -2235,6 +2280,8 @@ export class World {
             outdoorFaces.push(...quads);
           else if (corridor)
             doorFaces.push(...quads);
+          else if (hangarDoor !== null)
+            hangarDoorFaces.push(...quads);
           else
             faces.push(...quads);
         }
@@ -2421,6 +2468,9 @@ export class World {
     if (doorFaces.length)
       for (const sec of partitionQuadsBySector(doorFaces, sectorGrid, sectorWorldSize, scratchSectorGrid.setScalar(width, rowCount)))
         registerStaticChunk(this.staticChunks, this.track(this.wallBatch(sec.faces, false, true), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
+    if (hangarDoorFaces.length)
+      for (const sec of partitionQuadsBySector(hangarDoorFaces, sectorGrid, sectorWorldSize, scratchSectorGrid.setScalar(width, rowCount)))
+        registerStaticChunk(this.staticChunks, this.track(this.wallBatch(sec.faces, false, false, true), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
     if (outdoorFaces.length)
       for (const sec of partitionQuadsBySector(outdoorFaces, sectorGrid, sectorWorldSize, scratchSectorGrid.setScalar(width, rowCount)))
         registerStaticChunk(this.staticChunks, this.track(this.wallBatch(sec.faces, true), this.staticMeshes), sec.center, sec.radius, false, sec.bounds);
@@ -2710,8 +2760,8 @@ export class World {
     return batch.end();
   }
 
-  /** The faces of the walls, one quad per tile and per 64 units up, in one mesh: steel bulkheads indoors, door-corridor frames inside doorways, or craggy rock cliffs on Mars. */
-  wallBatch(faces, marsRock = false, doorWall = false) {
+  /** The faces of the walls, one quad per tile and per 64 units up, in one mesh: steel bulkheads indoors, door-corridor frames inside doorways, giant hangar blast doors behind spaceships, or craggy rock cliffs on Mars. */
+  wallBatch(faces, marsRock = false, doorWall = false, hangarDoor = false) {
     const { gl } = this;
     let atlas;
     if (marsRock) {
@@ -2720,6 +2770,9 @@ export class World {
     } else if (doorWall) {
       this.doorWallPixels ??= doorWallAtlas();
       atlas = this.doorWallPixels;
+    } else if (hangarDoor) {
+      this.hangarDoorPixels ??= hangarDoorAtlas();
+      atlas = this.hangarDoorPixels;
     } else {
       this.wallPixels ??= wallAtlas();
       atlas = this.wallPixels;
@@ -3452,6 +3505,26 @@ export class World {
       if (art.doorPivot)
         door.setPosition(art.doorPivot);
     }
+    let mirror = null;
+    if (art.mirror) {
+      const mirrorGeo = (cache.mirror ??= art.mirror());
+      const geometry = new CustomMesh();
+      geometry.vertices = mirrorGeo.vertices;
+      geometry.normals = mirrorGeo.normals;
+      geometry.uvs = mirrorGeo.uvs;
+      geometry.setPrimitive('TRIANGLES');
+      mirror = texturedMesh(gl, geometry, {
+        vertex: VANITY_MIRROR_VERTEX,
+        fragment: VANITY_MIRROR_FRAGMENT,
+        atlas,
+        sharedTexture: this.mirrorTarget?.texture ?? sharedTexture,
+        material: skinMaterial,
+        textureOptions: texOpts,
+      });
+      mirror.addCustomUniform?.('hasMirror', 'uniform1i', 0);
+      mirror.addCustomUniform?.('mirrorMatrix', 'uniformMatrix4fv', new Mat4());
+      root.addChild(mirror);
+    }
 
     const yaw = Trigo.halfpi - (furniture?.angle ?? 0);
     if (furniture?.pos)
@@ -3469,6 +3542,7 @@ export class World {
       carboyTop,
       shards,
       door,
+      mirror,
       lastDoorOpen: -1,
       skinMaterial,
       wreckMaterial,
@@ -3535,6 +3609,8 @@ export class World {
             view.activeIntact.setInactive();
           view.intact.setActive();
         }
+        if (view.mirror)
+          view.mirror.setActive();
         view.wreck.setInactive();
         view.puddle.setInactive();
         view.carboyTop.setInactive();
@@ -3551,16 +3627,28 @@ export class World {
         view.skinMaterial.setDiffuse(scratchPos);
         if (!isSpaceship) {
           const tilt = Math.sin(time * 75 + (furniture.phase ?? 0)) * 0.055 * pulse;
-          view.intact.setRotation(scratchRot.setScalar(tilt, 0, -tilt * 0.7));
+          scratchRot.setScalar(tilt, 0, -tilt * 0.7);
+          view.intact.setRotation(scratchRot);
+          if (view.mirror)
+            view.mirror.setRotation(scratchRot);
           const s = 1 + 0.035 * pulse;
-          view.intact.setScale(scratchScale.setScalar(s, 1 - 0.025 * pulse, s));
+          scratchScale.setScalar(s, 1 - 0.025 * pulse, s);
+          view.intact.setScale(scratchScale);
+          if (view.mirror)
+            view.mirror.setScale(scratchScale);
         }
         view.intactSettled = false;
       } else {
         scratchPos.setScalar(1, 1, 1);
         view.skinMaterial.setDiffuse(scratchPos);
-        view.intact.setRotation(scratchRot.setScalar(0, 0, 0));
-        view.intact.setScale(scratchScale.setScalar(1, 1, 1));
+        scratchRot.setScalar(0, 0, 0);
+        view.intact.setRotation(scratchRot);
+        if (view.mirror)
+          view.mirror.setRotation(scratchRot);
+        scratchScale.setScalar(1, 1, 1);
+        view.intact.setScale(scratchScale);
+        if (view.mirror)
+          view.mirror.setScale(scratchScale);
         view.intactSettled = true;
       }
       return;
@@ -3573,6 +3661,8 @@ export class World {
       view.intact.setInactive();
       if (view.activeIntact)
         view.activeIntact.setInactive();
+      if (view.mirror)
+        view.mirror.setInactive();
       view.wreck.setActive();
       view.puddle.setActive();
       view.carboyTop.setActive();
@@ -4710,6 +4800,7 @@ export class World {
     }
     this.syncShadows(game, occludeFog);
     this.syncBlood(game.blood, game.dust, occludeFog, game.effects, game.rubble);
+    this.renderMirrorReflections(game, time);
 
     const { gl } = this;
     this.target.bind();
@@ -4730,6 +4821,164 @@ export class World {
     this.post.render(this.postCamera, time);
     this.overlay.crisp.render(this.postCamera, time);
     this.overlay.head?.render(time);
+  }
+
+  /**
+   * Renders a real planar room reflection into `this.mirrorTarget` for visible intact `vanity` mirrors:
+   * reflects the player camera across the mirror plane, aims `this.mirrorCamera` at the coplanar mirror group,
+   * and applies Lengyel's oblique near-plane clipping matrix so the hardware near clip plane coincides with the mirror glass.
+   */
+  renderMirrorReflections(game, time) {
+    if (!this.mirrorTarget || !this.mirrorCamera || !this.furnitureViews || this.furnitureViews.size === 0)
+      return;
+    const furnitures = game.furnitures ?? game.level?.furnitures ?? EMPTY;
+    if (furnitures.length === 0)
+      return;
+    activeMirrorViews.length = 0;
+    const camPos = this.camera.position;
+    let bestView = null;
+    let bestDistSq = 380 * 380;
+    let bestPlaneDist = 0;
+    let bestNx = 0;
+    let bestNz = 0;
+    let bestMx = 0;
+    let bestMz = 0;
+
+    for (let i = 0; i < furnitures.length; i++) {
+      const furniture = furnitures[i];
+      const view = this.furnitureViews.get(furniture);
+      if (!view?.mirror)
+        continue;
+      if (furniture.gone || !view.root.isActive()) {
+        view.mirror.setCustomUniform?.('hasMirror', 0);
+        continue;
+      }
+      const angle = furniture.angle ?? 0;
+      const nx = Math.cos(angle);
+      const nz = Math.sin(angle);
+      const mx = furniture.pos.x + nx * VANITY_MIRROR_CENTER.z;
+      const mz = furniture.pos.y + nz * VANITY_MIRROR_CENTER.z;
+      const dx = camPos.x - mx;
+      const dy = camPos.y - VANITY_MIRROR_CENTER.y;
+      const dz = camPos.z - mz;
+      const planeDist = dx * nx + dz * nz;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      if (planeDist > 1.0 && distSq < bestDistSq) {
+        bestDistSq = distSq;
+        bestView = view;
+        bestPlaneDist = planeDist;
+        bestNx = nx;
+        bestNz = nz;
+        bestMx = mx;
+        bestMz = mz;
+      } else
+        view.mirror.setCustomUniform?.('hasMirror', 0);
+    }
+
+    if (!bestView)
+      return;
+
+    let minAlong = 0;
+    let maxAlong = 0;
+    const tx = -bestNz;
+    const tz = bestNx;
+    for (let i = 0; i < furnitures.length; i++) {
+      const furniture = furnitures[i];
+      const view = this.furnitureViews.get(furniture);
+      if (!view?.mirror || furniture.gone || !view.root.isActive())
+        continue;
+      const angle = furniture.angle ?? 0;
+      const nx = Math.cos(angle);
+      const nz = Math.sin(angle);
+      const mx = furniture.pos.x + nx * VANITY_MIRROR_CENTER.z;
+      const mz = furniture.pos.y + nz * VANITY_MIRROR_CENTER.z;
+      const coplanar = nx * bestNx + nz * bestNz > 0.99 && Math.abs((mx - bestMx) * bestNx + (mz - bestMz) * bestNz) < 1.0;
+      if (coplanar && Math.hypot(mx - bestMx, mz - bestMz) <= TILE * 3) {
+        activeMirrorViews.push(view);
+        const along = (mx - bestMx) * tx + (mz - bestMz) * tz;
+        if (along < minAlong)
+          minAlong = along;
+        if (along > maxAlong)
+          maxAlong = along;
+      } else
+        view.mirror.setCustomUniform?.('hasMirror', 0);
+    }
+
+    const midAlong = (minAlong + maxAlong) * 0.5;
+    const halfSpan = (maxAlong - minAlong) * 0.5 + 14.0;
+    const midX = bestMx + tx * midAlong;
+    const midY = VANITY_MIRROR_CENTER.y;
+    const midZ = bestMz + tz * midAlong;
+
+    scratchMirrorEye.setScalar(
+      camPos.x - 2 * bestPlaneDist * bestNx,
+      camPos.y,
+      camPos.z - 2 * bestPlaneDist * bestNz,
+    );
+    scratchMirrorTarget.setScalar(midX, midY, midZ);
+    this.mirrorCamera.setPosition(scratchMirrorEye);
+    this.mirrorCamera.setTarget(scratchMirrorTarget);
+
+    const eyeToMid = Math.max(4.0, scratchMirrorEye.getDistance(scratchMirrorTarget));
+    const radius = Math.hypot(halfSpan, 10.5);
+    const fovDeg = Utils.clamp(Trigo.radianToDegree(2 * Math.atan2(radius * 1.18, eyeToMid)), 28, 118);
+    this.mirrorCamera.fov = fovDeg;
+    this.mirrorCamera.setNearFar(this.camera.getNearFar(scratchFog));
+    this.mirrorCamera.setProjectionMatrix(this.mirrorViewportSize);
+
+    const v = this.mirrorCamera.viewMatrix.toArray();
+    const p = this.mirrorCamera.projectionMatrix.toArray();
+    const cx = v[0] * bestNx + v[8] * bestNz;
+    const cy = v[1] * bestNx + v[9] * bestNz;
+    const cz = v[2] * bestNx + v[10] * bestNz;
+    const cw = -(bestPlaneDist + 0.15);
+    const qx = ((cx < 0 ? -1 : 1) + p[8]) / p[0];
+    const qy = ((cy < 0 ? -1 : 1) + p[9]) / p[5];
+    const qz = -1.0;
+    const qw = (1.0 + p[10]) / p[14];
+    const dot = cx * qx + cy * qy + cz * qz + cw * qw;
+    if (Math.abs(dot) > 0.0001) {
+      const scale = 2.0 / dot;
+      p[2] = cx * scale;
+      p[6] = cy * scale;
+      p[10] = cz * scale + 1.0;
+      p[14] = cw * scale;
+      syncCameraProjection.call(this.mirrorCamera);
+    }
+
+    for (let i = 0; i < activeMirrorViews.length; i++)
+      activeMirrorViews[i].mirror.setInactive();
+    const activeWeaponRoot = this.knifeView?.root?.isActive?.()
+      ? this.knifeView.root
+      : this.chainsawView?.root?.isActive?.()
+        ? this.chainsawView.root
+        : this.chaingunView?.root?.isActive?.()
+          ? this.chaingunView.root
+          : this.shotgunView?.root?.isActive?.()
+            ? this.shotgunView.root
+            : this.rocketLauncherView?.root?.isActive?.()
+              ? this.rocketLauncherView.root
+              : null;
+    if (activeWeaponRoot)
+      activeWeaponRoot.setInactive();
+
+    this.mirrorTarget.bind();
+    this.scene.clear();
+    this.scene.render(this.mirrorCamera, time);
+    this.mirrorTarget.unbind(this.viewportSize);
+    this.scene.setViewport?.(this.viewportSize);
+
+    if (activeWeaponRoot)
+      activeWeaponRoot.setActive();
+    const projView = this.mirrorCamera.getProjectionViewMatrix();
+    for (let i = 0; i < activeMirrorViews.length; i++) {
+      const mirrorMesh = activeMirrorViews[i].mirror;
+      mirrorMesh.setActive();
+      if (this.mirrorTarget.texture)
+        mirrorMesh.WebGLTexture = this.mirrorTarget.texture;
+      mirrorMesh.setCustomUniform?.('hasMirror', 1);
+      mirrorMesh.setCustomUniform?.('mirrorMatrix', projView);
+    }
   }
 
   /** Positions and animates the 3D textured chainsaw viewmodel in front of the player camera. */
