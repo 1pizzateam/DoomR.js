@@ -552,12 +552,6 @@ export const RECIPES = {
     tone(ctx, out, t, { type: 'sawtooth', from: 260, to: 115, duration: 0.22, gain: 0.14, filter: { freq: 950 } });
     return { duration: 0.32, wet: 0.2 };
   },
-  crush(ctx, out, t) {
-    tone(ctx, out, t, { from: 95, to: 26, duration: 0.42, gain: 0.52 });
-    tone(ctx, out, t, { type: 'sawtooth', from: 68, to: 32, duration: 0.35, gain: 0.18, filter: { freq: 240 } });
-    noise(ctx, out, t, { duration: 0.26, gain: 0.38, from: 1800, to: 140 });
-    return { duration: 0.48, wet: 0.45 };
-  },
   keycard(ctx, out, t) {
     arpeggio(ctx, out, t, [587, 880, 1175, 1760], { spacing: 0.055, length: 0.16, gain: 0.2, type: 'triangle' });
     tone(ctx, out, t + 0.16, { type: 'sine', from: 1760, to: 2349, duration: 0.22, gain: 0.14 });
@@ -874,7 +868,6 @@ const MIN_INTERVAL = {
   tallyTick: 0.04,
   tallyBoom: 0.08,
   acid: 0.18,
-  crush: 0.15,
   keycard: 0.08,
   locked: 0.2,
   knife: 0.06,
@@ -937,7 +930,7 @@ for (const name of ['weaponPickup', 'armor', 'powerup', 'automap', 'dry', 'hurt'
   addStatic(name, name, true);
 addStatic('wind', 'wind', true, true);
 addStatic('tallyTick', 'tallyTick', true, true);
-for (const name of ['teleport', 'flesh', 'slam', 'gib', 'leap', 'fireball', 'explode', 'boom', 'swing', 'cacheOpen', 'doorOpen', 'doorClose', 'crush', 'locked'])
+for (const name of ['teleport', 'flesh', 'slam', 'gib', 'leap', 'fireball', 'explode', 'boom', 'swing', 'cacheOpen', 'doorOpen', 'doorClose', 'locked'])
   addStatic(name, name);
 for (const name of ['rake', 'bite', 'clang'])
   addStatic(name, name, false, true);

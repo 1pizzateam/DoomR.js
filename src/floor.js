@@ -1926,6 +1926,52 @@ export function marsDirtAtlas() {
 
 export const MARS_DIRT_FRAGMENT = marsDirtShader.fragment;
 
+/**
+ * Martian sand is not dead flat: its surface dips into soft hollows and ripples. The height is a few slow sine waves of
+ * the world position, so it is continuous across tiles, never rises above the flat plane (blood, pickups and decals
+ * still sit on it) and is at most `SAND_DEPTH` units below. The shader uses the same waves for its slope shading.
+ */
+export const SAND_DEPTH = 2.6;
+const SAND_WAVES = [
+  { fx: 0.036, fz: 0.021, phase: 0.8, weight: 1 },
+  { fx: -0.017, fz: 0.043, phase: 2.1, weight: 1 },
+  { fx: 0.078, fz: -0.061, phase: 4.2, weight: 0.45 },
+];
+const SAND_WEIGHT_SUM = SAND_WAVES.reduce((sum, w) => sum + w.weight, 0);
+
+/** How far (<= 0, in world units) the sand surface lies below the flat plane at world point (`x`, `z`). */
+export function marsSandHeight(x, z) {
+  let sum = 0;
+  for (const w of SAND_WAVES)
+    sum += w.weight * Math.sin(w.fx * x + w.fz * z + w.phase);
+  return -SAND_DEPTH * (0.5 + 0.5 * (sum / SAND_WEIGHT_SUM));
+}
+
+const glslFloat = (n) => (Number.isInteger(n) ? `${n}.0` : String(n));
+const SAND_SLOPE_GLSL = `
+  vec2 sandGrad = vec2(0.0);
+${SAND_WAVES.map((w, i) => `  float sandCos${i} = cos(${glslFloat(w.fx)} * vWorld.x + ${glslFloat(w.fz)} * vWorld.y + ${glslFloat(w.phase)}) * ${glslFloat(w.weight)};
+  sandGrad += vec2(${glslFloat(w.fx)}, ${glslFloat(w.fz)}) * sandCos${i};`).join('\n')}
+  sandGrad *= -${glslFloat(SAND_DEPTH)} * 0.5 / ${glslFloat(SAND_WEIGHT_SUM)};
+  float sandShade = clamp(1.0 + 9.0 * dot(sandGrad, normalize(vec2(0.6, 0.8))), 0.65, 1.35);
+  float sandLow = clamp(-(vHeight + 0.2) / ${glslFloat(SAND_DEPTH)}, 0.0, 1.0);
+  color *= sandShade * (1.0 - 0.16 * sandLow);
+`;
+
+/** The Martian dirt shader for sand, whose surface is displaced: no wall/floor split by height, lit by its slope. */
+export const MARS_SAND_FRAGMENT = (() => {
+  const marker = '  color *= uMaterialDiffuse * surfaceLight(';
+  const discardLine = '  if (vHeight < -0.21)\n    discard;\n';
+  const floorLine = 'float isFloor = step(vHeight, -0.15);';
+  for (const needle of [marker, discardLine, floorLine])
+    if (!MARS_DIRT_FRAGMENT.includes(needle))
+      throw new Error('mars-dirt shader changed: cannot build the sand shader');
+  return MARS_DIRT_FRAGMENT
+    .replace(discardLine, '')
+    .replace(floorLine, 'float isFloor = 1.0;')
+    .replace(marker, SAND_SLOPE_GLSL + marker);
+})();
+
 const MARS_BOULDER_CELLS = {
   crag: 0,
   strata: 1,

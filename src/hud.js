@@ -1150,7 +1150,7 @@ export class Hud {
 
   /**
    * Classic Doom full-screen tactical vector automap (Tab) rendered above the lower marine status bar.
-   * Displays color-coded boundary walls, elevation steps, locked/secret doors, slime hazards, crushers,
+   * Displays color-coded boundary walls, elevation steps, locked/secret doors, slime hazards,
    * explored keycards, live sector telemetry (KILLS, ITEMS, SECRETS, TIME), and the vector player arrow.
    */
   drawAutomap(game) {
@@ -1358,20 +1358,6 @@ export class Hud {
           layerSegment(layer, tx + 0.5, ty, tx + 0.5, ty + s, RGB[RED], edgeAlpha);
         if (isOpenNeighbor(x + 1, y, 1))
           layerSegment(layer, tx + s - 0.5, ty, tx + s - 0.5, ty + s, RGB[RED], edgeAlpha);
-      }
-
-    // ceiling crushers on explored tiles
-    if (level.crushers)
-      for (const crusher of level.crushers) {
-        if (!fog.isExplored(crusher.idx))
-          continue;
-        const cx = ox + crusher.x * s;
-        const cy = oy + crusher.y * s;
-        if (cx + s < mapX0 || cx > mapX0 + mapW || cy + s < mapY0 || cy > mapY0 + mapH)
-          continue;
-        layer.rectLine(setRect(cx + 2, cy + 2, Math.max(2, s - 4), Math.max(2, s - 4)), RGB[RED], 0.8);
-        layerSegment(layer, cx + 2, cy + 2, cx + s - 2, cy + s - 2, RGB[ORANGE], 0.75);
-        layerSegment(layer, cx + s - 2, cy + 2, cx + 2, cy + s - 2, RGB[ORANGE], 0.75);
       }
 
     // uncollected keycards and high-value pickups on explored tiles

@@ -10,6 +10,10 @@ export const CEILING = 64;
 /** Hangar bays housing a dropship ('v') have a double-height ceiling (2 wall tiers high). */
 export const HANGAR_CEILING = 128;
 
+/** Tile glyph for outdoor Martian sand floor: never part of the indoor airlock room, whatever it touches. */
+export const SAND_CHAR = ':';
+/** Tile glyph for a Martian boulder: a cover pillar that is always rock, never a crate (`o` is a crate indoors, a boulder outdoors on Mars). */
+export const BOULDER_CHAR = 'E';
 export const FLOOR = 0;
 export const WALL = 1;
 export const PILLAR = 2;
@@ -50,13 +54,19 @@ const SOLIDS = {
   '└': { kind: WALL, height: 64, diag: DIAG_SW },
   '┘': { kind: WALL, height: 64, diag: DIAG_SE },
   o: { kind: PILLAR, height: 26 },
+  E: { kind: PILLAR, height: 26, boulder: true },
   D: { kind: DOOR, height: 64 },
   S: { kind: DOOR, height: 64, secret: true },
   R: { kind: DOOR, height: 64, lock: 'red' },
   Y: { kind: DOOR, height: 64, lock: 'yellow' },
   U: { kind: DOOR, height: 64, lock: 'blue' },
-  L: { kind: DOOR, height: 64, lock: 'blue' },
   X: { kind: EXIT, height: 64 },
+  // doors with a sign: the usual door with a logo on it
+  4: { kind: DOOR, height: 64, sign: 'restroom' },
+  5: { kind: DOOR, height: 64, sign: 'medical' },
+  6: { kind: DOOR, height: 64, sign: 'armory' },
+  7: { kind: DOOR, height: 64, sign: 'engineering' },
+  8: { kind: DOOR, height: 64, sign: 'canteen' },
 };
 const ENEMIES = { i: 'imp', b: 'brute', s: 'skull', c: 'crawler', w: 'swarmer', r: 'wraith', B: 'boss' };
 const PICKUPS = {
@@ -126,11 +136,17 @@ const FURNITURE_WALL_OFFSETS = {
  * line where a wall really starts or ends.
  */
 export class Level {
-  constructor({ name, rows, angle = null, par = 120, planet = null, wind = null, chests = [], switches = [], furnitures = [], floorLevel = null }) {
+  constructor({ name, rows, angle = null, par = 120, planet = null, wind = null, chests = [], switches = [], furnitures = [], floorLevel = null, sand = [] }) {
     this.name = name;
     this.rows = rows;
     this.par = par;
-    this.planet = planet;
+    // A Martian sand tile (':') only means something on the red planet, so drawing one switches the level to Mars.
+    // In such a level only the ':' tiles are outdoor sand; every other floor stays indoor deck, tile by tile.
+    // `sand` lists sand tiles that hold an object, whose own glyph stands in for the ':'
+    this.sandDefs = Array.isArray(sand) ? sand : [];
+    this.sandOnly = planet == null && (this.sandDefs.length > 0 || rows.some((row) => row.includes(SAND_CHAR) || row.includes(BOULDER_CHAR)));
+    this.planet = this.sandOnly ? 'mars' : planet;
+    planet = this.planet;
     const match = typeof name === 'string' ? name.match(/E\d+M(\d+)/i) : null;
     this.floorLevel = Number.isFinite(floorLevel)
       ? floorLevel
@@ -146,6 +162,8 @@ export class Level {
     this.kind = new Uint8Array(total);
     this.diag = new Uint8Array(total);
     this.slime = new Uint8Array(total);
+    this.sand = new Uint8Array(total);
+    this.boulder = new Uint8Array(total);
     this.acidSplash = new Uint8Array(total);
     this.emptyPit = new Uint8Array(total);
     this.teleporter = new Uint8Array(total);
@@ -169,7 +187,6 @@ export class Level {
     this.furnitureTiles = [];
     this.furnitures = [];
     this.barrels = [];
-    this.crushers = [];
     this.teleporters = [];
     this.teleporterByTile = new Map();
     this.exits = [];
@@ -181,6 +198,9 @@ export class Level {
     this.secretRoomByDoor = new Map();
 
     this.parse();
+    for (const t of this.sandDefs)
+      if (Number.isInteger(t?.x) && Number.isInteger(t?.y) && t.x >= 0 && t.x < this.width && t.y >= 0 && t.y < this.rowCount)
+        this.sand[t.y * this.width + t.x] = 1;
     this.buildFaces();
     this.elevator = this.findElevator();
     if (angle === null && this.elevator)
@@ -786,10 +806,16 @@ export class Level {
    * every tile reachable from playerStart without passing through a door.
    */
   findIndoor() {
-    if (this.planet !== 'mars' || !this.playerStart)
+    if (this.planet !== 'mars' || (!this.playerStart && !this.sandOnly))
       return null;
     const { width } = this;
     const indoor = new Set();
+    if (this.sandOnly) {
+      for (let idx = 0; idx < width * this.rowCount; idx++)
+        if (this.kind[idx] === FLOOR || this.kind[idx] === PILLAR || this.diag[idx] > 0)
+          indoor.add(idx);
+      return indoor;
+    }
     const startIdx = this.grid.getCell(this.playerStart);
     const stack = this.elevator ? [startIdx, this.elevator.exitTileIdx] : [startIdx];
     while (stack.length) {
@@ -837,7 +863,8 @@ export class Level {
 
   /** Every open tile outside the starting airlock room on a planetary surface level. */
   findOutdoor() {
-    if (this.planet !== 'mars' || !this.indoor)
+    // a sand-only level has no outdoors: its sand is a floor under the same roof, with no wind
+    if (this.planet !== 'mars' || !this.indoor || this.sandOnly)
       return null;
     const outdoor = new Set();
     const total = this.width * this.rowCount;
@@ -849,6 +876,23 @@ export class Level {
         outdoor.add(idx);
     }
     return outdoor;
+  }
+
+  /** Whether the cover pillar at tile `idx` is a Martian boulder (rather than an interior crate). */
+  isBoulder(idx) {
+    if (this.kind[idx] !== PILLAR)
+      return false;
+    return this.boulder[idx] === 1 || (this.planet === 'mars' && !this.sandOnly && !this.indoor?.has(idx));
+  }
+
+  /** Whether tile `idx` is Martian sand floor: a `:` tile on a sand-only level, any outdoor tile on a Mars level. */
+  isSandTile(idx) {
+    return this.sandOnly ? this.sand[idx] === 1 : this.planet === 'mars' && !this.isIndoorTile(idx);
+  }
+
+  /** Whether the whole scene (sky, fog, ambient light) is Martian; false when only some `:` tiles are sand. */
+  get marsAtmosphere() {
+    return this.planet === 'mars' && !this.sandOnly;
   }
 
   isOutdoor(pos) {
@@ -1039,8 +1083,10 @@ export class Level {
           this.heights[idx] = solid.height;
           if (typeof solid.diag === 'number')
             this.diag[idx] = solid.diag;
+          if (solid.boulder)
+            this.boulder[idx] = 1;
           if (solid.kind === DOOR) {
-            const door = { idx, x, y, center: this.center(tileAt.setScalar(x, y)), open: 0, target: 0, timer: 0, secret: !!solid.secret, lock: solid.lock ?? null, switchLocked: false, revealed: false, alongY: false, body: null };
+            const door = { idx, x, y, center: this.center(tileAt.setScalar(x, y)), open: 0, target: 0, timer: 0, secret: !!solid.secret, lock: solid.lock ?? null, sign: solid.sign ?? null, switchLocked: false, revealed: false, alongY: false, body: null };
             this.doors.set(idx, door);
             this.doorsList.push(door);
           }
@@ -1060,6 +1106,8 @@ export class Level {
           this.switchTiles.push({ idx, x, y });
         else if (FURNITURES[char])
           this.furnitureTiles.push({ idx, x, y, type: FURNITURES[char] });
+        else if (char === SAND_CHAR)
+          this.sand[idx] = 1;
         else if (char === '~')
           this.slime[idx] = 1;
         else if (char === ',')
@@ -1071,9 +1119,7 @@ export class Level {
           const pad = { idx, x, y, center: this.center(tileAt.setScalar(x, y)), pair: 0, targetIdx: idx, target: this.center(tileAt.setScalar(x, y)) };
           this.teleporters.push(pad);
           this.teleporterByTile.set(idx, pad);
-        } else if (char === '^')
-          this.crushers.push({ idx, x, y, center: this.center(tileAt.setScalar(x, y)), phase: ((x * 7 + y * 13) % 8) * 0.35, low: CEILING, slamming: false });
-        else if (char !== '.')
+        } else if (char !== '.')
           throw new Error(`${this.name}: unknown tile "${char}" at ${x},${y}`);
       }
     }

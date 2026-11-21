@@ -67,9 +67,9 @@ const PALETTES = {
     bone: [new Vec3(154, 138, 114), new Vec3(192, 176, 148), new Vec3(228, 214, 186)],
   },
   crawler: {
-    flesh: [new Vec3(64, 14, 28), new Vec3(94, 20, 42), new Vec3(128, 28, 52), new Vec3(168, 44, 72)],
-    hide: [new Vec3(32, 18, 44), new Vec3(54, 30, 68), new Vec3(88, 52, 104)],
-    bone: [new Vec3(154, 138, 114), new Vec3(192, 176, 148), new Vec3(224, 208, 180)],
+    flesh: [new Vec3(18, 78, 56), new Vec3(34, 134, 82), new Vec3(68, 194, 108), new Vec3(124, 240, 146)],
+    hide: [new Vec3(46, 16, 74), new Vec3(88, 28, 126), new Vec3(148, 52, 184)],
+    bone: [new Vec3(148, 178, 168), new Vec3(188, 224, 184), new Vec3(228, 244, 178)],
   },
   swarmer: {
     flesh: [new Vec3(86, 10, 16), new Vec3(126, 16, 24), new Vec3(162, 24, 34), new Vec3(196, 36, 48)],
@@ -163,14 +163,34 @@ function drawChestCell(put, type, pal) {
         else if (dx > 11 && (x + y) % 3 === 0)
           put(x, y, pal.hide[1].x, pal.hide[1].y, pal.hide[1].z, 1);
       } else if (type === 'crawler') {
-        // Arachnid ventral chitin & weeping gore pustules
-        const p1 = scratchVec2.setScalar(x - 10, y - 11).getMagnitude() <= 3.4;
-        const p2 = scratchVec2.setScalar(x - 21, y - 19).getMagnitude() <= 3.8;
-        const p3 = scratchVec2.setScalar(x - 15, y - 24).getMagnitude() <= 2.8;
-        if (p1 || p2 || p3)
-          put(x, y, 175 + 65 * noise(x, y, 7), 18, 255, 2);
-        else if (y % 5 === 0)
-          put(x, y, pal.hide[2].x, pal.hide[2].y, pal.hide[2].z, 1);
+        // Swirling alien violet-magenta mucus & toxic bioluminescent green slime vortex with coalescing bubbles
+        const sx = x - 15.5;
+        const distCenter = scratchVec2.setScalar(sx, dy).getMagnitude();
+        const swirl = Math.sin(distCenter * 0.68 - Math.atan2(dy, sx) * 2.0 + noise(x, y, 5) * 1.4);
+        const gel = edge
+          ? pal.hide[0]
+          : swirl > 0.42
+            ? pal.flesh[3]
+            : swirl > 0.05
+              ? pal.flesh[2]
+              : swirl > -0.35
+                ? (dither ? pal.hide[2] : pal.flesh[1])
+                : (dither ? pal.hide[1] : pal.hide[0]);
+        put(x, y, gel.x, gel.y, gel.z, 1);
+
+        // Coalescing bioluminescent slime bubbles & wet specular rims
+        const b1 = scratchVec2.setScalar(x - 10, y - 10.5).getMagnitude();
+        const b2 = scratchVec2.setScalar(x - 21.5, y - 18.5).getMagnitude();
+        const b3 = scratchVec2.setScalar(x - 14.5, y - 23.5).getMagnitude();
+        if (b1 <= 1.8 || b2 <= 2.0)
+          put(x, y, 210, 255, 195, 255);
+        else if (b1 <= 3.6 || b2 <= 4.0 || b3 <= 3.1) {
+          const rim = (b1 > 2.7 && b1 <= 3.6) || (b2 > 3.0 && b2 <= 4.0) || (b3 > 2.1 && b3 <= 3.1);
+          if (rim && y % 2 === 0)
+            put(x, y, pal.bone[2].x, pal.bone[2].y, pal.bone[2].z, 1);
+          else
+            put(x, y, 175 + 65 * noise(x, y, 7), 18, 255, 2);
+        }
       } else {
         // Imp & Swarmer: torn thoracic cavity, exposed bone ribs & arterial core
         if (y >= 7 && y <= 25 && dx <= 8.5) {
@@ -194,6 +214,30 @@ function drawBackCell(put, type, pal) {
     for (let x = 0; x < S; x++) {
       const dx = Math.abs(x - 15.5);
       const dither = (x + y) % 2;
+      if (type === 'crawler') {
+        // Dorsal gelatinous dome: marbled violet-magenta mucus & toxic green slime currents
+        const dy = y - 15.5;
+        const dist = scratchVec2.setScalar(dx, dy).getMagnitude();
+        const wave = Math.sin(dist * 0.55 + Math.cos(x * 0.35) * 1.6 + Math.sin(y * 0.35) * 1.4);
+        const c = wave > 0.45
+          ? pal.flesh[3]
+          : wave > 0.08
+            ? pal.hide[2]
+            : wave > -0.32
+              ? (dither ? pal.flesh[2] : pal.hide[1])
+              : (dither ? pal.flesh[0] : pal.hide[0]);
+        put(x, y, c.x, c.y, c.z, 1);
+        const b1 = scratchVec2.setScalar(x - 9, y - 13).getMagnitude();
+        const b2 = scratchVec2.setScalar(x - 22, y - 18).getMagnitude();
+        const b3 = scratchVec2.setScalar(x - 15.5, y - 8.5).getMagnitude();
+        if (b3 <= 2.2)
+          put(x, y, 215, 255, 195, 255);
+        else if (b1 <= 3.5 || b2 <= 3.5)
+          put(x, y, 190, 24, 255, 2);
+        else if (b1 <= 4.6 || b2 <= 4.6 || b3 <= 3.4)
+          put(x, y, pal.bone[2].x, pal.bone[2].y, pal.bone[2].z, 1);
+        continue;
+      }
       const ridge = Math.sin(dx * 0.7 + y * 0.4) > 0.3;
       const c = ridge ? pal.hide[2] : dither ? pal.flesh[1] : pal.hide[1];
       put(x, y, c.x, c.y, c.z, 1);
@@ -203,8 +247,7 @@ function drawBackCell(put, type, pal) {
           put(x, y, pal.bone[2].x, pal.bone[2].y, pal.bone[2].z, 1);
         else
           put(x, y, 175, 20, 255, 2);
-      } else if (type === 'crawler' && ((x - 9) ** 2 + (y - 14) ** 2 <= 12 || (x - 22) ** 2 + (y - 18) ** 2 <= 12))
-        put(x, y, 190, 24, 255, 2);
+      }
     }
 }
 
@@ -214,6 +257,52 @@ function drawFaceCell(put, type, pal) {
     for (let x = 0; x < S; x++) {
       const dx = Math.abs(x - 15.5);
       const dither = (x + y) % 2;
+      if (type === 'crawler') {
+        // Translucent violet-magenta & toxic-emerald slime membrane with suspended alien organelles
+        const flow = Math.sin(x * 0.42 + Math.cos(y * 0.38) * 1.8);
+        const base = y < 4
+          ? pal.hide[1]
+          : flow > 0.35
+            ? pal.flesh[2]
+            : flow > -0.2
+              ? (dither ? pal.hide[2] : pal.flesh[1])
+              : pal.hide[0];
+        put(x, y, base.x, base.y, base.z, 1);
+
+        // Dark translucent gel halo around suspended organelle cluster
+        const halo = scratchVec2.setScalar((x - 15.5) * 0.82, y - 13.5).getMagnitude() <= 10.2;
+        if (halo && (x + y) % 2 === 0)
+          put(x, y, pal.hide[0].x, pal.hide[0].y, pal.hide[0].z, 1);
+
+        // Asymmetric cluster of 5 floating bioluminescent alien organelles / nuclei (G = 255)
+        const o1 = scratchVec2.setScalar(x - 15.5, y - 10.5).getMagnitude() <= 2.7;
+        const o2 = scratchVec2.setScalar(x - 9.2, y - 14.2).getMagnitude() <= 2.1;
+        const o3 = scratchVec2.setScalar(x - 21.8, y - 13.4).getMagnitude() <= 2.2;
+        const o4 = scratchVec2.setScalar(x - 12.2, y - 18.2).getMagnitude() <= 1.6;
+        const o5 = scratchVec2.setScalar(x - 19.2, y - 17.8).getMagnitude() <= 1.7;
+        if (o1 || o2 || o3 || o4 || o5) {
+          put(x, y, 235, 255, 195, 255);
+          continue;
+        }
+
+        // Dripping viscous toxic-green & magenta mucus strands along lower siphon edge
+        if (y >= 20 && y <= 26 && Math.abs(dx - 5.5) <= 1.3)
+          put(x, y, pal.flesh[3].x, pal.flesh[3].y, pal.flesh[3].z, 1);
+        if (y >= 24) {
+          const strand = Math.floor((x + 1) / 3) % 2 === 0 && dx <= 12.5;
+          if (strand && y <= 30) {
+            if (y >= 28)
+              put(x, y, 200, 24, 255, 2);
+            else if (x % 2 === 0)
+              put(x, y, pal.flesh[3].x, pal.flesh[3].y, pal.flesh[3].z, 1);
+            else
+              put(x, y, pal.hide[2].x, pal.hide[2].y, pal.hide[2].z, 1);
+          } else
+            put(x, y, pal.hide[0].x, pal.hide[0].y, pal.hide[0].z, 1);
+        }
+        continue;
+      }
+
       const base = y < 5 ? pal.hide[1] : dither ? pal.flesh[2] : pal.flesh[1];
       put(x, y, base.x, base.y, base.z, 1);
 
@@ -225,7 +314,7 @@ function drawFaceCell(put, type, pal) {
 
       // Glowing supernatural eyes (G = 255)
       let isEye = false;
-      if (type === 'crawler' || type === 'swarmer') {
+      if (type === 'swarmer') {
         const e1 = scratchVec2.setScalar(dx - 4.5, y - 13).getMagnitude() <= 1.8;
         const e2 = scratchVec2.setScalar(dx - 8.5, y - 15).getMagnitude() <= 1.7;
         const e3 = scratchVec2.setScalar(dx - 6.5, y - 10).getMagnitude() <= 1.5;
@@ -259,12 +348,39 @@ function drawFaceCell(put, type, pal) {
     }
 }
 
-function drawJawCell(put, pal) {
+function drawJawCell(put, pal, type = 'imp') {
   const S = MONSTER_SKIN_CELL;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
       const dx = Math.abs(x - 15.5);
       const dither = (x + y) % 2;
+      if (type === 'crawler') {
+        // Viscous siphon lip & dripping dual-tone green/violet slime threads
+        if (y <= 8) {
+          const strand = Math.floor(x / 3) % 2 === 0 && dx <= 12.5;
+          if (strand) {
+            if (y <= 2)
+              put(x, y, 205, 24, 255, 2);
+            else if (y <= 5)
+              put(x, y, pal.flesh[3].x, pal.flesh[3].y, pal.flesh[3].z, 1);
+            else
+              put(x, y, pal.hide[2].x, pal.hide[2].y, pal.hide[2].z, 1);
+          } else
+            put(x, y, pal.hide[0].x, pal.hide[0].y, pal.hide[0].z, 1);
+        } else if (y <= 16 && dx <= 10.5) {
+          if (scratchVec2.setScalar(dx, y - 12).getMagnitude() <= 4.8)
+            put(x, y, 180 + 60 * noise(x, y, 11), 18, 255, 2);
+          else
+            put(x, y, pal.flesh[1].x, pal.flesh[1].y, pal.flesh[1].z, 1);
+        } else {
+          const ripple = Math.sin(dx * 0.6 + y * 0.45) > 0.15;
+          const chin = ripple ? pal.hide[2] : dither ? pal.flesh[2] : pal.hide[1];
+          put(x, y, chin.x, chin.y, chin.z, 1);
+          if (y >= 24 && (x + y) % 3 === 0 && dx <= 9)
+            put(x, y, 172, 18, 255, 2);
+        }
+        continue;
+      }
       if (y <= 7) {
         // Lower jagged bone fangs jutting upward into the maw
         const fang = Math.floor(x / 3) % 2 === 0 && dx <= 12;
@@ -290,11 +406,29 @@ function drawJawCell(put, pal) {
     }
 }
 
-function drawLimbCell(put, pal) {
+function drawLimbCell(put, pal, type = 'imp') {
   const S = MONSTER_SKIN_CELL;
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
       const dither = (x + y) % 2;
+      if (type === 'crawler') {
+        // Extruded pseudopod gel: violet-magenta outer sheath with luminous toxic-green core & wet suction base
+        const dx = Math.abs(x - 15.5);
+        const flow = Math.sin(y * 0.52 - dx * 0.35);
+        const c = y > 25
+          ? (dither ? pal.flesh[3] : pal.hide[2])
+          : dx < 6.5 && flow > -0.15
+            ? (flow > 0.35 ? pal.flesh[3] : pal.flesh[2])
+            : flow > 0.25
+              ? pal.hide[2]
+              : dither
+                ? pal.flesh[1]
+                : pal.hide[1];
+        put(x, y, c.x, c.y, c.z, 1);
+        if (y >= 27 && (x + y) % 2 === 0)
+          put(x, y, 182, 22, 255, 2);
+        continue;
+      }
       const tendon = Math.sin(x * 0.65 + y * 0.25) > 0.35;
       const c = y > 24 ? pal.hide[1] : tendon ? pal.flesh[3] : dither ? pal.flesh[2] : pal.flesh[1];
       put(x, y, c.x, c.y, c.z, 1);
@@ -322,6 +456,21 @@ function drawHideCell(put, type, pal) {
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
       const dither = (x + y) % 2;
+      if (type === 'crawler') {
+        // Marbled viscous violet-magenta mucus & toxic emerald slime with glossy bubble pinpoints
+        const marble = Math.sin(x * 0.44 + Math.cos(y * 0.38) * 2.1) + Math.cos(y * 0.42 - x * 0.22) * 0.5;
+        const c = marble > 0.65
+          ? pal.flesh[2]
+          : marble > 0.15
+            ? pal.hide[2]
+            : marble > -0.35
+              ? (dither ? pal.flesh[1] : pal.hide[1])
+              : pal.hide[0];
+        put(x, y, c.x, c.y, c.z, 1);
+        if (noise(x, y, 29) > 0.91)
+          put(x, y, pal.bone[2].x, pal.bone[2].y, pal.bone[2].z, 1);
+        continue;
+      }
       const plate = (x % 8 === 0 || y % 8 === 0) && type !== 'wraith';
       const c = plate ? pal.hide[0] : dither ? pal.hide[2] : pal.hide[1];
       put(x, y, c.x, c.y, c.z, 1);
@@ -356,8 +505,8 @@ export function monsterSkinAtlas(type = 'imp') {
   drawChestCell(cellPutter(data, width, MONSTER_SKIN_CELLS.chest), type, pal);
   drawBackCell(cellPutter(data, width, MONSTER_SKIN_CELLS.back), type, pal);
   drawFaceCell(cellPutter(data, width, MONSTER_SKIN_CELLS.face), type, pal);
-  drawJawCell(cellPutter(data, width, MONSTER_SKIN_CELLS.jaw), pal);
-  drawLimbCell(cellPutter(data, width, MONSTER_SKIN_CELLS.limb), pal);
+  drawJawCell(cellPutter(data, width, MONSTER_SKIN_CELLS.jaw), pal, type);
+  drawLimbCell(cellPutter(data, width, MONSTER_SKIN_CELLS.limb), pal, type);
   drawBoneCell(cellPutter(data, width, MONSTER_SKIN_CELLS.bone), pal);
   drawHideCell(cellPutter(data, width, MONSTER_SKIN_CELLS.hide), type, pal);
   drawGoreCell(cellPutter(data, width, MONSTER_SKIN_CELLS.gore), pal);
@@ -886,65 +1035,213 @@ function buildSkullParts() {
 function buildCrawlerParts() {
   const C = MONSTER_SKIN_CELLS;
   const bodyList = [
-    // Low arachnid cephalothorax
-    taperPrism(new Vec3(11.5, 6.5, 11.5), new Vec3(9.5, 6.5, 9.5), new Vec3(0, 3.5, 3.2), { front: C.hide, back: C.hide, side: C.hide, top: C.chest }),
-    // Bloated rear abdomen with weeping gore pustules
-    taperPrism(new Vec3(14.5, 9.5, 14.5), new Vec3(11.5, 9.5, 11.5), new Vec3(0, 5.8, -7.2), { front: C.chest, back: C.back, side: C.chest, top: C.chest }),
-    // Raised 3D arterial gore pustules on abdomen
-    boxPrism(new Vec3(4.2, 2.8, 4.2), new Vec3(-3.8, 10.8, -6.2), { front: C.gore, back: C.gore, side: C.gore, top: C.gore }),
-    boxPrism(new Vec3(4.5, 3.0, 4.5), new Vec3(4.0, 10.5, -8.5), { front: C.gore, back: C.gore, side: C.gore, top: C.gore }),
-    boxPrism(new Vec3(3.8, 2.6, 3.8), new Vec3(0, 11.2, -3.8), { front: C.gore, back: C.gore, side: C.gore, top: C.gore }),
+    // Wide basal meniscus skirt puddling on the floor with wet surface tension
+    taperPrism(
+      new Vec3(19.6, 2.2, 20.4),
+      new Vec3(16.8, 2.2, 17.6),
+      new Vec3(0, -6.2, -0.4),
+      { front: C.hide, back: C.hide, side: C.hide, top: C.chest, bottom: C.gore },
+      new Vec2(0, 0.2)
+    ),
+    // Swollen lower gelatinous slime-ball hemisphere
+    taperPrism(
+      new Vec3(16.8, 4.8, 17.6),
+      new Vec3(18.4, 4.8, 19.0),
+      new Vec3(0, -2.7, -0.2),
+      { front: C.chest, back: C.back, side: C.hide, top: C.chest },
+      new Vec2(0, 0.3)
+    ),
+    // Bulbous equatorial alien slime-ball core
+    taperPrism(
+      new Vec3(18.4, 5.8, 19.0),
+      new Vec3(14.6, 5.8, 15.2),
+      new Vec3(0, 2.6, -0.4),
+      { front: C.chest, back: C.back, side: C.chest, top: C.back },
+      new Vec2(0, -0.4)
+    ),
+    // Rounded dorsal gel dome
+    taperPrism(
+      new Vec3(14.6, 3.6, 15.2),
+      new Vec3(8.6, 3.6, 9.2),
+      new Vec3(0, 7.3, -0.8),
+      { front: C.back, back: C.back, side: C.hide, top: C.back },
+      new Vec2(0, -0.6)
+    ),
+    // Crown bioluminescent organelle blister
+    taperPrism(
+      new Vec3(8.6, 1.8, 9.2),
+      new Vec3(4.2, 1.8, 4.6),
+      new Vec3(0, 10.0, -1.1),
+      { front: C.face, back: C.back, side: C.limb, top: C.chest }
+    ),
+    // Asymmetric coalescing slime globules & viscous blisters budding around the sphere
+    taperPrism(
+      new Vec3(5.8, 4.4, 6.2),
+      new Vec3(3.4, 4.4, 3.8),
+      new Vec3(-6.8, 1.8, -1.8),
+      { front: C.chest, back: C.hide, side: C.limb, top: C.chest },
+      new Vec2(-1.2, -0.5)
+    ),
+    taperPrism(
+      new Vec3(6.2, 4.6, 6.4),
+      new Vec3(3.6, 4.6, 3.8),
+      new Vec3(6.6, 1.2, -3.2),
+      { front: C.hide, back: C.back, side: C.chest, top: C.back },
+      new Vec2(1.3, -0.6)
+    ),
+    taperPrism(
+      new Vec3(5.4, 3.8, 5.4),
+      new Vec3(2.8, 3.8, 2.8),
+      new Vec3(-3.6, 6.8, -4.6),
+      { front: C.gore, back: C.gore, side: C.chest, top: C.bone },
+      new Vec2(-0.8, -0.8)
+    ),
+    taperPrism(
+      new Vec3(5.6, 4.0, 5.6),
+      new Vec3(3.0, 4.0, 3.0),
+      new Vec3(3.8, 6.4, -5.4),
+      { front: C.chest, back: C.gore, side: C.limb, top: C.gore },
+      new Vec2(0.8, -0.9)
+    ),
+    taperPrism(
+      new Vec3(4.8, 3.2, 4.8),
+      new Vec3(2.4, 3.2, 2.4),
+      new Vec3(0.4, 8.2, -3.4),
+      { front: C.face, back: C.gore, side: C.bone, top: C.face }
+    ),
   ];
-  // 4 dorsal bone spines jutting from the abdomen
-  for (const dx of [-4.5, -1.5, 1.5, 4.5])
-    bodyList.push(taperPrism(new Vec3(1.4, 5.2, 1.4), new Vec3(0.35, 5.2, 0.35), new Vec3(dx, 12.5, -5.5), { front: C.bone, back: C.bone, side: C.bone }, new Vec2(dx * 0.35, -1.4)));
 
   const head = mergeGeometries([
-    // 6-eyed arachnid face plate
-    taperPrism(new Vec3(9.2, 5.8, 5.2), new Vec3(7.6, 5.8, 4.2), new Vec3(0, 0.5, 2.2), { front: C.face, back: C.hide, side: C.hide, top: C.hide }),
+    // Protruding translucent anterior gel lobe housing floating alien organelles
+    taperPrism(
+      new Vec3(10.8, 5.6, 6.4),
+      new Vec3(8.2, 5.6, 4.8),
+      new Vec3(0, 0.4, 2.4),
+      { front: C.face, back: C.chest, side: C.face, top: C.chest },
+      new Vec2(0, 0.8)
+    ),
+    // Asymmetric budding sensory vesicles on upper-left & upper-right of anterior lobe
+    taperPrism(
+      new Vec3(3.6, 2.6, 3.4),
+      new Vec3(2.0, 2.6, 2.0),
+      new Vec3(-3.4, 3.2, 2.2),
+      { front: C.face, back: C.hide, side: C.limb, top: C.bone },
+      new Vec2(-0.6, 0.4)
+    ),
+    taperPrism(
+      new Vec3(3.2, 2.4, 3.2),
+      new Vec3(1.8, 2.4, 1.8),
+      new Vec3(3.6, 2.8, 1.8),
+      { front: C.face, back: C.hide, side: C.limb, top: C.bone },
+      new Vec2(0.6, 0.4)
+    ),
   ]);
 
-  // Curved dripping chelicerae / mandibles
+  // Viscous lower siphon fold & dripping mucus strands
   const jaw = mergeGeometries([
-    taperPrism(new Vec3(1.6, 5.2, 2.2), new Vec3(2.8, 5.2, 2.8), new Vec3(-2.8, -2.2, 3.8), { front: C.bone, back: C.gore, side: C.bone }, new Vec2(0.8, -1.2)),
-    taperPrism(new Vec3(1.6, 5.2, 2.2), new Vec3(2.8, 5.2, 2.8), new Vec3(2.8, -2.2, 3.8), { front: C.bone, back: C.gore, side: C.bone }, new Vec2(-0.8, -1.2)),
-    boxPrism(new Vec3(4.8, 2.4, 2.6), new Vec3(0, -1.0, 2.4), { front: C.jaw, back: C.gore, side: C.gore }),
+    taperPrism(
+      new Vec3(8.6, 2.4, 5.2),
+      new Vec3(9.6, 2.4, 5.8),
+      new Vec3(0, -0.8, 2.2),
+      { front: C.jaw, back: C.gore, side: C.jaw, top: C.gore, bottom: C.hide }
+    ),
+    // Stretched dripping slime filaments hanging from the lower siphon
+    taperPrism(
+      new Vec3(1.2, 3.8, 1.4),
+      new Vec3(2.4, 3.8, 2.2),
+      new Vec3(-2.8, -2.6, 3.6),
+      { front: C.limb, back: C.gore, side: C.bone },
+      new Vec2(0.4, -0.6)
+    ),
+    taperPrism(
+      new Vec3(1.2, 3.8, 1.4),
+      new Vec3(2.4, 3.8, 2.2),
+      new Vec3(2.8, -2.6, 3.6),
+      { front: C.limb, back: C.gore, side: C.bone },
+      new Vec2(-0.4, -0.6)
+    ),
+    taperPrism(
+      new Vec3(1.0, 3.2, 1.2),
+      new Vec3(1.8, 3.2, 1.8),
+      new Vec3(0, -2.4, 4.0),
+      { front: C.gore, back: C.gore, side: C.limb }
+    ),
   ]);
 
-  // Multi-jointed razor scythe legs (each limb mesh holds a pair of arched spider legs)
-  const makeScythePair = (side, zA, zB) => {
-    const parts = [];
-    for (const zOff of [zA, zB]) {
-      parts.push(
-        // Arched femur rising outward from thorax
-        taperPrism(new Vec3(7.5, 2.4, 2.2), new Vec3(7.5, 2.0, 1.8), new Vec3(side * 3.8, 3.2, zOff), { front: C.hide, back: C.hide, side: C.hide, top: C.hide }, new Vec2(side * 2.2, 0)),
-        // Razor bone tibia plunging down to bloodied tip on floor (y = -9.5)
-        taperPrism(new Vec3(0.9, 13.5, 0.9), new Vec3(2.4, 13.5, 2.2), new Vec3(side * 9.2, -2.5, zOff + 0.6), { front: C.bone, back: C.gore, side: C.bone }, new Vec2(-side * 2.2, 0))
-      );
-    }
-    return mergeGeometries(parts);
-  };
+  // Anterior extruded liquid-gel pseudopods with bulbous mid-swells and wet floor suction pads
+  const makeFrontPseudopod = (side) =>
+    mergeGeometries([
+      // Extruded gel lobe surging outward and forward from lower body
+      taperPrism(
+        new Vec3(4.6, 3.4, 6.2),
+        new Vec3(5.4, 3.4, 5.2),
+        new Vec3(side * 2.2, -1.2, 1.8),
+        { front: C.limb, back: C.hide, side: C.limb, top: C.chest },
+        new Vec2(-side * 1.4, -1.2)
+      ),
+      // Flared viscous suction puddle pad on the floor
+      taperPrism(
+        new Vec3(5.8, 2.0, 6.8),
+        new Vec3(3.8, 2.0, 4.8),
+        new Vec3(side * 3.8, -3.6, 4.2),
+        { front: C.gore, back: C.limb, side: C.limb, top: C.limb, bottom: C.gore },
+        new Vec2(-side * 0.8, -1.0)
+      ),
+    ]);
+
+  // Lateral coalescing slime lobes & satellite floor droplets
+  const makeLateralLobe = (side) =>
+    mergeGeometries([
+      taperPrism(
+        new Vec3(6.4, 3.2, 7.6),
+        new Vec3(4.4, 3.2, 5.4),
+        new Vec3(side * 2.8, -5.2, 0.4),
+        { front: C.limb, back: C.hide, side: C.hide, top: C.chest, bottom: C.gore },
+        new Vec2(-side * 1.6, 0.4)
+      ),
+      taperPrism(
+        new Vec3(4.8, 2.2, 5.8),
+        new Vec3(3.0, 2.2, 3.8),
+        new Vec3(side * 4.4, -6.2, -3.8),
+        { front: C.gore, back: C.hide, side: C.limb, top: C.limb, bottom: C.gore },
+        new Vec2(-side * 1.0, 0.8)
+      ),
+    ]);
 
   return {
     pivots: {
-      body: new Vec3(0, 9.5, 0),
-      head: new Vec3(0, 4.2, 7.2),
-      jaw: new Vec3(0, -0.8, 1.2),
-      leftArm: new Vec3(-5.2, 3.5, 3.5),
-      rightArm: new Vec3(5.2, 3.5, 3.5),
-      leftLeg: new Vec3(-5.5, 9.5, -2.5),
-      rightLeg: new Vec3(5.5, 9.5, -2.5),
-      extra: new Vec3(0, 3.5, -6.5),
+      body: new Vec3(0, 7.5, 0),
+      head: new Vec3(0, 1.6, 6.4),
+      jaw: new Vec3(0, -1.8, 1.2),
+      leftArm: new Vec3(-6.2, -2.6, 3.4),
+      rightArm: new Vec3(6.2, -2.6, 3.4),
+      leftLeg: new Vec3(-6.4, 7.5, -2.2),
+      rightLeg: new Vec3(6.4, 7.5, -2.2),
+      extra: new Vec3(0, -2.8, -7.8),
     },
     body: mergeGeometries(bodyList),
     head,
     jaw,
-    leftArm: makeScythePair(-1, 2.2, -1.8),
-    rightArm: makeScythePair(1, 2.2, -1.8),
-    leftLeg: makeScythePair(-1, -1.5, -6.2),
-    rightLeg: makeScythePair(1, -1.5, -6.2),
+    leftArm: makeFrontPseudopod(-1),
+    rightArm: makeFrontPseudopod(1),
+    leftLeg: makeLateralLobe(-1),
+    rightLeg: makeLateralLobe(1),
     extra: mergeGeometries([
-      taperPrism(new Vec3(2.4, 2.4, 5.5), new Vec3(0.8, 1.2, 5.5), new Vec3(0, 1.5, -9.5), { front: C.gore, back: C.gore, side: C.bone }),
+      // Trailing viscous slime wake & coalescing posterior droplet bead
+      taperPrism(
+        new Vec3(9.4, 2.8, 7.2),
+        new Vec3(6.8, 2.8, 5.2),
+        new Vec3(0, -2.6, -2.4),
+        { front: C.back, back: C.gore, side: C.hide, top: C.back, bottom: C.gore },
+        new Vec2(0, 1.6)
+      ),
+      taperPrism(
+        new Vec3(5.6, 1.8, 5.4),
+        new Vec3(3.2, 1.8, 3.4),
+        new Vec3(0, -3.5, -7.2),
+        { front: C.gore, back: C.gore, side: C.limb, top: C.chest, bottom: C.gore },
+        new Vec2(0, 1.2)
+      ),
     ]),
   };
 }
@@ -1487,15 +1784,27 @@ function animateMonster(view, enemy, c) {
     view.lift = Math.abs(Math.sin(enemy.walk * 1.6)) * m.moving * 0.45;
   else if (leaping)
     view.lift = 7.5;
+  else if (type === 'crawler')
+    view.lift = (0.5 + 0.5 * Math.sin(enemy.walk * 2.2 - m.t * 1.8)) * m.moving * 0.55;
   else if (cfg.stomp)
     view.lift = Math.abs(Math.sin(enemy.walk)) * m.moving * cfg.stomp;
   else
     view.lift = Math.abs(Math.sin(enemy.walk * 2)) * m.moving * 0.9;
 
   const breath = Math.sin(m.t * 2.4);
-  view.sx = 1 + breath * 0.018 + (leaping ? 0.1 : 0) + m.roar * 0.06;
-  view.sy = 1 + Math.sin(m.t * 2.4 + 1) * 0.022 + m.roar * 0.07 - (leaping ? 0.06 : 0);
-  view.sz = 1 + breath * 0.018 + (leaping ? 0.12 : 0) + m.roar * 0.05;
+  if (type === 'crawler') {
+    // Non-Newtonian viscous slime squash-and-stretch: flattens wide on windup, elongates on leap, wobbles like jelly on pain
+    const peristalsis = Math.sin(enemy.walk * 1.8 - m.t * 2.2) * m.moving;
+    const gelPulse = Math.sin(m.t * 3.6);
+    const jellyWobble = Math.sin(c.time * 38) * m.pain * 0.14;
+    view.sx = 1 + gelPulse * 0.045 - peristalsis * 0.08 + m.attack * 0.22 - (leaping ? 0.14 : 0) + jellyWobble;
+    view.sy = 1 - gelPulse * 0.05 + peristalsis * 0.06 - m.attack * 0.24 - (leaping ? 0.1 : 0) - jellyWobble * 0.85;
+    view.sz = 1 + gelPulse * 0.045 + peristalsis * 0.11 + m.attack * 0.16 + (leaping ? 0.28 : 0) - jellyWobble * 0.5;
+  } else {
+    view.sx = 1 + breath * 0.018 + (leaping ? 0.1 : 0) + m.roar * 0.06;
+    view.sy = 1 + Math.sin(m.t * 2.4 + 1) * 0.022 + m.roar * 0.07 - (leaping ? 0.06 : 0);
+    view.sz = 1 + breath * 0.018 + (leaping ? 0.12 : 0) + m.roar * 0.05;
+  }
 
   // World-space facing yaw: face movement vector when prowling, or lock onto the player when attacking/chasing
   let targetYaw = view.pose.yaw ?? 0;
@@ -1558,14 +1867,16 @@ function animateMonster(view, enemy, c) {
     view.rightLeg.setRotation(scratchRot.setScalar(1.22 - stride * m.moving * 0.25, 0.12, 0.15));
     view.extra.setRotation(scratchRot.setScalar(-0.25 + counterStride * m.moving * 0.18, Math.sin(m.t * 3.8) * 0.25, 0));
   } else if (type === 'crawler') {
-    // 6-legged alternating tripod skitter + raised front scythes on lunge
-    const skitter = Math.sin(enemy.walk * 2.2) * m.moving;
+    // Viscous peristaltic pseudopod wave & coalescing slime wake
+    const waveA = Math.sin(enemy.walk * 2.0 - m.t * 1.6) * m.moving;
+    const waveB = Math.cos(enemy.walk * 2.0 - m.t * 1.6) * m.moving;
+    const churn = Math.sin(m.t * 3.2);
     const lungeLift = Math.max(m.attack, leaping ? 1 : 0);
-    view.leftArm.setRotation(scratchRot.setScalar(-lungeLift * 0.55 + skitter * 0.28, skitter * 0.32, lungeLift * 0.25));
-    view.rightArm.setRotation(scratchRot.setScalar(-lungeLift * 0.55 - skitter * 0.28, -skitter * 0.32, -lungeLift * 0.25));
-    view.leftLeg.setRotation(scratchRot.setScalar(-skitter * 0.32, -skitter * 0.35, 0));
-    view.rightLeg.setRotation(scratchRot.setScalar(skitter * 0.32, skitter * 0.35, 0));
-    view.extra.setRotation(scratchRot.setScalar(Math.sin(m.t * 4) * 0.12 + lungeLift * 0.25, skitter * 0.2, 0));
+    view.leftArm.setRotation(scratchRot.setScalar(-lungeLift * 0.48 + waveA * 0.34 + churn * 0.08, waveB * 0.28, lungeLift * 0.2 + waveA * 0.14));
+    view.rightArm.setRotation(scratchRot.setScalar(-lungeLift * 0.48 - waveA * 0.34 - churn * 0.08, -waveB * 0.28, -lungeLift * 0.2 + waveA * 0.14));
+    view.leftLeg.setRotation(scratchRot.setScalar(-waveB * 0.26, -waveA * 0.3, waveB * 0.12));
+    view.rightLeg.setRotation(scratchRot.setScalar(waveB * 0.26, waveA * 0.3, waveB * 0.12));
+    view.extra.setRotation(scratchRot.setScalar(churn * 0.15 + lungeLift * 0.22 - waveA * 0.18, waveB * 0.28, churn * 0.1));
   } else if (type === 'swarmer') {
     // Quadruped feral pack bound + snapping shark-maw + whipping tail
     const bound = Math.sin(enemy.walk * 2.0) * m.moving;

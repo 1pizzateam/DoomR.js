@@ -24,8 +24,8 @@ export const MARS_NVG_FOG = new Vec2(420, 1850);
  */
 export function marsFogNearFar(level, pos, target = new Vec2(), nightVision = false) {
   if (nightVision)
-    return level?.planet === 'mars' ? target.copy(MARS_NVG_FOG) : target.setScalar(520, 2200);
-  if (level?.planet !== 'mars')
+    return level?.marsAtmosphere ? target.copy(MARS_NVG_FOG) : target.setScalar(520, 2200);
+  if (!level?.marsAtmosphere)
     return target.setScalar(FOG_NEAR, FOG_FAR);
   if (level.isOutdoor(pos))
     return target.copy(MARS_OUTDOOR_FOG);

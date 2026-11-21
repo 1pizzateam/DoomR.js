@@ -1099,7 +1099,6 @@ const tests = {
       camera: { position: new Vec3(96, EYE, 160) },
       gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, viewport() {}, UNSIGNED_SHORT: 5123 },
       doorViews: new Map(),
-      crusherViews: new Map(),
       enemyViews: new Map(),
       pickupViews: new Map(),
       cacheViews: new Map(),
@@ -3776,12 +3775,6 @@ const tests = {
     assert.ok(Math.abs(uvs[uvs.length - 12] - (1 / DOOR_CELLS + inset)) < 1e-9, 'the top face uses the second atlas cell');
   },
 
-  'AC-5 buildCrusher passes a Vec2 to doorBox'() {
-    const source = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
-    assert.ok(source.includes('doorBox(new Vec2(TILE - 1.6, TILE))'));
-    assert.ok(!source.includes('doorBox(TILE'));
-  },
-
   'the floor texture is a power-of-two atlas of opaque, dark deck tiles, rust is brown, and doorsteps are hazard stripes'() {
     const atlas = floorAtlas();
     const pow2 = (n) => (n & (n - 1)) === 0;
@@ -5174,9 +5167,8 @@ const tests = {
     assert.equal(corpse.gibbed, true, 'barrel explosion blows nearby corpses into gibs');
   },
 
-  'environmental hazards and secret push-walls: toxic slime burns, secret doors disguise as walls until pushed, and ceiling crushers pulp anything underneath'() {
+  'environmental hazards and secret push-walls: toxic slime burns, secret doors disguise as walls until pushed'() {
     assert.equal(typeof RECIPES.acid, 'function', 'acid sizzle audio recipe exists');
-    assert.equal(typeof RECIPES.crush, 'function', 'hydraulic crusher slam audio recipe exists');
 
     // slime atlas is power-of-two, opaque, and dominantly radioactive green; shader animates with uTime
     const slime = slimeAtlas();
@@ -5213,7 +5205,7 @@ const tests = {
       assert.equal(Math.abs(sBox.vertices[i + 2]), 32, 'secret door Z faces sit flush at ±32 (TILE / 2) with zero recess');
     }
 
-    // every level has slime pools (~) and crushing traps (^); indoor base levels have secret push-wall doors (S), while Mars has only the 1 starting-room door
+    // every level has slime pools (~); indoor base levels have secret push-wall doors (S), while Mars has only the 1 starting-room door
     for (let i = 0; i < LEVELS.length; i++) {
       const g = fresh(i);
       let slimeTiles = 0;
@@ -5226,7 +5218,6 @@ const tests = {
         assert.equal(g.level.doors.size, 2, 'Mars surface level has only the starting elevator and airlock doors and zero exterior doors');
       else
         assert.ok(secretDoors.length >= 2, `level ${i} has secret push-wall doors (${secretDoors.length})`);
-      assert.ok(g.level.crushers.length >= 1, `level ${i} has crushing ceiling traps (${g.level.crushers.length})`);
     }
 
     // wading in toxic slime periodically burns the player, flashes green radFlash, and emits 'acid'
@@ -5253,26 +5244,6 @@ const tests = {
     game.use();
     assert.equal(secretDoor.target, 1, 'pushing secret wall opens it');
     assert.equal(secretDoor.revealed, true, 'pushing secret wall reveals it on the automap');
-
-    // crushing ceiling trap cycles down, emits 'crush', gibs live monsters, and shreds corpses underneath
-    const crusher = game.level.crushers[0];
-    crusher.phase = 0;
-    crusher.slamming = false;
-    game.addEnemy('imp', crusher.center.clone());
-    const victim = game.enemies[0];
-    game.events.length = 0;
-    run(game, 0.8);
-    assert.equal(victim.state, 'dead', 'ceiling crusher kills monster underneath');
-    assert.equal(victim.gibbed, true, 'ceiling crusher gibs monster into XDeath chunks');
-    assert.ok(game.events.some((e) => e.type === 'crush'), 'ceiling crusher emits hydraulic slam sound');
-
-    // crusher also hurts the player when caught underneath at low height
-    crusher.phase = 0;
-    crusher.hurtCooldown = 0;
-    game.player.health = 100;
-    game.player.body.setPosition(crusher.center.clone());
-    run(game, 0.75);
-    assert.ok(game.player.health < 100, 'player caught under a slamming ceiling crusher takes crushing damage');
   },
 
   'classic Doom keycards and locked doors: 3D keycard meshes, color-coded security doors, HUD key slots, and progressive Blue -> Yellow -> Red -> Exit routing'() {
@@ -5298,7 +5269,9 @@ const tests = {
       assert.ok(pow2(da.width) && pow2(da.height), `${color} locked door atlas is power-of-two`);
       const s = TILE_PIXELS / 64;
       let coloredRail = 0;
-      for (let y = 14; y < 50; y++) {
+      for (let y = 3; y < 61; y++) {
+        if (y >= 25 && y < 51)
+          continue; // the section sign plate covers this stretch of the face
         const o = (y * s * da.width + 28 * s) * 4;
         const r = da.data[o];
         const g = da.data[o + 1];
@@ -5310,7 +5283,7 @@ const tests = {
         if (color === 'blue' && b > r * 1.8 && b > 150)
           coloredRail++;
       }
-      assert.ok(coloredRail > 20, `${color} locked door has glowing ${color} security status rails`);
+      assert.ok(coloredRail > 12, `${color} locked door has glowing ${color} security status rails`);
     }
 
     // Gameplay: locked doors block until the matching keycard is collected
@@ -9996,7 +9969,6 @@ const tests = {
       camera: { position: new Vec3(96, EYE, 160) },
       gl: { createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, viewport() {}, UNSIGNED_SHORT: 5123 },
       doorViews: new Map([...game.level.doors.values()].map((door) => [door, { setPosition: noop, setActive: noop, setInactive: noop }])),
-      crusherViews: new Map(),
       enemyViews: new Map(),
       pickupViews: new Map(),
       cacheViews: new Map(),
@@ -10310,8 +10282,6 @@ const tests = {
         if (!CACHE_TYPES.includes(p.type))
           blocked.add(level.grid.getCell(p.pos));
       }
-      for (const c of level.crushers)
-        blocked.add(c.idx);
       for (const cache of game.caches) {
         const { idx, wallSide } = cache;
         const x = idx % width;
@@ -15836,7 +15806,7 @@ const tests = {
     assert.equal(world.rocketLauncherView.root.active, false, 'rocketLauncherView inactive when weapon differs');
   },
 
-  'AC-3 world builders create crushers, barrels, and pickup views'() {
+  'AC-3 world builders create barrels and pickup views'() {
     const target = {
       bufferSubData() {},
       bindBuffer() {},
@@ -15860,7 +15830,6 @@ const tests = {
     const sharedTexturedMeshes = [];
     const world = Object.create(World.prototype);
     world.gl = gl;
-    world.crusherViews = new Map();
     world.scene = {
       addMesh(mesh) {
         sceneMeshes.push(mesh);
@@ -15872,17 +15841,6 @@ const tests = {
       mesh.atlas = atlas;
       return mesh;
     };
-
-    // 1. buildCrusher
-    const crusher = { center: new Vec2(128, 256), low: 16 };
-    world.buildCrusher(crusher);
-    assert.ok(world.crusherViews.has(crusher), 'crusher registered in crusherViews');
-    const crusherMesh = world.crusherViews.get(crusher);
-    assert.ok(crusherMesh instanceof Mesh, 'crusher view is a Mesh');
-    assert.equal(crusherMesh.position.x, 128);
-    assert.equal(crusherMesh.position.y, 16);
-    assert.equal(crusherMesh.position.z, 256);
-    assert.ok(sceneMeshes.includes(crusherMesh), 'crusher added to scene');
 
     // 2. buildBarrel
     const barrelView = world.buildBarrel();

@@ -3768,16 +3768,19 @@ function plantHash(x, y, seed = 0) {
 }
 
 /** Smooth value noise in 0..1: bilinear blend of hashed lattice points `1 / freq` texels apart. */
-function plantNoise(px, py, freq, seed = 0) {
-  const x = px / freq;
+function plantNoise(px, py, freq, seed = 0, wrapWidth = 0) {
+  // with a `wrapWidth` the lattice repeats every `wrapWidth` texels in x, so the picture tiles around a cylinder
+  const cells = wrapWidth ? Math.max(1, Math.round(wrapWidth / freq)) : 0;
+  const x = cells ? (px / wrapWidth) * cells : px / freq;
   const y = py / freq;
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
   const fx = Utils.smoothstep(0, 1, x - x0);
   const fy = Utils.smoothstep(0, 1, y - y0);
+  const hx = (ix) => (cells ? ((ix % cells) + cells) % cells : ix);
   return Utils.lerp(
-    Utils.lerp(plantHash(x0, y0, seed), plantHash(x0 + 1, y0, seed), fx),
-    Utils.lerp(plantHash(x0, y0 + 1, seed), plantHash(x0 + 1, y0 + 1, seed), fx),
+    Utils.lerp(plantHash(hx(x0), y0, seed), plantHash(hx(x0 + 1), y0, seed), fx),
+    Utils.lerp(plantHash(hx(x0), y0 + 1, seed), plantHash(hx(x0 + 1), y0 + 1, seed), fx),
     fy
   );
 }
@@ -3791,36 +3794,49 @@ function leafHalfWidth(t) {
 
 function drawPlantPot(rnd) {
   const t = new Tile(PLANT_POT.width, PLANT_POT.height, 2);
+  const W = t.width;
   plate(t, 0, 0, 64, 64, rnd, POT_TERRACOTTA);
-  t.rect(2, 4, 60, 10, POT_RIM, 0.9);
-  for (let x = 3; x < 61; x++) {
+  // the pot wraps once around its ring, so u = 0 and u = 1 meet: nothing below may stop short of the edges, or the seam shows
+  // as two stripes. The plate's own chamfer is dropped, and every band of relief spans the full width and only slopes in y.
+  const H = t.ensureRelief();
+  H.fill(0);
+  const band = (y0, h, amount, edge) => {
+    const py0 = Math.round(y0 * 2);
+    const py1 = Math.round((y0 + h) * 2);
+    const rim = Math.max(1, edge * 2);
+    for (let py = Math.max(0, py0); py < Math.min(t.height, py1); py++) {
+      const d = Math.min(py - py0 + 0.5, py1 - py - 0.5);
+      const v = amount * Utils.smoothstep(0, rim, d);
+      for (let px = 0; px < W; px++)
+        H[py * W + px] += v;
+    }
+  };
+  t.rect(0, 4, 64, 10, POT_RIM, 0.9);
+  for (let x = 0; x < 64; x++) {
     t.set(x, 4, POT_LIGHT, 0.7);
     t.set(x, 13, POT_DARK, 0.8);
   }
-  for (let y = 15; y < 58; y++) {
-    const taper = Math.floor(((y - 15) / 43) * 6);
-    const x0 = 4 + taper;
-    const x1 = 60 - taper;
-    for (let x = x0; x < x1; x++) {
-      const sheen = Math.sin(((x - x0) / (x1 - x0)) * Trigo.pi) * 0.28;
+  // a soft highlight down the middle of the wall that fades to nothing at both edges, so it joins itself across the seam
+  for (let y = 15; y < 58; y++)
+    for (let x = 0; x < 64; x++) {
+      const sheen = Math.sin((x / 64) * Trigo.pi) ** 2 * 0.28;
       t.set(x, y, POT_LIGHT, sheen);
     }
-  }
-  t.rect(8, 58, 48, 5, POT_DARK, 0.85);
-  // fired clay: cloudy glaze mottling, fine speckle and white mineral bloom near the foot
+  t.rect(0, 58, 64, 5, POT_DARK, 0.85);
+  // fired clay: cloudy glaze mottling, fine speckle and white mineral bloom near the foot (noise wraps in x)
   for (let py = 0; py < t.height; py++)
-    for (let px = 0; px < t.width; px++) {
-      const cloud = plantNoise(px, py, 14, 3) * 0.6 + plantNoise(px, py, 5, 4) * 0.4;
+    for (let px = 0; px < W; px++) {
+      const cloud = plantNoise(px, py, 14, 3, W) * 0.6 + plantNoise(px, py, 5, 4, W) * 0.4;
       t.setRaw(px, py, cloud > 0.5 ? POT_LIGHT : POT_DARK, Math.abs(cloud - 0.5) * 0.55);
-      if (py > 90 && plantNoise(px, py, 9, 5) > 0.7)
+      if (py > 90 && plantNoise(px, py, 9, 5, W) > 0.7)
         t.setRaw(px, py, POT_CHALK, (py - 90) / 60 * 0.18);
       if (plantHash(px, py, 6) > 0.985)
         t.setRaw(px, py, POT_DARK, 0.7);
     }
   // relief: the thick rolled rim, a gently bellied pot wall, a recessed foot
-  t.pipe(2, 4, 60, 10, 1.6, true);
-  t.relief(4, 15, 56, 43, 0.5, 2.0);
-  t.relief(8, 58, 48, 5, -0.8, 0.6);
+  t.pipe(0, 4, 64, 10, 1.6, true);
+  band(15, 43, 0.5, 2.0);
+  band(58, 5, -0.8, 0.6);
   return t;
 }
 

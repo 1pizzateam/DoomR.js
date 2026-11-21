@@ -91,7 +91,161 @@ function hazardStrip(t, x0, y0, w, h, color = HAZARD) {
   bevel(t, x0, y0, w, h, false);
 }
 
-function drawFace(rnd, lockColor = null) {
+/**
+ * A door can carry a sign (a logo on a plate across the two leaves): a rest room, a medical bay, an armoury, an
+ * engineering bay or a canteen. Each is drawn in the 64-unit space of the face, centred on the seam below the viewing slits.
+ */
+export const DOOR_SIGNS = ['restroom', 'medical', 'armory', 'engineering', 'canteen', 'section1', 'section2', 'section3'];
+/** The sign each security door (by lock color) carries: blue = section 1, yellow = section 2, red = section 3. */
+export const LOCK_SIGNS = { blue: 'section1', yellow: 'section2', red: 'section3' };
+const SIGN_CENTER = [32, 38];
+const SIGN_ICON = [236, 244, 248];
+
+function signDisc(t, cx, cy, r, color, amount = 1) {
+  const s = t.scale;
+  const rr = r * s;
+  for (let py = Math.floor(cy * s - rr); py <= Math.ceil(cy * s + rr); py++)
+    for (let px = Math.floor(cx * s - rr); px <= Math.ceil(cx * s + rr); px++)
+      if (Math.hypot(px + 0.5 - cx * s, py + 0.5 - cy * s) <= rr)
+        t.setRaw(px, py, color, amount);
+}
+
+function signRing(t, cx, cy, rOuter, rInner, color) {
+  const s = t.scale;
+  const ro = rOuter * s;
+  const ri = rInner * s;
+  for (let py = Math.floor(cy * s - ro); py <= Math.ceil(cy * s + ro); py++)
+    for (let px = Math.floor(cx * s - ro); px <= Math.ceil(cx * s + ro); px++) {
+      const d = Math.hypot(px + 0.5 - cx * s, py + 0.5 - cy * s);
+      if (d <= ro && d >= ri)
+        t.setRaw(px, py, color, 1);
+    }
+}
+
+/** A filled triangle given by its apex (`ax`, `ay`) and the half-width of its base (`half`) at `by`. */
+function signTriangle(t, ax, ay, by, half, color) {
+  const s = t.scale;
+  for (let py = Math.round(ay * s); py < Math.round(by * s); py++) {
+    const w = ((py / s - ay) / (by - ay)) * half;
+    for (let px = Math.round((ax - w) * s); px < Math.round((ax + w) * s); px++)
+      t.setRaw(px, py, color, 1);
+  }
+}
+
+function signMan(t, cx, top) {
+  signDisc(t, cx, top + 2, 2, SIGN_ICON);
+  t.rect(cx - 2, top + 4.6, 4, 7, SIGN_ICON);
+  t.rect(cx - 3.8, top + 4.8, 1.4, 5.8, SIGN_ICON);
+  t.rect(cx + 2.4, top + 4.8, 1.4, 5.8, SIGN_ICON);
+  t.rect(cx - 1.9, top + 11.6, 1.6, 6, SIGN_ICON);
+  t.rect(cx + 0.3, top + 11.6, 1.6, 6, SIGN_ICON);
+}
+
+function signWoman(t, cx, top) {
+  signDisc(t, cx, top + 2, 2, SIGN_ICON);
+  signTriangle(t, cx, top + 4.4, top + 12.4, 4, SIGN_ICON);
+  t.rect(cx - 3.4, top + 4.8, 1.2, 4.2, SIGN_ICON);
+  t.rect(cx + 2.2, top + 4.8, 1.2, 4.2, SIGN_ICON);
+  t.rect(cx - 1.7, top + 12.2, 1.3, 5.4, SIGN_ICON);
+  t.rect(cx + 0.4, top + 12.2, 1.3, 5.4, SIGN_ICON);
+}
+
+// seven-segment glyphs (a top, b top-right, c bottom-right, d bottom, e bottom-left, f top-left, g middle) for 'S' and digits
+const SEGMENTS = { S: 'afgcd', 1: 'bc', 2: 'abged', 3: 'abgcd' };
+
+function signGlyph(t, ch, x, y) {
+  const w = 8, h = 16, th = 1.8, half = h / 2;
+  const bars = {
+    a: [x, y, w, th],
+    g: [x, y + half - th / 2, w, th],
+    d: [x, y + h - th, w, th],
+    f: [x, y, th, half],
+    b: [x + w - th, y, th, half],
+    e: [x, y + half, th, half],
+    c: [x + w - th, y + half, th, half],
+  };
+  for (const k of SEGMENTS[ch])
+    t.rect(...bars[k], SIGN_ICON);
+}
+
+function sectionIcon(digit) {
+  return (t, [cx, cy]) => {
+    signGlyph(t, 'S', cx - 9.5, cy - 8);
+    signGlyph(t, digit, cx + 1.5, cy - 8);
+  };
+}
+
+const SIGN_THEMES = {
+  section1: { plate: [28, 76, 168], icon: sectionIcon('1') },
+  section2: { plate: [168, 124, 14], icon: sectionIcon('2') },
+  section3: { plate: [168, 24, 36], icon: sectionIcon('3') },
+  restroom: {
+    plate: [22, 112, 132],
+    icon: (t, [cx, cy]) => {
+      signMan(t, cx - 5.6, cy - 9);
+      signWoman(t, cx + 5.6, cy - 9);
+      t.rect(cx - 0.4, cy - 9, 0.8, 18, SIGN_ICON, 0.85);
+    },
+  },
+  medical: {
+    plate: [150, 30, 38],
+    icon: (t, [cx, cy]) => {
+      t.rect(cx - 2.6, cy - 8, 5.2, 16, SIGN_ICON);
+      t.rect(cx - 8, cy - 2.6, 16, 5.2, SIGN_ICON);
+    },
+  },
+  armory: {
+    plate: [72, 80, 42],
+    icon: (t, [cx, cy]) => {
+      signRing(t, cx, cy, 7, 5.4, SIGN_ICON);
+      t.rect(cx - 0.6, cy - 10, 1.2, 8, SIGN_ICON);
+      t.rect(cx - 0.6, cy + 2, 1.2, 8, SIGN_ICON);
+      t.rect(cx - 10, cy - 0.6, 8, 1.2, SIGN_ICON);
+      t.rect(cx + 2, cy - 0.6, 8, 1.2, SIGN_ICON);
+      signDisc(t, cx, cy, 1, SIGN_ICON);
+    },
+  },
+  engineering: {
+    plate: [150, 98, 24],
+    icon: (t, [cx, cy]) => {
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4;
+        signDisc(t, cx + Math.cos(a) * 7.6, cy + Math.sin(a) * 7.6, 1.9, SIGN_ICON);
+      }
+      signDisc(t, cx, cy, 6.6, SIGN_ICON);
+      signDisc(t, cx, cy, 2.8, [150, 98, 24]);
+    },
+  },
+  canteen: {
+    plate: [104, 60, 112],
+    icon: (t, [cx, cy]) => {
+      // a fork on the left (three tines, a bar, a handle) and a knife on the right
+      for (const dx of [0, 1.9, 3.8])
+        t.rect(cx - 8.2 + dx, cy - 9, 1, 7, SIGN_ICON);
+      t.rect(cx - 8.2, cy - 3, 4.8, 1.6, SIGN_ICON);
+      t.rect(cx - 6.4, cy - 1.6, 1.4, 11, SIGN_ICON);
+      t.rect(cx + 3.6, cy - 9, 2.8, 10, SIGN_ICON);
+      t.rect(cx + 4.2, cy + 1, 1.6, 8.6, SIGN_ICON);
+    },
+  },
+};
+
+function drawDoorSign(t, sign) {
+  const theme = SIGN_THEMES[sign];
+  if (!theme)
+    return;
+  const [cx, cy] = SIGN_CENTER;
+  t.rect(cx - 13, cy - 13, 26, 26, SHADOW, 0.95);
+  t.rect(cx - 12, cy - 12, 24, 24, theme.plate, 1);
+  bevel(t, cx - 12, cy - 12, 24, 24, true);
+  theme.icon(t, SIGN_CENTER);
+  rivet(t, cx - 11, cy - 11);
+  rivet(t, cx + 9.5, cy - 11);
+  rivet(t, cx - 11, cy + 9.5);
+  rivet(t, cx + 9.5, cy + 9.5);
+}
+
+function drawFace(rnd, lockColor = null, sign = null) {
   const theme = lockColor ? LOCK_THEMES[lockColor] : null;
   const sig = theme ? theme.signal : SIGNAL;
   const slitGlow = theme ? theme.glow : GLOW;
@@ -187,6 +341,8 @@ function drawFace(rnd, lockColor = null) {
     t.rect(x, 54, 3, 2, sig, 0.9);
     bevel(t, x, 54, 3, 2, true);
   }
+  if (sign)
+    drawDoorSign(t, sign);
   return t;
 }
 
@@ -209,10 +365,10 @@ function drawTop(rnd) {
   return t;
 }
 
-function buildDoorAtlas(name, lockColor = null) {
+function buildDoorAtlas(name, lockColor = null, sign = null) {
   const width = SIZE * DOOR_CELLS;
   const data = new Uint8Array(width * SIZE * 4);
-  [drawFace(mulberry32(555), lockColor), drawTop(mulberry32(777))].forEach((tile, cell) => {
+  [drawFace(mulberry32(555), lockColor, sign), drawTop(mulberry32(777))].forEach((tile, cell) => {
     for (let y = 0; y < SIZE; y++)
       for (let x = 0; x < SIZE; x++) {
         const i = (y * SIZE + x) * 3;
@@ -230,9 +386,14 @@ export function doorAtlas() {
   return buildDoorAtlas('door', null);
 }
 
+/** A standard door with a sign on it: one of `DOOR_SIGNS` (rest room, medical bay, armoury, engineering bay, canteen). */
+export function signDoorAtlas(sign) {
+  return buildDoorAtlas(`${sign}Door`, null, sign);
+}
+
 /** Color-coded security door atlas ('red', 'yellow', or 'blue') with blazing keycard lock rails and status bars. */
 export function lockedDoorAtlas(color = 'red') {
-  return buildDoorAtlas(`${color}Door`, color);
+  return buildDoorAtlas(`${color}Door`, color, LOCK_SIGNS[color] ?? null);
 }
 
 // Vector-stroke glyph segments in normalized [0..1] x [0..1] space for native 256x256 SDF rendering

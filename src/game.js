@@ -3677,41 +3677,6 @@ export class Game {
       }
     } else
       player.slimeTimer = Math.max(0, (player.slimeTimer ?? 0) - dt * 2);
-
-    for (const crusher of this.level.crushers) {
-      crusher.phase += dt * 2.2;
-      crusher.hurtCooldown = Math.max(0, (crusher.hurtCooldown ?? 0) - dt);
-      const wave = Math.sin(crusher.phase);
-      crusher.low = CEILING - Math.max(0, wave) * (CEILING - 8);
-      if (crusher.low > 36)
-        crusher.slamming = false;
-      else if (!crusher.slamming && crusher.low < 12) {
-        crusher.slamming = true;
-        this.emit('crush', crusher.center);
-        const dist = player.pos.getDistance(crusher.center);
-        if (dist < 420)
-          this.shake = Math.max(this.shake, 0.35 * (1 - dist / 420));
-      }
-      if (crusher.low < 24) {
-        for (const body of this.scene.queryCircle(crusher.center, TILE * 0.45, QUERY_ENEMY, this.queryScratch)) {
-          const enemy = body.ref;
-          if (!enemy || enemy.state === 'dead')
-            continue;
-          enemy.volley = 1e6;
-          this.damageEnemy(enemy, 999);
-        }
-        if (crusher.low < 18)
-          for (const enemy of this.enemies)
-            if (enemy.state === 'dead' && !enemy.gibbed && enemy.body.overlapsCircle(crusher.center, TILE * 0.45))
-              this.mutilateCorpse(enemy, this.shotDir.setScalar(1, 0), true);
-        this.resolveGibs();
-      }
-      if (this.state === 'play' && crusher.low < player.eye + 4 && crusher.hurtCooldown <= 0 && this.scene.queryCircleFirst(crusher.center, TILE * 0.42, QUERY_PLAYER)) {
-        crusher.hurtCooldown = 0.35;
-        this.hurtPlayer(18, crusher.center);
-        this.blood.spray(this.bloodPos.setScalar(player.pos.x, player.pos.y, player.eye * 0.6), this.bloodDir.setScalar(0, 0), 14);
-      }
-    }
   }
 
   updateTeleporters(dt) {

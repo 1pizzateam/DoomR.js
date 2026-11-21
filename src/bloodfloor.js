@@ -306,13 +306,17 @@ export class MergedBlood {
    * Lights what was poured since the last call, and returns the tiles that changed. Each has its `dirty` rect to upload
    * (set `chunk.dirty = null` once it is).
    */
-  flush() {
+  flush(budgetMs = Infinity) {
     const list = [];
+    const deadline = Number.isFinite(budgetMs) ? performance.now() + budgetMs : Infinity;
     for (const chunk of this.changed) {
+      // always light one tile, so the work moves forward; the rest wait in `changed` for the next frame
+      if (list.length && performance.now() > deadline)
+        break;
       this.light(chunk);
       list.push(chunk);
+      this.changed.delete(chunk);
     }
-    this.changed.clear();
     return list;
   }
 

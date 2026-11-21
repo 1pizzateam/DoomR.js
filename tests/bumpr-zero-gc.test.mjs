@@ -69,7 +69,6 @@ const checks = [
       'this.scene.queryCircle(pos, shot.radius, QUERY_BARREL, this.queryScratch)',
       'this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_ENEMY, this.queryScratch)',
       'this.scene.queryCircle(barrel.pos, BARREL.blast, QUERY_BARREL, this.queryScratch)',
-      'this.scene.queryCircle(crusher.center, TILE * 0.45, QUERY_ENEMY, this.queryScratch)',
       'this.scene.queryCircle(pad.target, PLAYER_RADIUS + 10, QUERY_ENEMY, this.queryScratch)',
     ];
     for (const site of expectedSites) {

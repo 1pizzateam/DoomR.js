@@ -6,14 +6,14 @@ import { ACID_SURFACE_DEPTH, EMPTY_PIT_DEPTH } from './game.js';
 import { BARREL_FIRE_FRAGMENT, BARREL_FIRE_VERTEX, barrelAcidPuddleMesh, barrelAcidStreamMesh, barrelAtlas, barrelExplosionPose, barrelFireMesh, barrelShrapnelFireMesh, barrelShrapnelParts, barrelWreckMesh, createBarrelExplosionPose, skinBarrel } from './barrel.js';
 import { MAX_CHUNKS, MergedBlood, TEX as FLOOR_BLOOD_TEX } from './bloodfloor.js';
 import { bloodAtlas, createQuadTarget, floorGibQuad, floorSplatQuad, particleQuad, printQuad, wallDripQuads, wallSplatQuad } from './bloodsprites.js';
-import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorAtlas, elevatorDoorBox, lockedDoorAtlas, secretDoorBox } from './door.js';
+import { DOOR_FRAGMENT, DOOR_INSET, DOOR_THICKNESS, DOOR_VERTEX, ELEVATOR_DOOR_THICKNESS, WALL_FRAGMENT, WALL_VERTEX, doorAtlas, doorBox, doubleDoorBox, elevatorDoorAtlas, elevatorDoorBox, lockedDoorAtlas, secretDoorBox, signDoorAtlas } from './door.js';
 import { CEILING_AMBIENT_COLOR, CEILING_CONE_FRAGMENT, CEILING_CONE_VERTEX, CEILING_FRAGMENT, doorCeilingAtlas, doorCeilingCellFor, doorCeilingCellUv, elevatorLightFactor, MARS_SKY_FRAGMENT, MARS_SKY_VERTEX, ceilingAtlas, ceilingCellFor, ceilingCellUv, ceilingLightCones, ceilingLightFixtures, createCeilingLights, marsSkyAtlas, marsSkyMesh, updateCeilingLights } from './ceiling.js';
 import { wallPipeQuads } from './pipes.js';
 import { WALL_CELLS, diagWallFaceQuads, doorWallAtlas, hangarDoorAtlas, marsRockAtlas, wallAtlas, wallCellUv, wallFaceQuads } from './wall.js';
 import { createExplosion3dPose, EXPLOSION_FRAMES, EXPLOSION_PARTICLE_COUNT, explosion3dAtlas, explosion3dMesh, explosion3dPose, explosionAtlas, explosionParticleQuads, teleportAtlas } from './explosion.js';
 import { FIREBALL_FRAMES, fireballAtlas } from './fireball.js';
 import { GRENADE_SCALE, grenadeAtlas, grenadeParts } from './grenade.js';
-import { ACID_MIST_FRAGMENT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, acidSplashQuads, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
+import { ACID_MIST_FRAGMENT, FLOOR_CELLS, FLOOR_FRAGMENT, FLOOR_VERTEX, MARS_DIRT_FRAGMENT, MARS_ROCK_FRAGMENT, MARS_SAND_FRAGMENT, marsSandHeight, SLIME_FRAGMENT, TELEPORTER_FRAGMENT, acidSplashQuads, crateAtlas, crateQuads, floorAtlas, floorCellFor, floorCellUv, marsBoulderAtlas, marsBoulderQuads, marsDirtAtlas, slimeAtlas, teleporterAtlas, teleporterMachineQuads } from './floor.js';
 import { BASE_FLOOR_LEVEL, CEILING, DOOR, EXIT, EYE, FLOOR, PILLAR, TILE, WALL } from './level.js';
 import { FOG_FAR, FOG_NEAR, MARS_INDOOR_FOG, MARS_NVG_FOG, MARS_OUTDOOR_FOG, marsFogNearFar } from './fog.js';
 import { faceCorners, quadTriangles } from './lines.js';
@@ -42,6 +42,9 @@ import postGlowShader from './shaders/post-glow.shadergun.json' with { type: 'js
 
 // Blue is the world, green is what helps you, orange is what hurts, red is blood.
 const BG = [7 / 255, 9 / 255, 15 / 255];
+// Martian sand is built as SAND_SUBDIV x SAND_SUBDIV quads per tile, and flattens over SAND_EDGE_FADE units towards any edge
+const SAND_SUBDIV = 4;
+const SAND_EDGE_FADE = 24;
 const BG_VEC = new Vec3(BG[0], BG[1], BG[2]);
 const COLORS = {
   blue: new Vec3(0x5b / 255, 0x8c / 255, 0xff / 255),
@@ -199,6 +202,8 @@ const scratchParticleOpts = { pos: new Vec3(), gib: false, variant: undefined, s
 const scratchCssSize = new Vec2();
 const scratchRenderSize = new Vec2();
 const scratchStampPos = new Vec2();
+/** Milliseconds a frame may spend pouring floor blood into its tiles, and again lighting them; the rest carries over. */
+const BLOOD_FRAME_BUDGET_MS = 4;
 const scratchWallNormal = new Vec2();
 const scratchPourBounds = new Rect();
 const scratchPourUv = new Rect();
@@ -692,7 +697,6 @@ export class World {
     this.hiding = new Material({ diffuse: BG_VEC });
     this.level = null;
     this.doorViews = new Map();
-    this.crusherViews = new Map();
     this.switchViews = new Map();
     this.furnitureViews = new Map();
     this.enemyViews = new Map();
@@ -740,6 +744,7 @@ export class World {
     this.lightConesMesh = null;
     this.lightConesMeshes = [];
     this.wallTopsMesh = null;
+    this.wallTopsRockMesh = null;
     this.textureCache = new Map();
     this.sharedTexturedMeshes = [];
   }
@@ -870,11 +875,12 @@ export class World {
           this.lightConesMeshes[i].setInactive();
         else
           this.lightConesMeshes[i].setActive();
-    if (this.wallTopsMesh)
-      if (this.cutaway)
-        this.wallTopsMesh.setActive();
-      else
-        this.wallTopsMesh.setInactive();
+    for (const topsMesh of [this.wallTopsMesh, this.wallTopsRockMesh])
+      if (topsMesh)
+        if (this.cutaway)
+          topsMesh.setActive();
+        else
+          topsMesh.setInactive();
     if (this.cutaway && this.staticChunks)
       for (let i = 0; i < this.staticChunks.length; i++) {
         const chunk = this.staticChunks[i];
@@ -886,7 +892,7 @@ export class World {
         else
           chunkMesh.setActive();
       }
-    const isMars = this.level?.planet === 'mars';
+    const isMars = Boolean(this.level?.marsAtmosphere);
     const skyVec = isMars ? MARS_SKY_VEC : BG_VEC;
     if (this.ambientLight)
       this.ambientLight.setColor(this.cutaway ? new Vec3(0.95, 1.0, 1.08) : (isMars ? MARS_AMBIENT_COLOR : CEILING_AMBIENT_COLOR));
@@ -1264,7 +1270,6 @@ export class World {
     for (const mesh of [...this.scene.meshes])
       this.discard(mesh);
     this.doorViews.clear();
-    this.crusherViews.clear();
     this.switchViews.clear();
     this.furnitureViews.clear();
     this.enemyViews.clear();
@@ -1290,7 +1295,7 @@ export class World {
     this.shotgunView = null;
     this.rocketLauncherView = null;
     this.level = level;
-    const isMars = level?.planet === 'mars';
+    const isMars = Boolean(level?.marsAtmosphere);
     const skyVec = isMars ? MARS_SKY_VEC : BG_VEC;
     this.hiding.setDiffuse(skyVec);
     marsFogNearFar(level, level?.playerStart ?? scratchFog.setScalar(0, 0), this.fogNearFar);
@@ -1303,8 +1308,6 @@ export class World {
     this.buildStatic(level);
     for (let i = 0; i < level.doorsList.length; i++)
       this.buildDoor(level.doorsList[i]);
-    for (const crusher of level.crushers)
-      this.buildCrusher(crusher);
     if (level.switches)
       for (const sw of level.switches)
         this.buildSwitch(sw);
@@ -1810,7 +1813,13 @@ export class World {
     const { stamps } = blood;
     if (!stamps?.length)
       return;
+    // a kill throws a lot of blood at once: pour what fits in the frame's budget, the rest waits for the next frame
+    const deadline = performance.now() + BLOOD_FRAME_BUDGET_MS;
+    let done = 0;
     for (let i = 0; i < stamps.length; i++) {
+      if (i > 0 && performance.now() > deadline)
+        break;
+      done = i + 1;
       const st = stamps[i];
       // out of tiles: that splat is drawn as a quad of its own
       if (!floorBlood.stamp(scratchStampPos.setScalar(st.x, st.y), st.size, st.seed)) {
@@ -1820,7 +1829,10 @@ export class World {
         this.splatVersion = -1;
       }
     }
-    stamps.length = 0;
+    if (done >= stamps.length)
+      stamps.length = 0;
+    else
+      stamps.splice(0, done);
   }
 
   /** Lights the tiles that changed and puts them on the GPU. */
@@ -1828,7 +1840,7 @@ export class World {
     const { floorBlood } = this;
     if (!floorBlood.changed.size)
       return;
-    for (const chunk of floorBlood.flush()) {
+    for (const chunk of floorBlood.flush(BLOOD_FRAME_BUDGET_MS)) {
       if (this.floorBloodViews.has(chunk.key))
         this.uploadFloorBlood(chunk);
       else
@@ -2158,6 +2170,8 @@ export class World {
     const outdoorFaces = [];
     const hide = [];
     const isMars = level.planet === 'mars';
+    // Martian rock walls only on a full Mars level; where just some tiles are sand (`sandOnly`) the walls stay deck walls
+    const rockWalls = isMars && !level.sandOnly;
     const furnitureTiles = new Set();
     if (level.furnitureTiles)
       for (let i = 0; i < level.furnitureTiles.length; i++) {
@@ -2266,7 +2280,7 @@ export class World {
             hangarDoor,
           });
           // the pipes tile carries real 3D pipes, standing out of the wall (unless a furniture stands in the tile just in front)
-          if (group.kind !== EXIT && !corridor && hangarDoor === null && !furnitureTiles.has(adjIdx) && !(isMars && !level.isIndoorTile(adjIdx))) {
+          if (group.kind !== EXIT && !corridor && hangarDoor === null && !furnitureTiles.has(adjIdx) && !(rockWalls && !level.isIndoorTile(adjIdx))) {
             const pipes = wallPipeQuads({ axis, plane, a, base, top: tileToRoof ? tileRoof : top, tile: new Vec2(group.x, group.y), d });
             if (pipes.length) {
               // blood and bullet holes look this up to land on the pipes instead of behind them
@@ -2276,7 +2290,7 @@ export class World {
           }
           if (base === 0)
             sinkToFloor(quads);
-          if (isMars && !level.isIndoorTile(adjIdx))
+          if (rockWalls && !level.isIndoorTile(adjIdx))
             outdoorFaces.push(...quads);
           else if (corridor)
             doorFaces.push(...quads);
@@ -2310,7 +2324,7 @@ export class World {
         hide.push(...quadTriangles(lap(top, diagRoof), offset));
       const quads = diagWallFaceQuads({ a: df.a, b: df.b, heights: new Vec2(0, toRoof ? diagRoof : top), tile: new Vec2(df.x, df.y), diag: df.diag, exit: kind[idx] === EXIT });
       sinkToFloor(quads);
-      if (isMars && !level.isIndoorTile(idx))
+      if (rockWalls && !level.isIndoorTile(idx))
         outdoorFaces.push(...quads);
       else
         faces.push(...quads);
@@ -2343,7 +2357,7 @@ export class World {
         const quads = wallFaceQuads(alongY
           ? { axis: 'z', plane: (y + end) * TILE, from: x, to: x, base: top, top: endRoof, tile: new Vec2(x, y), d: 2 + end, exit: false }
           : { axis: 'x', plane: (x + end) * TILE, from: y, to: y, base: top, top: endRoof, tile: new Vec2(x, y), d: end, exit: false });
-        if (isMars && !level.isIndoorTile(outIdx))
+        if (rockWalls && !level.isIndoorTile(outIdx))
           outdoorFaces.push(...quads);
         else
           faces.push(...quads);
@@ -2410,6 +2424,8 @@ export class World {
       }
     }
 
+    // Martian rock caps a wall only on a full Mars level
+    const wallIsOutdoor = (idx) => rockWalls && !level.indoor?.has(idx);
     // low tiles can be seen from above: close their tops so the floor grid cannot show through
     const wallTops = [];
     for (let idx = 0; idx < kind.length; idx++) {
@@ -2431,7 +2447,7 @@ export class World {
         const corners = df
           ? [df.s.x, top, df.s.y, df.a.x, top, df.a.y, df.b.x, top, df.b.y, df.s.x, top, df.s.y]
           : [x * TILE, top, y * TILE, (x + 1) * TILE, top, y * TILE, (x + 1) * TILE, top, (y + 1) * TILE, x * TILE, top, (y + 1) * TILE];
-        wallTops.push({ corners, uv: wallCellUv(WALL_CELLS.top) });
+        wallTops.push({ corners, uv: wallCellUv(WALL_CELLS.top), rock: wallIsOutdoor(idx) });
         continue;
       }
       const h = baseHeight[idx] - 0.9;
@@ -2440,7 +2456,7 @@ export class World {
         ? [df.s.x, top, df.s.y, df.a.x, top, df.a.y, df.b.x, top, df.b.y, df.s.x, top, df.s.y]
         : [x * TILE, top, y * TILE, (x + 1) * TILE, top, y * TILE, (x + 1) * TILE, top, (y + 1) * TILE, x * TILE, top, (y + 1) * TILE];
       if (kind[idx] !== PILLAR) {
-        if (isMars && !level.indoor?.has(idx))
+        if (wallIsOutdoor(idx))
           outdoorFaces.push({ corners, uv: wallCellUv(WALL_CELLS.top) });
         else
           faces.push({ corners, uv: wallCellUv(WALL_CELLS.top) });
@@ -2457,7 +2473,7 @@ export class World {
     this.staticChunks = [];
     const sectorWorldSize = SECTOR_TILES * TILE;
     const sectorGrid = new Grid(new Vec2((width + SECTOR_TILES) * TILE, (rowCount + SECTOR_TILES) * TILE), sectorWorldSize);
-    this.skyMesh = isMars ? this.track(this.marsSkyBatch(), this.staticMeshes) : null;
+    this.skyMesh = level.marsAtmosphere ? this.track(this.marsSkyBatch(), this.staticMeshes) : null;
     // Register opaque wall occluders first so Early-Z rejects distant floor, dirt, crate, boulder, and ceiling fragments behind walls
     const wallSectors = partitionQuadsBySector(faces, sectorGrid, sectorWorldSize, scratchSectorGrid.setScalar(width, rowCount));
     if (wallSectors.length)
@@ -2481,9 +2497,12 @@ export class World {
     else
       this.track(this.solid(hide), this.staticMeshes);
     this.roofSolidMesh = roofHide.length ? this.track(this.solid(roofHide), this.staticMeshes) : null;
-    this.wallTopsMesh = wallTops.length ? this.track(this.wallBatch(wallTops, isMars), this.staticMeshes) : null;
-    if (this.wallTopsMesh)
-      this.wallTopsMesh.setInactive();
+    const plainTops = wallTops.filter((top) => !top.rock);
+    const rockTops = wallTops.filter((top) => top.rock);
+    this.wallTopsMesh = plainTops.length ? this.track(this.wallBatch(plainTops, false), this.staticMeshes) : null;
+    this.wallTopsRockMesh = rockTops.length ? this.track(this.wallBatch(rockTops, true), this.staticMeshes) : null;
+    this.wallTopsMesh?.setInactive();
+    this.wallTopsRockMesh?.setInactive();
 
     const floorSectors = [];
     const dirtSectors = [];
@@ -2526,13 +2545,13 @@ export class World {
             const k = kind[idx];
             const walkable = k === FLOOR || k === DOOR || k === PILLAR || level.diag[idx] > 0;
             if (walkable && !level.slime[idx] && !level.emptyPit?.[idx] && !level.teleporter?.[idx]) {
-              if (isMars && !level.isIndoorTile(idx))
+              if (isMars && level.isSandTile(idx))
                 hasDirt = true;
               else
                 hasFloor = true;
             }
             if (k === PILLAR) {
-              if (isMars && !level.indoor?.has(idx))
+              if (level.isBoulder(idx))
                 hasBoulder = true;
               else
                 hasCrate = true;
@@ -2840,7 +2859,7 @@ export class World {
         const kind = level.kind[idx];
         if ((kind !== FLOOR && kind !== DOOR && kind !== PILLAR && !level.diag[idx]) || level.slime[idx] || level.emptyPit?.[idx] || level.teleporter?.[idx])
           continue;
-        if (isMars && !level.isIndoorTile(idx))
+        if (isMars && level.isSandTile(idx))
           continue;
         const x0 = tx * TILE;
         const x1 = x0 + TILE;
@@ -2862,12 +2881,12 @@ export class World {
     const texOpts = { generateMipmaps: true, minFilter: gl.NEAREST_MIPMAP_NEAREST };
     const sharedTexture = this.sharedTexture(this.marsDirtPixels, texOpts);
     const batch = new QuadBatch(gl, {
-      capacity: Math.max(1, (x1Bound - x0Bound) * (y1Bound - y0Bound)),
+      capacity: Math.max(1, (x1Bound - x0Bound) * (y1Bound - y0Bound) * SAND_SUBDIV * SAND_SUBDIV),
       atlas: this.marsDirtPixels,
       sharedTexture,
       material: new Material({ diffuse: new Vec3(1, 1, 1) }),
       vertex: FLOOR_VERTEX,
-      fragment: MARS_DIRT_FRAGMENT,
+      fragment: MARS_SAND_FRAGMENT,
       textureOptions: texOpts,
     });
     if (sharedTexture) {
@@ -2876,6 +2895,29 @@ export class World {
       this.sharedTexturedMeshes.push(batch);
     }
     const y = -0.2;
+    // the sand dips and ripples; it stays flat against walls, boulders, deck and the world's edge so the seams close
+    const isFlatSand = (tx, ty) => {
+      if (tx < 0 || ty < 0 || tx >= level.width || ty >= level.rowCount)
+        return true;
+      const idx = ty * level.width + tx;
+      const kind = level.kind[idx];
+      const floorLike = kind === FLOOR || kind === DOOR || level.diag[idx] > 0;
+      return !floorLike || level.slime[idx] || level.emptyPit?.[idx] || level.teleporter?.[idx] || !level.isSandTile(idx);
+    };
+    const sandSurface = (wx, wz) => {
+      const tx = Math.floor(wx / TILE);
+      const tz = Math.floor(wz / TILE);
+      let nearest = SAND_EDGE_FADE;
+      for (let ny = tz - 1; ny <= tz + 1; ny++)
+        for (let nx = tx - 1; nx <= tx + 1; nx++)
+          if (isFlatSand(nx, ny)) {
+            const dx = Math.max(nx * TILE - wx, 0, wx - (nx + 1) * TILE);
+            const dz = Math.max(ny * TILE - wz, 0, wz - (ny + 1) * TILE);
+            nearest = Math.min(nearest, Math.hypot(dx, dz));
+          }
+      const fade = Utils.smoothstep(0, SAND_EDGE_FADE, nearest);
+      return y + marsSandHeight(wx, wz) * fade;
+    };
     batch.begin();
     for (let ty = y0Bound; ty < y1Bound; ty++)
       for (let tx = x0Bound; tx < x1Bound; tx++) {
@@ -2883,13 +2925,27 @@ export class World {
         const kind = level.kind[idx];
         if ((kind !== FLOOR && kind !== DOOR && kind !== PILLAR && !level.diag[idx]) || level.slime[idx] || level.emptyPit?.[idx] || level.teleporter?.[idx])
           continue;
-        if (level.isIndoorTile(idx))
+        if (!level.isSandTile(idx))
           continue;
         const x0 = tx * TILE;
         const x1 = x0 + TILE;
         const z0 = ty * TILE;
         const z1 = z0 + TILE;
-        batch.quad([x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0], floorCellUv(floorCellFor(scratchTile.setScalar(tx, ty), false)));
+        const uv = floorCellUv(floorCellFor(scratchTile.setScalar(tx, ty), false));
+        const step = TILE / SAND_SUBDIV;
+        for (let sz = 0; sz < SAND_SUBDIV; sz++)
+          for (let sx = 0; sx < SAND_SUBDIV; sx++) {
+            const qx0 = x0 + sx * step;
+            const qx1 = qx0 + step;
+            const qz0 = z0 + sz * step;
+            const qz1 = qz0 + step;
+            batch.quad([
+              qx0, sandSurface(qx0, qz1), qz1,
+              qx1, sandSurface(qx1, qz1), qz1,
+              qx1, sandSurface(qx1, qz0), qz0,
+              qx0, sandSurface(qx0, qz0), qz0,
+            ], uv);
+          }
       }
     return batch.end();
   }
@@ -3240,7 +3296,7 @@ export class World {
         const idx = ty * level.width + tx;
         if (level.kind[idx] !== PILLAR)
           continue;
-        if (isMars && !level.indoor?.has(idx))
+        if (level.isBoulder(idx))
           continue;
         center.setScalar((tx + 0.5) * TILE, baseY, (ty + 0.5) * TILE);
         size.setScalar(TILE, level.baseHeight[idx]);
@@ -3289,7 +3345,7 @@ export class World {
     for (let ty = y0Bound; ty < y1Bound; ty++)
       for (let tx = x0Bound; tx < x1Bound; tx++) {
         const idx = ty * level.width + tx;
-        if (level.kind[idx] !== PILLAR || level.indoor?.has(idx))
+        if (!level.isBoulder(idx))
           continue;
         center.setScalar((tx + 0.5) * TILE, baseY, (ty + 0.5) * TILE);
         size.setScalar(TILE, level.baseHeight[idx]);
@@ -3333,7 +3389,9 @@ export class World {
         ? ((this.elevatorDoorPixels ??= {})[floorLevel] ??= elevatorDoorAtlas(floorLevel))
         : door.lock
           ? ((this.lockedDoorPixels ??= {})[door.lock] ??= lockedDoorAtlas(door.lock))
-          : (this.doorPixels ??= doorAtlas());
+          : door.sign
+            ? ((this.signDoorPixels ??= {})[door.sign] ??= signDoorAtlas(door.sign))
+            : (this.doorPixels ??= doorAtlas());
     const outwardDir = door.alongY ? (door.dirY || 1) : (door.dirX || 1);
     const { vertices, uvs } = isSecret
       ? secretDoorBox(scratchScale.setScalar(TILE, TILE, TILE))
@@ -3366,29 +3424,6 @@ export class World {
     root.setPosition(scratchPos.setScalar(door.center.x, 0, door.center.y));
     this.scene.addMesh(root);
     this.doorViews.set(door, root);
-  }
-
-  buildCrusher(crusher) {
-    // a hydraulic ceiling crusher piston that slams down from the roof and retracts back into the ceiling
-    const { gl } = this;
-    this.doorPixels ??= doorAtlas();
-    const { vertices, uvs } = doorBox(new Vec2(TILE - 1.6, TILE));
-    const geometry = new CustomMesh();
-    geometry.vertices = new Float32Array(vertices);
-    geometry.setUvs(uvs);
-    geometry.setPrimitive('TRIANGLES');
-    const root = new Mesh(gl, geometry);
-    root.addProgram(DOOR_VERTEX, DOOR_FRAGMENT, new Material({ diffuse: new Vec3(0.92, 0.72, 0.68) }));
-    // doors share the wall shader program, which keeps its uniforms between draws: say plainly that they have no material maps
-    attachRustNoise(this, root);
-    this.bindAtlasTexture(root, this.doorPixels, {
-      magFilter: gl.NEAREST,
-      minFilter: gl.NEAREST_MIPMAP_NEAREST,
-      generateMipmaps: true,
-    });
-    root.setPosition(scratchPos.setScalar(crusher.center.x, crusher.low, crusher.center.y));
-    this.scene.addMesh(root);
-    this.crusherViews.set(crusher, root);
   }
 
   buildSwitch(sw) {
@@ -4608,7 +4643,7 @@ export class World {
       this.quad.setCustomUniform('time', time);
     }
     if (!this.cutaway) {
-      const isMars = game.level?.planet === 'mars';
+      const isMars = Boolean(game.level?.marsAtmosphere);
       const skyVec = isMars ? MARS_SKY_VEC : BG_VEC;
       if (this.ambientLight) {
         const baseAmbient = isMars ? MARS_AMBIENT_COLOR : CEILING_AMBIENT_COLOR;
@@ -4704,18 +4739,6 @@ export class World {
         view.setInactive();
         this.syncDoorMarks(door, game.blood, false, game.rubble);
       }
-    }
-
-    for (const crusher of game.level.crushers) {
-      const view = this.crusherViews.get(crusher);
-      if (!view)
-        continue;
-      if ((Number.isFinite(cullDistSq) && crusher.center.getDistance(scratchCam2d, true) > cullDistSq) || (occludeFog && !occludeFog.canSeeNear(crusher.center))) {
-        view.setInactive();
-        continue;
-      }
-      view.setActive();
-      view.setPosition(scratchPos.setScalar(crusher.center.x, crusher.low, crusher.center.y));
     }
 
     if (game.level.switches)
