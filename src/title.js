@@ -15,9 +15,9 @@ export const SHOTS = [
   // barrels and imps in the North Hub gallery
   { duration: 7, from: [1820, 416, 34], to: [1980, 416, 30], look: [[2144, 544, 18], [2144, 544, 22]], zoom: [1, 0.9], roll: 0.03 },
   // a skull floating in the South-West Ambush Hall
-  { duration: 8, from: [480, 1568, 30], to: [640, 1568, 34], look: [[672, 1632, 44], [672, 1632, 40]], zoom: [0.95, 0.85], roll: -0.03 },
+  { duration: 8, from: [672, 1568, 30], to: [800, 1568, 34], look: [[672, 1632, 44], [672, 1632, 40]], zoom: [0.95, 0.85], roll: -0.03 },
   // low to the floor, a crawler ahead in the South Pillar Gallery
-  { duration: 8, from: [760, 1824, 13], to: [600, 1824, 11], look: [[160, 1696, 12], [160, 1696, 12]], zoom: [1, 0.85], roll: 0.06 },
+  { duration: 8, from: [760, 1824, 13], to: [660, 1824, 11], look: [[160, 1696, 12], [160, 1696, 12]], zoom: [1, 0.85], roll: 0.06 },
 ];
 
 const FADE = 0.7;
