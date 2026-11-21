@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { LEVELS } from '../src/levels.js';
 import { CEILING, DESK_WALL_OFFSET, DIAG_NE, DIAG_NW, DIAG_SE, DIAG_SW, DISPENSER_WALL_OFFSET, HANGAR_CEILING, Level, PILLAR, TILE, WALL } from '../src/level.js';
 import { chestBodyMesh, chestLidMesh, switchBodyMesh, switchLeverMesh } from '../src/cache.js';
-import { buildConferenceTable, buildKitchenSink, buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createPlantBreakPose, createSinkBreakPose, createTableBreakPose, DESK_ATLAS, DESK_HP, DESK_SHARD_COUNT, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, DISPENSER_ATLAS, DISPENSER_HP, DISPENSER_SHARD_COUNT, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, FURNITURE_VERTEX, PLANT_SHARD_COUNT, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, SHADOW_ATLAS, SHADOW_FRAGMENT, SHADOW_VERTEX, shadowAtlas, sinkAtlas, sinkBreakPose, tableAtlas, tableBreakPose, writeFloorShadowQuad, writeWallShadowQuad } from '../src/furniture.js';
+import { buildConferenceTable, buildKitchenSink, buildOfficePlant, createDeskBreakPose, createDispenserBreakPose, createOvenBreakPose, createPlantBreakPose, createSinkBreakPose, createTableBreakPose, DESK_ATLAS, DESK_HP, DESK_SHARD_COUNT, deskAtlas, deskBreakPose, deskDebrisMesh, deskMesh, deskShrapnelParts, deskWreckMesh, DISPENSER_ATLAS, DISPENSER_HP, DISPENSER_SHARD_COUNT, dispenserAtlas, dispenserBreakPose, dispenserMesh, dispenserPuddleMesh, dispenserShrapnelParts, dispenserWreckMesh, FURNITURE_FRAGMENT, FURNITURE_VERTEX, ovenAtlas, ovenBreakPose, ovenDebrisMesh, ovenMesh, ovenShrapnelParts, ovenWreckMesh, PLANT_SHARD_COUNT, plantAtlas, plantBreakPose, plantDebrisMesh, plantShrapnelParts, plantWreckMesh, SHADOW_ATLAS, SHADOW_FRAGMENT, SHADOW_VERTEX, shadowAtlas, sinkAtlas, sinkBreakPose, sinkPuddleMesh, sinkShrapnelParts, sinkWreckMesh, tableAtlas, tableBreakPose, tableDebrisMesh, tableShrapnelParts, tableWreckMesh, writeFloorShadowQuad, writeWallShadowQuad } from '../src/furniture.js';
 import { Game } from '../src/game.js';
 
 console.log('# file: tests/levels.test.mjs');
@@ -1200,6 +1200,258 @@ try {
 } catch (error) {
   failed = true;
   console.log(`FAIL ${mechanicFurnitureTestName}\n     ${error.message}`);
+}
+
+const ac1OvenAtlasTestName = 'AC-1 ovenAtlas generates 256x64 RGBA texture buffer containing oven front, side, cooktop, and trim regions';
+try {
+  const atlas = ovenAtlas();
+  assert.equal(atlas.name, 'oven');
+  assert.equal(atlas.width, 256);
+  assert.equal(atlas.height, 64);
+  assert.ok((atlas.width & (atlas.width - 1)) === 0 && (atlas.height & (atlas.height - 1)) === 0, 'ovenAtlas dimensions are power-of-two');
+  assert.ok(atlas.data instanceof Uint8Array);
+  assert.equal(atlas.data.length, 256 * 64 * 4);
+
+  const regions = [
+    { name: 'front', reg: atlas.front, expectedX: 0 },
+    { name: 'side', reg: atlas.side, expectedX: 64 },
+    { name: 'cooktop', reg: atlas.cooktop, expectedX: 128 },
+    { name: 'trim', reg: atlas.trim, expectedX: 192 },
+  ];
+
+  for (const { name, reg, expectedX } of regions) {
+    assert.ok(reg, `subtile region ${name} exists`);
+    assert.equal(reg.width, 64);
+    assert.equal(reg.height, 64);
+    assert.equal(reg.x, expectedX);
+
+    let nonZeroTexels = 0;
+    for (let y = 0; y < reg.height; y++)
+      for (let x = 0; x < reg.width; x++) {
+        const idx = (y * atlas.width + reg.x + x) * 4;
+        if (atlas.data[idx] > 0 || atlas.data[idx + 1] > 0 || atlas.data[idx + 2] > 0)
+          nonZeroTexels++;
+        assert.equal(atlas.data[idx + 3], 255, `texel at (${x},${y}) in region ${name} has full alpha`);
+      }
+    assert.ok(nonZeroTexels > 0, `region ${name} contains rendered non-zero RGB texels`);
+  }
+
+  console.log(`ok   ${ac1OvenAtlasTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${ac1OvenAtlasTestName}\n     ${error.message}`);
+}
+
+const ac2OvenMeshTestName = 'AC-2 ovenMesh generates 3D range geometry with matching vertex, normal, and UV counts';
+try {
+  const mesh = ovenMesh();
+  assert.ok(mesh.vertices instanceof Float32Array && mesh.vertices.length > 300);
+  assert.ok(mesh.normals instanceof Float32Array);
+  assert.ok(mesh.uvs instanceof Float32Array);
+  assert.equal(mesh.normals.length, mesh.vertices.length);
+  assert.equal(mesh.uvs.length, (mesh.vertices.length / 3) * 2);
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+
+  for (let i = 0; i < mesh.vertices.length; i += 3) {
+    const x = mesh.vertices[i];
+    const y = mesh.vertices[i + 1];
+    const z = mesh.vertices[i + 2];
+    assert.ok(Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z), 'vertex coordinates are finite');
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
+  }
+
+  assert.equal(minY, 0, 'ovenMesh rests on y = 0');
+  assert.equal(maxY, 36.0, 'ovenMesh reaches flue height y = 36.0');
+  assert.equal(minX, -13.0, 'ovenMesh horizontal min bound is -13.0');
+  assert.equal(maxX, 13.0, 'ovenMesh horizontal max bound is 13.0');
+  assert.equal(minZ, -11.0, 'ovenMesh depth min bound is -11.0');
+  assert.ok(Math.abs(maxZ - 12.2) < 1e-4, 'ovenMesh depth max bound is 12.2 for grab handle');
+
+  for (let i = 0; i < mesh.normals.length; i++)
+    assert.ok(Number.isFinite(mesh.normals[i]), 'normal coordinates are finite');
+  for (let i = 0; i < mesh.uvs.length; i++)
+    assert.ok(Number.isFinite(mesh.uvs[i]), 'uv coordinates are finite');
+
+  console.log(`ok   ${ac2OvenMeshTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${ac2OvenMeshTestName}\n     ${error.message}`);
+}
+
+const ac3OvenPartsTestName = 'AC-3 ovenWreckMesh, ovenDebrisMesh, and ovenShrapnelParts generate valid wreck, floor debris, and shrapnel piece parts';
+try {
+  const wreck = ovenWreckMesh();
+  assert.ok(wreck.vertices instanceof Float32Array && wreck.vertices.length > 0);
+  assert.equal(wreck.normals.length, wreck.vertices.length);
+  assert.equal(wreck.uvs.length, (wreck.vertices.length / 3) * 2);
+
+  let wMinY = Infinity;
+  let wMaxY = -Infinity;
+  for (let i = 1; i < wreck.vertices.length; i += 3) {
+    wMinY = Math.min(wMinY, wreck.vertices[i]);
+    wMaxY = Math.max(wMaxY, wreck.vertices[i]);
+  }
+  assert.ok(wMinY >= 0, 'oven wreck rests above y = 0');
+  assert.ok(wMaxY < 36.0 && Math.abs(wMaxY - 30.2) < 0.1, 'oven wreck top is below 36.0 at ~30.2');
+
+  const debris = ovenDebrisMesh();
+  assert.ok(debris.vertices instanceof Float32Array && debris.vertices.length >= 108);
+  assert.equal(debris.normals.length, debris.vertices.length);
+  assert.equal(debris.uvs.length, (debris.vertices.length / 3) * 2);
+
+  for (let i = 1; i < debris.vertices.length; i += 3)
+    assert.ok(Math.abs(debris.vertices[i] - 0.12) < 1e-5, 'oven debris vertex lies flat on y = 0.12');
+
+  const shrapnel = ovenShrapnelParts();
+  assert.ok(shrapnel.carboyTop.vertices instanceof Float32Array && shrapnel.carboyTop.vertices.length > 0);
+  assert.equal(shrapnel.carboyTop.normals.length, shrapnel.carboyTop.vertices.length);
+  assert.equal(shrapnel.carboyTop.uvs.length, (shrapnel.carboyTop.vertices.length / 3) * 2);
+
+  assert.equal(shrapnel.shards.length, 5);
+  for (let i = 0; i < shrapnel.shards.length; i++) {
+    const shard = shrapnel.shards[i];
+    assert.ok(shard.vertices instanceof Float32Array && shard.vertices.length > 0, `shard ${i} has vertices`);
+    assert.equal(shard.normals.length, shard.vertices.length, `shard ${i} normals match vertices`);
+    assert.equal(shard.uvs.length, (shard.vertices.length / 3) * 2, `shard ${i} uvs match vertices`);
+  }
+
+  console.log(`ok   ${ac3OvenPartsTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${ac3OvenPartsTestName}\n     ${error.message}`);
+}
+
+const ac4OvenBreakPoseTestName = 'AC-4 createOvenBreakPose and ovenBreakPose update transforms for wreck, floor debris, and flying shards in place without allocations';
+try {
+  const target = createOvenBreakPose();
+  assert.equal(target.shards.length, 5);
+
+  const timestamps = [0.0, 0.05, 0.1, 0.5, 1.2];
+  for (const elapsed of timestamps) {
+    const result = ovenBreakPose(elapsed, 42, target);
+    assert.equal(result, target, 'ovenBreakPose mutates target in-place and returns target reference');
+
+    assert.ok(Number.isFinite(target.wreckScale.x) && Number.isFinite(target.wreckScale.y) && Number.isFinite(target.wreckScale.z));
+    assert.ok(Number.isFinite(target.wreckRot.x) && Number.isFinite(target.wreckRot.y) && Number.isFinite(target.wreckRot.z));
+    assert.ok(Number.isFinite(target.puddleScale.x) && Number.isFinite(target.puddleScale.y) && Number.isFinite(target.puddleScale.z));
+    assert.ok(Number.isFinite(target.carboyTop.pos.x) && Number.isFinite(target.carboyTop.pos.y) && Number.isFinite(target.carboyTop.pos.z));
+    assert.ok(Number.isFinite(target.carboyTop.rot.x) && Number.isFinite(target.carboyTop.rot.y) && Number.isFinite(target.carboyTop.rot.z));
+
+    for (let i = 0; i < target.shards.length; i++) {
+      const s = target.shards[i];
+      assert.ok(Number.isFinite(s.pos.x) && Number.isFinite(s.pos.y) && Number.isFinite(s.pos.z), `shard ${i} pos is finite`);
+      assert.ok(Number.isFinite(s.rot.x) && Number.isFinite(s.rot.y) && Number.isFinite(s.rot.z), `shard ${i} rot is finite`);
+    }
+  }
+
+  // Validate state transitions
+  ovenBreakPose(0.05, 42, target);
+  assert.ok(target.puddleScale.x < 0.45, `puddleScale.x (${target.puddleScale.x}) < 0.45 at elapsed = 0.05`);
+  assert.ok(target.carboyTop.pos.y > 18, `carboyTop.pos.y (${target.carboyTop.pos.y}) > 18 at elapsed = 0.05`);
+
+  ovenBreakPose(1.2, 42, target);
+  assert.equal(target.puddleScale.x, 1, 'puddleScale.x === 1 at elapsed = 1.2');
+  assert.ok(Math.abs(target.carboyTop.pos.y - 3.6) < 0.1, `carboyTop.pos.y settles near floor height at elapsed = 1.2 (got ${target.carboyTop.pos.y})`);
+
+  console.log(`ok   ${ac4OvenBreakPoseTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${ac4OvenBreakPoseTestName}\n     ${error.message}`);
+}
+
+const ac5TableWreckTestName = 'AC-5 tableWreckMesh, tableDebrisMesh, and tableShrapnelParts generate valid destroyed table geometry, floor debris, and shrapnel parts';
+try {
+  const wreck = tableWreckMesh();
+  assert.ok(wreck.vertices instanceof Float32Array && wreck.vertices.length > 300);
+  assert.equal(wreck.normals.length, wreck.vertices.length);
+  assert.equal(wreck.uvs.length, (wreck.vertices.length / 3) * 2);
+
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = 1; i < wreck.vertices.length; i += 3) {
+    minY = Math.min(minY, wreck.vertices[i]);
+    maxY = Math.max(maxY, wreck.vertices[i]);
+  }
+  assert.equal(minY, 0, 'table wreck rests on y = 0');
+  assert.ok(maxY <= 30.0, 'table wreck maxY <= 30.0');
+
+  const debris = tableDebrisMesh();
+  assert.ok(debris.vertices instanceof Float32Array && debris.vertices.length >= 108);
+  assert.equal(debris.normals.length, debris.vertices.length);
+  assert.equal(debris.uvs.length, (debris.vertices.length / 3) * 2);
+  for (let i = 1; i < debris.vertices.length; i += 3)
+    assert.ok(Math.abs(debris.vertices[i] - 0.12) < 1e-5, 'table debris vertex lies flat on y = 0.12');
+
+  const shrapnel = tableShrapnelParts();
+  assert.ok(shrapnel.carboyTop.vertices instanceof Float32Array && shrapnel.carboyTop.vertices.length > 0);
+  assert.equal(shrapnel.carboyTop.normals.length, shrapnel.carboyTop.vertices.length);
+  assert.equal(shrapnel.carboyTop.uvs.length, (shrapnel.carboyTop.vertices.length / 3) * 2);
+
+  assert.equal(shrapnel.shards.length, 5);
+  for (let i = 0; i < shrapnel.shards.length; i++) {
+    const shard = shrapnel.shards[i];
+    assert.ok(shard.vertices instanceof Float32Array && shard.vertices.length > 0, `table shard ${i} has vertices`);
+    assert.equal(shard.normals.length, shard.vertices.length, `table shard ${i} normals match vertices`);
+    assert.equal(shard.uvs.length, (shard.vertices.length / 3) * 2, `table shard ${i} uvs match vertices`);
+  }
+
+  console.log(`ok   ${ac5TableWreckTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${ac5TableWreckTestName}\n     ${error.message}`);
+}
+
+const ac6SinkWreckTestName = 'AC-6 sinkWreckMesh, sinkPuddleMesh, and sinkShrapnelParts generate valid destroyed sink basin, water puddle, and shrapnel parts';
+try {
+  const wreck = sinkWreckMesh();
+  assert.ok(wreck.vertices instanceof Float32Array && wreck.vertices.length > 100);
+  assert.equal(wreck.normals.length, wreck.vertices.length);
+  assert.equal(wreck.uvs.length, (wreck.vertices.length / 3) * 2);
+
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = 1; i < wreck.vertices.length; i += 3) {
+    minY = Math.min(minY, wreck.vertices[i]);
+    maxY = Math.max(maxY, wreck.vertices[i]);
+  }
+  assert.equal(minY, 0, 'sink wreck rests on y = 0');
+  assert.ok(maxY <= 26.5, `sink wreck maxY (${maxY}) <= 26.5`);
+
+  const puddle = sinkPuddleMesh();
+  assert.ok(puddle.vertices instanceof Float32Array && puddle.vertices.length >= 108);
+  assert.equal(puddle.normals.length, puddle.vertices.length);
+  assert.equal(puddle.uvs.length, (puddle.vertices.length / 3) * 2);
+  for (let i = 1; i < puddle.vertices.length; i += 3)
+    assert.ok(Math.abs(puddle.vertices[i] - 0.12) < 1e-5, 'sink puddle vertex lies flat on y = 0.12');
+
+  const shrapnel = sinkShrapnelParts();
+  assert.ok(shrapnel.carboyTop.vertices instanceof Float32Array && shrapnel.carboyTop.vertices.length > 0);
+  assert.equal(shrapnel.carboyTop.normals.length, shrapnel.carboyTop.vertices.length);
+  assert.equal(shrapnel.carboyTop.uvs.length, (shrapnel.carboyTop.vertices.length / 3) * 2);
+
+  assert.equal(shrapnel.shards.length, 5);
+  for (let i = 0; i < shrapnel.shards.length; i++) {
+    const shard = shrapnel.shards[i];
+    assert.ok(shard.vertices instanceof Float32Array && shard.vertices.length > 0, `sink shard ${i} has vertices`);
+    assert.equal(shard.normals.length, shard.vertices.length, `sink shard ${i} normals match vertices`);
+    assert.equal(shard.uvs.length, (shard.vertices.length / 3) * 2, `sink shard ${i} uvs match vertices`);
+  }
+
+  console.log(`ok   ${ac6SinkWreckTestName}`);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL ${ac6SinkWreckTestName}\n     ${error.message}`);
 }
 
 process.exit(failed ? 1 : 0);
