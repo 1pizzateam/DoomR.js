@@ -138,6 +138,151 @@ const checks = [
     press(input, menu, NAV_NONE, 'Click');
     assert.equal(menu.view.page, OPTIONS_PAGE_GRAPHICS);
   }],
+  ['AC-1 returnFromControls switches to root page and resets cursor to 0', () => {
+    const input = makeInput();
+    const menu = new OptionsMenu(input, new GraphicsSettings(memoryStorage()));
+    menu.open('title');
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_NONE, 'confirm');
+    assert.equal(menu.view.page, OPTIONS_PAGE_GRAPHICS);
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_DOWN);
+    assert.equal(menu.view.cursor, 3);
+    menu.returnFromControls();
+    assert.equal(menu.view.page, OPTIONS_PAGE_ROOT);
+    assert.equal(menu.view.cursor, 0);
+  }],
+  ['AC-2 returnState reports the state passed to open()', () => {
+    const menu = new OptionsMenu(makeInput(), new GraphicsSettings(memoryStorage()));
+    menu.open('paused');
+    assert.equal(menu.returnState, 'paused');
+    menu.open('title');
+    assert.equal(menu.returnState, 'title');
+  }],
+  ['AC-3 blocked update moves cursor but ignores confirm, jump, menu, and Click', () => {
+    const input = makeInput();
+    const menu = new OptionsMenu(input, new GraphicsSettings(memoryStorage()), { hitAt: () => 1 });
+    menu.open('title');
+    const pressBlocked = (nav, taken) => {
+      input.nav = nav;
+      input.taken = new Set(taken ? [taken] : []);
+      menu.update(true, game);
+      input.nav = NAV_NONE;
+      input.taken.clear();
+    };
+    pressBlocked(NAV_DOWN);
+    assert.equal(menu.view.cursor, 1);
+    pressBlocked(NAV_NONE, 'confirm');
+    pressBlocked(NAV_NONE, 'jump');
+    pressBlocked(NAV_NONE, 'menu');
+    input.mouseMoved = false;
+    pressBlocked(NAV_NONE, 'Click');
+    assert.equal(menu.view.page, OPTIONS_PAGE_ROOT);
+    assert.equal(menu.isOpen, true);
+    assert.equal(menu.view.cursor, 1);
+    assert.equal(menu.activated, '');
+  }],
+  ['AC-4 jump input activates the selected row like confirm', () => {
+    const input = makeInput();
+    const menu = new OptionsMenu(input, new GraphicsSettings(memoryStorage()));
+    menu.open('title');
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_NONE, 'jump');
+    assert.equal(menu.view.page, OPTIONS_PAGE_GRAPHICS);
+    press(input, menu, NAV_NONE, 'menu');
+    assert.equal(menu.view.page, OPTIONS_PAGE_ROOT);
+    press(input, menu, NAV_UP);
+    assert.equal(menu.view.cursor, 0);
+    press(input, menu, NAV_NONE, 'jump');
+    assert.equal(menu.activated, OPTION_CONTROLS);
+    press(input, menu, NAV_NONE);
+    assert.equal(menu.activated, '');
+  }],
+  ['AC-5 adaptive toggles and glow cycles OFF, LOW, HIGH through the menu', () => {
+    const input = makeInput();
+    const settings = new GraphicsSettings(memoryStorage());
+    const menu = new OptionsMenu(input, settings);
+    menu.open('paused');
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_NONE, 'confirm');
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_RIGHT);
+    assert.equal(settings.adaptive, false);
+    assert.equal(menu.view.rows[2].value, 'OFF');
+    press(input, menu, NAV_DOWN);
+    assert.equal(settings.glow, GLOW_HIGH);
+    const seen = [];
+    for (let i = 0; i < 3; i++) {
+      press(input, menu, NAV_RIGHT);
+      seen.push(menu.view.rows[3].value);
+    }
+    assert.deepEqual(seen, ['OFF', 'LOW', 'HIGH']);
+  }],
+  ['AC-4 BACK on root closes the menu and BACK on graphics returns to root', () => {
+    const input = makeInput();
+    const menu = new OptionsMenu(input, new GraphicsSettings(memoryStorage()));
+    menu.open('title');
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_DOWN);
+    press(input, menu, NAV_NONE, 'confirm');
+    assert.equal(menu.isOpen, false);
+
+    const againInput = makeInput();
+    const again = new OptionsMenu(againInput, new GraphicsSettings(memoryStorage()));
+    again.open('title');
+    press(againInput, again, NAV_DOWN);
+    press(againInput, again, NAV_NONE, 'confirm');
+    assert.equal(again.view.page, OPTIONS_PAGE_GRAPHICS);
+    for (let i = 0; i < 5; i++)
+      press(againInput, again, NAV_DOWN);
+    assert.equal(again.view.cursor, 5);
+    press(againInput, again, NAV_NONE, 'confirm');
+    assert.equal(again.view.page, OPTIONS_PAGE_ROOT);
+    assert.equal(again.view.cursor, 1);
+  }],
+  ['AC-6 cycleGlow wraps forward and backward', () => {
+    const s = new GraphicsSettings(memoryStorage());
+    assert.equal(s.glow, GLOW_HIGH);
+    s.cycleGlow(1);
+    assert.equal(s.glow, GLOW_OFF);
+    s.cycleGlow(-1);
+    assert.equal(s.glow, GLOW_HIGH);
+    s.applyPreset('low');
+    assert.equal(s.glow, GLOW_OFF);
+    s.cycleGlow(-1);
+    assert.equal(s.glow, GLOW_HIGH);
+    s.cycleGlow(1);
+    assert.equal(s.glow, GLOW_OFF);
+    s.cycleGlow(1);
+    assert.equal(s.glow, GLOW_LOW);
+    s.cycleGlow(-1);
+    assert.equal(s.glow, GLOW_OFF);
+  }],
+  ['AC-7 applyPreset returns false for unknown preset without mutation', () => {
+    const s = new GraphicsSettings(memoryStorage());
+    const before = { resolution: s.resolution, adaptive: s.adaptive, glow: s.glow, hudGlow: s.hudGlow, version: s.version };
+    assert.equal(s.applyPreset('nope'), false);
+    assert.equal(s.resolution, before.resolution);
+    assert.equal(s.adaptive, before.adaptive);
+    assert.equal(s.glow, before.glow);
+    assert.equal(s.hudGlow, before.hudGlow);
+    assert.equal(s.version, before.version);
+    assert.equal(s.presetName, 'high');
+  }],
+  ['AC-8 throwing storage is handled by load and save without escaping errors', () => {
+    const throwingStorage = {
+      getItem() { throw new Error('blocked'); },
+      setItem() { throw new Error('blocked'); },
+    };
+    let s;
+    assert.doesNotThrow(() => { s = new GraphicsSettings(throwingStorage); });
+    assert.equal(s.presetName, 'high');
+    assert.doesNotThrow(() => s.toggleHudGlow());
+    assert.equal(s.hudGlow, false);
+    assert.doesNotThrow(() => s.save());
+  }],
 ];
 
 console.log('# file: tests/options-menu.test.mjs');
