@@ -180,6 +180,236 @@ const tests = {
     assert.ok(fonts.some((f) => f.startsWith('800 ')), 'AC-7: active slot / flash font');
     assert.ok(alphas.includes(0.8) && alphas.includes(0.95), 'AC-7: label and badge alphas');
   },
+
+  'AC-1 layoutOptions geometry calculations match viewport dimensions and row counts'() {
+    // Tests layoutOptions geometry calculation via optionsHitAt across various viewport dimensions
+    // and row counts, asserting clamp of boxW (280..440), boxH (64 + rows * 34 + 52),
+    // boxX ((w - boxW) / 2), boxY (Math.max(8, h / 2 - boxH / 2)), rowsTop (boxY + 56), and valueX (boxX + boxW - 36).
+    const hud = makeHud();
+
+    const checkView = (w, h, rowCount) => {
+      hud.resize(w, h, 1);
+      const rows = Array.from({ length: rowCount }, (_, i) => ({ id: `row-${i}`, label: `Row ${i}`, value: `${i}` }));
+      hud.optionsView = { rows, cursor: 0, title: 'TEST', note: '' };
+
+      const expBoxW = Math.min(440, Math.max(280, w - 48));
+      const expBoxH = 64 + rowCount * 34 + 52;
+      const expBoxX = w / 2 - expBoxW / 2;
+      const expBoxY = Math.max(8, h / 2 - expBoxH / 2);
+      const expRowsTop = expBoxY + 56;
+      const expValueX = expBoxX + expBoxW - 36;
+
+      // Hit at exactly rowsTop should hit row 0
+      assert.equal(hud.optionsHitAt({ x: expBoxX + 10, y: expRowsTop }), 0, 'AC-1: row 0 hit at top');
+      // Hit just above rowsTop should be outside (-1)
+      assert.equal(hud.optionsHitAt({ x: expBoxX + 10, y: expRowsTop - 1 }), -1, 'AC-1: above rowsTop returns -1');
+      // Hit at bottom of row 0
+      assert.equal(hud.optionsHitAt({ x: expBoxX + 10, y: expRowsTop + 33 }), 0, 'AC-1: row 0 bottom edge');
+      // Hit at start of row 1
+      if (rowCount > 1) {
+        assert.equal(hud.optionsHitAt({ x: expBoxX + 10, y: expRowsTop + 34 }), 1, 'AC-1: row 1 start');
+      }
+      // Hit past bottom of last row
+      assert.equal(hud.optionsHitAt({ x: expBoxX + 10, y: expRowsTop + rowCount * 34 }), -1, 'AC-1: below rows returns -1');
+      // Left and right edges of box
+      assert.equal(hud.optionsHitAt({ x: expBoxX - 1, y: expRowsTop + 10 }), -1, 'AC-1: left of boxX returns -1');
+      assert.equal(hud.optionsHitAt({ x: expBoxX + expBoxW + 1, y: expRowsTop + 10 }), -1, 'AC-1: right of boxX+boxW returns -1');
+
+      // Verify geometry when captured via drawOptions
+      let capturedRight = 0;
+      let capturedValueX = 0;
+      const testHud = makeHud();
+      testHud.resize(w, h, 1);
+      testHud.canvasLine = (path) => {
+        if (path.length === 5) {
+          capturedRight = path[1].x;
+        }
+      };
+      testHud.text = (str, x) => {
+        if (str === '0') {
+          capturedValueX = x;
+        }
+      };
+      testHud.drawOptions({
+        title: 'TEST',
+        rows: [{ id: 'opt0', label: 'Opt 0', value: '0', adjustable: true }],
+        cursor: -1,
+        note: '',
+      });
+      // In drawOptions, single row layout was recalculated
+      const singleRowBoxW = Math.min(440, Math.max(280, w - 48));
+      const singleRowBoxX = w / 2 - singleRowBoxW / 2;
+      assert.equal(capturedRight, singleRowBoxX + singleRowBoxW, 'AC-1: captured right edge matches boxX + boxW');
+      assert.equal(capturedValueX, singleRowBoxX + singleRowBoxW - 36, 'AC-1: captured valueX matches boxX + boxW - 36');
+    };
+
+    checkView(800, 600, 3);
+    checkView(1280, 720, 6);
+    checkView(300, 400, 2);
+    checkView(1920, 1080, 8);
+  },
+
+  'AC-2 optionsHitAt translates coordinates to exact row indices and rejects out-of-bounds positions'() {
+    const hud = makeHud();
+    hud.resize(800, 600, 1);
+
+    // When optionsView is null or undefined, returns -1
+    hud.optionsView = null;
+    assert.equal(hud.optionsHitAt({ x: 400, y: 300 }), -1, 'AC-2: null optionsView returns -1');
+
+    const rows = [
+      { id: 'item0', label: 'Item 0', value: 'A' },
+      { id: 'item1', label: 'Item 1', value: 'B' },
+      { id: 'item2', label: 'Item 2', value: 'C' },
+      { id: 'item3', label: 'Item 3', value: 'D' },
+    ];
+    hud.optionsView = { rows, cursor: 0, title: 'OPTIONS', note: '' };
+
+    const boxW = Math.min(440, Math.max(280, 800 - 48)); // 440
+    const boxH = 64 + rows.length * 34 + 52; // 64 + 136 + 52 = 252
+    const boxX = 800 / 2 - boxW / 2; // 400 - 220 = 180
+    const boxY = Math.max(8, 600 / 2 - boxH / 2); // 300 - 126 = 174
+    const rowsTop = boxY + 56; // 230
+
+    // Center of each row returns exact index
+    for (let i = 0; i < rows.length; i++) {
+      const centerY = rowsTop + i * 34 + 17;
+      assert.equal(hud.optionsHitAt({ x: boxX + 50, y: centerY }), i, `AC-2: row ${i} hit at center`);
+      assert.equal(hud.optionsHitAt({ x: boxX, y: centerY }), i, `AC-2: row ${i} hit at left edge`);
+      assert.equal(hud.optionsHitAt({ x: boxX + boxW, y: centerY }), i, `AC-2: row ${i} hit at right edge`);
+    }
+
+    // Points outside horizontal bounds
+    assert.equal(hud.optionsHitAt({ x: boxX - 0.1, y: rowsTop + 17 }), -1, 'AC-2: left of box returns -1');
+    assert.equal(hud.optionsHitAt({ x: boxX + boxW + 0.1, y: rowsTop + 17 }), -1, 'AC-2: right of box returns -1');
+
+    // Points vertically out-of-bounds
+    assert.equal(hud.optionsHitAt({ x: boxX + 50, y: rowsTop - 0.1 }), -1, 'AC-2: above rowsTop returns -1');
+    assert.equal(hud.optionsHitAt({ x: boxX + 50, y: 0 }), -1, 'AC-2: at top of screen returns -1');
+    assert.equal(hud.optionsHitAt({ x: boxX + 50, y: rowsTop + rows.length * 34 }), -1, 'AC-2: past last row returns -1');
+    assert.equal(hud.optionsHitAt({ x: boxX + 50, y: 599 }), -1, 'AC-2: at bottom of screen returns -1');
+  },
+
+  'AC-3 drawOptions renders panel outline, titles, row items, focus highlight, and navigation hints'() {
+    const lines = [];
+    const texts = [];
+
+    const hud = makeHud();
+    hud.resize(800, 600, 1);
+    hud.canvasLine = (path, color, alpha, width, glow) => {
+      lines.push({ path: path.map((p) => ({ x: p.x, y: p.y })), color, alpha, width, glow });
+    };
+    hud.text = (str, x, y, color, style) => {
+      texts.push({ str, x, y, color, style });
+    };
+
+    // 1. Root page view (non-adjustable rows)
+    const rootView = {
+      open: true,
+      page: 'root',
+      title: 'OPTIONS',
+      note: '',
+      cursor: 1, // Focused on row 1 (GRAPHICS)
+      rows: [
+        { id: 'controls', label: 'CONTROLS', value: '', adjustable: false },
+        { id: 'graphics', label: 'GRAPHICS', value: '', adjustable: false },
+        { id: 'back', label: 'BACK', value: '', adjustable: false },
+      ],
+    };
+
+    hud.drawOptions(rootView);
+
+    // Verify panel outline drawn
+    assert.ok(lines.length >= 2, 'AC-3: panel outline and focus rect lines drawn');
+    const panelOutline = lines[0];
+    assert.equal(panelOutline.path.length, 5, 'AC-3: panel outline has 5 vertices (closed rect)');
+    assert.equal(panelOutline.color, 0, 'AC-3: panel outline is BLUE');
+
+    // Verify title text
+    const titleText = texts.find((t) => t.str === 'OPTIONS');
+    assert.ok(titleText, 'AC-3: title OPTIONS rendered');
+    assert.equal(titleText.color, 0, 'AC-3: title is BLUE');
+    assert.equal(titleText.style.align, 'center');
+
+    // Verify focus highlight rectangle drawn for focused row (cursor = 1)
+    const focusLine = lines.find((l) => l.color === 2); // ORANGE = 2
+    assert.ok(focusLine, 'AC-3: focus highlight box drawn in ORANGE');
+
+    // Verify row labels
+    assert.ok(texts.some((t) => t.str === 'CONTROLS' && t.color === 1), 'AC-3: inactive CONTROLS row is GREEN');
+    assert.ok(texts.some((t) => t.str === 'GRAPHICS' && t.color === 2), 'AC-3: active GRAPHICS row is ORANGE');
+    assert.ok(texts.some((t) => t.str === 'BACK' && t.color === 1), 'AC-3: inactive BACK row is GREEN');
+
+    // Verify navigation hint
+    const hint = texts.find((t) => t.str.includes('ENTER confirm'));
+    assert.ok(hint, 'AC-3: navigation hint rendered');
+    assert.equal(hint.color, 0, 'AC-3: navigation hint is BLUE');
+
+    // 2. Graphics page view (with adjustable items and note text)
+    lines.length = 0;
+    texts.length = 0;
+
+    const graphicsView = {
+      open: true,
+      page: 'graphics',
+      title: 'GRAPHICS',
+      note: 'Lower these on older computers',
+      cursor: 0, // Focused on row 0 (QUALITY PRESET)
+      rows: [
+        { id: 'preset', label: 'QUALITY PRESET', value: 'HIGH', adjustable: true },
+        { id: 'resolution', label: 'RESOLUTION', value: '100%', adjustable: true },
+        { id: 'back', label: 'BACK', value: '', adjustable: false },
+      ],
+    };
+
+    hud.drawOptions(graphicsView);
+
+    // Focused adjustable row renders step markers: ◂ HIGH ▸
+    assert.ok(texts.some((t) => t.str === '◂ HIGH ▸' && t.color === 2), 'AC-3: focused adjustable value has step markers');
+    // Inactive adjustable row renders value without markers: 100%
+    assert.ok(texts.some((t) => t.str === '100%' && t.color === 1), 'AC-3: inactive adjustable value rendered plainly');
+    // Note text rendered
+    assert.ok(texts.some((t) => t.str === 'Lower these on older computers'), 'AC-3: note text rendered');
+  },
+
+  'AC-4 difficultyAt returns null and levelStepAt returns 0 for out-of-bounds coordinates'() {
+    const hud = makeHud();
+    hud.resize(800, 600, 1);
+
+    const cx = 800 / 2; // 400
+    const cy = 600 / 2; // 300
+    const boxW = Math.min(390, Math.max(280, 800 - 48)); // 390
+    const boxX = cx - boxW / 2; // 400 - 195 = 205
+    const rowsTop = cy - 42; // 258
+    const rowH = 26;
+
+    // difficultyAt tests
+    // 1. Outside horizontal bounds
+    assert.equal(hud.difficultyAt({ x: boxX - 1, y: rowsTop + 10 }), null, 'AC-4: difficultyAt left of box is null');
+    assert.equal(hud.difficultyAt({ x: boxX + boxW + 1, y: rowsTop + 10 }), null, 'AC-4: difficultyAt right of box is null');
+    // 2. Above rowsTop
+    assert.equal(hud.difficultyAt({ x: cx, y: rowsTop - 1 }), null, 'AC-4: difficultyAt above rowsTop is null');
+    assert.equal(hud.difficultyAt({ x: cx, y: 0 }), null, 'AC-4: difficultyAt at y=0 is null');
+    // 3. Below last difficulty row (DIFFICULTY_ORDER has length 5: indices 0..4)
+    assert.equal(hud.difficultyAt({ x: cx, y: rowsTop + 5 * rowH + 1 }), null, 'AC-4: difficultyAt below last row is null');
+    assert.equal(hud.difficultyAt({ x: cx, y: 599 }), null, 'AC-4: difficultyAt at y=599 is null');
+    // In-bounds valid check
+    assert.equal(hud.difficultyAt({ x: cx, y: rowsTop + 10 }), 'easy', 'AC-4: difficultyAt inside row 0 is easy');
+
+    // levelStepAt tests
+    // Bounds: pos.x >= boxX && pos.x <= boxX + boxW && pos.y >= cy + 88 && pos.y <= cy + 124
+    // 1. Horizontal out-of-bounds
+    assert.equal(hud.levelStepAt({ x: boxX - 1, y: cy + 100 }), 0, 'AC-4: levelStepAt left of box is 0');
+    assert.equal(hud.levelStepAt({ x: boxX + boxW + 1, y: cy + 100 }), 0, 'AC-4: levelStepAt right of box is 0');
+    // 2. Vertical out-of-bounds
+    assert.equal(hud.levelStepAt({ x: cx - 10, y: cy + 87 }), 0, 'AC-4: levelStepAt above cy+88 is 0');
+    assert.equal(hud.levelStepAt({ x: cx - 10, y: cy + 125 }), 0, 'AC-4: levelStepAt below cy+124 is 0');
+    assert.equal(hud.levelStepAt({ x: cx - 10, y: 0 }), 0, 'AC-4: levelStepAt at y=0 is 0');
+    assert.equal(hud.levelStepAt({ x: cx - 10, y: 599 }), 0, 'AC-4: levelStepAt at y=599 is 0');
+    // 3. In-bounds valid checks (x < cx returns -1, x >= cx returns 1)
+    assert.equal(hud.levelStepAt({ x: cx - 10, y: cy + 100 }), -1, 'AC-4: levelStepAt left half returns -1');
+    assert.equal(hud.levelStepAt({ x: cx + 10, y: cy + 100 }), 1, 'AC-4: levelStepAt right half returns 1');
+  },
 };
 
 console.log('# file: tests/hud-text-styles.test.mjs');
